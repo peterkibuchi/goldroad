@@ -57,7 +57,7 @@
         {
           "binding": "DB",
           "database_name": "goldroad-db-staging",
-          "database_id": "00000000-0000-0000-0000-000000000000",
+          "database_id": "3d671556-7602-462a-a327-b0da05344972",
           "migrations_dir": "drizzle"
         }
       ]
