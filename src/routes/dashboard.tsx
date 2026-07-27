@@ -325,12 +325,22 @@ function DashboardPage() {
               written in other apps.
             </p>
           </div>
-          <a
-            className="inline-flex min-h-11 items-center bg-spot px-5 font-bold font-display text-base text-paper transition-colors hover:bg-ink"
-            href="/write"
-          >
-            New post
-          </a>
+          <div className="flex flex-col items-end gap-1">
+            <a
+              className="inline-flex min-h-11 items-center bg-spot px-5 font-bold font-display text-base text-paper transition-colors hover:bg-ink"
+              href="/write"
+            >
+              New post
+            </a>
+            {/* Import entry point: writers arriving with an existing
+                publication bring it with them (posts land as drafts). */}
+            <a
+              className="inline-flex min-h-9 items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
+              href="/import"
+            >
+              Import your writing
+            </a>
+          </div>
         </div>
 
         {published && (
@@ -514,6 +524,16 @@ function DashboardPage() {
             >
               Write your first post
             </a>
+            <p className="mt-4 font-display text-ink-soft text-sm">
+              Writing somewhere else?{" "}
+              <a
+                className="underline underline-offset-2 transition-colors hover:text-ink"
+                href="/import"
+              >
+                Bring it with you
+              </a>{" "}
+              — your posts arrive as drafts, and nothing changes at the source.
+            </p>
           </div>
         )}
       </main>
