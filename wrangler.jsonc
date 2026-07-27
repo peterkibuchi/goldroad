@@ -12,7 +12,7 @@
   // Environment-specific deploys live in the `env.*` blocks below. Bindings are
   // non-inheritable, so each env repeats its own `d1_databases`.
   // ─────────────────────────────────────────────────────────────────────────
-  "name": "goldroad",
+  "name": "goldroad-staging",
   "workers_dev": true,
   "preview_urls": true,
   "compatibility_date": "2025-09-02",
