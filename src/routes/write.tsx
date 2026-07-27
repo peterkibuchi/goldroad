@@ -18,6 +18,7 @@ import { blobImagePath, coverImageCid } from "~/lib/blob";
 import { selectDraft } from "~/lib/drafts";
 import { isDraftId, MAX_DRAFTS_PER_USER } from "~/lib/drafts-schema";
 import { downscaleImage } from "~/lib/image";
+import { selectMirror } from "~/lib/import-store";
 import { TID_RE } from "~/lib/publish";
 import { readSessionDid } from "~/lib/session";
 import { env } from "cloudflare:workers";
@@ -62,6 +63,9 @@ type Draft = {
   textContent: string;
   /** Same-origin /img path for the existing cover, when the record has one. */
   coverPath: string | null;
+  /** Set when this published post is a mirror (imported; original elsewhere):
+   * the edit form then offers "make this the Goldroad original". */
+  mirror: { sourceUrl: string | null } | null;
 };
 
 /** A saved (unpublished) draft being resumed from our D1 — distinct from
@@ -136,11 +140,19 @@ const getWriteContext = createServerFn({ method: "GET" })
         if (doc.content != null) draftError = "not_editable";
         else {
           const coverCid = coverImageCid(doc.coverImage);
+          // Mirror lookup (import ledger): editing a mirrored post offers
+          // adoption. Best-effort — a flaked read just hides the offer.
+          const [mirror] = await selectMirror(
+            drizzle(env.DB),
+            did,
+            data.edit,
+          ).catch(() => []);
           draft = {
             rkey: data.edit,
             title: doc.title ?? "",
             textContent: doc.textContent ?? "",
             coverPath: coverCid ? blobImagePath(did, coverCid) : null,
+            mirror: mirror ? { sourceUrl: mirror.sourceUrl } : null,
           };
         }
       } catch {
@@ -490,6 +502,15 @@ function Compose({
   const titleRef = useRef<HTMLInputElement>(null);
   const draftIdInputRef = useRef<HTMLInputElement>(null);
   const editing = draft !== null;
+  /** Display host for the mirror-adoption notice ("writer.substack.com"). */
+  let mirrorHost: string | null = null;
+  if (draft?.mirror?.sourceUrl) {
+    try {
+      mirrorHost = new URL(draft.mirror.sourceUrl).hostname;
+    } catch {
+      mirrorHost = null;
+    }
+  }
 
   // ---- Autosave (new compositions only). Editing a published post never
   // autosaves: the record in the writer's repo is the source of truth there,
@@ -689,6 +710,24 @@ function Compose({
         onSubmit={handleSubmit}
       >
         {editing && <input name="rkey" type="hidden" value={draft.rkey} />}
+        {/* Mirrored post (imported; the original lives elsewhere): editing
+            offers adoption — one deliberate checkbox, submitted with the
+            save. Adopting stops the "originally published at" note and lets
+            search engines index this page as the post's home. */}
+        {editing && draft.mirror && (
+          <div className="mb-6 border border-rule px-4 py-3">
+            <p className="font-display text-ink-soft text-sm leading-relaxed">
+              This post is a mirror — readers see a note pointing to the
+              original{mirrorHost ? ` at ${mirrorHost}` : ""}, and search
+              engines are told to index the original, not this copy.
+            </p>
+            <label className="mt-2 flex min-h-9 cursor-pointer items-center gap-2 font-display text-ink text-sm">
+              <input name="adoptOriginal" type="checkbox" value="1" />
+              Make this the Goldroad original — remove the note and let this
+              page be indexed
+            </label>
+          </div>
+        )}
         {!editing && (
           <input name="draftId" ref={draftIdInputRef} type="hidden" />
         )}

@@ -15,6 +15,7 @@ import {
   type StandardPublication,
 } from "~/lib/atproto";
 import { blobImagePath, coverImageCid } from "~/lib/blob";
+import { checkMirror, type MirrorInfo } from "~/lib/mirror";
 import { checkHidden, recordAtUri } from "~/lib/moderation";
 import { CANONICAL_ORIGIN } from "~/lib/origin";
 import { composeDocumentUrl } from "~/lib/publish";
@@ -88,11 +89,17 @@ export async function loadDocument(identParam: string, rkey: string) {
         publicationName = pub.value.name;
     }
 
+    // Mirror lookup (import ledger): a hit swaps the canonical tag for
+    // noindex and adds the "Originally published at …" line below. Null =
+    // native post, adopted mirror, or a flaked read (fail open).
+    const mirror = await checkMirror({ data: { did, rkey } });
+
     const coverCid = coverImageCid(doc.coverImage);
     return {
       doc,
       ident,
       publicationName,
+      mirror,
       // Validated cover blob (allowlisted raster, within the lexicon cap) —
       // rendered via the /img proxy so the PDS hostname never leaks into HTML.
       cover: coverCid ? ({ did, cid: coverCid } satisfies CoverRef) : null,
@@ -126,15 +133,23 @@ export function documentHead(
         atUri: string;
         canonicalUrl: string | null;
         cover?: CoverRef | null;
+        mirror?: MirrorInfo | null;
       }
     | undefined,
 ) {
   if (!loaderData) return { meta: [{ title: "Not found" }] };
-  const { doc, ident, atUri, canonicalUrl, cover } = loaderData;
+  const { doc, ident, atUri, canonicalUrl, cover, mirror } = loaderData;
   const title = `${doc.title ?? "Untitled"} — ${ident}`;
+  // Mirrored posts (the original lives elsewhere): noindex INSTEAD of a
+  // canonical tag — search engines index the original, not this copy; a
+  // cross-domain canonical is no longer the recommended syndication signal
+  // and could never verify against a domain the writer doesn't control.
+  // The at:// link tags stay: they're record discovery, not SEO.
+  const isMirror = mirror != null;
   return {
     meta: [
       { title },
+      ...(isMirror ? [{ name: "robots", content: "noindex" }] : []),
       ...(doc.description
         ? [
             { name: "description", content: doc.description },
@@ -156,7 +171,9 @@ export function documentHead(
         : []),
     ],
     links: [
-      ...(canonicalUrl ? [{ rel: "canonical", href: canonicalUrl }] : []),
+      ...(canonicalUrl && !isMirror
+        ? [{ rel: "canonical", href: canonicalUrl }]
+        : []),
       { rel: "alternate", href: atUri },
       { rel: "site.standard.document", href: atUri },
       // Feed discovery: document pages advertise their PUBLICATION's feed
@@ -199,21 +216,34 @@ export function formatDate(iso: string | undefined): string | null {
   });
 }
 
+/** Display host for a provenance URL ("writer.substack.com"), or null. */
+function provenanceHost(url: string | null): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return null;
+  }
+}
+
 export function DocumentArticle({
   doc,
   ident,
   publicationName,
   cover,
+  mirror,
 }: {
   doc: StandardDocument;
   ident: string;
   publicationName?: string | null;
   cover?: CoverRef | null;
+  mirror?: MirrorInfo | null;
 }) {
   const body = doc.textContent ?? "";
   const date = formatDate(doc.publishedAt);
   const updated = formatDate(doc.updatedAt);
   const publicationHref = `/@${encodeURIComponent(ident)}`;
+  const mirrorHost = mirror ? provenanceHost(mirror.sourceUrl) : null;
 
   return (
     <div className="min-h-screen bg-paper font-body text-ink">
@@ -256,6 +286,20 @@ export function DocumentArticle({
             )}
             {updated && updated !== date && <span> · updated {updated}</span>}
           </p>
+          {/* Provenance for mirrored posts (import ledger): the original
+              lives elsewhere and this page says so, visibly — the honest
+              half of "keep your Substack". Calm register, no ornament. */}
+          {mirror && mirrorHost && mirror.sourceUrl && (
+            <p className="mt-2 font-display text-ink-soft text-sm">
+              Originally published at{" "}
+              <ExternalLink
+                className="underline underline-offset-2 transition-colors hover:text-ink"
+                href={mirror.sourceUrl}
+              >
+                {mirrorHost}
+              </ExternalLink>
+            </p>
+          )}
         </header>
         {body.trim() !== "" ? (
           <Prose markdown={body} />
