@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   anyHidden,
+  hiddenSubjects,
   hiddenSubjectsFromInput,
   recordAtUri,
 } from "../lib/moderation";
@@ -66,5 +67,37 @@ describe("anyHidden", () => {
     // biome-ignore lint/suspicious/noExplicitAny: chain stub stands in for drizzle
     expect(await anyHidden(db as any, ["", ""])).toBe(false);
     expect(db.get).not.toHaveBeenCalled();
+  });
+});
+
+/** Chainable drizzle stand-in: select().from().where().all() → `rows`. */
+function mockDbAll(rows: unknown[]) {
+  const chain = {
+    select: vi.fn(() => chain),
+    from: vi.fn(() => chain),
+    where: vi.fn(() => chain),
+    all: vi.fn(async () => rows),
+  };
+  return chain;
+}
+
+describe("hiddenSubjects", () => {
+  it("returns exactly the matching subjects (the feed's per-item filter)", async () => {
+    const db = mockDbAll([{ subject: "at://did:plc:abc/c/r1" }]);
+    const hidden = await hiddenSubjects(
+      // biome-ignore lint/suspicious/noExplicitAny: chain stub stands in for drizzle
+      db as any,
+      ["did:plc:abc", "at://did:plc:abc/c/r1", "at://did:plc:abc/c/r2"],
+    );
+    expect(hidden).toEqual(new Set(["at://did:plc:abc/c/r1"]));
+  });
+
+  it("short-circuits on empty / all-blank input without querying", async () => {
+    const db = mockDbAll([{ subject: "x" }]);
+    // biome-ignore lint/suspicious/noExplicitAny: chain stub stands in for drizzle
+    expect(await hiddenSubjects(db as any, [])).toEqual(new Set());
+    // biome-ignore lint/suspicious/noExplicitAny: chain stub stands in for drizzle
+    expect(await hiddenSubjects(db as any, ["", ""])).toEqual(new Set());
+    expect(db.all).not.toHaveBeenCalled();
   });
 });

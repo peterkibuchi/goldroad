@@ -56,6 +56,24 @@ export async function anyHidden(
   return row != null;
 }
 
+/** Which of these subjects (DIDs and/or AT-URIs) are on the takedown list?
+ * Same one-indexed-IN()-query shape as anyHidden, but returns the matching
+ * subjects so list surfaces (the RSS feed) can EXCLUDE individual hidden
+ * records while still serving the rest. */
+export async function hiddenSubjects(
+  db: DrizzleD1,
+  subjects: string[],
+): Promise<Set<string>> {
+  const unique = [...new Set(subjects.filter(Boolean))];
+  if (unique.length === 0) return new Set();
+  const rows = await db
+    .select({ subject: hiddenContent.subject })
+    .from(hiddenContent)
+    .where(inArray(hiddenContent.subject, unique))
+    .all();
+  return new Set(rows.map((row) => row.subject));
+}
+
 /**
  * Subjects to check, extracted from the reader loaders' input. The input is an
  * OBJECT of string fields (`did`, optional `atUri`), NOT an array: a GET server

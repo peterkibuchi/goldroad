@@ -44,6 +44,8 @@ describe("isCacheableReadRequest", () => {
     expect(isCacheableReadRequest(req("/p/awarm.space/3lyk73wxnok2f"))).toBe(
       true,
     );
+    // The publication RSS feed lives under /@… and gets the same treatment.
+    expect(isCacheableReadRequest(req("/@awarm.space/rss.xml"))).toBe(true);
   });
 
   it("never caches the marketing, app, api, or img paths", () => {
@@ -171,5 +173,45 @@ describe("serveWithReadCache — HIT/MISS flow", () => {
     const res = await serveWithReadCache(req("/@awarm.space"), fetchFresh);
     expect(res.headers.get("x-goldroad-cache")).toBeNull();
     expect(fetchFresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("caches RSS feed responses like the HTML surfaces (miss → hit)", async () => {
+    const cache = mockCache();
+    const fetchFresh = vi.fn(
+      async () =>
+        new Response('<?xml version="1.0"?><rss/>', {
+          status: 200,
+          headers: { "content-type": "application/rss+xml; charset=utf-8" },
+        }),
+    );
+    const miss = await serveWithReadCache(
+      req("/@awarm.space/rss.xml"),
+      fetchFresh,
+    );
+    expect(miss.headers.get("x-goldroad-cache")).toBe("MISS");
+    expect(miss.headers.get("cache-control")).toBe(READ_CACHE_CONTROL);
+
+    const hit = await serveWithReadCache(
+      req("/@awarm.space/rss.xml"),
+      fetchFresh,
+    );
+    expect(hit.headers.get("x-goldroad-cache")).toBe("HIT");
+    expect(await hit.text()).toContain("<rss/>");
+    expect(fetchFresh).toHaveBeenCalledTimes(1);
+    expect(cache.put).toHaveBeenCalledTimes(1);
+  });
+
+  it("never stores a content type outside the allowlist, even on a read path", async () => {
+    const cache = mockCache();
+    const json = vi.fn(
+      async () =>
+        new Response("{}", {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    const res = await serveWithReadCache(req("/@awarm.space/rss.xml"), json);
+    expect(res.status).toBe(200);
+    expect(cache.put).not.toHaveBeenCalled();
   });
 });

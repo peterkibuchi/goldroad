@@ -27,8 +27,10 @@
  * shape>` still varies the key and forces a MISS. Volumetric abuse of that is
  * the job of the single free CF rate-limit rule on read paths (owner action,
  * audit §2.2) — the cache handles the common repeated-read case. Only 200
- * text/html responses without a Set-Cookie are stored; 404s (takedowns
- * included) and upstream flakes never cache, so they re-run the check next hit.
+ * responses of an allowlisted content type (the HTML pages plus the RSS
+ * feeds — see CACHEABLE_CONTENT_TYPES) without a Set-Cookie are stored; 404s
+ * (takedowns included) and upstream flakes never cache, so they re-run the
+ * check next hit.
  */
 import { isValidCursor } from "~/lib/atproto";
 
@@ -38,7 +40,8 @@ const STALE_WHILE_REVALIDATE_SECONDS = 60;
 export const READ_CACHE_CONTROL = `public, s-maxage=${READ_CACHE_TTL_SECONDS}, stale-while-revalidate=${STALE_WHILE_REVALIDATE_SECONDS}`;
 
 /** Paths whose GET responses are safe to serve to any visitor:
- * `/@…` (publication + composed document) and `/p/…` (v0 document URL). */
+ * `/@…` (publication page, composed document, and the publication RSS feed
+ * at `/@…/rss.xml`) and `/p/…` (v0 document URL). */
 const READ_SURFACE_RE = /^\/(@|p\/)/;
 
 /** Whether this request is a GET to a cacheable reading surface. */
@@ -57,10 +60,18 @@ export function readCacheKey(request: Request): string {
   return key.toString();
 }
 
-function isCacheableHtml(response: Response): boolean {
+/** Content types a read surface legitimately serves: the HTML pages and the
+ * per-publication RSS feeds that live under the same `/@…` namespace. An
+ * allowlist, deliberately — anything a future route serves under a read path
+ * stays uncached until it is listed here, so the 200/no-Set-Cookie/known-type
+ * guard never silently widens. */
+const CACHEABLE_CONTENT_TYPES = ["text/html", "application/rss+xml"];
+
+function isCacheableResponse(response: Response): boolean {
+  const type = response.headers.get("content-type") ?? "";
   return (
     response.status === 200 &&
-    (response.headers.get("content-type") ?? "").includes("text/html") &&
+    CACHEABLE_CONTENT_TYPES.some((allowed) => type.includes(allowed)) &&
     !response.headers.has("set-cookie")
   );
 }
@@ -87,7 +98,7 @@ export async function serveWithReadCache(
   if (hit) return hit; // stored copy already carries x-goldroad-cache: HIT
 
   const fresh = await fetchFresh();
-  if (!isCacheableHtml(fresh)) return fresh;
+  if (!isCacheableResponse(fresh)) return fresh;
 
   // Reconstruct so headers are mutable (a handler response may be immutable),
   // then tee: one copy is stored tagged HIT (that is what a future hit serves),

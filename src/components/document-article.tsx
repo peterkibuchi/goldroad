@@ -159,6 +159,14 @@ export function documentHead(
       ...(canonicalUrl ? [{ rel: "canonical", href: canonicalUrl }] : []),
       { rel: "alternate", href: atUri },
       { rel: "site.standard.document", href: atUri },
+      // Feed discovery: document pages advertise their PUBLICATION's feed
+      // (there is no per-document feed), minted from the canonical origin.
+      {
+        rel: "alternate",
+        type: "application/rss+xml",
+        title: `@${ident} — RSS`,
+        href: `${CANONICAL_ORIGIN}/@${encodeURIComponent(ident)}/rss.xml`,
+      },
     ],
   };
 }

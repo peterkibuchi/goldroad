@@ -90,6 +90,16 @@ describe("documentHead", () => {
       meta?.some((m) => "property" in m && m.property === "og:image"),
     ).toBe(false);
   });
+
+  it("advertises the publication's RSS feed from the canonical origin", () => {
+    const { links } = documentHead(loaderData);
+    expect(links).toContainEqual({
+      rel: "alternate",
+      type: "application/rss+xml",
+      title: "@writer.example — RSS",
+      href: "https://trygoldroad.com/@writer.example/rss.xml",
+    });
+  });
 });
 
 describe("isHiddenNotFound — takedown marker on a thrown notFound", () => {
