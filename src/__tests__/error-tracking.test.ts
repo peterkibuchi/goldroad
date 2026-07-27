@@ -5,6 +5,7 @@ import {
   buildExceptionEvent,
   captureServerException,
   DEFAULT_POSTHOG_HOST,
+  parseStackFrames,
   withExceptionCapture,
 } from "../lib/error-tracking";
 
@@ -37,32 +38,80 @@ describe("buildExceptionEvent — the $exception body", () => {
     expect(event.api_key).toBe("phc_key");
     expect(event.event).toBe("$exception");
     expect(event.properties.app_env).toBe("production");
-    expect(event.properties.$exception_list).toEqual([
-      {
-        type: "TypeError",
-        value: "boom",
-        mechanism: { handled: false, synthetic: false },
-      },
-    ]);
+    expect(event.properties.$exception_list[0]).toMatchObject({
+      type: "TypeError",
+      value: "boom",
+      mechanism: { handled: false, synthetic: false },
+    });
     expect(event.properties.path).toBe("/write");
     expect(event.properties.method).toBe("GET");
-    expect(String(event.properties.stack)).toContain("boom");
+    // A real Error carries a structured raw stacktrace (the shape PostHog's
+    // error-tracking UI displays — a bare stack string would be ignored).
+    const { stacktrace } = event.properties.$exception_list[0];
+    expect(stacktrace?.type).toBe("raw");
+    expect(stacktrace?.frames.length).toBeGreaterThan(0);
+    expect(stacktrace?.frames[0]).toMatchObject({
+      platform: "custom",
+      in_app: true,
+    });
   });
 
-  it("handles non-Error throws (no stack, stringified value)", () => {
+  it("handles non-Error throws (no stacktrace, stringified value)", () => {
     const event = buildExceptionEvent("thrown string", REQUEST, "phc_key");
     expect(event.properties.$exception_list[0]).toMatchObject({
       type: "Error",
       value: "thrown string",
     });
-    expect("stack" in event.properties).toBe(false);
+    expect("stacktrace" in event.properties.$exception_list[0]).toBe(false);
   });
 
-  it("bounds the stack so a pathological error can't bloat the event", () => {
+  it("omits the stacktrace when the stack is unparseable garbage", () => {
     const err = new Error("deep");
     err.stack = "x".repeat(100_000);
     const event = buildExceptionEvent(err, REQUEST, "phc_key");
-    expect(String(event.properties.stack).length).toBeLessThanOrEqual(4000);
+    expect("stacktrace" in event.properties.$exception_list[0]).toBe(false);
+  });
+});
+
+describe("parseStackFrames — V8 stack string → PostHog raw frames", () => {
+  it("parses named and anonymous frames, oldest call first", () => {
+    const stack = [
+      "TypeError: boom",
+      "    at inner (/src/lib/a.ts:10:5)",
+      "    at /src/routes/b.ts:20:15",
+    ].join("\n");
+    const frames = parseStackFrames(stack);
+    expect(frames).toEqual([
+      // reversed: the throw site comes last, per the schema's ordering
+      {
+        platform: "custom",
+        filename: "/src/routes/b.ts",
+        lineno: 20,
+        colno: 15,
+        in_app: true,
+      },
+      {
+        platform: "custom",
+        function: "inner",
+        filename: "/src/lib/a.ts",
+        lineno: 10,
+        colno: 5,
+        in_app: true,
+      },
+    ]);
+  });
+
+  it("caps the frame count so a pathological stack can't bloat the event", () => {
+    const stack = Array.from(
+      { length: 500 },
+      (_, i) => `    at fn${i} (/src/x.ts:${i + 1}:1)`,
+    ).join("\n");
+    expect(parseStackFrames(stack).length).toBeLessThanOrEqual(50);
+  });
+
+  it("returns no frames for a stackless or garbled string", () => {
+    expect(parseStackFrames("")).toEqual([]);
+    expect(parseStackFrames("not a stack at all")).toEqual([]);
   });
 });
 
