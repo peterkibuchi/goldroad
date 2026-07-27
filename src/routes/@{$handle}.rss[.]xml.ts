@@ -40,6 +40,11 @@ import { env } from "cloudflare:workers";
  *
  * There is deliberately NO /p/… feed: the v0 era only ever had document URLs
  * (no publication index), so this is the one feed surface per author.
+ *
+ * Known shadow: this static segment outranks /@{$handle}/$rkey, so a document
+ * whose rkey is literally "rss.xml" is unreachable at that address. Accepted:
+ * our records are TID-keyed (no dot), only a hand-crafted foreign rkey could
+ * collide, and such a document stays reachable via /p/….
  */
 
 /** Feeds mirror the reader pages: every rejection is a plain 404. Negative

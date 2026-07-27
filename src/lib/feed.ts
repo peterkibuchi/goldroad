@@ -42,19 +42,32 @@ export function escapeXml(value: string): string {
     .replace(LONE_SURROGATE_RE, "\ufffd");
 }
 
+/** Hard bound on the markdown-stripping scan window. `textContent` arrives
+ * from arbitrary PDSes with NO size cap, and the regex passes below must
+ * never run over megabytes (the Workers CPU budget is ~10 ms/invocation,
+ * and a feed strips up to 50 records). 2 KB of source comfortably yields a
+ * ~300-char excerpt even after heavy markup stripping. */
+const EXCERPT_SCAN_CHARS = 2048;
+
 /**
  * Best-effort plain-text head of a markdown/plaintext body, for feed item
  * descriptions when the record carries no explicit description. Lossy by
  * design: strips the common markdown constructs, collapses whitespace, and
  * truncates near `maxChars` on a word boundary with an ellipsis. The result
  * still goes through escapeXml at interpolation time.
+ *
+ * The image/link patterns exclude `[` from the text class so a stray `[`
+ * fails at the next bracket instead of scanning to the end of the input —
+ * with the scan window above, hostile bracket floods stay cheap instead of
+ * going quadratic.
  */
 export function plainTextExcerpt(text: string, maxChars = 300): string {
   const plain = text
+    .slice(0, EXCERPT_SCAN_CHARS)
     .replace(/```[\s\S]*?(```|$)/g, " ") // fenced code blocks
     .replace(/`([^`]*)`/g, "$1") // inline code
-    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1") // images → alt text
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1") // links → link text
+    .replace(/!\[([^[\]]*)\]\([^()]*\)/g, "$1") // images → alt text
+    .replace(/\[([^[\]]*)\]\([^()]*\)/g, "$1") // links → link text
     .replace(/^#{1,6}\s+/gm, "") // heading markers
     .replace(/^\s{0,3}>\s?/gm, "") // blockquote markers
     .replace(/^\s*(?:[-*+]|\d+[.)])\s+/gm, "") // list markers
@@ -99,31 +112,43 @@ export type FeedItem = {
   description?: string | null;
 };
 
-/** Serializes a channel + items into an RSS 2.0 document. Every dynamic value
- * is escaped here — callers pass raw strings, never pre-escaped ones. */
+/** Hard per-value bound in the serialized feed. Record fields (titles,
+ * descriptions) arrive from arbitrary PDSes with NO size cap — clamping at
+ * the serialization choke point bounds both the escaping cost and the
+ * document size no matter what a hostile record carries. A clamp landing
+ * mid-surrogate-pair is repaired by escapeXml's lone-surrogate handling. */
+const MAX_VALUE_CHARS = 2048;
+
+function xmlValue(value: string): string {
+  return escapeXml(value.slice(0, MAX_VALUE_CHARS));
+}
+
+/** Serializes a channel + items into an RSS 2.0 document. Every dynamic
+ * value is clamped and escaped here — callers pass raw strings, never
+ * pre-escaped ones. */
 export function rssFeedXml(channel: FeedChannel, items: FeedItem[]): string {
   const lines = [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">',
     "  <channel>",
-    `    <title>${escapeXml(channel.title)}</title>`,
-    `    <link>${escapeXml(channel.link)}</link>`,
-    `    <description>${escapeXml(channel.description)}</description>`,
-    `    <atom:link href="${escapeXml(channel.selfUrl)}" rel="self" type="application/rss+xml"/>`,
+    `    <title>${xmlValue(channel.title)}</title>`,
+    `    <link>${xmlValue(channel.link)}</link>`,
+    `    <description>${xmlValue(channel.description)}</description>`,
+    `    <atom:link href="${xmlValue(channel.selfUrl)}" rel="self" type="application/rss+xml"/>`,
   ];
   for (const item of items) {
     lines.push(
       "    <item>",
-      `      <title>${escapeXml(item.title)}</title>`,
-      `      <link>${escapeXml(item.link)}</link>`,
-      `      <guid isPermaLink="false">${escapeXml(item.guid)}</guid>`,
+      `      <title>${xmlValue(item.title)}</title>`,
+      `      <link>${xmlValue(item.link)}</link>`,
+      `      <guid isPermaLink="false">${xmlValue(item.guid)}</guid>`,
     );
     if (item.pubDate) {
-      lines.push(`      <pubDate>${escapeXml(item.pubDate)}</pubDate>`);
+      lines.push(`      <pubDate>${xmlValue(item.pubDate)}</pubDate>`);
     }
     if (item.description) {
       lines.push(
-        `      <description>${escapeXml(item.description)}</description>`,
+        `      <description>${xmlValue(item.description)}</description>`,
       );
     }
     lines.push("    </item>");

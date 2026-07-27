@@ -93,6 +93,25 @@ describe("plainTextExcerpt", () => {
     // Word-boundary cut: never ends mid-"word".
     expect(out).toMatch(/word…$/);
   });
+
+  it("stays cheap and bounded on hostile degenerate markdown (no quadratic scan)", () => {
+    // Unmatched-bracket floods made the original link/image patterns
+    // quadratic (seconds of CPU on a ~10 ms budget). The scan window +
+    // fail-fast bracket classes must keep this trivial.
+    const hostiles = [
+      "[".repeat(100_000),
+      "[a](b".repeat(20_000),
+      "![".repeat(50_000),
+      "`".repeat(100_000),
+    ];
+    for (const hostile of hostiles) {
+      const start = performance.now();
+      const out = plainTextExcerpt(hostile);
+      // Generous CI headroom — a quadratic regression costs seconds, not ms.
+      expect(performance.now() - start).toBeLessThan(250);
+      expect(out.length).toBeLessThanOrEqual(301);
+    }
+  });
 });
 
 describe("rfc822Date", () => {
@@ -167,6 +186,18 @@ describe("rssFeedXml — parse-back with a real XML parser", () => {
     expect(self?.getAttribute("href")).toBe(channel.selfUrl);
     expect(self?.getAttribute("rel")).toBe("self");
     expect(self?.getAttribute("type")).toBe("application/rss+xml");
+  });
+
+  it("clamps oversized third-party values at the serialization choke point", () => {
+    const xml = rssFeedXml({ ...channel, description: "d".repeat(100_000) }, [
+      { ...items[1], title: "t".repeat(100_000) },
+    ]);
+    const doc = parseXml(xml);
+    expect(doc.getElementsByTagName("parsererror")).toHaveLength(0);
+    expect(
+      doc.querySelector("channel > description")?.textContent?.length,
+    ).toBe(2048);
+    expect(doc.querySelector("item > title")?.textContent?.length).toBe(2048);
   });
 
   it("emits guid with isPermaLink=false and omits absent pubDate/description", () => {
