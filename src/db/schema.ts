@@ -1,4 +1,10 @@
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import {
+  index,
+  integer,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 
 /**
  * Key-value backing for atproto OAuth sessions + authorize states.
@@ -76,6 +82,80 @@ export const drafts = sqliteTable(
   // Covers both the per-writer list (ORDER BY updated_at DESC) and the
   // create-time count without scanning other writers' rows.
   (table) => [index("drafts_did_updated_idx").on(table.did, table.updatedAt)],
+);
+
+/**
+ * Import ledger — one row per feed item a writer has imported (RSS import →
+ * drafts). It carries three responsibilities:
+ *
+ *  1. Idempotency: re-running an import skips items already brought across —
+ *     the (did, guid_hash) unique key is the dedupe check.
+ *  2. Provenance: `source_url` + `original_at` let publishing backdate the
+ *     record to the original date and let the reader page say "Originally
+ *     published at …".
+ *  3. Mirror flag: a row with `published_rkey` set and `adopted_at` null marks
+ *     the published record as a mirror — the reader swaps its canonical tag
+ *     for noindex (current search-engine syndication etiquette: noindex the
+ *     republished copy rather than cross-domain canonical) and shows the
+ *     provenance line. "Adopting" the post (making Goldroad the original)
+ *     sets `adopted_at` — the row stays for idempotency, the mirror
+ *     treatment stops.
+ *
+ * `guid_hash` is SHA-256 hex of the item's guid (falling back to its link):
+ * fixed-width, safe to index, and never trusts arbitrary-length feed guids.
+ * Rows are keyed to the writer's DID; every query pairs id fields with `did`
+ * so one writer can never reach another's ledger (same policy as drafts).
+ */
+export const importItems = sqliteTable(
+  "import_items",
+  {
+    id: text("id").primaryKey(),
+    did: text("did").notNull(),
+    guidHash: text("guid_hash").notNull(),
+    /** The item's original public URL (https, validated) — provenance. */
+    sourceUrl: text("source_url"),
+    /** The item's original publication date, for backdated publishing. */
+    originalAt: integer("original_at", { mode: "timestamp_ms" }),
+    /** The draft this item landed in (draft rows may be deleted later). */
+    draftId: text("draft_id"),
+    /** Set when the draft is published — the record's rkey in the writer's repo. */
+    publishedRkey: text("published_rkey"),
+    /** Set when the writer adopts the post as the Goldroad original. */
+    adoptedAt: integer("adopted_at", { mode: "timestamp_ms" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => [
+    // The idempotency key: one ledger row per (writer, feed item).
+    uniqueIndex("import_items_did_guid_idx").on(table.did, table.guidHash),
+    // Publish-time lookup (by the draftId the publish form already carries).
+    index("import_items_did_draft_idx").on(table.did, table.draftId),
+    // Reader-page mirror lookup (by the published record's rkey).
+    index("import_items_did_rkey_idx").on(table.did, table.publishedRkey),
+  ],
+);
+
+/**
+ * Import rate-limit ledger: one row per /api/import feed-fetch run. The
+ * endpoint is session-gated, so the abuser is an authenticated writer — a
+ * cheap per-DID count over the last hour bounds how much SSRF-guarded
+ * fetching one account can spend. Rows older than the window are pruned
+ * inline on each check (no cron needed; the table stays tiny by
+ * construction).
+ */
+export const importFetches = sqliteTable(
+  "import_fetches",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    did: text("did").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => [
+    index("import_fetches_did_created_idx").on(table.did, table.createdAt),
+  ],
 );
 
 export const reports = sqliteTable("reports", {

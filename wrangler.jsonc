@@ -16,7 +16,13 @@
   "workers_dev": true,
   "preview_urls": true,
   "compatibility_date": "2025-09-02",
-  "compatibility_flags": ["nodejs_compat"],
+  // global_fetch_strictly_public: a Worker's fetch() to a hostname on its own
+  // zone otherwise bypasses the platform front door (WAF, Access, other
+  // Workers) and hits origin directly. /api/import fetches writer-supplied
+  // feed URLs, so same-zone fetches must route like any public request. The
+  // app-level guard refuses our own hostnames anyway — this closes the same
+  // hole at the platform layer (defense in depth).
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "observability": {
     "enabled": true,
     "head_sampling_rate": 1

@@ -1,0 +1,207 @@
+/**
+ * Feed-import API (one-time RSS import → drafts), step 1 of 2: the writer
+ * pastes a URL, this handler fetches and parses the feed, and answers with
+ * the picker's item list — titles, dates, flags, and each item's HTML.
+ *
+ * The HTML comes back WITH the list (not via per-item re-fetches): the feed
+ * body already carried it, the whole response is bounded by the feed's own
+ * 2 MB stream cap, and the browser does the HTML→blocks conversion — the
+ * worker never converts and never stores raw HTML. Conversion doubles as
+ * sanitization downstream: BlockNote's parser structurally drops
+ * script/iframe/unknown nodes, and the reader renders markdown with raw HTML
+ * inert, so no server-side sanitizer exists to drift.
+ *
+ * Trust posture, in order:
+ *  1. Session cookie → DID; no session, no API (the abuser is authenticated).
+ *  2. Same-origin check on POST (defense in depth beside SameSite=Lax).
+ *  3. Rate limit: MAX_IMPORTS_PER_HOUR feed fetches per DID, counted in D1.
+ *  4. The URL (and every redirect hop, and every autodiscovery candidate) is
+ *     SSRF-validated; bodies are stream-capped (see ~/lib/import).
+ *
+ * Moderation note: no hide-list check happens at import time — imports land
+ * as PRIVATE drafts. Publishing a mirror produces an ordinary record, and the
+ * existing hidden_content levers apply to it unchanged.
+ */
+import { createFileRoute } from "@tanstack/react-router";
+import { drizzle } from "drizzle-orm/d1";
+import { z } from "zod";
+
+import { isDid } from "~/lib/atproto";
+import { readBodyCapped } from "~/lib/blob";
+import { countDrafts } from "~/lib/drafts";
+import { MAX_DRAFTS_PER_USER } from "~/lib/drafts-schema";
+import {
+  discoverFeedUrls,
+  fetchImportable,
+  guidHash,
+  ImportError,
+  isCrossSite,
+  looksLikeHtml,
+  MAX_IMPORT_URL_LENGTH,
+  MAX_IMPORTS_PER_HOUR,
+  type ParsedFeed,
+  parseFeedDocument,
+  readFeedBody,
+} from "~/lib/import";
+import {
+  countRecentImportFetches,
+  insertImportFetch,
+  pruneImportFetches,
+  selectImportItems,
+  selectLiveDraftIds,
+} from "~/lib/import-store";
+import { readSessionDid } from "~/lib/session";
+import { env } from "cloudflare:workers";
+
+function json(data: unknown, status = 200): Response {
+  return Response.json(data, {
+    status,
+    headers: { "cache-control": "no-store" },
+  });
+}
+
+const importPayload = z.object({
+  url: z.string().min(1).max(MAX_IMPORT_URL_LENGTH),
+});
+
+const RATE_WINDOW_MS = 60 * 60 * 1000;
+
+/** ImportError → an HTTP status + a plain reason the page can show. */
+function importErrorResponse(err: ImportError): Response {
+  switch (err.code) {
+    case "invalid_url":
+    case "own_host":
+      return json({ ok: false, error: "invalid_url" }, 400);
+    case "feed_too_large":
+      return json({ ok: false, error: "feed_too_large" }, 413);
+    case "too_many_redirects":
+    case "fetch_failed":
+      return json({ ok: false, error: "fetch_failed" }, 502);
+    default:
+      return json({ ok: false, error: "not_a_feed" }, 422);
+  }
+}
+
+/**
+ * Fetch the URL as a feed; when it answers with HTML, walk the autodiscovery
+ * candidates (link rel=alternate hints, then /feed and /rss/). Returns the
+ * parsed feed + the URL that actually was one.
+ */
+async function resolveFeed(
+  urlString: string,
+): Promise<{ feed: ParsedFeed; feedUrl: string }> {
+  const { res, finalUrl } = await fetchImportable(urlString);
+  if (!res.ok) throw new ImportError("fetch_failed");
+  const body = await readFeedBody(res);
+  const feed = parseFeedDocument(body);
+  if (feed) return { feed, feedUrl: finalUrl.href };
+
+  if (looksLikeHtml(body)) {
+    for (const candidate of discoverFeedUrls(body, finalUrl)) {
+      try {
+        const next = await fetchImportable(candidate);
+        if (!next.res.ok) continue;
+        const nextBody = await readFeedBody(next.res);
+        const nextFeed = parseFeedDocument(nextBody);
+        if (nextFeed) return { feed: nextFeed, feedUrl: next.finalUrl.href };
+      } catch {
+        // one candidate failing is not the run failing — try the next
+      }
+    }
+  }
+  throw new ImportError("not_a_feed");
+}
+
+export const Route = createFileRoute("/api/import")({
+  server: {
+    handlers: {
+      POST: async ({ request }) => {
+        if (isCrossSite(request))
+          return json({ ok: false, error: "cross_site" }, 403);
+        const did = await readSessionDid(request, env.COOKIE_SECRET);
+        if (!did || !isDid(did))
+          return json({ ok: false, error: "not_signed_in" }, 401);
+
+        // The payload is one short URL — cap the body well below any parse.
+        const raw = await readBodyCapped(request, 8 * 1024);
+        if (raw === null) return json({ ok: false, error: "too_large" }, 413);
+        let body: unknown;
+        try {
+          body = JSON.parse(new TextDecoder().decode(raw));
+        } catch {
+          return json({ ok: false, error: "invalid" }, 400);
+        }
+        const parsed = importPayload.safeParse(body);
+        if (!parsed.success) return json({ ok: false, error: "invalid" }, 400);
+
+        const db = drizzle(env.DB);
+        const now = Date.now();
+        const windowStart = new Date(now - RATE_WINDOW_MS);
+        // Prune-then-count keeps the table tiny without a cron; the insert
+        // records this run BEFORE the fetch (a failed fetch still spent it).
+        await pruneImportFetches(db, windowStart);
+        const [{ n }] = await countRecentImportFetches(db, did, windowStart);
+        if (n >= MAX_IMPORTS_PER_HOUR) {
+          return json({ ok: false, error: "rate_limited" }, 429);
+        }
+        await insertImportFetch(db, did);
+
+        let resolved: Awaited<ReturnType<typeof resolveFeed>>;
+        try {
+          resolved = await resolveFeed(parsed.data.url);
+        } catch (err) {
+          if (err instanceof ImportError) return importErrorResponse(err);
+          console.error("feed import failed", err);
+          return json({ ok: false, error: "fetch_failed" }, 502);
+        }
+
+        // Already-imported flags: hash every item's guid, one IN() against
+        // the ledger. A row whose draft was deleted before publishing does
+        // NOT count as imported — the writer discarded it; re-importing is
+        // their honest path back.
+        const { feed, feedUrl } = resolved;
+        const hashes = await Promise.all(
+          feed.items.map((item) => guidHash(item.guid)),
+        );
+        const ledger =
+          hashes.length > 0 ? await selectImportItems(db, did, hashes) : [];
+        const unpublishedDraftIds = ledger
+          .filter((row) => !row.publishedRkey && row.draftId)
+          .map((row) => row.draftId as string);
+        const liveDrafts = new Set(
+          (unpublishedDraftIds.length > 0
+            ? await selectLiveDraftIds(db, did, unpublishedDraftIds)
+            : []
+          ).map((row) => row.id),
+        );
+        const imported = new Set(
+          ledger
+            .filter(
+              (row) =>
+                row.publishedRkey !== null ||
+                (row.draftId !== null && liveDrafts.has(row.draftId)),
+            )
+            .map((row) => row.guidHash),
+        );
+
+        const [{ n: draftCount }] = await countDrafts(db, did);
+        return json({
+          ok: true,
+          feed: { title: feed.title, url: feedUrl },
+          totalItems: feed.totalItems,
+          draftSlotsRemaining: Math.max(0, MAX_DRAFTS_PER_USER - draftCount),
+          items: feed.items.map((item, i) => ({
+            guid: item.guid,
+            guidHash: hashes[i],
+            link: item.link,
+            title: item.title,
+            publishedAt: item.publishedAt,
+            contentHtml: item.contentHtml,
+            preview: item.preview,
+            alreadyImported: imported.has(hashes[i]),
+          })),
+        });
+      },
+    },
+  },
+});
