@@ -10,6 +10,7 @@
  */
 import handler, { createServerEntry } from "@tanstack/react-start/server-entry";
 
+import { withExceptionCapture } from "~/lib/error-tracking";
 import { canonicalRedirect } from "~/lib/origin";
 import { serveWithReadCache } from "~/lib/read-cache";
 import { runScheduled } from "~/lib/scheduled";
@@ -42,10 +43,21 @@ const entry = createServerEntry({
   },
 });
 
+// Error tracking around the whole entry (same key gate as client analytics):
+// an unhandled exception is reported to PostHog on ctx.waitUntil — never
+// blocking the response — then rethrown, so the platform's 500 handling is
+// unchanged. Build-time vars, matching how the CSP reads the PostHog host.
+const handleFetch = withExceptionCapture((request) => entry.fetch(request), {
+  apiKey: import.meta.env.VITE_PUBLIC_POSTHOG_KEY || undefined,
+  host: import.meta.env.VITE_PUBLIC_POSTHOG_HOST || undefined,
+});
+
 // Default export carries BOTH fetch and the Workers Cron handler (audit #6/#7);
 // createServerEntry only builds `fetch`, so scheduled is attached here.
 export default {
-  fetch: entry.fetch,
+  fetch(request: Request, _env: Env, ctx: ExecutionContext): Promise<Response> {
+    return handleFetch(request, ctx);
+  },
   scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
     ctx.waitUntil(runScheduled(env));
   },
