@@ -70,37 +70,41 @@ const getDashboard = createServerFn({ method: "GET" })
     // distinguishable from "no posts yet" (rows: null) so we never greet a
     // writer whose PDS flaked with a scary empty state.
     const pds = await resolveDidToPds(did).catch(() => null);
-    // The writer's private drafts, from our own D1 (they are never in the
-    // repo — see /api/drafts). Best-effort: a failed read hides the section
-    // rather than failing the page; the drafts themselves are unaffected.
-    const draftRows = await listDrafts(drizzle(env.DB), did).catch(() => []);
-    const [page, onLegacyUrl] = pds
-      ? await Promise.all([
-          listRecordsPage<StandardDocument>(
-            pds,
-            did,
-            "site.standard.document",
-            { cursor: data.cursor },
-          ).catch(() => null),
-          // Move-to-canonical affordance: is the writer's own publication still
-          // on a legacy origin? Best-effort — a flaked read just hides the notice.
-          listRecords<StandardPublication>(
-            pds,
-            did,
-            "site.standard.publication",
-            { reverse: true },
-          )
-            .then((pubs) => {
-              const own = pubs.find((p) =>
-                isOwnPublicationUrl(p.value.url, ownOrigins(origin)),
-              );
-              return own
-                ? isOwnPublicationUrl(own.value.url, LEGACY_ORIGINS)
-                : false;
-            })
-            .catch(() => false),
-        ])
-      : [null, false];
+    // The PDS fan-out and the D1 drafts read run in one parallel batch —
+    // neither depends on the other, so the page pays the slowest, not the sum.
+    const [draftRows, [page, onLegacyUrl]] = await Promise.all([
+      // The writer's private drafts, from our own D1 (they are never in the
+      // repo — see /api/drafts). Best-effort: a failed read hides the section
+      // rather than failing the page; the drafts themselves are unaffected.
+      listDrafts(drizzle(env.DB), did).catch(() => []),
+      pds
+        ? Promise.all([
+            listRecordsPage<StandardDocument>(
+              pds,
+              did,
+              "site.standard.document",
+              { cursor: data.cursor },
+            ).catch(() => null),
+            // Move-to-canonical affordance: is the writer's own publication still
+            // on a legacy origin? Best-effort — a flaked read just hides the notice.
+            listRecords<StandardPublication>(
+              pds,
+              did,
+              "site.standard.publication",
+              { reverse: true },
+            )
+              .then((pubs) => {
+                const own = pubs.find((p) =>
+                  isOwnPublicationUrl(p.value.url, ownOrigins(origin)),
+                );
+                return own
+                  ? isOwnPublicationUrl(own.value.url, LEGACY_ORIGINS)
+                  : false;
+              })
+              .catch(() => false),
+          ])
+        : ([null, false] as const),
+    ]);
     return {
       ident: handle ?? did,
       handle,

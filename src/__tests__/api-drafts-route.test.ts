@@ -74,6 +74,25 @@ describe("session gate", () => {
     }
     for (const fn of Object.values(store)) expect(fn).not.toHaveBeenCalled();
   });
+
+  it("403s cross-site mutations (Origin mismatch) even with a valid session", async () => {
+    for (const [method, body] of [
+      ["POST", "{}"],
+      ["DELETE", undefined],
+    ] as const) {
+      const request = new Request(`http://127.0.0.1:3000/api/drafts?id=${ID}`, {
+        method,
+        ...(body !== undefined ? { body } : {}),
+        headers: {
+          cookie: await sessionCookie(),
+          origin: "https://evil.example",
+        },
+      });
+      const res = await handlers[method]({ request });
+      expect(res.status).toBe(403);
+    }
+    for (const fn of Object.values(store)) expect(fn).not.toHaveBeenCalled();
+  });
 });
 
 describe("GET — list and get-one", () => {

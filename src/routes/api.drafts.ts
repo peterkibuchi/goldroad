@@ -17,6 +17,13 @@
  *
  * Every response is `cache-control: no-store`: drafts are private data and
  * must never sit in a shared or browser cache.
+ *
+ * Concurrency: updates are last-write-wins by design (no version
+ * precondition) — the same model as most autosave systems; two tabs editing
+ * one draft overwrite each other silently. Revisit if that bites real
+ * writers. Operation frequency is bounded client-side (throttled autosave),
+ * not here — a hostile client can spend D1 writes at line rate, which is a
+ * platform rate-limit concern (one rule on /api/*), not a handler one.
  */
 import { createFileRoute } from "@tanstack/react-router";
 import { drizzle } from "drizzle-orm/d1";
@@ -50,6 +57,16 @@ function json(data: unknown, status = 200): Response {
 async function requireDid(request: Request): Promise<string | null> {
   const did = await readSessionDid(request, env.COOKIE_SECRET);
   return did && isDid(did) ? did : null;
+}
+
+/** CSRF defense-in-depth for the mutating methods: SameSite=Lax already
+ * keeps the session cookie off cross-site POSTs, so this only matters for
+ * legacy browsers — but it's one header comparison. Browsers send Origin on
+ * all POST/DELETE (same-origin included); absent means a non-browser client,
+ * which the cookie requirement already covers. */
+function isCrossSite(request: Request): boolean {
+  const origin = request.headers.get("origin");
+  return origin !== null && origin !== new URL(request.url).origin;
 }
 
 /** Stored content is server-serialized JSON (an array, written by POST), so a
@@ -105,6 +122,8 @@ export const Route = createFileRoute("/api/drafts")({
 
       /** Upsert: `id` present = update my draft, absent = create (capped). */
       POST: async ({ request }) => {
+        if (isCrossSite(request))
+          return json({ ok: false, error: "cross_site" }, 403);
         const did = await requireDid(request);
         if (!did) return json({ ok: false, error: "not_signed_in" }, 401);
 
@@ -168,6 +187,8 @@ export const Route = createFileRoute("/api/drafts")({
 
       /** Delete my draft (`?id=`). */
       DELETE: async ({ request }) => {
+        if (isCrossSite(request))
+          return json({ ok: false, error: "cross_site" }, 403);
         const did = await requireDid(request);
         if (!did) return json({ ok: false, error: "not_signed_in" }, 401);
         const id = new URL(request.url).searchParams.get("id") ?? "";

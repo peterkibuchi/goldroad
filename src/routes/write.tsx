@@ -45,6 +45,8 @@ const ERROR_MESSAGES: Record<string, string> = {
     "Uploading images needs a permission your current sign-in doesn't include yet — re-connect your account to add covers.",
   draft_not_found:
     "That draft isn't in your drafts anymore — you're starting a fresh one.",
+  draft_load_failed:
+    "That draft couldn't be loaded right now — it's still saved. Refresh to try again.",
 };
 
 function errorMessage(code: string | undefined): string | null {
@@ -102,15 +104,20 @@ const getWriteContext = createServerFn({ method: "GET" })
       | "not_found"
       | "not_editable"
       | "draft_not_found"
+      | "draft_load_failed"
       | undefined;
     if (data.draft && !data.edit) {
-      const [row] = await selectDraft(drizzle(env.DB), did, data.draft).catch(
-        () => [],
-      );
-      if (row) {
-        resumed = { id: row.id, title: row.title, blocksJson: row.content };
-      } else {
-        draftError = "draft_not_found";
+      try {
+        const [row] = await selectDraft(drizzle(env.DB), did, data.draft);
+        if (row) {
+          resumed = { id: row.id, title: row.title, blocksJson: row.content };
+        } else {
+          draftError = "draft_not_found";
+        }
+      } catch {
+        // A flaked read is NOT a missing draft: say so honestly — telling the
+        // writer it's gone would invite retyping (and forking) their work.
+        draftError = "draft_load_failed";
       }
     }
 
@@ -445,10 +452,15 @@ function postDraft(payload: {
   title: string;
   content: unknown;
 }): Promise<Response> {
+  const body = JSON.stringify(payload);
   return fetch("/api/drafts", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(payload),
+    body,
+    // keepalive lets a blur-flushed save survive page teardown (clicking a
+    // nav link right after typing). The spec caps keepalive bodies (~64 KB),
+    // so large drafts fall back to a normal fetch rather than failing.
+    keepalive: body.length < 60_000,
   });
 }
 
@@ -484,6 +496,7 @@ function Compose({
   const draftIdRef = useRef<string | null>(resumed?.id ?? null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savingRef = useRef(false);
+  const saveInFlightRef = useRef<Promise<void> | null>(null);
   const dirtyRef = useRef(false);
   const publishingRef = useRef(false);
   // Loading resumed blocks fires the editor's onChange before onReady —
@@ -491,17 +504,32 @@ function Compose({
   const readyRef = useRef(false);
 
   useEffect(() => {
+    if (editing) return;
+    // Unsaved changes get the browser's leave-page confirmation: the debounce
+    // window (and a failed save) must not silently cost a writer their words.
+    const warn = (event: BeforeUnloadEvent) => {
+      if (dirtyRef.current && !publishingRef.current) event.preventDefault();
+    };
+    window.addEventListener("beforeunload", warn);
     return () => {
+      window.removeEventListener("beforeunload", warn);
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, []);
+  }, [editing]);
 
   function handleEditorReady(instance: BlockNoteEditor) {
     readyRef.current = true;
     setEditor(instance);
   }
 
-  async function saveDraft(): Promise<void> {
+  function clearSaveTimer() {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  }
+
+  async function runSave(): Promise<void> {
     if (editing || publishingRef.current || savingRef.current) return;
     if (!editor || !dirtyRef.current) return;
     const title = titleRef.current?.value ?? "";
@@ -518,9 +546,11 @@ function Compose({
         title,
         content: blocks,
       });
-      if (res.status === 404 && draftIdRef.current) {
+      if (res.status === 404 && draftIdRef.current && !publishingRef.current) {
         // The draft was deleted elsewhere (another tab, the dashboard) —
-        // recreate it rather than lose what's on screen.
+        // recreate it rather than lose what's on screen. Never during a
+        // publish: there the deletion IS the completion, and recreating
+        // would resurrect the just-published draft.
         draftIdRef.current = null;
         res = await postDraft({ title, content: blocks });
       }
@@ -529,7 +559,10 @@ function Compose({
         if (!draftIdRef.current && typeof data.draft?.id === "string") {
           draftIdRef.current = data.draft.id;
           // Make refresh/back resume this draft. replaceState, not a router
-          // navigation: the loader must not re-run under the writer's cursor.
+          // navigation: the loader must not re-run under the writer's
+          // cursor. (The router's in-memory location goes stale, which is
+          // fine while all site chrome navigates with full-page <a> links —
+          // revisit if /write ever gains client-side <Link> nav.)
           window.history.replaceState(
             null,
             "",
@@ -554,9 +587,24 @@ function Compose({
     }
   }
 
+  /** Runs a save and tracks it, so publish can await an in-flight one. */
+  function saveDraft(): Promise<void> {
+    const run = runSave().finally(() => {
+      if (saveInFlightRef.current === run) saveInFlightRef.current = null;
+    });
+    saveInFlightRef.current = run;
+    return run;
+  }
+
   function scheduleSave() {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => void saveDraft(), AUTOSAVE_DEBOUNCE_MS);
+    // Trailing throttle, not a resetting debounce: an already-armed timer
+    // keeps its deadline, so continuous typing still saves every few
+    // seconds instead of starving the save forever.
+    if (timerRef.current) return;
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      void saveDraft();
+    }, AUTOSAVE_DEBOUNCE_MS);
   }
 
   /** Title keystrokes and editor changes both funnel here. */
@@ -570,7 +618,7 @@ function Compose({
    * onBlur is focusout, so it bubbles here from the title and the editor.) */
   function handleBlur() {
     if (editing || !dirtyRef.current) return;
-    if (timerRef.current) clearTimeout(timerRef.current);
+    clearSaveTimer();
     void saveDraft();
   }
 
@@ -579,15 +627,27 @@ function Compose({
   // (form.submit() does not re-fire this handler).
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!editor || !bodyRef.current || coverBusy) return;
+    if (!editor || !bodyRef.current || coverBusy || publishingRef.current)
+      return;
     // Publishing supersedes autosave: stop the timer and hand the draft id to
     // the server, which removes the completed draft after the record lands.
     publishingRef.current = true;
-    if (timerRef.current) clearTimeout(timerRef.current);
-    if (draftIdInputRef.current)
-      draftIdInputRef.current.value = draftIdRef.current ?? "";
-    bodyRef.current.value = editor.blocksToMarkdownLossy(editor.document);
-    event.currentTarget.submit();
+    clearSaveTimer();
+    const form = event.currentTarget;
+    const submit = () => {
+      if (draftIdInputRef.current)
+        draftIdInputRef.current.value = draftIdRef.current ?? "";
+      if (bodyRef.current)
+        bodyRef.current.value = editor.blocksToMarkdownLossy(editor.document);
+      form.submit();
+    };
+    // Clicking Publish blurs the editor, so a save may be mid-flight — and it
+    // may be CREATING the draft row. Wait for it so the fresh id rides the
+    // publish form and the server can complete (delete) the draft; otherwise
+    // the row would outlive its own publish as an orphan.
+    const pending = saveInFlightRef.current;
+    if (pending) void pending.finally(submit);
+    else submit();
   }
 
   return (
