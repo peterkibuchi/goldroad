@@ -10,7 +10,11 @@ import {
   RegMark,
 } from "~/components/marketing";
 import { SiteFooter, SiteHeader } from "~/components/site-chrome";
-import { TURNSTILE_TOKEN_FIELD, TurnstileWidget } from "~/components/turnstile";
+import {
+  resetTurnstileWidgets,
+  TURNSTILE_TOKEN_FIELD,
+  TurnstileWidget,
+} from "~/components/turnstile";
 import { CANONICAL_ORIGIN } from "~/lib/origin";
 import { capture } from "~/lib/posthog";
 
@@ -209,6 +213,9 @@ function FoundingWritersForm() {
       setState("done");
       form.reset();
     } catch {
+      // Tokens are single-use: the failed submit consumed this one, so the
+      // widget must re-arm or every retry would resend a dead token.
+      resetTurnstileWidgets();
       setState("error");
     }
   }
