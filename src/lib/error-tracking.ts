@@ -21,6 +21,44 @@ export const DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com";
 
 /** Stacks are bounded so a pathological error can't bloat the event. */
 const MAX_STACK_CHARS = 4000;
+const MAX_STACK_FRAMES = 50;
+
+/** One stack frame in PostHog's raw-stacktrace shape (error-tracking schema:
+ * $exception_list[].stacktrace = { type: "raw", frames } — a bare stack
+ * string is not displayed by the UI). `platform: "custom"` marks manually
+ * constructed frames. */
+type RawFrame = {
+  platform: "custom";
+  function?: string;
+  filename?: string;
+  lineno?: number;
+  colno?: number;
+  in_app: boolean;
+};
+
+/**
+ * Parses a V8-style stack string ("    at fn (file:line:col)") into PostHog
+ * raw frames, reversed to the schema's oldest-call-first order. Best-effort:
+ * unparseable lines are skipped, and an empty result means the exception
+ * ships without a stacktrace (type/value still display and group).
+ */
+export function parseStackFrames(stack: string): RawFrame[] {
+  const frames: RawFrame[] = [];
+  for (const line of stack.slice(0, MAX_STACK_CHARS).split("\n")) {
+    const at = line.match(/^\s*at\s+(?:(.*?)\s+\()?(.*?):(\d+):(\d+)\)?\s*$/);
+    if (!at) continue;
+    frames.push({
+      platform: "custom",
+      ...(at[1] ? { function: at[1] } : {}),
+      filename: at[2],
+      lineno: Number(at[3]),
+      colno: Number(at[4]),
+      in_app: true,
+    });
+    if (frames.length >= MAX_STACK_FRAMES) break;
+  }
+  return frames.reverse();
+}
 
 export type ExceptionCaptureConfig = {
   /** PostHog project API key; absent/empty = capture is fully off. */
@@ -40,6 +78,7 @@ export function buildExceptionEvent(
 ) {
   const url = new URL(request.url);
   const err = error instanceof Error ? error : null;
+  const frames = err?.stack ? parseStackFrames(err.stack) : [];
   return {
     api_key: apiKey,
     event: "$exception",
@@ -52,12 +91,14 @@ export function buildExceptionEvent(
           type: err?.name ?? "Error",
           value: err ? err.message : String(error),
           mechanism: { handled: false, synthetic: false },
+          ...(frames.length > 0
+            ? { stacktrace: { type: "raw" as const, frames } }
+            : {}),
         },
       ],
       path: url.pathname,
       method: request.method,
       runtime: "cloudflare-worker",
-      ...(err?.stack ? { stack: err.stack.slice(0, MAX_STACK_CHARS) } : {}),
     },
   };
 }

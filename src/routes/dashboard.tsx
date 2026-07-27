@@ -74,9 +74,10 @@ const getDashboard = createServerFn({ method: "GET" })
     // neither depends on the other, so the page pays the slowest, not the sum.
     const [draftRows, [page, onLegacyUrl]] = await Promise.all([
       // The writer's private drafts, from our own D1 (they are never in the
-      // repo — see /api/drafts). Best-effort: a failed read hides the section
-      // rather than failing the page; the drafts themselves are unaffected.
-      listDrafts(drizzle(env.DB), did).catch(() => []),
+      // repo — see /api/drafts). A failed read stays distinguishable from
+      // "no drafts" (null, same policy as rows) so the section can say so
+      // instead of implying the writer's drafts vanished.
+      listDrafts(drizzle(env.DB), did).catch(() => null),
       pds
         ? Promise.all([
             listRecordsPage<StandardDocument>(
@@ -112,12 +113,13 @@ const getDashboard = createServerFn({ method: "GET" })
       nextCursor: page?.cursor ?? null,
       onLegacyUrl,
       // ISO strings, not Dates: loader data must serialize identically on
-      // server and client.
-      drafts: draftRows.map((d) => ({
-        id: d.id,
-        title: d.title,
-        updatedAt: d.updatedAt.toISOString(),
-      })),
+      // server and client. null = the read flaked (not "no drafts").
+      drafts:
+        draftRows?.map((d) => ({
+          id: d.id,
+          title: d.title,
+          updatedAt: d.updatedAt.toISOString(),
+        })) ?? null,
     };
   });
 
@@ -201,11 +203,21 @@ type DraftListItem = { id: string; title: string; updatedAt: string };
  * Delete is a fetch (the drafts API is JSON, unlike the form-posting publish
  * intents) followed by a router invalidate to refresh the loader data;
  * confirm-before-delete and destructive hover match the posts list.
+ * `drafts: null` = the read flaked — said honestly, never shown as "no
+ * drafts" (same policy as the posts list).
  */
-function DraftsSection({ drafts }: { drafts: DraftListItem[] }) {
+function DraftsSection({ drafts }: { drafts: DraftListItem[] | null }) {
   const router = useRouter();
   const [failed, setFailed] = useState(false);
-  if (drafts.length === 0) return null;
+  if (drafts !== null && drafts.length === 0) return null;
+  if (drafts === null) {
+    return (
+      <Notice tone="alert">
+        Your drafts couldn't be loaded right now — they're safe; refresh to try
+        again.
+      </Notice>
+    );
+  }
 
   async function deleteDraft(draft: DraftListItem) {
     const name = draft.title.trim() || "(untitled draft)";

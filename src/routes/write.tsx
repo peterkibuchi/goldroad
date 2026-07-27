@@ -16,7 +16,7 @@ import {
 } from "~/lib/atproto";
 import { blobImagePath, coverImageCid } from "~/lib/blob";
 import { selectDraft } from "~/lib/drafts";
-import { isDraftId } from "~/lib/drafts-schema";
+import { isDraftId, MAX_DRAFTS_PER_USER } from "~/lib/drafts-schema";
 import { downscaleImage } from "~/lib/image";
 import { TID_RE } from "~/lib/publish";
 import { readSessionDid } from "~/lib/session";
@@ -402,8 +402,7 @@ const SAVE_INDICATOR_TEXT: Record<SaveState, string> = {
   saving: "Saving…",
   saved: "Saved",
   error: "Couldn't save — retrying as you write",
-  limit:
-    "You have 50 drafts — delete one from your posts page to keep autosaving",
+  limit: `You have ${MAX_DRAFTS_PER_USER} drafts — delete one from your posts page to keep autosaving`,
 };
 
 /** Autosave status in the calm register: text only, no spinners. The live
@@ -458,9 +457,11 @@ function postDraft(payload: {
     headers: { "content-type": "application/json" },
     body,
     // keepalive lets a blur-flushed save survive page teardown (clicking a
-    // nav link right after typing). The spec caps keepalive bodies (~64 KB),
-    // so large drafts fall back to a normal fetch rather than failing.
-    keepalive: body.length < 60_000,
+    // nav link right after typing). The spec caps keepalive bodies (~64 KB
+    // of ENCODED BYTES — string length would under-measure CJK/emoji text
+    // and get the whole fetch rejected), so large drafts fall back to a
+    // normal fetch rather than failing.
+    keepalive: new TextEncoder().encode(body).byteLength < 60_000,
   });
 }
 

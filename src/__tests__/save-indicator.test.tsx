@@ -1,6 +1,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { MAX_DRAFTS_PER_USER } from "../lib/drafts-schema";
 // write.tsx is a route file: it reads Workers bindings at module scope — the
 // `cloudflare:workers` alias in vitest.config.ts stubs them for this import.
 import { SaveIndicator } from "../routes/write";
@@ -29,7 +30,9 @@ describe("SaveIndicator — the autosave status line", () => {
     cleanup();
 
     render(<SaveIndicator state="limit" />);
-    expect(screen.getByRole("status").textContent).toContain("50 drafts");
+    expect(screen.getByRole("status").textContent).toContain(
+      `${MAX_DRAFTS_PER_USER} drafts`,
+    );
   });
 
   it("stays present-but-silent when idle (the region exists for later updates)", () => {
