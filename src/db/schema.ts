@@ -1,4 +1,4 @@
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 /**
  * Key-value backing for atproto OAuth sessions + authorize states.
@@ -46,6 +46,38 @@ export const hiddenContent = sqliteTable("hidden_content", {
  * (a Turnstile token verification point is left for the owner). A human triages
  * these against the hidden_content list.
  */
+/**
+ * Writer drafts. Drafts are PRIVATE, so they stay server-side in our D1,
+ * keyed to the writer's DID — never in the writer's atproto repo, where any
+ * record is public the moment it exists. Only publishing (via /api/publish)
+ * writes to the writer's repo.
+ *
+ * `content` is the BlockNote document JSON (serialized blocks) — lossless,
+ * unlike the markdown projection used at publish time, so resuming a draft
+ * restores exactly what was written. `id` is an app-generated UUID; every
+ * query pairs it with `did` so a draft is only ever reachable by its owner.
+ * Timestamps are millisecond-precision so "newest first" stays stable across
+ * rapid autosaves.
+ */
+export const drafts = sqliteTable(
+  "drafts",
+  {
+    id: text("id").primaryKey(),
+    did: text("did").notNull(),
+    title: text("title").notNull().default(""),
+    content: text("content").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  // Covers both the per-writer list (ORDER BY updated_at DESC) and the
+  // create-time count without scanning other writers' rows.
+  (table) => [index("drafts_did_updated_idx").on(table.did, table.updatedAt)],
+);
+
 export const reports = sqliteTable("reports", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   url: text("url").notNull(),
