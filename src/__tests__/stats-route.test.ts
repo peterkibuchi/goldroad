@@ -34,7 +34,9 @@ const DID_B = "did:plc:bbbbbbbbbbbbbbbbbbbbbbbb";
 async function requestAs(did: string | null, path = "/api/stats") {
   const headers: Record<string, string> = {};
   if (did) {
-    const token = await signSession(did, env.COOKIE_SECRET);
+    // The shared mock env is Record<string, unknown> (it also carries a fake
+    // DB binding); the cookie secret is known to be the string fixture.
+    const token = await signSession(did, String(env.COOKIE_SECRET));
     headers.cookie = `gr_session=${token}`;
   }
   return GET({
