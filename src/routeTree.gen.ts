@@ -26,6 +26,7 @@ import { Route as OauthJwksDotjsonRouteImport } from './routes/oauth.jwks[.]json
 import { Route as OauthClientMetadataDotjsonRouteImport } from './routes/oauth.client-metadata[.]json'
 import { Route as OauthCallbackRouteImport } from './routes/oauth.callback'
 import { Route as ApiWaitlistRouteImport } from './routes/api.waitlist'
+import { Route as ApiStatsRouteImport } from './routes/api.stats'
 import { Route as ApiReportRouteImport } from './routes/api.report'
 import { Route as ApiPublishRouteImport } from './routes/api.publish'
 import { Route as ApiDraftsRouteImport } from './routes/api.drafts'
@@ -121,6 +122,11 @@ const ApiWaitlistRoute = ApiWaitlistRouteImport.update({
   path: '/api/waitlist',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiStatsRoute = ApiStatsRouteImport.update({
+  id: '/api/stats',
+  path: '/api/stats',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiReportRoute = ApiReportRouteImport.update({
   id: '/api/report',
   path: '/api/report',
@@ -177,6 +183,7 @@ export interface FileRoutesByFullPath {
   '/api/drafts': typeof ApiDraftsRoute
   '/api/publish': typeof ApiPublishRoute
   '/api/report': typeof ApiReportRoute
+  '/api/stats': typeof ApiStatsRoute
   '/api/waitlist': typeof ApiWaitlistRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/oauth/client-metadata.json': typeof OauthClientMetadataDotjsonRoute
@@ -203,6 +210,7 @@ export interface FileRoutesByTo {
   '/api/drafts': typeof ApiDraftsRoute
   '/api/publish': typeof ApiPublishRoute
   '/api/report': typeof ApiReportRoute
+  '/api/stats': typeof ApiStatsRoute
   '/api/waitlist': typeof ApiWaitlistRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/oauth/client-metadata.json': typeof OauthClientMetadataDotjsonRoute
@@ -230,6 +238,7 @@ export interface FileRoutesById {
   '/api/drafts': typeof ApiDraftsRoute
   '/api/publish': typeof ApiPublishRoute
   '/api/report': typeof ApiReportRoute
+  '/api/stats': typeof ApiStatsRoute
   '/api/waitlist': typeof ApiWaitlistRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/oauth/client-metadata.json': typeof OauthClientMetadataDotjsonRoute
@@ -258,6 +267,7 @@ export interface FileRouteTypes {
     | '/api/drafts'
     | '/api/publish'
     | '/api/report'
+    | '/api/stats'
     | '/api/waitlist'
     | '/oauth/callback'
     | '/oauth/client-metadata.json'
@@ -284,6 +294,7 @@ export interface FileRouteTypes {
     | '/api/drafts'
     | '/api/publish'
     | '/api/report'
+    | '/api/stats'
     | '/api/waitlist'
     | '/oauth/callback'
     | '/oauth/client-metadata.json'
@@ -310,6 +321,7 @@ export interface FileRouteTypes {
     | '/api/drafts'
     | '/api/publish'
     | '/api/report'
+    | '/api/stats'
     | '/api/waitlist'
     | '/oauth/callback'
     | '/oauth/client-metadata.json'
@@ -337,6 +349,7 @@ export interface RootRouteChildren {
   ApiDraftsRoute: typeof ApiDraftsRoute
   ApiPublishRoute: typeof ApiPublishRoute
   ApiReportRoute: typeof ApiReportRoute
+  ApiStatsRoute: typeof ApiStatsRoute
   ApiWaitlistRoute: typeof ApiWaitlistRoute
   OauthCallbackRoute: typeof OauthCallbackRoute
   OauthClientMetadataDotjsonRoute: typeof OauthClientMetadataDotjsonRoute
@@ -467,6 +480,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWaitlistRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/stats': {
+      id: '/api/stats'
+      path: '/api/stats'
+      fullPath: '/api/stats'
+      preLoaderRoute: typeof ApiStatsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/report': {
       id: '/api/report'
       path: '/api/report'
@@ -537,6 +557,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiDraftsRoute: ApiDraftsRoute,
   ApiPublishRoute: ApiPublishRoute,
   ApiReportRoute: ApiReportRoute,
+  ApiStatsRoute: ApiStatsRoute,
   ApiWaitlistRoute: ApiWaitlistRoute,
   OauthCallbackRoute: OauthCallbackRoute,
   OauthClientMetadataDotjsonRoute: OauthClientMetadataDotjsonRoute,
