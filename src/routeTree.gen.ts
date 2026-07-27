@@ -27,6 +27,7 @@ import { Route as OauthCallbackRouteImport } from './routes/oauth.callback'
 import { Route as ApiWaitlistRouteImport } from './routes/api.waitlist'
 import { Route as ApiReportRouteImport } from './routes/api.report'
 import { Route as ApiPublishRouteImport } from './routes/api.publish'
+import { Route as ApiDraftsRouteImport } from './routes/api.drafts'
 import { Route as AtChar123handleChar125RkeyRouteImport } from './routes/@{$handle}.$rkey'
 import { Route as PHandleRkeyRouteImport } from './routes/p.$handle.$rkey'
 import { Route as ImgDidCidRouteImport } from './routes/img.$did.$cid'
@@ -123,6 +124,11 @@ const ApiPublishRoute = ApiPublishRouteImport.update({
   path: '/api/publish',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiDraftsRoute = ApiDraftsRouteImport.update({
+  id: '/api/drafts',
+  path: '/api/drafts',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AtChar123handleChar125RkeyRoute =
   AtChar123handleChar125RkeyRouteImport.update({
     id: '/@{$handle}/$rkey',
@@ -153,6 +159,7 @@ export interface FileRoutesByFullPath {
   '/terms': typeof TermsRoute
   '/write': typeof WriteRoute
   '/@{$handle}/$rkey': typeof AtChar123handleChar125RkeyRoute
+  '/api/drafts': typeof ApiDraftsRoute
   '/api/publish': typeof ApiPublishRoute
   '/api/report': typeof ApiReportRoute
   '/api/waitlist': typeof ApiWaitlistRoute
@@ -176,6 +183,7 @@ export interface FileRoutesByTo {
   '/terms': typeof TermsRoute
   '/write': typeof WriteRoute
   '/@{$handle}/$rkey': typeof AtChar123handleChar125RkeyRoute
+  '/api/drafts': typeof ApiDraftsRoute
   '/api/publish': typeof ApiPublishRoute
   '/api/report': typeof ApiReportRoute
   '/api/waitlist': typeof ApiWaitlistRoute
@@ -200,6 +208,7 @@ export interface FileRoutesById {
   '/terms': typeof TermsRoute
   '/write': typeof WriteRoute
   '/@{$handle}/$rkey': typeof AtChar123handleChar125RkeyRoute
+  '/api/drafts': typeof ApiDraftsRoute
   '/api/publish': typeof ApiPublishRoute
   '/api/report': typeof ApiReportRoute
   '/api/waitlist': typeof ApiWaitlistRoute
@@ -225,6 +234,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/write'
     | '/@{$handle}/$rkey'
+    | '/api/drafts'
     | '/api/publish'
     | '/api/report'
     | '/api/waitlist'
@@ -248,6 +258,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/write'
     | '/@{$handle}/$rkey'
+    | '/api/drafts'
     | '/api/publish'
     | '/api/report'
     | '/api/waitlist'
@@ -271,6 +282,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/write'
     | '/@{$handle}/$rkey'
+    | '/api/drafts'
     | '/api/publish'
     | '/api/report'
     | '/api/waitlist'
@@ -295,6 +307,7 @@ export interface RootRouteChildren {
   TermsRoute: typeof TermsRoute
   WriteRoute: typeof WriteRoute
   AtChar123handleChar125RkeyRoute: typeof AtChar123handleChar125RkeyRoute
+  ApiDraftsRoute: typeof ApiDraftsRoute
   ApiPublishRoute: typeof ApiPublishRoute
   ApiReportRoute: typeof ApiReportRoute
   ApiWaitlistRoute: typeof ApiWaitlistRoute
@@ -434,6 +447,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublishRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/drafts': {
+      id: '/api/drafts'
+      path: '/api/drafts'
+      fullPath: '/api/drafts'
+      preLoaderRoute: typeof ApiDraftsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/@{$handle}/$rkey': {
       id: '/@{$handle}/$rkey'
       path: '/@{$handle}/$rkey'
@@ -471,6 +491,7 @@ const rootRouteChildren: RootRouteChildren = {
   TermsRoute: TermsRoute,
   WriteRoute: WriteRoute,
   AtChar123handleChar125RkeyRoute: AtChar123handleChar125RkeyRoute,
+  ApiDraftsRoute: ApiDraftsRoute,
   ApiPublishRoute: ApiPublishRoute,
   ApiReportRoute: ApiReportRoute,
   ApiWaitlistRoute: ApiWaitlistRoute,
