@@ -1,0 +1,90 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // ─────────────────────────────────────────────────────────────────────────
+  // TOP LEVEL = the generic self-host / fork target. Deploying this as-is
+  // stands up a standalone Goldroad on your own workers.dev subdomain with your
+  // own D1. It carries NO custom routes and only a placeholder database_id, so
+  // a fork never inherits the hosted instance's domain or database.
+  //   • Self-hosting: replace `database_id` with your own D1 id (the Deploy to
+  //     Cloudflare button provisions one and rewrites it for you), set the
+  //     secrets from `.dev.vars.example`, and set VITE_PUBLIC_ORIGIN to your
+  //     public origin (see SELF_HOSTING.md).
+  // Environment-specific deploys live in the `env.*` blocks below. Bindings are
+  // non-inheritable, so each env repeats its own `d1_databases`.
+  // ─────────────────────────────────────────────────────────────────────────
+  "name": "goldroad",
+  "workers_dev": true,
+  "preview_urls": true,
+  "compatibility_date": "2025-09-02",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  // Custom entry: canonical-hostname 301s in front of the Start handler.
+  "main": "src/server.ts",
+  // Hourly cron (free tier: ≤5/account): purge expired oauth_kv state rows
+  // + self-check core invariants, alerting via the optional WEBHOOK_URL secret.
+  // Handler: scheduled() in src/server.ts.
+  "triggers": {
+    "crons": ["0 * * * *"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "goldroad-db",
+      // Placeholder — replace with your own D1 database id when self-hosting.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "drizzle"
+    }
+  ],
+  "env": {
+    // Staging: main-branch channel, Access-gated workers.dev URL, own D1.
+    // The staging database is provisioned by the operator; until then this id
+    // is a placeholder.
+    "staging": {
+      "name": "goldroad-staging",
+      "workers_dev": true,
+      "preview_urls": true,
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1
+      },
+      "triggers": {
+        "crons": ["0 * * * *"]
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "goldroad-db-staging",
+          "database_id": "00000000-0000-0000-0000-000000000000",
+          "migrations_dir": "drizzle"
+        }
+      ]
+    },
+    // Production: release-branch channel, serves the canonical zone route.
+    "production": {
+      "name": "goldroad",
+      "workers_dev": true,
+      "preview_urls": true,
+      "routes": [
+        { "pattern": "trygoldroad.com/*", "zone_name": "trygoldroad.com" }
+      ],
+      "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1
+      },
+      "triggers": {
+        "crons": ["0 * * * *"]
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "goldroad-db",
+          "database_id": "7cf27d45-076c-4cda-8057-ddae78160b1a",
+          "migrations_dir": "drizzle"
+        }
+      ]
+    }
+  }
+}

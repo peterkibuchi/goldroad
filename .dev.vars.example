@@ -1,0 +1,22 @@
+# Workers secrets for local dev. Copy to `.dev.vars` (gitignored) and fill in.
+# Keep the KEYS here in sync: `pnpm cf:types` derives the Env type from .dev.vars.
+#
+# OAuth dev note: on localhost the app runs as an atproto LOOPBACK public
+# client (RFC 8252) — redirect URIs must use 127.0.0.1, so browse the dev app
+# at http://127.0.0.1:3000 (not localhost) or the session cookie lands on the
+# wrong host.
+
+# HMAC key for the session cookie signature: `openssl rand -hex 32`
+COOKIE_SECRET=
+
+# ES256 private JWK for private_key_jwt client assertions. LEAVE EMPTY in dev
+# (loopback public clients have no keys). In prod this is a wrangler secret:
+#   node --input-type=module -e "import { generateClientAssertionKey } from '@atcute/oauth-node-client'; console.log(JSON.stringify(await generateClientAssertionKey('main','ES256')))" \
+#     | pnpm wrangler secret put OAUTH_PRIVATE_KEY_JWK
+OAUTH_PRIVATE_KEY_JWK=""
+
+# OPTIONAL alert webhook for the hourly cron self-check (audit #6). When set,
+# the scheduled handler POSTs core-invariant failures here (Slack/Discord/etc.);
+# absent = alerting is a silent no-op. In prod set it as a wrangler secret:
+#   echo "https://hooks.example/…" | pnpm wrangler secret put WEBHOOK_URL
+WEBHOOK_URL=""

@@ -1,0 +1,7 @@
+allowBuilds:
+  # core-js (via posthog-js) postinstall only prints a funding banner — skip it.
+  core-js: false
+  esbuild: true
+  msw: true
+  sharp: true
+  workerd: true

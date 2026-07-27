@@ -1,0 +1,590 @@
+// Registers com.atproto.* XRPC procedure types (typed createRecord/putRecord below).
+import type {} from "@atcute/atproto";
+import { Client } from "@atcute/client";
+import type { OAuthSession } from "@atcute/oauth-node-client";
+import { createFileRoute } from "@tanstack/react-router";
+
+import { type AssociatedRef, buildAnnouncePost } from "~/lib/announce";
+import {
+  getRecordEntry,
+  isDid,
+  listRecords,
+  parseAtUri,
+  RKEY_RE,
+  resolveDidToHandle,
+  resolveDidToPds,
+  rkeyFromUri,
+  type StandardDocument,
+  type StandardPublication,
+} from "~/lib/atproto";
+import {
+  isAllowedImageMime,
+  MAX_IMAGE_BLOB_BYTES,
+  thumbFromCover,
+} from "~/lib/blob";
+import { createOAuthClient } from "~/lib/oauth";
+import {
+  CANONICAL_ORIGIN,
+  canonicalOrigin,
+  LEGACY_ORIGINS,
+  ownOrigins,
+} from "~/lib/origin";
+import {
+  buildDocumentRecord,
+  buildPublicationRecord,
+  type CoverImageBlob,
+  composeDocumentUrl,
+  generateTid,
+  isOwnPublicationUrl,
+  MAX_BODY_LENGTH,
+  MAX_NAME_LENGTH,
+  MAX_PUBLICATION_DESCRIPTION_LENGTH,
+  MAX_TITLE_LENGTH,
+  TID_RE,
+  updateDocumentRecord,
+} from "~/lib/publish";
+import { readSessionDid, sessionClearCookie } from "~/lib/session";
+import { env } from "cloudflare:workers";
+
+function redirectTo(location: string, extra?: HeadersInit): Response {
+  return new Response(null, {
+    status: 303,
+    headers: { location, ...extra },
+  });
+}
+
+function backToWrite(error: string, editRkey?: string): Response {
+  const params = new URLSearchParams({ error });
+  if (editRkey) params.set("edit", editRkey);
+  return redirectTo(`/write?${params}`);
+}
+
+function backToSettings(error?: string): Response {
+  return redirectTo(
+    error
+      ? `/settings?error=${encodeURIComponent(error)}`
+      : "/settings?saved=1",
+  );
+}
+
+function backToDashboard(query: Record<string, string>): Response {
+  return redirectTo(`/dashboard?${new URLSearchParams(query)}`);
+}
+
+/**
+ * Was this XRPC write rejected for missing OAuth permission? Tokens carry the
+ * scope granted at consent time, so sessions created before a scope addition
+ * (delete action, app.bsky.feed.post — see SCOPES in ~/lib/oauth) hit this.
+ * The PDS answers 401/403 (error naming varies across implementations — the
+ * session was just restored, so a 401 here is a stale grant, not a stale
+ * token). Fixed by a fresh sign-in: re-consent picks up the current scope.
+ */
+function isInsufficientScope(res: { ok: boolean; status: number }): boolean {
+  return !res.ok && (res.status === 401 || res.status === 403);
+}
+
+/** The writer's Goldroad-managed publication: URL prefix-matched on our
+ * origins (canonical + legacy) so we never touch publication records owned by
+ * other apps (e.g. Leaflet). */
+async function findOwnPublication(
+  pds: string,
+  did: string,
+  origins: readonly string[],
+) {
+  const pubs = await listRecords<StandardPublication>(
+    pds,
+    did,
+    "site.standard.publication",
+    { reverse: true },
+  ).catch(() => []);
+  return pubs.find((p) => isOwnPublicationUrl(p.value.url, origins)) ?? null;
+}
+
+/**
+ * The single write path to the user's PDS. ALL record writes (documents and
+ * publications, discriminated by the `intent` form field) go through this one
+ * handler so token refreshes are not raced across isolates.
+ */
+export const Route = createFileRoute("/api/publish")({
+  server: {
+    handlers: {
+      POST: async ({ request }) => {
+        const url = new URL(request.url);
+        const did = await readSessionDid(request, env.COOKIE_SECRET);
+        if (!did || !isDid(did)) {
+          return new Response("Not signed in", { status: 401 });
+        }
+
+        const form = await request.formData().catch(() => null);
+        if (!form) return new Response("Invalid form", { status: 400 });
+        const intentField = form.get("intent");
+        const intent =
+          intentField === "publication" ||
+          intentField === "delete" ||
+          intentField === "announce" ||
+          intentField === "migrate"
+            ? intentField
+            : "document";
+
+        const client = createOAuthClient(url.origin);
+        let session: OAuthSession;
+        try {
+          session = await client.restore(did);
+        } catch (err) {
+          console.warn("session restore failed", err);
+          // Sign-in lives on /write for both intents.
+          return redirectTo("/write?error=session_expired", {
+            "set-cookie": sessionClearCookie(url.protocol === "https:"),
+          });
+        }
+
+        const rpc = new Client({ handler: session });
+        const handle = await resolveDidToHandle(did).catch(() => null);
+        const ident = handle ?? did; // reader routes accept handle or DID
+        const pds = await resolveDidToPds(did).catch(() => null);
+
+        const ctx: WriteContext = {
+          rpc,
+          form,
+          did,
+          ident,
+          pds,
+          // URLs we MINT use the canonical origin; URLs we MATCH (ownership
+          // guard) accept every origin we have ever minted from.
+          origin: canonicalOrigin(url.origin),
+          origins: ownOrigins(url.origin),
+        };
+        switch (intent) {
+          case "publication":
+            return savePublication(ctx);
+          case "delete":
+            return deleteDocument(ctx);
+          case "announce":
+            return announceDocument(ctx);
+          case "migrate":
+            return migratePublication(ctx);
+          default:
+            return publishDocument(ctx);
+        }
+      },
+    },
+  },
+});
+
+type WriteContext = {
+  rpc: Client;
+  form: FormData;
+  did: `did:${string}:${string}`;
+  ident: string;
+  pds: string | null;
+  /** Origin new URLs are minted from (canonical in prod, loopback in dev). */
+  origin: string;
+  /** Origins the ownership guard matches against (canonical + legacy). */
+  origins: readonly string[];
+};
+
+async function publishDocument({
+  rpc,
+  form,
+  did,
+  ident,
+  pds,
+  origin,
+  origins,
+}: WriteContext): Promise<Response> {
+  const title = String(form.get("title") ?? "").trim();
+  const body = String(form.get("body") ?? "");
+  const editRkey = String(form.get("rkey") ?? "");
+  if (!title) return backToWrite("missing_title", editRkey || undefined);
+  if (title.length > MAX_TITLE_LENGTH || body.length > MAX_BODY_LENGTH)
+    return backToWrite("too_long", editRkey || undefined);
+
+  // ---- Cover image: optional multipart file → com.atproto.repo.uploadBlob.
+  // Uploaded FIRST so both create and edit reference the returned blob — the
+  // record field reference is what stops PDS garbage collection. The client
+  // downscales before submitting, but the lexicon caps (image/*, ≤1MB,
+  // SVG excluded — script-capable) are enforced here, where they count.
+  // If the record write below fails, the fresh blob stays unreferenced and
+  // the PDS GC reclaims it — nothing to clean up.
+  const coverFile = form.get("cover");
+  const removeCover = form.get("removeCover") === "1";
+  let coverBlob: CoverImageBlob | undefined;
+  if (coverFile instanceof File && coverFile.size > 0) {
+    if (!isAllowedImageMime(coverFile.type))
+      return backToWrite("cover_type", editRkey || undefined);
+    if (coverFile.size > MAX_IMAGE_BLOB_BYTES)
+      return backToWrite("cover_too_large", editRkey || undefined);
+    const uploaded = await rpc.post("com.atproto.repo.uploadBlob", {
+      headers: { "content-type": coverFile.type },
+      input: coverFile,
+    });
+    if (!uploaded.ok) {
+      if (isInsufficientScope(uploaded))
+        return backToWrite("cover_scope", editRkey || undefined);
+      console.error("uploadBlob failed", uploaded.status, uploaded.data);
+      return backToWrite(
+        `publish_failed:${uploaded.data.error}`,
+        editRkey || undefined,
+      );
+    }
+    coverBlob = uploaded.data.blob;
+  }
+
+  // ---- Edit: merge into the existing record, preserve its history ----
+  if (editRkey) {
+    if (!TID_RE.test(editRkey) || !pds) return backToWrite("not_found");
+    let existing: Awaited<ReturnType<typeof getRecordEntry<StandardDocument>>>;
+    try {
+      existing = await getRecordEntry<StandardDocument>(
+        pds,
+        did,
+        "site.standard.document",
+        editRkey,
+      );
+    } catch {
+      return backToWrite("not_found");
+    }
+    if (existing.value.content != null) return backToWrite("not_editable");
+    let record: ReturnType<typeof updateDocumentRecord>;
+    try {
+      record = updateDocumentRecord(existing.value, {
+        title,
+        body,
+        // blob = replace, null = remove, undefined = keep the existing cover.
+        coverImage: coverBlob ?? (removeCover ? null : undefined),
+      });
+    } catch (err) {
+      console.warn("record merge refused", err);
+      return backToWrite("publish_failed:invalid_record", editRkey);
+    }
+    // swapRecord pins the version we merged from (adopted from review): an
+    // unconditional put here could silently drop a concurrent announce
+    // write-back's bskyPostRef. On a swap conflict the PDS answers
+    // InvalidSwap → the writer retries against the fresh record.
+    const res = await rpc.post("com.atproto.repo.putRecord", {
+      input: {
+        repo: did,
+        collection: "site.standard.document",
+        rkey: editRkey,
+        record,
+        swapRecord: existing.cid,
+      },
+    });
+    if (!res.ok) {
+      console.error("putRecord failed", res.status, res.data);
+      return backToWrite(`publish_failed:${res.data.error}`, editRkey);
+    }
+    return redirectTo(`/@${encodeURIComponent(ident)}/${editRkey}`);
+  }
+
+  // ---- Create: attach to the writer's publication (auto-created on first
+  // publish — name defaults to the handle; editable later in /settings) ----
+  const rkey = generateTid();
+  const publicationUrl = `${origin}/@${ident}`;
+  let site = publicationUrl; // loose-document fallback: https publication URL
+  if (pds) {
+    const own = await findOwnPublication(pds, did, origins);
+    if (own) {
+      site = own.uri;
+    } else {
+      const pubRkey = generateTid();
+      const created = await rpc
+        .post("com.atproto.repo.createRecord", {
+          input: {
+            repo: did,
+            collection: "site.standard.publication",
+            rkey: pubRkey,
+            record: buildPublicationRecord({
+              name: ident,
+              url: publicationUrl,
+            }),
+          },
+        })
+        .catch(() => null);
+      if (created?.ok) {
+        site = `at://${did}/site.standard.publication/${pubRkey}`;
+      } else if (created) {
+        console.warn("publication auto-create failed", created.data);
+      }
+    }
+  }
+
+  // Canonical URL composes as publication.url + path: …/@<ident> + /<rkey>.
+  const record = buildDocumentRecord({
+    title,
+    body,
+    site,
+    path: `/${rkey}`,
+    coverImage: coverBlob,
+  });
+
+  const res = await rpc.post("com.atproto.repo.createRecord", {
+    input: {
+      repo: did,
+      collection: "site.standard.document",
+      rkey,
+      record,
+    },
+  });
+  // @atcute/client does not throw on XRPC errors — check ok explicitly.
+  if (!res.ok) {
+    console.error("createRecord failed", res.status, res.data);
+    return backToWrite(`publish_failed:${res.data.error}`);
+  }
+
+  // Success lands on the dashboard: the new post on top, a "view it live"
+  // link, and the explicit opt-in "Announce on Bluesky" action.
+  return backToDashboard({ published: rkey });
+}
+
+/**
+ * Deletes a site.standard.document from the writer's repo.
+ *
+ * Ownership needs no extra guard: com.atproto.repo.deleteRecord only reaches
+ * records under `repo`, which is always the session DID here — so deletion is
+ * limited to the writer's own repo by construction. That includes documents
+ * authored in other apps (e.g. Leaflet's rich-content-union records): they are
+ * not editable here, but they are the writer's records, and
+ * removing one deletes the whole record rather than forking its content.
+ */
+async function deleteDocument({ rpc, form, did }: WriteContext) {
+  const rkey = String(form.get("rkey") ?? "");
+  if (!RKEY_RE.test(rkey)) return backToDashboard({ error: "missing_rkey" });
+
+  const res = await rpc.post("com.atproto.repo.deleteRecord", {
+    input: { repo: did, collection: "site.standard.document", rkey },
+  });
+  if (!res.ok) {
+    if (isInsufficientScope(res))
+      return backToDashboard({ error: "delete_scope" });
+    console.error("deleteRecord failed", res.status, res.data);
+    return backToDashboard({ error: `delete_failed:${res.data.error}` });
+  }
+  return backToDashboard({ deleted: "1" });
+}
+
+/**
+ * "Announce on Bluesky": creates an app.bsky.feed.post in the writer's repo —
+ * title + canonical URL with a link facet, plus an app.bsky.embed.external
+ * carrying associatedRefs strongRefs to the standard.site records (what makes
+ * Bluesky render the enriched reader card — see ~/lib/announce). Explicit
+ * user action only; nothing here is called from a publish flow automatically.
+ */
+async function announceDocument({
+  rpc,
+  form,
+  did,
+  ident,
+  pds,
+  origin,
+}: WriteContext) {
+  const rkey = String(form.get("rkey") ?? "");
+  if (!RKEY_RE.test(rkey)) return backToDashboard({ error: "missing_rkey" });
+  if (!pds) return backToDashboard({ error: "announce_failed:pds_unresolved" });
+
+  let doc: Awaited<ReturnType<typeof getRecordEntry<StandardDocument>>>;
+  try {
+    doc = await getRecordEntry<StandardDocument>(
+      pds,
+      did,
+      "site.standard.document",
+      rkey,
+    );
+  } catch {
+    return backToDashboard({ error: "not_found" });
+  }
+
+  // Resolve the document's publication when `site` is an at:// URI — it gives
+  // both the canonical-URL base and the publication strongRef. Only same-repo
+  // publications (all records Goldroad writes, and Leaflet's) are followed;
+  // a cross-repo ref would mean fetching a different identity's PDS.
+  let publicationUrl: string | undefined;
+  let publicationRef: AssociatedRef | undefined;
+  const siteRef =
+    typeof doc.value.site === "string" ? parseAtUri(doc.value.site) : null;
+  if (
+    siteRef &&
+    siteRef.did === did &&
+    siteRef.collection === "site.standard.publication"
+  ) {
+    const pub = await getRecordEntry<StandardPublication>(
+      pds,
+      siteRef.did,
+      siteRef.collection,
+      siteRef.rkey,
+    ).catch(() => null);
+    if (pub) {
+      if (typeof pub.value.url === "string") publicationUrl = pub.value.url;
+      if (pub.cid && pub.uri) publicationRef = { uri: pub.uri, cid: pub.cid };
+    }
+  }
+
+  // Canonical composed URL; Goldroad's reader serves any repo document at
+  // /@<ident>/<rkey>, so that is the honest fallback when composition fails.
+  const url =
+    composeDocumentUrl({
+      site: doc.value.site,
+      path: doc.value.path,
+      publicationUrl,
+    }) ?? `${origin}/@${encodeURIComponent(ident)}/${rkey}`;
+
+  const associatedRefs: AssociatedRef[] = [];
+  if (doc.cid && doc.uri) associatedRefs.push({ uri: doc.uri, cid: doc.cid });
+  if (publicationRef) associatedRefs.push(publicationRef);
+
+  const post = buildAnnouncePost({
+    title: typeof doc.value.title === "string" ? doc.value.title : "",
+    url,
+    description:
+      typeof doc.value.description === "string"
+        ? doc.value.description
+        : undefined,
+    associatedRefs,
+    // Reuse the document's cover blob as the card thumb (same repo — the
+    // post's reference keeps it persistence-legal). Skipped when over the
+    // thumb lexicon's 1MB cap: the PDS would reject the whole announce.
+    thumb: thumbFromCover(doc.value.coverImage) ?? undefined,
+  });
+
+  const res = await rpc.post("com.atproto.repo.createRecord", {
+    input: { repo: did, collection: "app.bsky.feed.post", record: post },
+  });
+  if (!res.ok) {
+    if (isInsufficientScope(res))
+      return backToDashboard({ error: "announce_scope" });
+    console.error("announce createRecord failed", res.status, res.data);
+    return backToDashboard({ error: `announce_failed:${res.data.error}` });
+  }
+
+  // Honest announce status (auto-announce is deferred): write the created post's
+  // strongRef into the document's lexicon-native `bskyPostRef` slot, so the
+  // dashboard can show "Announced" and the state travels with the record
+  // (readable by any app, not just ours). This is NOT an edit of the
+  // document's content — every field including a foreign `content` union is
+  // preserved — so the not_editable rule doesn't apply.
+  // swapRecord pins the version we read: a concurrent edit wins, we never
+  // clobber. Requires doc.cid — without it swapRecord would be undefined and
+  // the put unconditional, the one way this could stomp a concurrent edit.
+  // Best-effort — the announce itself already succeeded, so a failed
+  // write-back only costs status honesty; the writer can announce again.
+  if (res.data.uri && res.data.cid && doc.cid) {
+    const writeBack = await rpc
+      .post("com.atproto.repo.putRecord", {
+        input: {
+          repo: did,
+          collection: "site.standard.document",
+          rkey,
+          record: {
+            ...doc.value,
+            $type: "site.standard.document",
+            bskyPostRef: { uri: res.data.uri, cid: res.data.cid },
+          },
+          swapRecord: doc.cid,
+        },
+      })
+      .catch(() => null);
+    if (!writeBack?.ok)
+      console.warn("bskyPostRef write-back failed", writeBack?.data);
+  }
+
+  const postRkey = rkeyFromUri(res.data.uri);
+  return backToDashboard(postRkey ? { announced: postRkey } : {});
+}
+
+async function savePublication({
+  rpc,
+  form,
+  did,
+  ident,
+  pds,
+  origin,
+  origins,
+}: WriteContext): Promise<Response> {
+  const name = String(form.get("name") ?? "").trim();
+  const description = String(form.get("description") ?? "");
+  if (!name) return backToSettings("missing_name");
+  if (
+    name.length > MAX_NAME_LENGTH ||
+    description.length > MAX_PUBLICATION_DESCRIPTION_LENGTH
+  )
+    return backToSettings("too_long");
+  if (!pds) return backToSettings("save_failed:pds_unresolved");
+
+  const own = await findOwnPublication(pds, did, origins);
+  // Saving never silently rewrites a legacy publication URL — the writer moves
+  // it explicitly via the `migrate` intent, so the two changes stay separate.
+  const url =
+    own && typeof own.value.url === "string"
+      ? own.value.url
+      : `${origin}/@${ident}`;
+  const record = buildPublicationRecord({ name, description, url }, own?.value);
+  const rkey = own ? rkeyFromUri(own.uri) : generateTid();
+  if (!rkey) return backToSettings("save_failed:bad_rkey");
+
+  const res = await rpc.post(
+    own ? "com.atproto.repo.putRecord" : "com.atproto.repo.createRecord",
+    {
+      input: {
+        repo: did,
+        collection: "site.standard.publication",
+        rkey,
+        record,
+      },
+    },
+  );
+  if (!res.ok) {
+    console.error("publication save failed", res.status, res.data);
+    return backToSettings(`save_failed:${res.data.error}`);
+  }
+  return backToSettings();
+}
+
+/**
+ * One-click move of a legacy-origin publication to the canonical origin:
+ * putRecord rewriting `url` ONLY (name, description, theme, everything else
+ * preserved). Offered on /settings and /dashboard when publication.url still
+ * points at a legacy origin (goldroad.kibuchi.workers.dev). Documents need no
+ * rewrite — they reference the publication by at:// URI and compose their
+ * canonical URLs from its (now canonical) `url`.
+ */
+async function migratePublication({
+  rpc,
+  form,
+  did,
+  ident,
+  pds,
+  origins,
+}: WriteContext): Promise<Response> {
+  const back = (query: Record<string, string>) =>
+    form.get("returnTo") === "settings"
+      ? redirectTo(`/settings?${new URLSearchParams(query)}`)
+      : backToDashboard(query);
+
+  if (!pds) return back({ error: "move_failed:pds_unresolved" });
+  const own = await findOwnPublication(pds, did, origins);
+  if (!own) return back({ error: "move_no_publication" });
+  // Already canonical (e.g. double-submit): nothing to write, report success.
+  if (!isOwnPublicationUrl(own.value.url, LEGACY_ORIGINS)) {
+    return back({ moved: "1" });
+  }
+  const rkey = rkeyFromUri(own.uri);
+  if (!rkey) return back({ error: "move_failed:bad_rkey" });
+
+  const res = await rpc.post("com.atproto.repo.putRecord", {
+    input: {
+      repo: did,
+      collection: "site.standard.publication",
+      rkey,
+      record: {
+        ...own.value,
+        $type: "site.standard.publication",
+        url: `${CANONICAL_ORIGIN}/@${ident}`,
+      },
+    },
+  });
+  if (!res.ok) {
+    console.error("publication move failed", res.status, res.data);
+    return back({ error: `move_failed:${res.data.error}` });
+  }
+  return back({ moved: "1" });
+}

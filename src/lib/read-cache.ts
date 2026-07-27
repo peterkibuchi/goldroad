@@ -1,0 +1,102 @@
+/**
+ * Edge caching for the public reading surfaces (audit finding #3 — the DoS
+ * lever). A hit on `/@handle`, `/@handle/$rkey`, or `/p/…` runs the full
+ * handle→DID→PDS→listRecords/getRecord chain live (≈3–4 upstream fetches),
+ * uncached — so a loop of requests burns the Worker request budget AND hammers
+ * third-party PDSes from our IP. This wraps those GET responses in the Workers
+ * Cache API (free tier — NOT R2, like `/img`), collapsing repeat reads to a
+ * single edge lookup.
+ *
+ * TTL is deliberately SHORT (`s-maxage=60`, short SWR): reading surfaces render
+ * third-party content that can be taken down (moderation kit, audit #1), and a
+ * cached page is served WITHOUT re-running the takedown check until it expires.
+ * 60 s bounds that residual window. An urgent (legal/CSAM) takedown must ALSO
+ * purge the cache, not just insert the hide row — see scripts/takedown.mjs.
+ *
+ * These surfaces are NEVER personalized (the reader loaders don't read the
+ * session), so responses are cached and served regardless of any cookie. That
+ * is load-bearing for the mitigation itself: keying anonymity to the cookie
+ * would let an attacker send `Cookie: gr_session=x` to dodge the cache and
+ * force full-cost renders. If a reading surface ever becomes personalized, add
+ * a Vary/skip here.
+ *
+ * The cache key is normalized to origin + pathname + the validated `cursor`
+ * param only — every other query param is stripped, so `/@h?x=<random>` can't
+ * mint distinct full-cost MISSes. This NARROWS but does not fully close the
+ * amplifier: `isValidCursor` checks shape only, so `/@h?cursor=<random-valid-
+ * shape>` still varies the key and forces a MISS. Volumetric abuse of that is
+ * the job of the single free CF rate-limit rule on read paths (owner action,
+ * audit §2.2) — the cache handles the common repeated-read case. Only 200
+ * text/html responses without a Set-Cookie are stored; 404s (takedowns
+ * included) and upstream flakes never cache, so they re-run the check next hit.
+ */
+import { isValidCursor } from "~/lib/atproto";
+
+/** Public shared-cache TTL for reading surfaces, in seconds. */
+export const READ_CACHE_TTL_SECONDS = 60;
+const STALE_WHILE_REVALIDATE_SECONDS = 60;
+export const READ_CACHE_CONTROL = `public, s-maxage=${READ_CACHE_TTL_SECONDS}, stale-while-revalidate=${STALE_WHILE_REVALIDATE_SECONDS}`;
+
+/** Paths whose GET responses are safe to serve to any visitor:
+ * `/@…` (publication + composed document) and `/p/…` (v0 document URL). */
+const READ_SURFACE_RE = /^\/(@|p\/)/;
+
+/** Whether this request is a GET to a cacheable reading surface. */
+export function isCacheableReadRequest(request: Request): boolean {
+  if (request.method !== "GET") return false;
+  return READ_SURFACE_RE.test(new URL(request.url).pathname);
+}
+
+/** Normalized cache key: origin + pathname + only a valid `cursor` param.
+ * Stripping every other query param prevents cache-key pollution. */
+export function readCacheKey(request: Request): string {
+  const url = new URL(request.url);
+  const key = new URL(url.origin + url.pathname);
+  const cursor = url.searchParams.get("cursor");
+  if (cursor && isValidCursor(cursor)) key.searchParams.set("cursor", cursor);
+  return key.toString();
+}
+
+function isCacheableHtml(response: Response): boolean {
+  return (
+    response.status === 200 &&
+    (response.headers.get("content-type") ?? "").includes("text/html") &&
+    !response.headers.has("set-cookie")
+  );
+}
+
+/**
+ * Serves a reading-surface GET through the Workers Cache API. On a hit the
+ * stored HTML is returned without invoking the loader (zero upstream fetches,
+ * zero D1 reads) tagged `x-goldroad-cache: HIT`; on a miss the fresh response
+ * is stamped with `Cache-Control`, stored, and returned tagged `MISS`.
+ * Non-cacheable requests/responses fall straight through to `fetchFresh`.
+ */
+export async function serveWithReadCache(
+  request: Request,
+  fetchFresh: () => Promise<Response> | Response,
+): Promise<Response> {
+  const cache = (globalThis as { caches?: { default?: Cache } }).caches
+    ?.default;
+  if (!cache || !isCacheableReadRequest(request)) {
+    return fetchFresh();
+  }
+
+  const key = readCacheKey(request);
+  const hit = await cache.match(key);
+  if (hit) return hit; // stored copy already carries x-goldroad-cache: HIT
+
+  const fresh = await fetchFresh();
+  if (!isCacheableHtml(fresh)) return fresh;
+
+  // Reconstruct so headers are mutable (a handler response may be immutable),
+  // then tee: one copy is stored tagged HIT (that is what a future hit serves),
+  // the returned copy is tagged MISS.
+  const stored = new Response(fresh.body, fresh);
+  stored.headers.set("cache-control", READ_CACHE_CONTROL);
+  const served = stored.clone();
+  stored.headers.set("x-goldroad-cache", "HIT");
+  await cache.put(key, stored).catch(() => {});
+  served.headers.set("x-goldroad-cache", "MISS");
+  return served;
+}

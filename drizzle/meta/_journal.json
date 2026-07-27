@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1784759188417,
+      "tag": "0000_curvy_katie_power",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1784761441803,
+      "tag": "0001_clean_maria_hill",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1785163053893,
+      "tag": "0002_good_veda",
+      "breakpoints": true
+    }
+  ]
+}
