@@ -62,6 +62,54 @@ describe("excerpt", () => {
       "a diagram caption",
     );
   });
+
+  // Pinned fixtures: freeze the exact output on representative writer
+  // markdown so refactors of the stripping pipeline provably change nothing
+  // on normal inputs.
+  it("pins the exact output for a representative post body", () => {
+    const post = [
+      "# The Gold Road",
+      "",
+      "An **opening** paragraph with _emphasis_, `inline code`, and a",
+      "[link](https://example.com/post) plus an image",
+      "![press photo](https://example.com/press.jpg).",
+      "",
+      "> An editor's note: a quoted line.",
+      "",
+      "- first point",
+      "* second point",
+      "3. numbered step",
+      "",
+      "```js",
+      'const hidden = "never shown";',
+      "```",
+      "",
+      "A closing paragraph.",
+    ].join("\n");
+    expect(excerpt(post)).toBe(
+      "The Gold Road An opening paragraph with emphasis, inline code, and a " +
+        "link plus an image press photo. An editor's note: a quoted line. " +
+        "first point second point numbered step A closing paragraph.",
+    );
+  });
+
+  it("pins the exact truncation shape: hard cut at 299 chars + ellipsis", () => {
+    // No word-boundary logic in excerpt(): a 400-char unbroken body cuts at
+    // exactly 299 chars and appends the ellipsis (total 300).
+    expect(excerpt("a".repeat(400))).toBe(`${"a".repeat(299)}…`);
+  });
+
+  it("pins the boundary: exactly 300 collapsed chars pass through untruncated", () => {
+    const body = "a".repeat(300);
+    expect(excerpt(body)).toBe(body);
+  });
+
+  it("pins trailing-whitespace trim before the ellipsis", () => {
+    // The 299-char cut lands on a space (index 298); trimEnd drops it, so
+    // the ellipsis attaches directly to the last word.
+    const out = excerpt(`${"x".repeat(298)} word`);
+    expect(out).toBe(`${"x".repeat(298)}…`);
+  });
 });
 
 describe("buildDocumentRecord", () => {
