@@ -29,6 +29,7 @@ type TurnstileApi = {
     params: Record<string, unknown>,
   ) => string | undefined;
   remove: (widgetId: string) => void;
+  reset: (widgetId: string) => void;
 };
 
 declare global {
@@ -38,6 +39,29 @@ declare global {
 }
 
 let loading: Promise<TurnstileApi | null> | null = null;
+
+/** Widget ids currently rendered on the page (one per form in practice). */
+const activeWidgets = new Set<string>();
+
+/**
+ * Re-arms every mounted widget with a fresh challenge. Turnstile tokens are
+ * SINGLE-USE: once a submit reached the server, siteverify consumed the
+ * token — so a failed submission must reset the widget, or every retry
+ * resends the same dead token and the user is stranded until a reload.
+ * Forms call this from their error paths.
+ */
+export function resetTurnstileWidgets(): void {
+  if (typeof window === "undefined") return;
+  const turnstile = window.turnstile;
+  if (!turnstile) return;
+  for (const id of activeWidgets) {
+    try {
+      turnstile.reset(id);
+    } catch {
+      // A widget removed mid-flight is fine — nothing to re-arm.
+    }
+  }
+}
 
 /** Injects the Turnstile script once and resolves with its API (null on
  * load failure — the widget simply doesn't render, the form still submits;
@@ -78,10 +102,14 @@ export function TurnstileWidget() {
         // submit handlers read it straight out of FormData.
         "response-field-name": TURNSTILE_TOKEN_FIELD,
       });
+      if (widgetId !== undefined) activeWidgets.add(widgetId);
     });
     return () => {
       cancelled = true;
-      if (widgetId !== undefined) window.turnstile?.remove(widgetId);
+      if (widgetId !== undefined) {
+        activeWidgets.delete(widgetId);
+        window.turnstile?.remove(widgetId);
+      }
     };
     // sitekey is a build-time constant (t3-env), not a reactive dependency.
   }, []);

@@ -4,7 +4,11 @@ import { useState } from "react";
 import { ExternalLink } from "~/components/external-link";
 import { Notice } from "~/components/notice";
 import { AppShell } from "~/components/site-chrome";
-import { TURNSTILE_TOKEN_FIELD, TurnstileWidget } from "~/components/turnstile";
+import {
+  resetTurnstileWidgets,
+  TURNSTILE_TOKEN_FIELD,
+  TurnstileWidget,
+} from "~/components/turnstile";
 
 /**
  * Report a page (moderation kit, audit #1). Pressroom register — we're speaking
@@ -56,6 +60,9 @@ function ReportForm({ initialUrl }: { initialUrl: string }) {
       setState("done");
       form.reset();
     } catch {
+      // Tokens are single-use: the failed submit consumed this one, so the
+      // widget must re-arm or every retry would resend a dead token.
+      resetTurnstileWidgets();
       setState("error");
     }
   }
