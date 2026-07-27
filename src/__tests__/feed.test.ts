@@ -7,6 +7,7 @@ import {
   plainTextExcerpt,
   rfc822Date,
   rssFeedXml,
+  stripMarkdown,
 } from "../lib/feed";
 
 /** Real XML parser (jsdom's, saxes-backed) — feed assertions parse the
@@ -53,6 +54,40 @@ describe("escapeXml — hostile third-party strings", () => {
 
   it("drops U+FFFE/U+FFFF noncharacters", () => {
     expect(escapeXml("a\ufffeb\uffffc")).toBe("abc");
+  });
+});
+
+describe("stripMarkdown — the shared hardened strip", () => {
+  it("strips markdown without truncating (truncation belongs to callers)", () => {
+    expect(
+      stripMarkdown("# Title\n\n**bold** `code` [link](https://example.com)"),
+    ).toBe("Title bold code link");
+  });
+
+  it("bounds the scan window at 2 KB by default", () => {
+    expect(stripMarkdown("a".repeat(10_000))).toHaveLength(2048);
+  });
+
+  it("honors a caller-supplied scan window", () => {
+    expect(stripMarkdown("a".repeat(100), 10)).toBe("a".repeat(10));
+  });
+
+  it("stays linear on hostile floods even at a wide validated window", () => {
+    // ~/lib/publish's excerpt() passes MAX_BODY_LENGTH (100k) as its window,
+    // so the default 2 KB slice does not protect that call site — the
+    // fail-fast bracket classes must keep hostile input cheap on their own.
+    const hostiles = [
+      "[".repeat(100_000),
+      "[a](b".repeat(20_000),
+      "![".repeat(50_000),
+      "`".repeat(100_000),
+    ];
+    for (const hostile of hostiles) {
+      const start = performance.now();
+      stripMarkdown(hostile, 100_000);
+      // Generous CI headroom — a quadratic regression costs seconds, not ms.
+      expect(performance.now() - start).toBeLessThan(250);
+    }
   });
 });
 

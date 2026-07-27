@@ -110,6 +110,27 @@ describe("excerpt", () => {
     const out = excerpt(`${"x".repeat(298)} word`);
     expect(out).toBe(`${"x".repeat(298)}…`);
   });
+
+  it("stays cheap on hostile degenerate markdown at MAX_BODY_LENGTH", () => {
+    // Bodies are writer-authored and capped at MAX_BODY_LENGTH (100k), but
+    // the pre-refactor link/image patterns went quadratic on
+    // unmatched-bracket floods even at that size (seconds of CPU on a
+    // ~10 ms Workers budget). The shared hardened strip must keep the worst
+    // validated input trivial.
+    const hostiles = [
+      "[".repeat(MAX_BODY_LENGTH),
+      "[a](b".repeat(MAX_BODY_LENGTH / 5),
+      "![".repeat(MAX_BODY_LENGTH / 2),
+      "`".repeat(MAX_BODY_LENGTH),
+    ];
+    for (const hostile of hostiles) {
+      const start = performance.now();
+      const out = excerpt(hostile);
+      // Generous CI headroom — a quadratic regression costs seconds, not ms.
+      expect(performance.now() - start).toBeLessThan(250);
+      expect(out.length).toBeLessThanOrEqual(300);
+    }
+  });
 });
 
 describe("buildDocumentRecord", () => {

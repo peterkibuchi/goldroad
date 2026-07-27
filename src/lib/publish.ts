@@ -9,6 +9,7 @@ import type * as SiteStandardDocument from "@atcute/standard-site/types/document
 import type * as SiteStandardPublication from "@atcute/standard-site/types/publication";
 
 import type { StandardDocument, StandardPublication } from "~/lib/atproto";
+import { stripMarkdown } from "~/lib/feed";
 
 // TID: 13-char base32-sortable record key — 53-bit microsecond timestamp + 10-bit clock id.
 const TID_ALPHABET = "234567abcdefghijklmnopqrstuvwxyz";
@@ -57,19 +58,14 @@ export type DocumentInput = {
 
 /**
  * First ~300 chars of the body as the description excerpt: markdown syntax
- * stripped (descriptions render as plain text in cards), whitespace collapsed.
+ * stripped (descriptions render as plain text in cards), whitespace
+ * collapsed. Delegates to the shared hardened strip in ~/lib/feed. Bodies
+ * are validated to MAX_BODY_LENGTH before reaching this, so passing that as
+ * the scan window is a no-op today — it just keeps the call self-defending
+ * if a future caller ever feeds it unvalidated input.
  */
 export function excerpt(body: string): string {
-  const collapsed = body
-    .replace(/```[\s\S]*?(```|$)/g, " ") // fenced code blocks
-    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1") // images → alt text
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1") // links → link text
-    .replace(/^#{1,6}\s+/gm, "") // heading markers
-    .replace(/^\s{0,3}(?:[-*+]|\d+[.)])\s+/gm, "") // list markers
-    .replace(/^\s{0,3}>\s?/gm, "") // blockquote markers
-    .replace(/[*_~`]+/g, "") // emphasis/strike/code marks
-    .replace(/\s+/g, " ")
-    .trim();
+  const collapsed = stripMarkdown(body, MAX_BODY_LENGTH);
   if (collapsed.length <= DESCRIPTION_EXCERPT_LENGTH) return collapsed;
   return `${collapsed.slice(0, DESCRIPTION_EXCERPT_LENGTH - 1).trimEnd()}…`;
 }
