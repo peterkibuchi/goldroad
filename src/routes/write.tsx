@@ -1,7 +1,8 @@
 import { ClientOnly, createFileRoute } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
-import { lazy, Suspense, useRef, useState } from "react";
+import { drizzle } from "drizzle-orm/d1";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 
 import type { BlockNoteEditor } from "~/components/editor";
 import { ExternalLink } from "~/components/external-link";
@@ -14,6 +15,8 @@ import {
   type StandardDocument,
 } from "~/lib/atproto";
 import { blobImagePath, coverImageCid } from "~/lib/blob";
+import { selectDraft } from "~/lib/drafts";
+import { isDraftId } from "~/lib/drafts-schema";
 import { downscaleImage } from "~/lib/image";
 import { TID_RE } from "~/lib/publish";
 import { readSessionDid } from "~/lib/session";
@@ -40,6 +43,8 @@ const ERROR_MESSAGES: Record<string, string> = {
     "That cover is too large even after shrinking — pick an image under 1 MB.",
   cover_scope:
     "Uploading images needs a permission your current sign-in doesn't include yet — re-connect your account to add covers.",
+  draft_not_found:
+    "That draft isn't in your drafts anymore — you're starting a fresh one.",
 };
 
 function errorMessage(code: string | undefined): string | null {
@@ -57,21 +62,59 @@ type Draft = {
   coverPath: string | null;
 };
 
+/** A saved (unpublished) draft being resumed from our D1 — distinct from
+ * `Draft`, which is a published record being edited. */
+type ResumedDraft = {
+  id: string;
+  title: string;
+  /** The stored BlockNote JSON, verbatim (loader data must be plainly
+   * serializable); the client parses it and falls back to an empty editor
+   * when it's unreadable. */
+  blocksJson: string;
+};
+
 const getWriteContext = createServerFn({ method: "GET" })
-  .validator((data: { edit?: string }) => ({
+  .validator((data: { edit?: string; draft?: string }) => ({
     edit:
       typeof data.edit === "string" && TID_RE.test(data.edit)
         ? data.edit
+        : undefined,
+    draft:
+      typeof data.draft === "string" && isDraftId(data.draft)
+        ? data.draft
         : undefined,
   }))
   .handler(async ({ data }) => {
     const did = await readSessionDid(getRequest(), env.COOKIE_SECRET);
     if (!did)
-      return { viewer: null, draft: null, draftError: undefined } as const;
+      return {
+        viewer: null,
+        draft: null,
+        resumed: null,
+        draftError: undefined,
+      } as const;
     const handle = await resolveDidToHandle(did).catch(() => null);
 
+    // Resume a saved draft (ownership enforced in the query's WHERE). Editing
+    // a published record wins if both params are somehow present.
+    let resumed: ResumedDraft | null = null;
+    let draftError:
+      | "not_found"
+      | "not_editable"
+      | "draft_not_found"
+      | undefined;
+    if (data.draft && !data.edit) {
+      const [row] = await selectDraft(drizzle(env.DB), did, data.draft).catch(
+        () => [],
+      );
+      if (row) {
+        resumed = { id: row.id, title: row.title, blocksJson: row.content };
+      } else {
+        draftError = "draft_not_found";
+      }
+    }
+
     let draft: Draft | null = null;
-    let draftError: "not_found" | "not_editable" | undefined;
     if (data.edit) {
       try {
         const pds = await resolveDidToPds(did);
@@ -97,20 +140,28 @@ const getWriteContext = createServerFn({ method: "GET" })
         draftError = "not_found";
       }
     }
-    return { viewer: { did, handle }, draft, draftError } as const;
+    return { viewer: { did, handle }, draft, resumed, draftError } as const;
   });
 
 export const Route = createFileRoute("/write")({
   validateSearch: (search: Record<string, unknown>) => {
-    const out: { error?: string; edit?: string; handle?: string } = {};
+    const out: {
+      error?: string;
+      edit?: string;
+      draft?: string;
+      handle?: string;
+    } = {};
     if (typeof search.error === "string") out.error = search.error;
     if (typeof search.edit === "string") out.edit = search.edit;
+    if (typeof search.draft === "string" && isDraftId(search.draft))
+      out.draft = search.draft;
     // /login sends the entered handle back so the sign-in form can prefill it.
     if (typeof search.handle === "string") out.handle = search.handle;
     return out;
   },
-  loaderDeps: ({ search }) => ({ edit: search.edit }),
-  loader: ({ deps }) => getWriteContext({ data: { edit: deps.edit } }),
+  loaderDeps: ({ search }) => ({ edit: search.edit, draft: search.draft }),
+  loader: ({ deps }) =>
+    getWriteContext({ data: { edit: deps.edit, draft: deps.draft } }),
   head: () => ({
     meta: [
       { title: "Write — Goldroad" },
@@ -335,20 +386,193 @@ function CoverPicker({
   );
 }
 
+const AUTOSAVE_DEBOUNCE_MS = 3000;
+
+type SaveState = "idle" | "saving" | "saved" | "error" | "limit";
+
+const SAVE_INDICATOR_TEXT: Record<SaveState, string> = {
+  idle: "",
+  saving: "Saving…",
+  saved: "Saved",
+  error: "Couldn't save — retrying as you write",
+  limit:
+    "You have 50 drafts — delete one from your posts page to keep autosaving",
+};
+
+/** Autosave status in the calm register: text only, no spinners. The live
+ * region politely announces transitions to screen readers. Exported for
+ * tests — not a route. */
+export function SaveIndicator({ state }: { state: SaveState }) {
+  return (
+    <p
+      aria-live="polite"
+      className="ml-auto font-display text-ink-soft text-xs"
+      role="status"
+    >
+      {SAVE_INDICATOR_TEXT[state]}
+    </p>
+  );
+}
+
+/** A fresh editor is a single empty paragraph — never mint a draft row for
+ * an untouched page. */
+function isBlankDocument(blocks: BlockNoteEditor["document"]): boolean {
+  return blocks.every(
+    (block) =>
+      block.type === "paragraph" &&
+      Array.isArray(block.content) &&
+      block.content.length === 0 &&
+      block.children.length === 0,
+  );
+}
+
+/** Stored draft JSON → blocks array, or undefined when empty/unreadable (the
+ * editor then starts empty rather than crashing the resume). */
+function parseDraftBlocks(
+  blocksJson: string | undefined,
+): unknown[] | undefined {
+  if (!blocksJson) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(blocksJson);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function postDraft(payload: {
+  id?: string;
+  title: string;
+  content: unknown;
+}): Promise<Response> {
+  return fetch("/api/drafts", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
 function Compose({
   draft,
+  resumed,
   error,
   reconnectHandle,
 }: {
   draft: Draft | null;
+  resumed: ResumedDraft | null;
   error: string | undefined;
   /** Handle for the one-click re-connect form on scope errors. */
   reconnectHandle: string | null;
 }) {
   const [editor, setEditor] = useState<BlockNoteEditor | null>(null);
   const [coverBusy, setCoverBusy] = useState(false);
+  const [saveState, setSaveState] = useState<SaveState>(
+    resumed ? "saved" : "idle",
+  );
+  // Parsed once per mount (Compose is keyed by the resume target).
+  const [initialBlocks] = useState<unknown[] | undefined>(() =>
+    parseDraftBlocks(resumed?.blocksJson),
+  );
   const bodyRef = useRef<HTMLInputElement>(null);
+  const titleRef = useRef<HTMLInputElement>(null);
+  const draftIdInputRef = useRef<HTMLInputElement>(null);
   const editing = draft !== null;
+
+  // ---- Autosave (new compositions only). Editing a published post never
+  // autosaves: the record in the writer's repo is the source of truth there,
+  // and shadow-copying edits into the drafts table would fork it.
+  const draftIdRef = useRef<string | null>(resumed?.id ?? null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savingRef = useRef(false);
+  const dirtyRef = useRef(false);
+  const publishingRef = useRef(false);
+  // Loading resumed blocks fires the editor's onChange before onReady —
+  // ignore changes until the editor is ready so hydration never "saves".
+  const readyRef = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  function handleEditorReady(instance: BlockNoteEditor) {
+    readyRef.current = true;
+    setEditor(instance);
+  }
+
+  async function saveDraft(): Promise<void> {
+    if (editing || publishingRef.current || savingRef.current) return;
+    if (!editor || !dirtyRef.current) return;
+    const title = titleRef.current?.value ?? "";
+    const blocks = editor.document;
+    if (!draftIdRef.current && title.trim() === "" && isBlankDocument(blocks))
+      return;
+    savingRef.current = true;
+    dirtyRef.current = false;
+    setSaveState("saving");
+    let next: SaveState = "error";
+    try {
+      let res = await postDraft({
+        id: draftIdRef.current ?? undefined,
+        title,
+        content: blocks,
+      });
+      if (res.status === 404 && draftIdRef.current) {
+        // The draft was deleted elsewhere (another tab, the dashboard) —
+        // recreate it rather than lose what's on screen.
+        draftIdRef.current = null;
+        res = await postDraft({ title, content: blocks });
+      }
+      if (res.ok) {
+        const data = (await res.json()) as { draft?: { id?: string } };
+        if (!draftIdRef.current && typeof data.draft?.id === "string") {
+          draftIdRef.current = data.draft.id;
+          // Make refresh/back resume this draft. replaceState, not a router
+          // navigation: the loader must not re-run under the writer's cursor.
+          window.history.replaceState(
+            null,
+            "",
+            `/write?draft=${data.draft.id}`,
+          );
+        }
+        next = "saved";
+      } else {
+        dirtyRef.current = true;
+        next = res.status === 409 ? "limit" : "error";
+      }
+    } catch {
+      dirtyRef.current = true;
+      next = "error";
+    } finally {
+      savingRef.current = false;
+      setSaveState(next);
+      // Edits landed while the save was in flight: pick them up. Failures
+      // don't self-reschedule (no retry loop) — the next keystroke or blur
+      // tries again.
+      if (next === "saved" && dirtyRef.current) scheduleSave();
+    }
+  }
+
+  function scheduleSave() {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => void saveDraft(), AUTOSAVE_DEBOUNCE_MS);
+  }
+
+  /** Title keystrokes and editor changes both funnel here. */
+  function handleDraftChange() {
+    if (editing || publishingRef.current || !readyRef.current) return;
+    dirtyRef.current = true;
+    scheduleSave();
+  }
+
+  /** Blur is a natural pause — flush the pending save immediately. (React's
+   * onBlur is focusout, so it bubbles here from the title and the editor.) */
+  function handleBlur() {
+    if (editing || !dirtyRef.current) return;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    void saveDraft();
+  }
 
   // Native constraint validation runs before the submit event fires, so the
   // fields are valid here; export the blocks to markdown, then submit for real
@@ -356,6 +580,12 @@ function Compose({
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!editor || !bodyRef.current || coverBusy) return;
+    // Publishing supersedes autosave: stop the timer and hand the draft id to
+    // the server, which removes the completed draft after the record lands.
+    publishingRef.current = true;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    if (draftIdInputRef.current)
+      draftIdInputRef.current.value = draftIdRef.current ?? "";
     bodyRef.current.value = editor.blocksToMarkdownLossy(editor.document);
     event.currentTarget.submit();
   }
@@ -394,9 +624,13 @@ function Compose({
         action="/api/publish"
         encType="multipart/form-data"
         method="post"
+        onBlur={handleBlur}
         onSubmit={handleSubmit}
       >
         {editing && <input name="rkey" type="hidden" value={draft.rkey} />}
+        {!editing && (
+          <input name="draftId" ref={draftIdInputRef} type="hidden" />
+        )}
         <input name="body" ref={bodyRef} type="hidden" />
         <CoverPicker
           existingPath={draft?.coverPath ?? null}
@@ -407,10 +641,12 @@ function Compose({
         </label>
         <input
           className="w-full rounded-none border-0 border-transparent border-b-2 bg-paper px-1 py-2 font-semibold text-3xl text-ink leading-tight placeholder:text-ink-soft/50 focus-visible:border-spot focus-visible:outline-none md:text-4xl"
-          defaultValue={draft?.title ?? ""}
+          defaultValue={draft?.title ?? resumed?.title ?? ""}
           id="title"
           name="title"
+          onChange={handleDraftChange}
           placeholder="Title"
+          ref={titleRef}
           required
           type="text"
         />
@@ -418,8 +654,10 @@ function Compose({
           <ClientOnly fallback={<EditorFallback />}>
             <Suspense fallback={<EditorFallback />}>
               <Editor
+                initialBlocks={initialBlocks}
                 initialMarkdown={draft?.textContent || undefined}
-                onReady={setEditor}
+                onChange={handleDraftChange}
+                onReady={handleEditorReady}
               />
             </Suspense>
           </ClientOnly>
@@ -437,6 +675,7 @@ function Compose({
               ? "Saves the changes to the post in your own data repo."
               : "Goes live on your public page the moment you press it."}
           </p>
+          {!editing && <SaveIndicator state={saveState} />}
         </div>
       </form>
     </main>
@@ -444,7 +683,7 @@ function Compose({
 }
 
 function WritePage() {
-  const { viewer, draft, draftError } = Route.useLoaderData();
+  const { viewer, draft, resumed, draftError } = Route.useLoaderData();
   const { error, handle } = Route.useSearch();
   if (!viewer) {
     return (
@@ -461,14 +700,16 @@ function WritePage() {
         active: "write",
       }}
     >
-      {/* Keyed by the edit target: switching between editing and a fresh
-          draft remounts the form (title defaultValue + editor state would
-          otherwise go stale on client-side navigation and duplicate posts). */}
+      {/* Keyed by the edit/resume target: switching between editing, resuming
+          a draft, and a fresh page remounts the form (title defaultValue +
+          editor state would otherwise go stale on client-side navigation and
+          duplicate posts). */}
       <Compose
         draft={draft}
         error={error ?? draftError}
-        key={draft?.rkey ?? "new"}
+        key={draft?.rkey ?? resumed?.id ?? "new"}
         reconnectHandle={viewer.handle}
+        resumed={resumed}
       />
     </AppShell>
   );
