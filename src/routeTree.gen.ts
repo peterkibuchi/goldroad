@@ -19,6 +19,7 @@ import { Route as PoliciesRouteImport } from './routes/policies'
 import { Route as LogoutRouteImport } from './routes/logout'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LeavingSubstackRouteImport } from './routes/leaving-substack'
+import { Route as ImportRouteImport } from './routes/import'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AtChar123handleChar125IndexRouteImport } from './routes/@{$handle}.index'
@@ -29,11 +30,13 @@ import { Route as ApiWaitlistRouteImport } from './routes/api.waitlist'
 import { Route as ApiStatsRouteImport } from './routes/api.stats'
 import { Route as ApiReportRouteImport } from './routes/api.report'
 import { Route as ApiPublishRouteImport } from './routes/api.publish'
+import { Route as ApiImportRouteImport } from './routes/api.import'
 import { Route as ApiDraftsRouteImport } from './routes/api.drafts'
 import { Route as AtChar123handleChar125RssDotxmlRouteImport } from './routes/@{$handle}.rss[.]xml'
 import { Route as AtChar123handleChar125RkeyRouteImport } from './routes/@{$handle}.$rkey'
 import { Route as PHandleRkeyRouteImport } from './routes/p.$handle.$rkey'
 import { Route as ImgDidCidRouteImport } from './routes/img.$did.$cid'
+import { Route as ApiImportDraftRouteImport } from './routes/api.import.draft'
 
 const WriteRoute = WriteRouteImport.update({
   id: '/write',
@@ -83,6 +86,11 @@ const LoginRoute = LoginRouteImport.update({
 const LeavingSubstackRoute = LeavingSubstackRouteImport.update({
   id: '/leaving-substack',
   path: '/leaving-substack',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ImportRoute = ImportRouteImport.update({
+  id: '/import',
+  path: '/import',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DashboardRoute = DashboardRouteImport.update({
@@ -137,6 +145,11 @@ const ApiPublishRoute = ApiPublishRouteImport.update({
   path: '/api/publish',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiImportRoute = ApiImportRouteImport.update({
+  id: '/api/import',
+  path: '/api/import',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiDraftsRoute = ApiDraftsRouteImport.update({
   id: '/api/drafts',
   path: '/api/drafts',
@@ -164,10 +177,16 @@ const ImgDidCidRoute = ImgDidCidRouteImport.update({
   path: '/img/$did/$cid',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiImportDraftRoute = ApiImportDraftRouteImport.update({
+  id: '/draft',
+  path: '/draft',
+  getParentRoute: () => ApiImportRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
+  '/import': typeof ImportRoute
   '/leaving-substack': typeof LeavingSubstackRoute
   '/login': typeof LoginRoute
   '/logout': typeof LogoutRoute
@@ -181,6 +200,7 @@ export interface FileRoutesByFullPath {
   '/@{$handle}/$rkey': typeof AtChar123handleChar125RkeyRoute
   '/@{$handle}/rss.xml': typeof AtChar123handleChar125RssDotxmlRoute
   '/api/drafts': typeof ApiDraftsRoute
+  '/api/import': typeof ApiImportRouteWithChildren
   '/api/publish': typeof ApiPublishRoute
   '/api/report': typeof ApiReportRoute
   '/api/stats': typeof ApiStatsRoute
@@ -189,12 +209,14 @@ export interface FileRoutesByFullPath {
   '/oauth/client-metadata.json': typeof OauthClientMetadataDotjsonRoute
   '/oauth/jwks.json': typeof OauthJwksDotjsonRoute
   '/@{$handle}/': typeof AtChar123handleChar125IndexRoute
+  '/api/import/draft': typeof ApiImportDraftRoute
   '/img/$did/$cid': typeof ImgDidCidRoute
   '/p/$handle/$rkey': typeof PHandleRkeyRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
+  '/import': typeof ImportRoute
   '/leaving-substack': typeof LeavingSubstackRoute
   '/login': typeof LoginRoute
   '/logout': typeof LogoutRoute
@@ -208,6 +230,7 @@ export interface FileRoutesByTo {
   '/@{$handle}/$rkey': typeof AtChar123handleChar125RkeyRoute
   '/@{$handle}/rss.xml': typeof AtChar123handleChar125RssDotxmlRoute
   '/api/drafts': typeof ApiDraftsRoute
+  '/api/import': typeof ApiImportRouteWithChildren
   '/api/publish': typeof ApiPublishRoute
   '/api/report': typeof ApiReportRoute
   '/api/stats': typeof ApiStatsRoute
@@ -216,6 +239,7 @@ export interface FileRoutesByTo {
   '/oauth/client-metadata.json': typeof OauthClientMetadataDotjsonRoute
   '/oauth/jwks.json': typeof OauthJwksDotjsonRoute
   '/@{$handle}': typeof AtChar123handleChar125IndexRoute
+  '/api/import/draft': typeof ApiImportDraftRoute
   '/img/$did/$cid': typeof ImgDidCidRoute
   '/p/$handle/$rkey': typeof PHandleRkeyRoute
 }
@@ -223,6 +247,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
+  '/import': typeof ImportRoute
   '/leaving-substack': typeof LeavingSubstackRoute
   '/login': typeof LoginRoute
   '/logout': typeof LogoutRoute
@@ -236,6 +261,7 @@ export interface FileRoutesById {
   '/@{$handle}/$rkey': typeof AtChar123handleChar125RkeyRoute
   '/@{$handle}/rss.xml': typeof AtChar123handleChar125RssDotxmlRoute
   '/api/drafts': typeof ApiDraftsRoute
+  '/api/import': typeof ApiImportRouteWithChildren
   '/api/publish': typeof ApiPublishRoute
   '/api/report': typeof ApiReportRoute
   '/api/stats': typeof ApiStatsRoute
@@ -244,6 +270,7 @@ export interface FileRoutesById {
   '/oauth/client-metadata.json': typeof OauthClientMetadataDotjsonRoute
   '/oauth/jwks.json': typeof OauthJwksDotjsonRoute
   '/@{$handle}/': typeof AtChar123handleChar125IndexRoute
+  '/api/import/draft': typeof ApiImportDraftRoute
   '/img/$did/$cid': typeof ImgDidCidRoute
   '/p/$handle/$rkey': typeof PHandleRkeyRoute
 }
@@ -252,6 +279,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/dashboard'
+    | '/import'
     | '/leaving-substack'
     | '/login'
     | '/logout'
@@ -265,6 +293,7 @@ export interface FileRouteTypes {
     | '/@{$handle}/$rkey'
     | '/@{$handle}/rss.xml'
     | '/api/drafts'
+    | '/api/import'
     | '/api/publish'
     | '/api/report'
     | '/api/stats'
@@ -273,12 +302,14 @@ export interface FileRouteTypes {
     | '/oauth/client-metadata.json'
     | '/oauth/jwks.json'
     | '/@{$handle}/'
+    | '/api/import/draft'
     | '/img/$did/$cid'
     | '/p/$handle/$rkey'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/dashboard'
+    | '/import'
     | '/leaving-substack'
     | '/login'
     | '/logout'
@@ -292,6 +323,7 @@ export interface FileRouteTypes {
     | '/@{$handle}/$rkey'
     | '/@{$handle}/rss.xml'
     | '/api/drafts'
+    | '/api/import'
     | '/api/publish'
     | '/api/report'
     | '/api/stats'
@@ -300,12 +332,14 @@ export interface FileRouteTypes {
     | '/oauth/client-metadata.json'
     | '/oauth/jwks.json'
     | '/@{$handle}'
+    | '/api/import/draft'
     | '/img/$did/$cid'
     | '/p/$handle/$rkey'
   id:
     | '__root__'
     | '/'
     | '/dashboard'
+    | '/import'
     | '/leaving-substack'
     | '/login'
     | '/logout'
@@ -319,6 +353,7 @@ export interface FileRouteTypes {
     | '/@{$handle}/$rkey'
     | '/@{$handle}/rss.xml'
     | '/api/drafts'
+    | '/api/import'
     | '/api/publish'
     | '/api/report'
     | '/api/stats'
@@ -327,6 +362,7 @@ export interface FileRouteTypes {
     | '/oauth/client-metadata.json'
     | '/oauth/jwks.json'
     | '/@{$handle}/'
+    | '/api/import/draft'
     | '/img/$did/$cid'
     | '/p/$handle/$rkey'
   fileRoutesById: FileRoutesById
@@ -334,6 +370,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DashboardRoute: typeof DashboardRoute
+  ImportRoute: typeof ImportRoute
   LeavingSubstackRoute: typeof LeavingSubstackRoute
   LoginRoute: typeof LoginRoute
   LogoutRoute: typeof LogoutRoute
@@ -347,6 +384,7 @@ export interface RootRouteChildren {
   AtChar123handleChar125RkeyRoute: typeof AtChar123handleChar125RkeyRoute
   AtChar123handleChar125RssDotxmlRoute: typeof AtChar123handleChar125RssDotxmlRoute
   ApiDraftsRoute: typeof ApiDraftsRoute
+  ApiImportRoute: typeof ApiImportRouteWithChildren
   ApiPublishRoute: typeof ApiPublishRoute
   ApiReportRoute: typeof ApiReportRoute
   ApiStatsRoute: typeof ApiStatsRoute
@@ -431,6 +469,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LeavingSubstackRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/import': {
+      id: '/import'
+      path: '/import'
+      fullPath: '/import'
+      preLoaderRoute: typeof ImportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dashboard': {
       id: '/dashboard'
       path: '/dashboard'
@@ -501,6 +546,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublishRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/import': {
+      id: '/api/import'
+      path: '/api/import'
+      fullPath: '/api/import'
+      preLoaderRoute: typeof ApiImportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/drafts': {
       id: '/api/drafts'
       path: '/api/drafts'
@@ -536,12 +588,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ImgDidCidRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/import/draft': {
+      id: '/api/import/draft'
+      path: '/draft'
+      fullPath: '/api/import/draft'
+      preLoaderRoute: typeof ApiImportDraftRouteImport
+      parentRoute: typeof ApiImportRoute
+    }
   }
 }
+
+interface ApiImportRouteChildren {
+  ApiImportDraftRoute: typeof ApiImportDraftRoute
+}
+
+const ApiImportRouteChildren: ApiImportRouteChildren = {
+  ApiImportDraftRoute: ApiImportDraftRoute,
+}
+
+const ApiImportRouteWithChildren = ApiImportRoute._addFileChildren(
+  ApiImportRouteChildren,
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DashboardRoute: DashboardRoute,
+  ImportRoute: ImportRoute,
   LeavingSubstackRoute: LeavingSubstackRoute,
   LoginRoute: LoginRoute,
   LogoutRoute: LogoutRoute,
@@ -555,6 +627,7 @@ const rootRouteChildren: RootRouteChildren = {
   AtChar123handleChar125RkeyRoute: AtChar123handleChar125RkeyRoute,
   AtChar123handleChar125RssDotxmlRoute: AtChar123handleChar125RssDotxmlRoute,
   ApiDraftsRoute: ApiDraftsRoute,
+  ApiImportRoute: ApiImportRouteWithChildren,
   ApiPublishRoute: ApiPublishRoute,
   ApiReportRoute: ApiReportRoute,
   ApiStatsRoute: ApiStatsRoute,
