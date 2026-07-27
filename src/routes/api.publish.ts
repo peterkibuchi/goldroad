@@ -3,6 +3,7 @@ import type {} from "@atcute/atproto";
 import { Client } from "@atcute/client";
 import type { OAuthSession } from "@atcute/oauth-node-client";
 import { createFileRoute } from "@tanstack/react-router";
+import { drizzle } from "drizzle-orm/d1";
 
 import { type AssociatedRef, buildAnnouncePost } from "~/lib/announce";
 import {
@@ -22,6 +23,8 @@ import {
   MAX_IMAGE_BLOB_BYTES,
   thumbFromCover,
 } from "~/lib/blob";
+import { deleteDraft } from "~/lib/drafts";
+import { isDraftId } from "~/lib/drafts-schema";
 import { createOAuthClient } from "~/lib/oauth";
 import {
   CANONICAL_ORIGIN,
@@ -330,6 +333,17 @@ async function publishDocument({
   if (!res.ok) {
     console.error("createRecord failed", res.status, res.data);
     return backToWrite(`publish_failed:${res.data.error}`);
+  }
+
+  // A publish that started from an autosaved draft completes it: remove the
+  // draft row (ownership enforced in the delete's WHERE). Best-effort — the
+  // post is already live; a leftover draft costs one manual delete, never a
+  // failed publish.
+  const draftId = String(form.get("draftId") ?? "");
+  if (isDraftId(draftId)) {
+    await deleteDraft(drizzle(env.DB), did, draftId).catch((err) => {
+      console.warn("draft cleanup after publish failed", err);
+    });
   }
 
   // Success lands on the dashboard: the new post on top, a "view it live"

@@ -1,7 +1,8 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
-import { useEffect } from "react";
+import { drizzle } from "drizzle-orm/d1";
+import { useEffect, useState } from "react";
 
 import { formatDate } from "~/components/document-article";
 import { ExternalLink } from "~/components/external-link";
@@ -18,6 +19,7 @@ import {
   type StandardPublication,
 } from "~/lib/atproto";
 import { mapDashboardRows } from "~/lib/dashboard";
+import { listDrafts } from "~/lib/drafts";
 import { LEGACY_ORIGINS, ownOrigins } from "~/lib/origin";
 import { capture } from "~/lib/posthog";
 import { isOwnPublicationUrl, TID_RE } from "~/lib/publish";
@@ -68,6 +70,10 @@ const getDashboard = createServerFn({ method: "GET" })
     // distinguishable from "no posts yet" (rows: null) so we never greet a
     // writer whose PDS flaked with a scary empty state.
     const pds = await resolveDidToPds(did).catch(() => null);
+    // The writer's private drafts, from our own D1 (they are never in the
+    // repo — see /api/drafts). Best-effort: a failed read hides the section
+    // rather than failing the page; the drafts themselves are unaffected.
+    const draftRows = await listDrafts(drizzle(env.DB), did).catch(() => []);
     const [page, onLegacyUrl] = pds
       ? await Promise.all([
           listRecordsPage<StandardDocument>(
@@ -101,6 +107,13 @@ const getDashboard = createServerFn({ method: "GET" })
       rows: page ? mapDashboardRows(page.records) : null,
       nextCursor: page?.cursor ?? null,
       onLegacyUrl,
+      // ISO strings, not Dates: loader data must serialize identically on
+      // server and client.
+      drafts: draftRows.map((d) => ({
+        id: d.id,
+        title: d.title,
+        updatedAt: d.updatedAt.toISOString(),
+      })),
     };
   });
 
@@ -177,8 +190,97 @@ function AnnounceButton({
   );
 }
 
+type DraftListItem = { id: string; title: string; updatedAt: string };
+
+/**
+ * The writer's unpublished drafts — private to them, resumable in the editor.
+ * Delete is a fetch (the drafts API is JSON, unlike the form-posting publish
+ * intents) followed by a router invalidate to refresh the loader data;
+ * confirm-before-delete and destructive hover match the posts list.
+ */
+function DraftsSection({ drafts }: { drafts: DraftListItem[] }) {
+  const router = useRouter();
+  const [failed, setFailed] = useState(false);
+  if (drafts.length === 0) return null;
+
+  async function deleteDraft(draft: DraftListItem) {
+    const name = draft.title.trim() || "(untitled draft)";
+    if (!window.confirm(`Delete the draft "${name}"? This can't be undone.`))
+      return;
+    setFailed(false);
+    try {
+      const res = await fetch(
+        `/api/drafts?id=${encodeURIComponent(draft.id)}`,
+        { method: "DELETE" },
+      );
+      // 404 = already gone (another tab) — refreshing the list is the fix.
+      if (!res.ok && res.status !== 404) throw new Error(String(res.status));
+      await router.invalidate();
+    } catch {
+      setFailed(true);
+    }
+  }
+
+  return (
+    <section aria-labelledby="drafts-heading" className="mt-8">
+      <h2
+        className="border-rule border-b pb-2 font-display font-semibold text-ink-soft text-xs uppercase tracking-[0.08em]"
+        id="drafts-heading"
+      >
+        {drafts.length} {drafts.length === 1 ? "draft" : "drafts"} · only you
+        can see these
+      </h2>
+      {failed && (
+        <Notice tone="alert">
+          That draft couldn't be deleted right now. Try again.
+        </Notice>
+      )}
+      <ul>
+        {drafts.map((draft) => {
+          const date = formatDate(draft.updatedAt);
+          return (
+            <li
+              className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-rule border-b py-4"
+              key={draft.id}
+            >
+              <span>
+                <a
+                  className="font-semibold text-ink leading-snug hover:underline hover:underline-offset-4"
+                  href={`/write?draft=${encodeURIComponent(draft.id)}`}
+                >
+                  {draft.title.trim() || "(untitled draft)"}
+                </a>
+                {date && (
+                  <span className="ml-3 font-display text-ink-soft text-sm">
+                    <time dateTime={draft.updatedAt}>{date}</time>
+                  </span>
+                )}
+              </span>
+              <span className="flex flex-wrap items-center gap-x-4">
+                <a
+                  className="-my-2 inline-flex min-h-9 items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
+                  href={`/write?draft=${encodeURIComponent(draft.id)}`}
+                >
+                  Resume
+                </a>
+                <button
+                  className="-my-2 inline-flex min-h-9 cursor-pointer items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-spot"
+                  onClick={() => void deleteDraft(draft)}
+                  type="button"
+                >
+                  Delete
+                </button>
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
 function DashboardPage() {
-  const { ident, handle, rows, nextCursor, onLegacyUrl } =
+  const { ident, handle, rows, nextCursor, onLegacyUrl, drafts } =
     Route.useLoaderData();
   const { error, published, announced, deleted, moved, cursor } =
     Route.useSearch();
@@ -270,6 +372,8 @@ function DashboardPage() {
             )}
           </Notice>
         )}
+
+        <DraftsSection drafts={drafts} />
 
         {rows === null ? (
           <Notice tone="alert">
