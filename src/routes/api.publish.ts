@@ -25,6 +25,16 @@ import {
 } from "~/lib/blob";
 import { deleteDraft } from "~/lib/drafts";
 import { isDraftId } from "~/lib/drafts-schema";
+import {
+  clampOriginalDate,
+  extractFirstImageUrl,
+  fetchCoverCandidate,
+} from "~/lib/import";
+import {
+  adoptMirror,
+  selectImportItemByDraft,
+  setPublishedRkey,
+} from "~/lib/import-store";
 import { createOAuthClient } from "~/lib/oauth";
 import {
   CANONICAL_ORIGIN,
@@ -277,12 +287,36 @@ async function publishDocument({
       console.error("putRecord failed", res.status, res.data);
       return backToWrite(`publish_failed:${res.data.error}`, editRkey);
     }
+    // Adoption (mirrored posts only): the writer checked "make this the
+    // Goldroad original", so the mirror treatment (noindex + provenance
+    // line) stops. Best-effort — the edit itself already landed; a flaked
+    // flag clear is retried by saving the edit again.
+    if (form.get("adoptOriginal") === "1") {
+      await adoptMirror(drizzle(env.DB), did, editRkey).catch((err) => {
+        console.warn("mirror adoption failed", err);
+      });
+    }
     return redirectTo(`/@${encodeURIComponent(ident)}/${editRkey}`);
   }
 
+  // ---- Import provenance: a draft that arrived through the feed import
+  // carries a ledger row. Publishing it honors the original date — backdated
+  // publishedAt AND a backdated TID rkey, so the repo/archive ordering
+  // matches when the piece was actually written (accepted-risk decision:
+  // imported posts publish with their original date). Read is best-effort:
+  // if D1 flakes, the post publishes as a normal now-dated post rather than
+  // failing the writer's publish.
+  const draftId = String(form.get("draftId") ?? "");
+  const [importRow] = isDraftId(draftId)
+    ? await selectImportItemByDraft(drizzle(env.DB), did, draftId).catch(
+        () => [],
+      )
+    : [];
+  const originalAt = importRow ? clampOriginalDate(importRow.originalAt) : null;
+
   // ---- Create: attach to the writer's publication (auto-created on first
   // publish — name defaults to the handle; editable later in /settings) ----
-  const rkey = generateTid();
+  const rkey = originalAt ? generateTid(originalAt.getTime()) : generateTid();
   const publicationUrl = `${origin}/@${ident}`;
   let site = publicationUrl; // loose-document fallback: https publication URL
   if (pds) {
@@ -312,6 +346,32 @@ async function publishDocument({
     }
   }
 
+  // Imported posts without a writer-picked cover: try the post's first image
+  // as one, fetched server-side under the same SSRF regime as the feed
+  // (hop-validated, 1 MB stream cap, raster-only MIME) and uploaded as a
+  // proper record-referenced blob — the ONE image that survives the source
+  // deleting its CDN copies. Every miss is silent by design: a cover is
+  // nice-to-have, the publish is not.
+  if (!coverBlob && importRow) {
+    const imageUrl = extractFirstImageUrl(body);
+    const candidate = imageUrl
+      ? await fetchCoverCandidate(
+          imageUrl,
+          MAX_IMAGE_BLOB_BYTES,
+          isAllowedImageMime,
+        )
+      : null;
+    if (candidate) {
+      const uploaded = await rpc
+        .post("com.atproto.repo.uploadBlob", {
+          headers: { "content-type": candidate.mime },
+          input: new Blob([candidate.bytes], { type: candidate.mime }),
+        })
+        .catch(() => null);
+      if (uploaded?.ok) coverBlob = uploaded.data.blob;
+    }
+  }
+
   // Canonical URL composes as publication.url + path: …/@<ident> + /<rkey>.
   const record = buildDocumentRecord({
     title,
@@ -319,6 +379,7 @@ async function publishDocument({
     site,
     path: `/${rkey}`,
     coverImage: coverBlob,
+    publishedAt: originalAt ?? undefined,
   });
 
   const res = await rpc.post("com.atproto.repo.createRecord", {
@@ -335,11 +396,21 @@ async function publishDocument({
     return backToWrite(`publish_failed:${res.data.error}`);
   }
 
+  // Import ledger write-back: record the rkey this item published under —
+  // that row is what makes the reader page a "mirror" (noindex + provenance)
+  // and what keeps re-imports refusing the item as a duplicate. Best-effort:
+  // the record is already live; a flaked write-back costs the mirror
+  // treatment, never the publish.
+  if (importRow && isDraftId(draftId)) {
+    await setPublishedRkey(drizzle(env.DB), did, draftId, rkey).catch((err) => {
+      console.warn("import ledger write-back failed", err);
+    });
+  }
+
   // A publish that started from an autosaved draft completes it: remove the
   // draft row (ownership enforced in the delete's WHERE). Best-effort — the
   // post is already live; a leftover draft costs one manual delete, never a
   // failed publish.
-  const draftId = String(form.get("draftId") ?? "");
   if (isDraftId(draftId)) {
     await deleteDraft(drizzle(env.DB), did, draftId).catch((err) => {
       console.warn("draft cleanup after publish failed", err);

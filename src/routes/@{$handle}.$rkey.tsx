@@ -20,12 +20,13 @@ export const Route = createFileRoute("/@{$handle}/$rkey")({
 });
 
 function DocumentPage() {
-  const { doc, ident, publicationName, cover } = Route.useLoaderData();
+  const { doc, ident, publicationName, cover, mirror } = Route.useLoaderData();
   return (
     <DocumentArticle
       cover={cover}
       doc={doc}
       ident={ident}
+      mirror={mirror}
       publicationName={publicationName}
     />
   );

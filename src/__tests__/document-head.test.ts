@@ -102,6 +102,48 @@ describe("documentHead", () => {
   });
 });
 
+/**
+ * Mirrored posts (import ledger): the reader page must swap its canonical
+ * tag for noindex — search engines index the ORIGINAL, not our copy — while
+ * the at:// record tags stay (interop, not SEO).
+ */
+describe("documentHead — mirrored posts", () => {
+  const loaderData = {
+    doc: { title: "Mirrored", site: "https://goldroad.example/@w" },
+    ident: "writer.example",
+    atUri:
+      "at://did:plc:fake0000000000writer0000/site.standard.document/3abc2345678df",
+    canonicalUrl: "https://goldroad.example/@writer.example/3abc2345678df",
+    mirror: { sourceUrl: "https://writer.substack.com/p/mirrored" },
+  };
+
+  it("swaps the canonical link for robots noindex", () => {
+    const head = documentHead(loaderData);
+    expect(head.meta).toContainEqual({ name: "robots", content: "noindex" });
+    expect(head.links?.some((l) => l.rel === "canonical")).toBe(false);
+  });
+
+  it("keeps the at:// record link tags (interop is not SEO)", () => {
+    const { links } = documentHead(loaderData);
+    expect(links).toContainEqual({
+      rel: "site.standard.document",
+      href: loaderData.atUri,
+    });
+    expect(links).toContainEqual({ rel: "alternate", href: loaderData.atUri });
+  });
+
+  it("adopted/native posts (mirror null) keep the canonical, no noindex", () => {
+    const head = documentHead({ ...loaderData, mirror: null });
+    expect(head.links).toContainEqual({
+      rel: "canonical",
+      href: loaderData.canonicalUrl,
+    });
+    expect(head.meta?.some((m) => "name" in m && m.name === "robots")).toBe(
+      false,
+    );
+  });
+});
+
 describe("isHiddenNotFound — takedown marker on a thrown notFound", () => {
   it("is true only for a { hidden: true } payload", () => {
     expect(isHiddenNotFound({ hidden: true })).toBe(true);
