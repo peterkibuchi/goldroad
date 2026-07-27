@@ -142,6 +142,14 @@ export const Route = createFileRoute("/@{$handle}/")({
               { rel: "site.standard.publication", href: publicationAtUri },
             ]
           : []),
+        // Feed discovery — absolute, minted from the canonical origin so the
+        // advertised feed URL never depends on the serving hostname.
+        {
+          rel: "alternate",
+          type: "application/rss+xml",
+          title: `${title} — RSS`,
+          href: `${CANONICAL_ORIGIN}/@${encodeURIComponent(ident)}/rss.xml`,
+        },
       ],
     };
   },
@@ -232,6 +240,13 @@ function PublicationPage() {
               href={`${CANONICAL_ORIGIN}/`}
             >
               via Goldroad
+            </a>{" "}
+            ·{" "}
+            <a
+              className="transition-colors hover:text-ink"
+              href={`/@${encodeURIComponent(ident)}/rss.xml`}
+            >
+              RSS
             </a>{" "}
             · <ReportLink />
           </p>

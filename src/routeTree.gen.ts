@@ -28,6 +28,7 @@ import { Route as ApiWaitlistRouteImport } from './routes/api.waitlist'
 import { Route as ApiReportRouteImport } from './routes/api.report'
 import { Route as ApiPublishRouteImport } from './routes/api.publish'
 import { Route as ApiDraftsRouteImport } from './routes/api.drafts'
+import { Route as AtChar123handleChar125RssDotxmlRouteImport } from './routes/@{$handle}.rss[.]xml'
 import { Route as AtChar123handleChar125RkeyRouteImport } from './routes/@{$handle}.$rkey'
 import { Route as PHandleRkeyRouteImport } from './routes/p.$handle.$rkey'
 import { Route as ImgDidCidRouteImport } from './routes/img.$did.$cid'
@@ -129,6 +130,12 @@ const ApiDraftsRoute = ApiDraftsRouteImport.update({
   path: '/api/drafts',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AtChar123handleChar125RssDotxmlRoute =
+  AtChar123handleChar125RssDotxmlRouteImport.update({
+    id: '/@{$handle}/rss.xml',
+    path: '/@{$handle}/rss.xml',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const AtChar123handleChar125RkeyRoute =
   AtChar123handleChar125RkeyRouteImport.update({
     id: '/@{$handle}/$rkey',
@@ -159,6 +166,7 @@ export interface FileRoutesByFullPath {
   '/terms': typeof TermsRoute
   '/write': typeof WriteRoute
   '/@{$handle}/$rkey': typeof AtChar123handleChar125RkeyRoute
+  '/@{$handle}/rss.xml': typeof AtChar123handleChar125RssDotxmlRoute
   '/api/drafts': typeof ApiDraftsRoute
   '/api/publish': typeof ApiPublishRoute
   '/api/report': typeof ApiReportRoute
@@ -183,6 +191,7 @@ export interface FileRoutesByTo {
   '/terms': typeof TermsRoute
   '/write': typeof WriteRoute
   '/@{$handle}/$rkey': typeof AtChar123handleChar125RkeyRoute
+  '/@{$handle}/rss.xml': typeof AtChar123handleChar125RssDotxmlRoute
   '/api/drafts': typeof ApiDraftsRoute
   '/api/publish': typeof ApiPublishRoute
   '/api/report': typeof ApiReportRoute
@@ -208,6 +217,7 @@ export interface FileRoutesById {
   '/terms': typeof TermsRoute
   '/write': typeof WriteRoute
   '/@{$handle}/$rkey': typeof AtChar123handleChar125RkeyRoute
+  '/@{$handle}/rss.xml': typeof AtChar123handleChar125RssDotxmlRoute
   '/api/drafts': typeof ApiDraftsRoute
   '/api/publish': typeof ApiPublishRoute
   '/api/report': typeof ApiReportRoute
@@ -234,6 +244,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/write'
     | '/@{$handle}/$rkey'
+    | '/@{$handle}/rss.xml'
     | '/api/drafts'
     | '/api/publish'
     | '/api/report'
@@ -258,6 +269,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/write'
     | '/@{$handle}/$rkey'
+    | '/@{$handle}/rss.xml'
     | '/api/drafts'
     | '/api/publish'
     | '/api/report'
@@ -282,6 +294,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/write'
     | '/@{$handle}/$rkey'
+    | '/@{$handle}/rss.xml'
     | '/api/drafts'
     | '/api/publish'
     | '/api/report'
@@ -307,6 +320,7 @@ export interface RootRouteChildren {
   TermsRoute: typeof TermsRoute
   WriteRoute: typeof WriteRoute
   AtChar123handleChar125RkeyRoute: typeof AtChar123handleChar125RkeyRoute
+  AtChar123handleChar125RssDotxmlRoute: typeof AtChar123handleChar125RssDotxmlRoute
   ApiDraftsRoute: typeof ApiDraftsRoute
   ApiPublishRoute: typeof ApiPublishRoute
   ApiReportRoute: typeof ApiReportRoute
@@ -454,6 +468,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiDraftsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/@{$handle}/rss.xml': {
+      id: '/@{$handle}/rss.xml'
+      path: '/@{$handle}/rss.xml'
+      fullPath: '/@{$handle}/rss.xml'
+      preLoaderRoute: typeof AtChar123handleChar125RssDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/@{$handle}/$rkey': {
       id: '/@{$handle}/$rkey'
       path: '/@{$handle}/$rkey'
@@ -491,6 +512,7 @@ const rootRouteChildren: RootRouteChildren = {
   TermsRoute: TermsRoute,
   WriteRoute: WriteRoute,
   AtChar123handleChar125RkeyRoute: AtChar123handleChar125RkeyRoute,
+  AtChar123handleChar125RssDotxmlRoute: AtChar123handleChar125RssDotxmlRoute,
   ApiDraftsRoute: ApiDraftsRoute,
   ApiPublishRoute: ApiPublishRoute,
   ApiReportRoute: ApiReportRoute,
