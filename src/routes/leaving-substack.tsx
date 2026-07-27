@@ -219,11 +219,11 @@ export function LeavingSubstack() {
             Keep publishing on Substack, too.
           </h2>
           <p className="mt-4 max-w-[60ch] text-pretty text-ink-soft text-lg leading-relaxed">
-            Moving shouldn't mean burning the boat. Mirror mode will cross-post
-            from Goldroad to your existing Substack, so you can bring readers
-            over at your own pace instead of all at once. It's on the roadmap —
-            not shipped yet — and we'll keep saying so plainly right up to the
-            day it lands.
+            Moving shouldn't mean burning the boat. Mirror mode brings what you
+            publish on Substack over to Goldroad — your Substack stays exactly
+            as it is — so you can bring readers over at your own pace instead of
+            all at once. It's on the roadmap — not shipped yet — and we'll keep
+            saying so plainly right up to the day it lands.
           </p>
         </MarketingSection>
 
