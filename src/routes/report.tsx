@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ExternalLink } from "~/components/external-link";
 import { Notice } from "~/components/notice";
 import { AppShell } from "~/components/site-chrome";
+import { TURNSTILE_TOKEN_FIELD, TurnstileWidget } from "~/components/turnstile";
 
 /**
  * Report a page (moderation kit, audit #1). Pressroom register — we're speaking
@@ -34,6 +35,9 @@ function ReportForm({ initialUrl }: { initialUrl: string }) {
     const form = event.currentTarget;
     const data = new FormData(form);
     setState("sending");
+    // Present only when the Turnstile widget rendered (sitekey configured);
+    // without it the payload stays exactly the pre-Turnstile shape.
+    const turnstileToken = data.get(TURNSTILE_TOKEN_FIELD);
     try {
       const res = await fetch("/api/report", {
         body: JSON.stringify({
@@ -41,6 +45,9 @@ function ReportForm({ initialUrl }: { initialUrl: string }) {
           url: String(data.get("url") ?? ""),
           reason: String(data.get("reason") ?? ""),
           email: String(data.get("email") ?? ""),
+          ...(typeof turnstileToken === "string"
+            ? { [TURNSTILE_TOKEN_FIELD]: turnstileToken }
+            : {}),
         }),
         headers: { "content-type": "application/json" },
         method: "POST",
@@ -133,6 +140,8 @@ function ReportForm({ initialUrl }: { initialUrl: string }) {
       >
         {state === "sending" ? "Sending…" : "Send report"}
       </button>
+      {/* Anti-bot challenge — renders only when the sitekey env var is set. */}
+      <TurnstileWidget />
       {state === "error" && (
         <p className="font-display text-sm text-spot" role="alert">
           That didn't go through — check the URL and try again.

@@ -20,3 +20,21 @@ OAUTH_PRIVATE_KEY_JWK=""
 # absent = alerting is a silent no-op. In prod set it as a wrangler secret:
 #   echo "https://hooks.example/…" | pnpm wrangler secret put WEBHOOK_URL
 WEBHOOK_URL=""
+
+# OPTIONAL Cloudflare Turnstile secret for the waitlist + report forms.
+# Empty = no verification (the forms work exactly as without Turnstile).
+# Set it (plus the matching VITE_PUBLIC_TURNSTILE_SITE_KEY client var, see
+# .env.example) to require a solved challenge on /api/waitlist + /api/report.
+# Local testing: Cloudflare's always-passing test pair is
+#   sitekey 1x00000000000000000000AA / secret 1x0000000000000000000000000000000AA
+# In prod: echo "…" | pnpm wrangler secret put TURNSTILE_SECRET
+TURNSTILE_SECRET=""
+
+# OPTIONAL PostHog Query API credentials for the writer-stats endpoint
+# (/api/stats). Both empty = the endpoint answers { enabled: false } and no
+# upstream call is ever made. Set BOTH to turn it on:
+# - POSTHOG_QUERY_API_KEY: a PostHog personal API key with Query Read scope
+#   (prod: echo "…" | pnpm wrangler secret put POSTHOG_QUERY_API_KEY)
+# - POSTHOG_PROJECT_ID: the numeric PostHog project id the pageviews live in
+POSTHOG_QUERY_API_KEY=""
+POSTHOG_PROJECT_ID=""

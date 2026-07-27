@@ -32,6 +32,13 @@ describe("buildContentSecurityPolicy", () => {
     // Inline hydration/state scripts + injected styles, but never eval.
     expect(csp).toContain("'unsafe-inline'");
     expect(csp).not.toContain("'unsafe-eval'");
+    // Turnstile (optional anti-bot): api.js in script-src, challenge iframe
+    // in frame-src. Present unconditionally — harmless while the widget is
+    // off, load-bearing the moment the sitekey is set.
+    expect(csp).toContain("frame-src 'self' https://challenges.cloudflare.com");
+    expect(csp).toMatch(
+      /script-src [^;]*https:\/\/challenges\.cloudflare\.com/,
+    );
   });
 
   it("honors a reverse-proxied PostHog host without dropping the defaults", () => {

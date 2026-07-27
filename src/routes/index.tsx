@@ -10,6 +10,7 @@ import {
   RegMark,
 } from "~/components/marketing";
 import { SiteFooter, SiteHeader } from "~/components/site-chrome";
+import { TURNSTILE_TOKEN_FIELD, TurnstileWidget } from "~/components/turnstile";
 import { CANONICAL_ORIGIN } from "~/lib/origin";
 import { capture } from "~/lib/posthog";
 
@@ -183,11 +184,17 @@ function FoundingWritersForm() {
     const form = event.currentTarget;
     const data = new FormData(form);
     setState("sending");
+    // Present only when the Turnstile widget rendered (sitekey configured);
+    // without it the payload stays exactly the pre-Turnstile shape.
+    const turnstileToken = data.get(TURNSTILE_TOKEN_FIELD);
     try {
       const res = await fetch("/api/waitlist", {
         body: JSON.stringify({
           gr_extra: String(data.get("gr_extra") ?? ""),
           email: String(data.get("email") ?? ""),
+          ...(typeof turnstileToken === "string"
+            ? { [TURNSTILE_TOKEN_FIELD]: turnstileToken }
+            : {}),
         }),
         headers: { "content-type": "application/json" },
         method: "POST",
@@ -254,6 +261,8 @@ function FoundingWritersForm() {
       >
         {state === "sending" ? "Joining…" : "Count me in"}
       </button>
+      {/* Anti-bot challenge — renders only when the sitekey env var is set. */}
+      <TurnstileWidget />
       <p className="basis-full font-display text-ink-soft text-xs leading-normal">
         Just the occasional update as we build — and yours to leave anytime with
         one click.

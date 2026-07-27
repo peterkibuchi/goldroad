@@ -24,6 +24,12 @@ export const env = createEnv({
     VITE_PUBLIC_POSTHOG_KEY: z.string().min(1).optional(),
     /** PostHog ingestion host; defaults to https://us.i.posthog.com. */
     VITE_PUBLIC_POSTHOG_HOST: z.url().optional(),
+    /** Cloudflare Turnstile sitekey — the anti-bot widget on the waitlist and
+     * report forms renders only when this is set; absent means those forms
+     * behave exactly as before (no widget, no token). Pair with the
+     * TURNSTILE_SECRET Worker secret (see .dev.vars.example) or the server
+     * skips verification. */
+    VITE_PUBLIC_TURNSTILE_SITE_KEY: z.string().min(1).optional(),
   },
 
   /**
