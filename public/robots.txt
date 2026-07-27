@@ -1,3 +1,11 @@
 # https://www.robotstxt.org/robotstxt.html
+# Everything stays crawlable — reading surfaces (/@handle, /p/...) carry
+# writer-owned content whose reach is the point.
 User-agent: *
 Disallow:
+
+# First-party surfaces only; publications/documents are discovered via the
+# per-publication RSS feeds (/@handle/rss.xml) and the open network, not
+# enumerated (third-party-authored, unbounded). Self-hosters: point this at
+# your own origin (must be an absolute URL).
+Sitemap: https://trygoldroad.com/sitemap.xml
