@@ -33,8 +33,16 @@ describe("session token", () => {
 
   it("rejects a tampered signature", async () => {
     const token = await signSession(DID, SECRET);
-    const flipped = token.slice(0, -1) + (token.endsWith("A") ? "B" : "A");
-    expect(await verifySessionToken(flipped, SECRET)).toBeNull();
+    // Flip the signature's FIRST char, never its last: the final base64url
+    // char of a 32-byte HMAC carries only 2 significant bits, so a last-char
+    // flip (e.g. B→A) can decode to the SAME bytes and legitimately verify —
+    // that made this test flake ~23% of runs. The first char's 6 bits are all
+    // significant, so flipping it always changes the decoded signature.
+    const [payload, sig] = token.split(".");
+    const tampered = (sig[0] === "A" ? "B" : "A") + sig.slice(1);
+    expect(
+      await verifySessionToken(`${payload}.${tampered}`, SECRET),
+    ).toBeNull();
   });
 
   it("rejects a token signed with a different secret", async () => {
