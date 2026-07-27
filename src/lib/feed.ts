@@ -42,28 +42,36 @@ export function escapeXml(value: string): string {
     .replace(LONE_SURROGATE_RE, "\ufffd");
 }
 
-/** Hard bound on the markdown-stripping scan window. `textContent` arrives
- * from arbitrary PDSes with NO size cap, and the regex passes below must
- * never run over megabytes (the Workers CPU budget is ~10 ms/invocation,
- * and a feed strips up to 50 records). 2 KB of source comfortably yields a
- * ~300-char excerpt even after heavy markup stripping. */
+/** Hard bound on the default markdown-stripping scan window. Feed
+ * `textContent` arrives from arbitrary PDSes with NO size cap, and the regex
+ * passes in stripMarkdown must never run over megabytes (the Workers CPU
+ * budget is ~10 ms/invocation, and a feed strips up to 50 records). 2 KB of
+ * source comfortably yields a ~300-char excerpt even after heavy markup
+ * stripping. */
 const EXCERPT_SCAN_CHARS = 2048;
 
 /**
- * Best-effort plain-text head of a markdown/plaintext body, for feed item
- * descriptions when the record carries no explicit description. Lossy by
- * design: strips the common markdown constructs, collapses whitespace, and
- * truncates near `maxChars` on a word boundary with an ellipsis. The result
- * still goes through escapeXml at interpolation time.
+ * Best-effort markdown-to-plain-text strip: removes the common markdown
+ * constructs, collapses whitespace, trims. Lossy by design. Shared by the
+ * feed excerpts here and the document description excerpt in ~/lib/publish —
+ * it is the ONLY markdown strip in the codebase; don't fork it (the
+ * pre-hardening copies went quadratic on hostile input).
  *
- * The image/link patterns exclude `[` from the text class so a stray `[`
- * fails at the next bracket instead of scanning to the end of the input —
- * with the scan window above, hostile bracket floods stay cheap instead of
- * going quadratic.
+ * Hardening, in two layers:
+ * - `scanChars` bounds the window the regexes run over. The default suits
+ *   unbounded third-party input; callers whose input is already
+ *   length-validated may pass their validated bound instead.
+ * - The image/link patterns exclude `[` from the text class and `(`/`)` from
+ *   the URL class, so a stray bracket fails at the next bracket instead of
+ *   scanning to the end of the input — hostile bracket floods stay linear
+ *   instead of going quadratic, whatever the window.
  */
-export function plainTextExcerpt(text: string, maxChars = 300): string {
-  const plain = text
-    .slice(0, EXCERPT_SCAN_CHARS)
+export function stripMarkdown(
+  text: string,
+  scanChars = EXCERPT_SCAN_CHARS,
+): string {
+  return text
+    .slice(0, scanChars)
     .replace(/```[\s\S]*?(```|$)/g, " ") // fenced code blocks
     .replace(/`([^`]*)`/g, "$1") // inline code
     .replace(/!\[([^[\]]*)\]\([^()]*\)/g, "$1") // images → alt text
@@ -74,6 +82,16 @@ export function plainTextExcerpt(text: string, maxChars = 300): string {
     .replace(/(\*{1,3}|_{1,3}|~~)/g, "") // emphasis markers
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/**
+ * Best-effort plain-text head of a markdown/plaintext body, for feed item
+ * descriptions when the record carries no explicit description: the shared
+ * strip above, truncated near `maxChars` on a word boundary with an
+ * ellipsis. The result still goes through escapeXml at interpolation time.
+ */
+export function plainTextExcerpt(text: string, maxChars = 300): string {
+  const plain = stripMarkdown(text);
   if (plain.length <= maxChars) return plain;
   const cut = plain.slice(0, maxChars);
   const lastSpace = cut.lastIndexOf(" ");
