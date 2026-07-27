@@ -15,8 +15,10 @@
  * critical bundle — events fired before it loads are queued on the promise.
  *
  * Events (beyond `defaults`-captured pageviews): waitlist_joined,
- * post_published, post_announced. Property policy: nothing beyond DID/handle
- * + the post rkey (public data — the rkey is already in the post's URL).
+ * post_published, post_announced, and autocaptured $exception (error
+ * tracking; the worker-side counterpart lives in ~/lib/error-tracking).
+ * Property policy: nothing beyond DID/handle + the post rkey (public data —
+ * the rkey is already in the post's URL).
  */
 import { env } from "#/env";
 
@@ -53,6 +55,10 @@ function load(): Promise<PostHogClient | null> {
       // 2025-05-24 defaults: history-change pageviews (SPA navigations count).
       defaults: "2025-05-24",
       persistence: "memory",
+      // Error tracking: unhandled window errors + promise rejections become
+      // $exception events. Same key gate as everything else here, and
+      // before_send stamps app_env on these too.
+      capture_exceptions: true,
       before_send: (event) => stampAppEnv(event, window.location.hostname),
     });
     return posthog;
