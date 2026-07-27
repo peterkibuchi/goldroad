@@ -15,6 +15,11 @@
 
 const POSTHOG_INGEST = "https://us.i.posthog.com";
 const POSTHOG_ASSETS = "https://us-assets.i.posthog.com";
+/** Cloudflare Turnstile (env-gated anti-bot on the waitlist/report forms)
+ * loads its script from and renders its challenge iframe on this origin.
+ * Allowed unconditionally: harmless while the widget is off (nothing loads
+ * it), required the moment VITE_PUBLIC_TURNSTILE_SITE_KEY is set. */
+const TURNSTILE_ORIGIN = "https://challenges.cloudflare.com";
 
 /**
  * Content-Security-Policy for the app's HTML. Built empirically against what
@@ -32,6 +37,10 @@ const POSTHOG_ASSETS = "https://us-assets.i.posthog.com";
  * - PostHog hosts (optional analytics) are allowed in script-/connect-src; the
  *   directives are harmless when no key is set. `posthogHost` overrides the
  *   ingest origin (VITE_PUBLIC_POSTHOG_HOST) for reverse-proxied setups.
+ * - Turnstile (optional anti-bot) needs script-src for api.js and frame-src
+ *   for the challenge iframe. frame-src is stated explicitly because adding
+ *   the Turnstile origin means default-src no longer covers it; 'self' is
+ *   kept so a future same-origin frame doesn't silently break.
  */
 export function buildContentSecurityPolicy(
   posthogHost: string = POSTHOG_INGEST,
@@ -47,7 +56,8 @@ export function buildContentSecurityPolicy(
     "form-action 'self'",
     "img-src 'self' data: blob: https:",
     "font-src 'self'",
-    `script-src 'self' 'unsafe-inline' ${posthog}`,
+    `frame-src 'self' ${TURNSTILE_ORIGIN}`,
+    `script-src 'self' 'unsafe-inline' ${posthog} ${TURNSTILE_ORIGIN}`,
     "style-src 'self' 'unsafe-inline'",
     `connect-src 'self' ${posthog}`,
     "upgrade-insecure-requests",

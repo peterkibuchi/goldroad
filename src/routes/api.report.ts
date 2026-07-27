@@ -4,6 +4,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { reports } from "~/db/schema";
 import { readBodyCapped } from "~/lib/blob";
 import { reportPayload } from "~/lib/report-schema";
+import { checkTurnstile, tokenFromBody } from "~/lib/turnstile";
 import { env } from "cloudflare:workers";
 
 /** Hard cap on the request body — a report is small (url + a short note).
@@ -19,11 +20,11 @@ const bad = () =>
  * a hard body cap (streamed via readBodyCapped, like /img). A human triages
  * `reports` against the hidden_content list.
  *
- * ACCEPTED RISK until the owner lands anti-abuse: this endpoint is
- * unauthenticated and has NO server-side rate limit yet — the body cap and
- * honeypot are the only throttles. OWNER ACTIONS: verify a Turnstile token
- * before the insert (integration point below) and add the single free CF
- * rate-limit rule on this path. Don't assume a throttle exists until those land.
+ * Anti-abuse: body cap + honeypot always; a Turnstile check additionally
+ * gates the insert when the TURNSTILE_SECRET Worker secret is set (see
+ * ~/lib/turnstile — absent secret means passthrough, i.e. the pre-Turnstile
+ * behavior). REMAINING OWNER ACTION: this endpoint still has no server-side
+ * rate limit — add the single free CF rate-limit rule on this path.
  */
 export const Route = createFileRoute("/api/report")({
   server: {
@@ -40,9 +41,15 @@ export const Route = createFileRoute("/api/report")({
         const parsed = reportPayload.safeParse(body);
         if (!parsed.success) return bad();
 
-        // TURNSTILE INTEGRATION POINT (owner action): when TURNSTILE_SECRET is
-        // wired, verify parsed.data's token against siteverify here and 400 on
-        // failure — before the insert, so a solved challenge gates the write.
+        // Turnstile, env-gated: no secret → passthrough; secret set → a
+        // verified token must gate the write. Failure answers the same
+        // indistinguishable 400 as the schema/honeypot path.
+        const human = await checkTurnstile(
+          env.TURNSTILE_SECRET,
+          tokenFromBody(body),
+          request.headers.get("cf-connecting-ip"),
+        );
+        if (!human) return bad();
 
         const { url, reason } = parsed.data;
         const email = parsed.data.email ? parsed.data.email : null;
