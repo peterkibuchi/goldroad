@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WriteRouteImport } from './routes/write'
 import { Route as TermsRouteImport } from './routes/terms'
+import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ReportRouteImport } from './routes/report'
 import { Route as PrivacyRouteImport } from './routes/privacy'
@@ -41,6 +42,11 @@ const WriteRoute = WriteRouteImport.update({
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
   path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
+  id: '/sitemap.xml',
+  path: '/sitemap.xml',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -163,6 +169,7 @@ export interface FileRoutesByFullPath {
   '/privacy': typeof PrivacyRoute
   '/report': typeof ReportRoute
   '/settings': typeof SettingsRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
   '/write': typeof WriteRoute
   '/@{$handle}/$rkey': typeof AtChar123handleChar125RkeyRoute
@@ -188,6 +195,7 @@ export interface FileRoutesByTo {
   '/privacy': typeof PrivacyRoute
   '/report': typeof ReportRoute
   '/settings': typeof SettingsRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
   '/write': typeof WriteRoute
   '/@{$handle}/$rkey': typeof AtChar123handleChar125RkeyRoute
@@ -214,6 +222,7 @@ export interface FileRoutesById {
   '/privacy': typeof PrivacyRoute
   '/report': typeof ReportRoute
   '/settings': typeof SettingsRoute
+  '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
   '/write': typeof WriteRoute
   '/@{$handle}/$rkey': typeof AtChar123handleChar125RkeyRoute
@@ -241,6 +250,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/report'
     | '/settings'
+    | '/sitemap.xml'
     | '/terms'
     | '/write'
     | '/@{$handle}/$rkey'
@@ -266,6 +276,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/report'
     | '/settings'
+    | '/sitemap.xml'
     | '/terms'
     | '/write'
     | '/@{$handle}/$rkey'
@@ -291,6 +302,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/report'
     | '/settings'
+    | '/sitemap.xml'
     | '/terms'
     | '/write'
     | '/@{$handle}/$rkey'
@@ -317,6 +329,7 @@ export interface RootRouteChildren {
   PrivacyRoute: typeof PrivacyRoute
   ReportRoute: typeof ReportRoute
   SettingsRoute: typeof SettingsRoute
+  SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TermsRoute: typeof TermsRoute
   WriteRoute: typeof WriteRoute
   AtChar123handleChar125RkeyRoute: typeof AtChar123handleChar125RkeyRoute
@@ -347,6 +360,13 @@ declare module '@tanstack/react-router' {
       path: '/terms'
       fullPath: '/terms'
       preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sitemap.xml': {
+      id: '/sitemap.xml'
+      path: '/sitemap.xml'
+      fullPath: '/sitemap.xml'
+      preLoaderRoute: typeof SitemapDotxmlRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -509,6 +529,7 @@ const rootRouteChildren: RootRouteChildren = {
   PrivacyRoute: PrivacyRoute,
   ReportRoute: ReportRoute,
   SettingsRoute: SettingsRoute,
+  SitemapDotxmlRoute: SitemapDotxmlRoute,
   TermsRoute: TermsRoute,
   WriteRoute: WriteRoute,
   AtChar123handleChar125RkeyRoute: AtChar123handleChar125RkeyRoute,
