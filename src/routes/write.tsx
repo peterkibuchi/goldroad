@@ -252,7 +252,7 @@ export function SignIn({
         >
           Create a free account
         </ExternalLink>{" "}
-        — it becomes your byline here.
+        — it's the account you'll sign in and publish with here.
       </p>
     </main>
   );
