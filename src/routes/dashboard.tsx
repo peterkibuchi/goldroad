@@ -2,7 +2,7 @@ import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { drizzle } from "drizzle-orm/d1";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { formatDate } from "~/components/document-article";
 import { ExternalLink } from "~/components/external-link";
@@ -193,6 +193,130 @@ function AnnounceButton({
         {label ?? "Announce on Bluesky"}
       </button>
     </form>
+  );
+}
+
+/**
+ * Confirm-before-delete for a published post. Non-announced posts keep the
+ * plain window.confirm. Announced posts get a real dialog instead: deleting
+ * the document does NOT delete the Bluesky announcement (a separate record
+ * in the writer's repo), so its card would point at a page that no longer
+ * exists — that consequence needs plain words and a direct link to the
+ * Bluesky post, which a confirm() line can't carry.
+ * Exported for tests (dashboard-delete.test.tsx) — not a route.
+ */
+export function DeletePostForm({
+  rkey,
+  title,
+  announced,
+}: {
+  rkey: string;
+  title: string;
+  announced: { did: string; postRkey: string } | null;
+}) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  // Set when the dialog's Delete button approved the submit, so the
+  // re-entrant requestSubmit below passes straight through this handler.
+  const approvedRef = useRef(false);
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    if (approvedRef.current) return;
+    if (announced) {
+      event.preventDefault();
+      dialogRef.current?.showModal();
+      // Focus lands on the safe action, not the destructive one (or the
+      // link, which showModal would otherwise pick as first-focusable).
+      cancelRef.current?.focus();
+      return;
+    }
+    if (
+      !window.confirm(`Delete "${title}" from your repo? This can't be undone.`)
+    )
+      event.preventDefault();
+  }
+
+  return (
+    <>
+      <form
+        action="/api/publish"
+        className="inline"
+        method="post"
+        onSubmit={handleSubmit}
+        ref={formRef}
+      >
+        <input name="intent" type="hidden" value="delete" />
+        <input name="rkey" type="hidden" value={rkey} />
+        <button
+          className="-my-2 inline-flex min-h-9 cursor-pointer items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-spot"
+          type="submit"
+        >
+          Delete
+        </button>
+      </form>
+      {announced && (
+        /* Native <dialog>: showModal gives the focus trap, Esc-to-close, and
+           inert background for free. */
+        <dialog
+          aria-describedby={`delete-desc-${rkey}`}
+          aria-labelledby={`delete-title-${rkey}`}
+          className="m-auto w-full max-w-md border-2 border-ink bg-paper p-6 text-ink backdrop:bg-ink/50"
+          ref={dialogRef}
+          role="alertdialog"
+        >
+          <h2
+            className="font-black font-display text-ink text-xl tracking-tight"
+            id={`delete-title-${rkey}`}
+          >
+            Delete "{title}"?
+          </h2>
+          <p
+            className="mt-3 text-ink-soft leading-relaxed"
+            id={`delete-desc-${rkey}`}
+          >
+            This deletes the post from your repo — it can't be undone. Your
+            announcement on Bluesky is a separate post and stays up: its card
+            will point to a page that no longer exists.
+          </p>
+          <p className="mt-2 font-display text-sm">
+            <ExternalLink
+              className="underline underline-offset-2 transition-colors hover:text-spot"
+              href={`https://bsky.app/profile/${encodeURIComponent(announced.did)}/post/${encodeURIComponent(announced.postRkey)}`}
+            >
+              View the Bluesky post
+            </ExternalLink>{" "}
+            <span className="text-ink-soft">
+              — you can delete it there too.
+            </span>
+          </p>
+          <div className="mt-6 flex flex-wrap items-center gap-4">
+            <button
+              className="min-h-11 cursor-pointer bg-spot px-6 font-bold font-display text-base text-paper transition-colors hover:bg-ink"
+              onClick={() => {
+                approvedRef.current = true;
+                dialogRef.current?.close();
+                formRef.current?.requestSubmit();
+                // The submit event dispatches synchronously above; re-arm the
+                // confirm in case the navigation never happens (network fail).
+                approvedRef.current = false;
+              }}
+              type="button"
+            >
+              Delete the post
+            </button>
+            <button
+              className="min-h-11 cursor-pointer font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
+              onClick={() => dialogRef.current?.close()}
+              ref={cancelRef}
+              type="button"
+            >
+              Cancel
+            </button>
+          </div>
+        </dialog>
+      )}
+    </>
   );
 }
 
@@ -469,28 +593,11 @@ function DashboardPage() {
                         ) : (
                           <AnnounceButton label="Announce" rkey={row.rkey} />
                         )}
-                        <form
-                          action="/api/publish"
-                          className="inline"
-                          method="post"
-                          onSubmit={(event) => {
-                            if (
-                              !window.confirm(
-                                `Delete "${row.title}" from your repo? This can't be undone.`,
-                              )
-                            )
-                              event.preventDefault();
-                          }}
-                        >
-                          <input name="intent" type="hidden" value="delete" />
-                          <input name="rkey" type="hidden" value={row.rkey} />
-                          <button
-                            className="-my-2 inline-flex min-h-9 cursor-pointer items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-spot"
-                            type="submit"
-                          >
-                            Delete
-                          </button>
-                        </form>
+                        <DeletePostForm
+                          announced={row.announced}
+                          rkey={row.rkey}
+                          title={row.title}
+                        />
                       </span>
                     </div>
                   </li>
@@ -511,7 +618,7 @@ function DashboardPage() {
         ) : (
           <div className="mt-10 border-2 border-ink p-8">
             <h2 className="font-black font-display text-ink text-xl tracking-tight">
-              The presses are ready.
+              No posts yet.
             </h2>
             <p className="mt-3 max-w-[52ch] text-ink-soft leading-relaxed">
               Your first post publishes straight to your own data repo and goes
