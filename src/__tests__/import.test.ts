@@ -36,7 +36,8 @@ describe("assertImportableUrl", () => {
     "https://writer.substack.com:8443/feed", // explicit port
     "https://127.0.0.1/feed", // IP literal
     "https://localhost/feed", // single label
-    "https://user:pass@writer.example/feed", // userinfo
+    // Fake credentials in a URL we assert is REFUSED — not a real secret.
+    "https://user:pass@writer.example/feed", // userinfo — trufflehog:ignore
     "ftp://writer.example/feed", // wrong scheme
     "not a url",
   ])("refuses %s", (url) => {
