@@ -244,6 +244,18 @@ describe("/api/import — feed resolution", () => {
     expect(((await res.json()) as { error: string }).error).toBe("not_a_feed");
   });
 
+  it("maps an upstream 429 to upstream_blocked (Substack refuses our egress)", async () => {
+    stubFetch({
+      "https://writer.substack.com/feed": () =>
+        new Response("Too Many Requests", { status: 429 }),
+    });
+    const res = await callImport({ url: "https://writer.substack.com/feed" });
+    expect(res.status).toBe(502);
+    expect(((await res.json()) as { error: string }).error).toBe(
+      "upstream_blocked",
+    );
+  });
+
   it("502s when the host is unreachable", async () => {
     vi.stubGlobal(
       "fetch",

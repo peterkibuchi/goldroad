@@ -43,12 +43,11 @@ import {
   parseFeedDocument,
   readFeedBody,
 } from "~/lib/import";
+import { computeImportedSet } from "~/lib/import-flags";
 import {
   countRecentImportFetches,
   insertImportFetch,
   pruneImportFetches,
-  selectImportItems,
-  selectLiveDraftIds,
 } from "~/lib/import-store";
 import { readSessionDid } from "~/lib/session";
 import { env } from "cloudflare:workers";
@@ -74,6 +73,8 @@ function importErrorResponse(err: ImportError): Response {
       return json({ ok: false, error: "invalid_url" }, 400);
     case "feed_too_large":
       return json({ ok: false, error: "feed_too_large" }, 413);
+    case "upstream_blocked":
+      return json({ ok: false, error: "upstream_blocked" }, 502);
     case "too_many_redirects":
     case "fetch_failed":
       return json({ ok: false, error: "fetch_failed" }, 502);
@@ -91,6 +92,10 @@ async function resolveFeed(
   urlString: string,
 ): Promise<{ feed: ParsedFeed; feedUrl: string }> {
   const { res, finalUrl } = await fetchImportable(urlString);
+  // 429 = the host is refusing us specifically (Substack does, for all
+  // Workers egress) — a retry can't fix it, so it gets its own code and the
+  // page points at the export upload instead.
+  if (res.status === 429) throw new ImportError("upstream_blocked");
   if (!res.ok) throw new ImportError("fetch_failed");
   const body = await readFeedBody(res);
   const feed = parseFeedDocument(body);
@@ -155,34 +160,17 @@ export const Route = createFileRoute("/api/import")({
           return json({ ok: false, error: "fetch_failed" }, 502);
         }
 
-        // Already-imported flags: hash every item's guid, one IN() against
-        // the ledger. A row whose draft was deleted before publishing does
-        // NOT count as imported — the writer discarded it; re-importing is
-        // their honest path back.
+        // Already-imported flags: hash every item's guid, then the shared
+        // ledger rule (~/lib/import-flags — published or still-live-draft
+        // counts; a discarded draft's row does not).
         const { feed, feedUrl } = resolved;
         const hashes = await Promise.all(
           feed.items.map((item) => guidHash(item.guid)),
         );
-        const ledger =
-          hashes.length > 0 ? await selectImportItems(db, did, hashes) : [];
-        const unpublishedDraftIds = ledger
-          .filter((row) => !row.publishedRkey && row.draftId)
-          .map((row) => row.draftId as string);
-        const liveDrafts = new Set(
-          (unpublishedDraftIds.length > 0
-            ? await selectLiveDraftIds(db, did, unpublishedDraftIds)
-            : []
-          ).map((row) => row.id),
-        );
-        const imported = new Set(
-          ledger
-            .filter(
-              (row) =>
-                row.publishedRkey !== null ||
-                (row.draftId !== null && liveDrafts.has(row.draftId)),
-            )
-            .map((row) => row.guidHash),
-        );
+        const imported =
+          hashes.length > 0
+            ? await computeImportedSet(db, did, hashes)
+            : new Set<string>();
 
         const [{ n: draftCount }] = await countDrafts(db, did);
         return json({

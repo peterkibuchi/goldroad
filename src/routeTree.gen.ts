@@ -36,6 +36,7 @@ import { Route as AtChar123handleChar125RssDotxmlRouteImport } from './routes/@{
 import { Route as AtChar123handleChar125RkeyRouteImport } from './routes/@{$handle}.$rkey'
 import { Route as PHandleRkeyRouteImport } from './routes/p.$handle.$rkey'
 import { Route as ImgDidCidRouteImport } from './routes/img.$did.$cid'
+import { Route as ApiImportStatusRouteImport } from './routes/api.import.status'
 import { Route as ApiImportDraftRouteImport } from './routes/api.import.draft'
 
 const WriteRoute = WriteRouteImport.update({
@@ -177,6 +178,11 @@ const ImgDidCidRoute = ImgDidCidRouteImport.update({
   path: '/img/$did/$cid',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiImportStatusRoute = ApiImportStatusRouteImport.update({
+  id: '/status',
+  path: '/status',
+  getParentRoute: () => ApiImportRoute,
+} as any)
 const ApiImportDraftRoute = ApiImportDraftRouteImport.update({
   id: '/draft',
   path: '/draft',
@@ -210,6 +216,7 @@ export interface FileRoutesByFullPath {
   '/oauth/jwks.json': typeof OauthJwksDotjsonRoute
   '/@{$handle}/': typeof AtChar123handleChar125IndexRoute
   '/api/import/draft': typeof ApiImportDraftRoute
+  '/api/import/status': typeof ApiImportStatusRoute
   '/img/$did/$cid': typeof ImgDidCidRoute
   '/p/$handle/$rkey': typeof PHandleRkeyRoute
 }
@@ -240,6 +247,7 @@ export interface FileRoutesByTo {
   '/oauth/jwks.json': typeof OauthJwksDotjsonRoute
   '/@{$handle}': typeof AtChar123handleChar125IndexRoute
   '/api/import/draft': typeof ApiImportDraftRoute
+  '/api/import/status': typeof ApiImportStatusRoute
   '/img/$did/$cid': typeof ImgDidCidRoute
   '/p/$handle/$rkey': typeof PHandleRkeyRoute
 }
@@ -271,6 +279,7 @@ export interface FileRoutesById {
   '/oauth/jwks.json': typeof OauthJwksDotjsonRoute
   '/@{$handle}/': typeof AtChar123handleChar125IndexRoute
   '/api/import/draft': typeof ApiImportDraftRoute
+  '/api/import/status': typeof ApiImportStatusRoute
   '/img/$did/$cid': typeof ImgDidCidRoute
   '/p/$handle/$rkey': typeof PHandleRkeyRoute
 }
@@ -303,6 +312,7 @@ export interface FileRouteTypes {
     | '/oauth/jwks.json'
     | '/@{$handle}/'
     | '/api/import/draft'
+    | '/api/import/status'
     | '/img/$did/$cid'
     | '/p/$handle/$rkey'
   fileRoutesByTo: FileRoutesByTo
@@ -333,6 +343,7 @@ export interface FileRouteTypes {
     | '/oauth/jwks.json'
     | '/@{$handle}'
     | '/api/import/draft'
+    | '/api/import/status'
     | '/img/$did/$cid'
     | '/p/$handle/$rkey'
   id:
@@ -363,6 +374,7 @@ export interface FileRouteTypes {
     | '/oauth/jwks.json'
     | '/@{$handle}/'
     | '/api/import/draft'
+    | '/api/import/status'
     | '/img/$did/$cid'
     | '/p/$handle/$rkey'
   fileRoutesById: FileRoutesById
@@ -588,6 +600,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ImgDidCidRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/import/status': {
+      id: '/api/import/status'
+      path: '/status'
+      fullPath: '/api/import/status'
+      preLoaderRoute: typeof ApiImportStatusRouteImport
+      parentRoute: typeof ApiImportRoute
+    }
     '/api/import/draft': {
       id: '/api/import/draft'
       path: '/draft'
@@ -600,10 +619,12 @@ declare module '@tanstack/react-router' {
 
 interface ApiImportRouteChildren {
   ApiImportDraftRoute: typeof ApiImportDraftRoute
+  ApiImportStatusRoute: typeof ApiImportStatusRoute
 }
 
 const ApiImportRouteChildren: ApiImportRouteChildren = {
   ApiImportDraftRoute: ApiImportDraftRoute,
+  ApiImportStatusRoute: ApiImportStatusRoute,
 }
 
 const ApiImportRouteWithChildren = ApiImportRoute._addFileChildren(
