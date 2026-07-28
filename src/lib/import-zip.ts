@@ -52,6 +52,20 @@ export const MAX_ENTRY_BYTES = 2 * 1024 * 1024;
 /** Whole-run inflated budget across all entries — the zip-bomb backstop. */
 export const MAX_TOTAL_INFLATED_BYTES = 100 * 1024 * 1024;
 
+/**
+ * Total central-directory entries tolerated. Each per-entry inflation walks
+ * the whole directory again (fflate has no directory cache), so entry COUNT —
+ * not just bytes — is attack surface: ~100 bytes buys an empty entry, and a
+ * 50 MB zip could carry ~400k of them, turning the parse quadratic and
+ * hanging the tab. A real Substack export carries a handful of files per
+ * post (HTML + per-post stats CSVs); 10k entries is generous, not permissive.
+ */
+export const MAX_ZIP_ENTRIES = 10_000;
+
+/** The archive was refused before any entry was inflated — too many entries
+ * to be a Substack posts export. The page shows its own copy for this. */
+export class ExportTooComplexError extends Error {}
+
 export type ZipPostFailure = {
   name: string;
   reason: "corrupt" | "too_large";
@@ -79,7 +93,8 @@ export type ParsedExport = {
   posts: ZipPost[];
   csvFound: boolean;
   failures: ZipPostFailure[];
-  /** Posts found beyond MAX_EXPORT_POSTS and cut from `posts`. */
+  /** Posts found beyond MAX_EXPORT_POSTS: counted in the archive's own
+   * order and never inflated — only the cap's worth of entries is read. */
   truncated: number;
 };
 
@@ -267,9 +282,12 @@ class EntryTooLargeError extends Error {}
 
 /**
  * The whole export → picker-ready posts. Throws only when the bytes aren't a
- * readable zip at all; everything past that degrades per-item. Entries are
- * inflated ONE AT A TIME so a single corrupt stream (or an oversize claim)
- * costs that post alone, never the archive.
+ * readable zip at all, or carry more entries than a posts export plausibly
+ * would (ExportTooComplexError — refused BEFORE any inflation, because each
+ * per-entry inflation re-walks the directory and entry count is what would
+ * make that quadratic). Everything past those two gates degrades per-item:
+ * entries are inflated ONE AT A TIME so a single corrupt stream (or an
+ * oversize claim) costs that post alone, never the archive.
  */
 export function parseSubstackExport(bytes: Uint8Array): ParsedExport {
   // Listing pass: names + declared sizes only, nothing inflated.
@@ -280,6 +298,7 @@ export function parseSubstackExport(bytes: Uint8Array): ParsedExport {
       return false;
     },
   });
+  if (entryNames.length > MAX_ZIP_ENTRIES) throw new ExportTooComplexError();
 
   const decoder = new TextDecoder();
   let inflatedBudget = MAX_TOTAL_INFLATED_BYTES;
@@ -300,13 +319,22 @@ export function parseSubstackExport(bytes: Uint8Array): ParsedExport {
     }
   }
 
-  const failures: ZipPostFailure[] = [];
-  const posts: ZipPost[] = [];
+  // Candidates first (names only, no inflation), deduped by post id — the
+  // archive cap applies HERE, before any per-entry work, so posts past it
+  // cost nothing but the count reported honestly as `truncated`.
+  const candidates: { name: string; postId: string }[] = [];
   const seen = new Set<string>();
   for (const name of entryNames) {
     const postId = postIdOf(name);
     if (!postId || seen.has(postId)) continue;
     seen.add(postId);
+    candidates.push({ name, postId });
+  }
+  const truncated = Math.max(0, candidates.length - MAX_EXPORT_POSTS);
+
+  const failures: ZipPostFailure[] = [];
+  const posts: ZipPost[] = [];
+  for (const { name, postId } of candidates.slice(0, MAX_EXPORT_POSTS)) {
     let html: string;
     try {
       html = decoder.decode(inflate(name, MAX_ENTRY_BYTES));
@@ -346,9 +374,8 @@ export function parseSubstackExport(bytes: Uint8Array): ParsedExport {
     );
   });
 
-  const truncated = Math.max(0, posts.length - MAX_EXPORT_POSTS);
   return {
-    posts: posts.slice(0, MAX_EXPORT_POSTS),
+    posts,
     csvFound: csv !== null,
     failures,
     truncated,
