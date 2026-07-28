@@ -136,6 +136,32 @@ export function setPublishedRkey(
     .returning({ id: importItems.id });
 }
 
+/**
+ * Record-deletion cleanup: when a published document is deleted from the
+ * writer's repo, its ledger row must stop counting as "imported" — otherwise
+ * the guid is refused as a duplicate forever and the item can never come
+ * back. Clears the publish state (rkey, dangling draft id, adoption) but
+ * keeps the row itself, so a later re-import walks the same revive path as
+ * a discarded draft. Matches zero rows for never-imported documents — safe
+ * to call for every delete.
+ */
+export function clearPublishedImport(
+  db: DrizzleD1,
+  did: string,
+  publishedRkey: string,
+) {
+  return db
+    .update(importItems)
+    .set({ publishedRkey: null, draftId: null, adoptedAt: null })
+    .where(
+      and(
+        eq(importItems.did, did),
+        eq(importItems.publishedRkey, publishedRkey),
+      ),
+    )
+    .returning({ id: importItems.id });
+}
+
 /** Adoption: the writer makes the post the Goldroad original — the mirror
  * treatment (noindex + provenance line) stops; the row stays for dedupe. */
 export function adoptMirror(
