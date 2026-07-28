@@ -168,13 +168,14 @@ export function LeavingSubstack() {
             <Kicker>Coming from Substack?</Kicker>
             <h1 className="mt-5 max-w-[18ch] text-balance font-black font-display text-4xl text-ink leading-[1.05] tracking-tight md:text-6xl">
               Bring your readers.{" "}
-              <span className="spot-highlight">Drop the 10%.</span>
+              <span className="spot-highlight">Keep the 10%</span> Substack
+              takes.
             </h1>
             <p className="mt-6 max-w-[54ch] text-pretty font-body text-ink-soft text-lg italic md:text-xl">
               Goldroad is writer-owned publishing on the open network: your
               writing on a page you own, your subscriber list in your hands, and
-              — once reader payments ship — your money through your own Stripe,
-              with nothing skimmed off the top.
+              — once reader payments ship — your money through your own Stripe.
+              Substack takes 10% of what readers pay you; we take 0%.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3">
               <CtaLink href="/#join">Join the founding writers</CtaLink>
