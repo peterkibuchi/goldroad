@@ -83,3 +83,27 @@ export function mapDashboardRows(
         (a.rkey < b.rkey ? 1 : -1),
     );
 }
+
+export type PostViews = { rkey: string; title: string; views: number };
+
+/**
+ * Joins /api/stats' per-path view counts onto this writer's own dashboard
+ * rows (path→rkey, derived the same way the reading surface builds a post's
+ * URL: `/@{ident}/{rkey}`). A row with no matching path is left OUT of the
+ * result rather than shown with 0 views: cookieless analytics genuinely miss
+ * some readers, and older posts may predate the stats seam entirely —
+ * absence isn't the same claim as zero.
+ */
+export function joinStatsToRows(
+  rows: DashboardRow[],
+  paths: Array<{ path: string; views: number }>,
+  ident: string,
+): PostViews[] {
+  const viewsByPath = new Map(paths.map((p) => [p.path, p.views]));
+  return rows.flatMap((row) => {
+    const views = viewsByPath.get(`/@${ident}/${row.rkey}`);
+    return views === undefined
+      ? []
+      : [{ rkey: row.rkey, title: row.title, views }];
+  });
+}
