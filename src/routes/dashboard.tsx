@@ -643,14 +643,15 @@ function DashboardPage() {
               Write your first post
             </a>
             <p className="mt-4 font-display text-ink-soft text-sm">
-              Writing somewhere else?{" "}
+              Coming from Substack or another platform?{" "}
               <a
                 className="underline underline-offset-2 transition-colors hover:text-ink"
                 href="/import"
               >
-                Bring it with you
+                Import your writing
               </a>{" "}
-              — your posts arrive as drafts, and nothing changes at the source.
+              — posts arrive as private drafts, and nothing changes at the
+              source.
             </p>
           </div>
         )}

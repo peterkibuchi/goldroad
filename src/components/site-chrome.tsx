@@ -6,7 +6,7 @@
  * ~/components/document-article).
  */
 
-export type WriterNavItem = "write" | "posts" | "settings";
+export type WriterNavItem = "write" | "import" | "posts" | "settings";
 
 type SiteHeaderProps =
   /** Marketing surfaces — wordmark home, waitlist-era status, sign-in path. */
@@ -70,6 +70,11 @@ export function SiteHeader(props: SiteHeaderProps) {
                 href="/write"
                 isActive={props.active === "write"}
                 label="Write"
+              />
+              <NavLink
+                href="/import"
+                isActive={props.active === "import"}
+                label="Import"
               />
               <NavLink
                 href="/dashboard"

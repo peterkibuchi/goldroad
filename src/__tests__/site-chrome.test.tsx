@@ -25,6 +25,14 @@ describe("SiteHeader", () => {
     expect(nav).toBeDefined();
     expect(screen.getByRole("link", { name: "Write" })).toBeDefined();
     expect(screen.getByRole("link", { name: "Settings" })).toBeDefined();
+    // Import sits between Write and Posts — writers arriving with an archive
+    // must find the door without hunting for it.
+    const labels = [...nav.querySelectorAll("a")].map((a) => a.textContent);
+    expect(labels.indexOf("Import")).toBe(labels.indexOf("Write") + 1);
+    expect(labels.indexOf("Posts")).toBe(labels.indexOf("Import") + 1);
+    expect(
+      screen.getByRole("link", { name: "Import" }).getAttribute("href"),
+    ).toBe("/import");
     // The public-page link targets the writer's own publication URL.
     expect(
       screen.getByRole("link", { name: "Public page" }).getAttribute("href"),
@@ -50,6 +58,19 @@ describe("SiteHeader", () => {
     expect(
       screen.getByRole("link", { name: "Write" }).getAttribute("aria-current"),
     ).toBeNull();
+  });
+
+  it("signed-in: the Import section carries its own active state", () => {
+    render(
+      <SiteHeader
+        active="import"
+        ident="writer.bsky.social"
+        variant="signed-in"
+      />,
+    );
+    expect(
+      screen.getByRole("link", { name: "Import" }).getAttribute("aria-current"),
+    ).toBe("page");
   });
 
   it("signed-in: wordmark goes home-for-writers (the dashboard)", () => {
