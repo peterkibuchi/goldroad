@@ -60,9 +60,11 @@ describe("dashboard delete — announce-aware confirm", () => {
     expect(dialog?.textContent).toContain("stays up");
     expect(dialog?.textContent).toContain("no longer exists");
     const link = screen.getByRole("link", { name: /view the bluesky post/i });
+    // The DID must be RAW — bsky.app's router rejects percent-encoded colons.
     expect(link.getAttribute("href")).toBe(
-      `https://bsky.app/profile/${encodeURIComponent(ANNOUNCED.did)}/post/${ANNOUNCED.postRkey}`,
+      `https://bsky.app/profile/${ANNOUNCED.did}/post/${ANNOUNCED.postRkey}`,
     );
+    expect(link.getAttribute("href")).not.toContain("%3A");
     expect(link.getAttribute("target")).toBe("_blank");
     // The dialog replaces window.confirm entirely here.
     expect(confirmSpy).not.toHaveBeenCalled();
