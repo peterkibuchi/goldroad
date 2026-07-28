@@ -18,7 +18,11 @@ describe("buildContentSecurityPolicy", () => {
     expect(csp).toContain("frame-ancestors 'none'");
     expect(csp).toContain("object-src 'none'");
     expect(csp).toContain("base-uri 'self'");
-    expect(csp).toContain("form-action 'self'");
+    // form-action must include https: — the /login POST redirects to the
+    // user's own PDS authorize origin, and Chrome enforces form-action on
+    // post-submission redirects. 'self' alone froze sign-in on the error URL.
+    expect(csp).toContain("form-action 'self' https:");
+    expect(csp).not.toContain("form-action 'self';");
     expect(csp).toContain("default-src 'self'");
   });
 
