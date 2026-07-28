@@ -74,14 +74,35 @@
   --ring: var(--color-spot);
   --radius: 0.25rem;
 }
-.bn-editor {
-  padding-inline: 2.75rem; /* room for the drag handle without jumping the text column */
+/* The text column sits flush with the title (matching its px-1 = 0.25rem);
+   the side menu floats in the left margin instead of reserving a permanent
+   gutter that indents every block. Double selector: BlockNote's own sheet
+   loads after ours and would otherwise win the 54px default back. */
+.bn-container .bn-editor {
+  padding-inline: 0.25rem;
   caret-color: var(--color-ink);
 }
-/* Narrow screens: the drag-handle gutter is too expensive at 390px. */
-@media (max-width: 40rem) {
-  .bn-editor {
-    padding-inline: 1.5rem;
+/* Side menu (+ ⋮⋮), shown on block hover/focus in the margin: ink-soft
+   glyphs only — no fill, no border, no shadow (calm register). */
+.bn-container .bn-side-menu button {
+  color: var(--color-ink-soft);
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+.bn-container .bn-side-menu button:hover,
+.bn-container .bn-side-menu button:focus-visible {
+  color: var(--color-ink);
+  background: transparent;
+}
+/* No margin to float in on touch or very narrow screens — hide the side
+   menu rather than indent the column or overlap the text. Typing "/" still
+   covers block insertion there. */
+@media (pointer: coarse), (max-width: 40rem) {
+  /* Doubled class: BlockNote's own `.bn-shadcn .bn-side-menu{display:flex}`
+     ties (0,2,0) and its sheet loads after ours — this must out-weigh it. */
+  .bn-container .bn-side-menu.bn-side-menu {
+    display: none;
   }
 }
 /* Text selection inside the canvas: paper through a vermillion wash. */
