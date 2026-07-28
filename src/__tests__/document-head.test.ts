@@ -144,6 +144,66 @@ describe("documentHead — mirrored posts", () => {
   });
 });
 
+/**
+ * schema.org Article structured data — the route's actual wiring (see
+ * ~/lib/json-ld for the builder/escaping unit tests). Pins the field
+ * mapping and the fallback when no publication record was resolved.
+ */
+describe("documentHead — JSON-LD Article script", () => {
+  const loaderData = {
+    doc: {
+      title: "Hello Atmosphere",
+      description: "An excerpt.",
+      site: "at://did:plc:fake0000000000writer0000/site.standard.publication/3abc2345678de",
+      path: "/3abc2345678df",
+      publishedAt: "2026-01-01T00:00:00.000Z",
+    },
+    ident: "writer.example",
+    atUri:
+      "at://did:plc:fake0000000000writer0000/site.standard.document/3abc2345678df",
+    canonicalUrl: "https://goldroad.example/@writer.example/3abc2345678df",
+    publicationName: "The Long Way",
+  };
+
+  it("emits a single application/ld+json script with the Article shape", () => {
+    const { scripts } = documentHead(loaderData);
+    expect(scripts).toHaveLength(1);
+    const script = scripts?.[0];
+    expect(script?.tag).toBe("script");
+    expect(script?.attrs).toEqual({ type: "application/ld+json" });
+    const jsonLd = JSON.parse(script?.children ?? "{}");
+    expect(jsonLd).toMatchObject({
+      "@type": "Article",
+      headline: "Hello Atmosphere",
+      datePublished: "2026-01-01T00:00:00.000Z",
+      author: { name: "writer.example" },
+      publisher: { name: "The Long Way" },
+      url: loaderData.canonicalUrl,
+    });
+  });
+
+  it("falls back the publisher to the handle when no publication record was resolved", () => {
+    const { scripts } = documentHead({ ...loaderData, publicationName: null });
+    const jsonLd = JSON.parse(scripts?.[0]?.children ?? "{}");
+    expect(jsonLd.publisher).toEqual({
+      "@type": "Organization",
+      name: "writer.example",
+    });
+  });
+
+  it("includes the same absolute cover-image URL used for og:image", () => {
+    const cover = {
+      did: "did:plc:fake0000000000writer0000",
+      cid: "bafkreicanarycovercid000000000000000000000",
+    };
+    const { scripts } = documentHead({ ...loaderData, cover });
+    const jsonLd = JSON.parse(scripts?.[0]?.children ?? "{}");
+    expect(jsonLd.image).toBe(
+      "https://trygoldroad.com/img/did%3Aplc%3Afake0000000000writer0000/bafkreicanarycovercid000000000000000000000",
+    );
+  });
+});
+
 describe("isHiddenNotFound — takedown marker on a thrown notFound", () => {
   it("is true only for a { hidden: true } payload", () => {
     expect(isHiddenNotFound({ hidden: true })).toBe(true);

@@ -15,10 +15,12 @@ import {
   type StandardPublication,
 } from "~/lib/atproto";
 import { blobImagePath, coverImageCid } from "~/lib/blob";
+import { buildArticleJsonLd, jsonLdScriptContent } from "~/lib/json-ld";
 import { checkMirror, type MirrorInfo } from "~/lib/mirror";
 import { checkHidden, recordAtUri } from "~/lib/moderation";
 import { CANONICAL_ORIGIN } from "~/lib/origin";
 import { composeDocumentUrl } from "~/lib/publish";
+import { documentReadingMinutes, formatReadingTime } from "~/lib/reading-time";
 
 /** A validated cover image reference, serveable through /img/$did/$cid. */
 export type CoverRef = { did: string; cid: string };
@@ -134,12 +136,17 @@ export function documentHead(
         canonicalUrl: string | null;
         cover?: CoverRef | null;
         mirror?: MirrorInfo | null;
+        publicationName?: string | null;
       }
     | undefined,
 ) {
   if (!loaderData) return { meta: [{ title: "Not found" }] };
-  const { doc, ident, atUri, canonicalUrl, cover, mirror } = loaderData;
+  const { doc, ident, atUri, canonicalUrl, cover, mirror, publicationName } =
+    loaderData;
   const title = `${doc.title ?? "Untitled"} — ${ident}`;
+  const imageUrl = cover
+    ? `${CANONICAL_ORIGIN}${blobImagePath(cover.did, cover.cid)}`
+    : null;
   // Mirrored posts (the original lives elsewhere): noindex INSTEAD of a
   // canonical tag — search engines index the original, not this copy; a
   // cross-domain canonical is no longer the recommended syndication signal
@@ -161,14 +168,7 @@ export function documentHead(
       ...(canonicalUrl ? [{ property: "og:url", content: canonicalUrl }] : []),
       // og:image must be absolute — minted from the canonical origin
       // (never the request origin), served through our own /img proxy.
-      ...(cover
-        ? [
-            {
-              property: "og:image",
-              content: `${CANONICAL_ORIGIN}${blobImagePath(cover.did, cover.cid)}`,
-            },
-          ]
-        : []),
+      ...(imageUrl ? [{ property: "og:image", content: imageUrl }] : []),
     ],
     links: [
       ...(canonicalUrl && !isMirror
@@ -183,6 +183,28 @@ export function documentHead(
         type: "application/rss+xml",
         title: `@${ident} — RSS`,
         href: `${CANONICAL_ORIGIN}/@${encodeURIComponent(ident)}/rss.xml`,
+      },
+    ],
+    // schema.org Article — headline/dates/author/publisher for search and
+    // social consumers that read structured data instead of (or alongside)
+    // OpenGraph tags. See ~/lib/json-ld for the escaping rationale: this is
+    // the one narrow, justified exception to "no dangerouslySetInnerHTML"
+    // in this codebase, and it carries zero literal `<` after escaping.
+    scripts: [
+      {
+        tag: "script",
+        attrs: { type: "application/ld+json" },
+        children: jsonLdScriptContent(
+          buildArticleJsonLd({
+            headline: doc.title ?? "Untitled",
+            publishedAt: doc.publishedAt,
+            updatedAt: doc.updatedAt,
+            authorName: ident,
+            publisherName: publicationName ?? ident,
+            url: canonicalUrl,
+            imageUrl,
+          }),
+        ),
       },
     ],
   };
@@ -244,34 +266,44 @@ export function DocumentArticle({
   const updated = formatDate(doc.updatedAt);
   const publicationHref = `/@${encodeURIComponent(ident)}`;
   const mirrorHost = mirror ? provenanceHost(mirror.sourceUrl) : null;
+  const readingLabel = formatReadingTime(documentReadingMinutes(body));
 
   return (
     <div className="min-h-screen bg-paper font-body text-ink">
       <article className="mx-auto max-w-[42rem] px-6 py-16 md:py-24">
         {cover && (
-          // Decorative on the page (the adjacent title names the piece);
-          // calm register — no border ornament, the image speaks alone.
-          <img
-            alt=""
-            className="mb-10 w-full"
-            src={blobImagePath(cover.did, cover.cid)}
-          />
+          // Fixed aspect box reserves the layout slot before the image
+          // loads (no lexicon width/height metadata exists to size it
+          // otherwise) — zero CLS regardless of the writer's source
+          // dimensions. Decorative on the page (the adjacent title names
+          // the piece); calm register — no border ornament, the image
+          // speaks alone.
+          <div className="mb-10 aspect-video w-full overflow-hidden bg-ink/5">
+            <img
+              alt=""
+              className="h-full w-full object-cover"
+              src={blobImagePath(cover.did, cover.cid)}
+            />
+          </div>
         )}
         <header className="mb-10 border-rule border-b pb-8">
-          {publicationName && (
-            <p className="mb-6 font-display font-semibold text-ink-soft text-sm">
-              <a
-                className="transition-colors hover:text-ink"
-                href={publicationHref}
-              >
-                {publicationName}
-              </a>
-            </p>
-          )}
-          <h1 className="text-balance font-semibold text-3xl text-ink leading-[1.15] md:text-4xl">
+          <h1 className="text-balance font-semibold text-4xl text-ink leading-[1.1] md:text-5xl">
             {doc.title ?? "Untitled"}
           </h1>
-          <p className="mt-4 font-display text-ink-soft text-sm">
+          {/* One byline row carries every attribution/metadata fact — the
+              title stands alone above it, carrying its own weight. */}
+          <p className="mt-5 font-display text-ink-soft text-sm">
+            {publicationName && (
+              <>
+                <a
+                  className="transition-colors hover:text-ink"
+                  href={publicationHref}
+                >
+                  {publicationName}
+                </a>
+                {" · "}
+              </>
+            )}
             <a
               className="transition-colors hover:text-ink"
               href={publicationHref}
@@ -284,6 +316,7 @@ export function DocumentArticle({
                 <time dateTime={doc.publishedAt}>{date}</time>
               </>
             )}
+            {readingLabel && <> · {readingLabel}</>}
             {updated && updated !== date && <span> · updated {updated}</span>}
           </p>
           {/* Provenance for mirrored posts (import ledger): the original
