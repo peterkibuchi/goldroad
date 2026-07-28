@@ -2,7 +2,11 @@
 import { describe, expect, it } from "vitest";
 
 import type { ListedRecord, StandardDocument } from "../lib/atproto";
-import { mapDashboardRows } from "../lib/dashboard";
+import {
+  type DashboardRow,
+  joinStatsToRows,
+  mapDashboardRows,
+} from "../lib/dashboard";
 
 const DID = "did:plc:fakefakefakefakefakefake";
 
@@ -128,5 +132,69 @@ describe("mapDashboardRows", () => {
       }),
     ]);
     for (const row of rows) expect(row.announced).toBeNull();
+  });
+});
+
+describe("joinStatsToRows", () => {
+  const IDENT = "writer.example";
+
+  function row(rkey: string, title = "a post"): DashboardRow {
+    return {
+      rkey,
+      title,
+      description: null,
+      publishedAt: null,
+      updatedAt: null,
+      editable: true,
+      announced: null,
+    };
+  }
+
+  it("attaches views to rows whose path matches /@{ident}/{rkey}", () => {
+    const rows = [
+      row("3aaa2aaa2aaa2", "post a"),
+      row("3bbb2bbb2bbb2", "post b"),
+    ];
+    const joined = joinStatsToRows(
+      rows,
+      [
+        { path: `/@${IDENT}/3aaa2aaa2aaa2`, views: 12 },
+        { path: `/@${IDENT}/3bbb2bbb2bbb2`, views: 3 },
+      ],
+      IDENT,
+    );
+    expect(joined).toEqual([
+      { rkey: "3aaa2aaa2aaa2", title: "post a", views: 12 },
+      { rkey: "3bbb2bbb2bbb2", title: "post b", views: 3 },
+    ]);
+  });
+
+  it("omits rows with no matching path instead of showing 0 views", () => {
+    const rows = [
+      row("3aaa2aaa2aaa2", "has views"),
+      row("3bbb2bbb2bbb2", "no views yet"),
+    ];
+    const joined = joinStatsToRows(
+      rows,
+      [{ path: `/@${IDENT}/3aaa2aaa2aaa2`, views: 5 }],
+      IDENT,
+    );
+    expect(joined).toEqual([
+      { rkey: "3aaa2aaa2aaa2", title: "has views", views: 5 },
+    ]);
+    expect(joined.some((p) => p.rkey === "3bbb2bbb2bbb2")).toBe(false);
+  });
+
+  it("ignores the publication-root path (no rkey suffix) and other writers' paths", () => {
+    const rows = [row("3aaa2aaa2aaa2", "post a")];
+    const joined = joinStatsToRows(
+      rows,
+      [
+        { path: `/@${IDENT}`, views: 40 },
+        { path: `/@someone-else/3aaa2aaa2aaa2`, views: 9 },
+      ],
+      IDENT,
+    );
+    expect(joined).toEqual([]);
   });
 });

@@ -18,12 +18,17 @@ import {
   type StandardDocument,
   type StandardPublication,
 } from "~/lib/atproto";
-import { mapDashboardRows } from "~/lib/dashboard";
+import {
+  type DashboardRow,
+  joinStatsToRows,
+  mapDashboardRows,
+} from "~/lib/dashboard";
 import { listDrafts } from "~/lib/drafts";
 import { LEGACY_ORIGINS, ownOrigins } from "~/lib/origin";
 import { capture } from "~/lib/posthog";
 import { isOwnPublicationUrl, TID_RE } from "~/lib/publish";
 import { readSessionDid } from "~/lib/session";
+import type { StatsResponse } from "~/lib/stats";
 import { env } from "cloudflare:workers";
 
 /** bsky.app profile/post URL. DIDs and handles go in RAW: bsky.app's router
@@ -427,6 +432,119 @@ function DraftsSection({ drafts }: { drafts: DraftListItem[] | null }) {
   );
 }
 
+type StatsState =
+  | { status: "loading" }
+  | { status: "off" }
+  | { status: "unavailable" }
+  | {
+      status: "ready";
+      total: number;
+      paths: Array<{ path: string; views: number }>;
+    };
+
+/**
+ * Fetches the writer's own /api/stats once, client-side, after mount — no
+ * loader wiring, no polling. Session-authed + same-origin, so a bare fetch
+ * carries the cookie for free. Runs after hydration only (never during SSR),
+ * so the initial render is always "loading": server and client agree, and a
+ * flaky/slow PostHog Query API upstream never holds up the dashboard's own
+ * page load.
+ */
+function useWriterStats(): StatsState {
+  const [state, setState] = useState<StatsState>({ status: "loading" });
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/stats")
+      .then((res) =>
+        res.ok
+          ? (res.json() as Promise<StatsResponse>)
+          : Promise.reject(new Error(String(res.status))),
+      )
+      .then((data) => {
+        if (cancelled) return;
+        if (!data.enabled) {
+          setState({ status: "off" });
+        } else if ("error" in data) {
+          setState({ status: "unavailable" });
+        } else {
+          setState({ status: "ready", total: data.total, paths: data.paths });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setState({ status: "unavailable" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return state;
+}
+
+/**
+ * "Readers" — the writer-stats seam's dashboard face. The feature doesn't
+ * exist until POSTHOG_QUERY_API_KEY + POSTHOG_PROJECT_ID are configured on
+ * the worker: `off` (and the still-loading instant before the fetch
+ * resolves) render nothing at all, not a teaser or an empty box. Numbers and
+ * rules only — no charts in v1.
+ * Exported for tests (dashboard-stats.test.tsx) — not a route.
+ */
+export function ReadersSection({
+  ident,
+  rows,
+}: {
+  ident: string;
+  rows: DashboardRow[];
+}) {
+  const stats = useWriterStats();
+  if (stats.status === "loading" || stats.status === "off") return null;
+
+  if (stats.status === "unavailable") {
+    return (
+      <p className="mt-8 font-display text-ink-soft text-sm">
+        Stats are catching their breath — check back shortly.
+      </p>
+    );
+  }
+
+  const perPost = joinStatsToRows(rows, stats.paths, ident);
+  return (
+    <section aria-labelledby="readers-heading" className="mt-8">
+      <h2
+        className="border-rule border-b pb-2 font-display font-semibold text-ink-soft text-xs uppercase tracking-[0.08em]"
+        id="readers-heading"
+      >
+        Readers
+      </h2>
+      <p className="mt-4 font-display text-2xl text-ink tracking-tight">
+        <span className="font-black">{stats.total.toLocaleString()}</span>{" "}
+        <span className="font-display font-normal text-ink-soft text-sm">
+          all-time views
+        </span>
+      </p>
+      {perPost.length > 0 && (
+        <ul className="mt-4">
+          {perPost.map((post) => (
+            <li
+              className="flex items-center justify-between gap-4 border-rule border-b py-2"
+              key={post.rkey}
+            >
+              <span className="min-w-0 truncate font-display text-ink-soft text-sm">
+                {post.title}
+              </span>
+              <span className="shrink-0 font-display text-ink text-sm">
+                {post.views.toLocaleString()}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="mt-3 font-display text-ink-soft text-xs">
+        Counts are approximate — privacy-respecting analytics miss some readers.
+      </p>
+    </section>
+  );
+}
+
 function DashboardPage() {
   const { ident, handle, rows, nextCursor, onLegacyUrl, drafts } =
     Route.useLoaderData();
@@ -655,6 +773,8 @@ function DashboardPage() {
             </p>
           </div>
         )}
+
+        <ReadersSection ident={ident} rows={rows ?? []} />
       </main>
     </AppShell>
   );

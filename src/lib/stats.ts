@@ -41,6 +41,11 @@ export type WriterStats =
     }
   | { enabled: true; error: "unavailable" };
 
+/** The full response shape GET /api/stats can serve, including the
+ * feature-off arm — one type for client code to import instead of
+ * re-deriving the union at the call site. */
+export type StatsResponse = { enabled: false } | WriterStats;
+
 /** The provider is configured but this request couldn't be served — mapped
  * from EVERY upstream failure mode without carrying upstream detail. */
 const UNAVAILABLE: WriterStats = { enabled: true, error: "unavailable" };
