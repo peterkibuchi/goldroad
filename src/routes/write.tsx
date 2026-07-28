@@ -32,6 +32,8 @@ const ERROR_MESSAGES: Record<string, string> = {
     "That doesn't look like a Bluesky handle — it's usually name.bsky.social, or your own domain. Check for typos and try again.",
   handle_not_found:
     "We couldn't find that handle on the network — check the spelling and try again, or wait a moment if its server is having trouble.",
+  signin_unavailable:
+    "Sign-in hit a server problem on our side — try again in a minute.",
   signin_failed: "Sign-in didn't complete. Try again.",
   session_expired: "Your session expired — sign in again.",
   missing_title: "Give it a title before publishing.",

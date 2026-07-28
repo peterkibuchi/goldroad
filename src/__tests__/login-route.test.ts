@@ -17,6 +17,8 @@ vi.mock("~/lib/oauth", async (importOriginal) => {
   return { ...actual, createOAuthClient: () => ({ authorize }) };
 });
 
+import { OAuthResolverError } from "@atcute/oauth-node-client";
+
 import { safeReturnTo } from "~/lib/oauth";
 import { Route } from "../routes/login";
 
@@ -70,7 +72,11 @@ describe("/login — designed failure redirects", () => {
   });
 
   it("303s an unresolvable (but well-formed) handle with its own code", async () => {
-    authorize.mockRejectedValue(new Error("handle did not resolve"));
+    // What @atcute's authorize() actually throws when the identity can't be
+    // resolved — the one failure class where "check the handle" is the truth.
+    authorize.mockRejectedValue(
+      new OAuthResolverError("failed to resolve identity: ghost.bsky.social"),
+    );
     const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       const res = await post({
@@ -81,6 +87,25 @@ describe("/login — designed failure redirects", () => {
       const location = locationOf(res);
       expect(location.searchParams.get("error")).toBe("handle_not_found");
       expect(location.searchParams.get("handle")).toBe("ghost.bsky.social");
+    } finally {
+      quiet.mockRestore();
+    }
+  });
+
+  it("maps non-resolution authorize() failures to signin_unavailable, never handle_not_found", async () => {
+    // A PAR push / client-metadata / state-store failure is OUR problem — the
+    // handle resolved fine; sending the writer to respell it is misdirection.
+    authorize.mockRejectedValue(new Error("PAR request failed: 500"));
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const res = await post({
+        handle: "writer.bsky.social",
+        returnTo: "/write",
+      });
+      expect(res.status).toBe(303);
+      const location = locationOf(res);
+      expect(location.searchParams.get("error")).toBe("signin_unavailable");
+      expect(location.searchParams.get("handle")).toBe("writer.bsky.social");
     } finally {
       quiet.mockRestore();
     }
