@@ -53,7 +53,12 @@ export function buildContentSecurityPolicy(
     "base-uri 'self'",
     "object-src 'none'",
     "frame-ancestors 'none'",
-    "form-action 'self'",
+    // 'self' alone breaks sign-in: Chrome enforces form-action on the redirect
+    // that FOLLOWS a form submission, and the /login POST 302s to the user's
+    // own PDS authorize page — an arbitrary per-user https origin that cannot
+    // be allowlisted ahead of time. https: keeps javascript:/data:/http:
+    // form targets blocked while allowing that OAuth hop.
+    "form-action 'self' https:",
     "img-src 'self' data: blob: https:",
     "font-src 'self'",
     `frame-src 'self' ${TURNSTILE_ORIGIN}`,
