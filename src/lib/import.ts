@@ -42,8 +42,14 @@ export const MAX_REDIRECT_HOPS = 3;
 export const FEED_FETCH_TIMEOUT_MS = 10_000;
 
 /** Items returned per run. Substack feeds carry 20; deeper archives are the
- * export-file import's job (later phase), said honestly in the UI. */
+ * export-file import's job (~/lib/import-zip), said honestly in the UI. */
 export const MAX_ITEMS_PER_RUN = 20;
+
+/** Posts surfaced per export upload (and the hash-count ceiling
+ * /api/import/status accepts). Lives HERE, not in ~/lib/import-zip: the
+ * status route needs the number, and importing the zip module server-side
+ * would drag fflate into the worker bundle. */
+export const MAX_EXPORT_POSTS = 1000;
 
 /** Per-item HTML cap before it goes back to the browser for conversion —
  * bounds the response size independently of the whole-feed cap. */
@@ -64,6 +70,11 @@ export type ImportErrorCode =
   | "own_host"
   | "too_many_redirects"
   | "fetch_failed"
+  /** The host answered 429 — it is refusing OUR requests, not down. Substack
+   * does this to all Cloudflare-Workers egress (verified in production;
+   * user-agent changes don't help), so the UI can point at the export-upload
+   * path instead of telling the writer to retry something that never works. */
+  | "upstream_blocked"
   | "feed_too_large"
   | "not_a_feed";
 
@@ -225,7 +236,9 @@ function safeLink(raw: string | null): string | null {
   }
 }
 
-function isoDate(raw: string | null): string | null {
+/** Lenient date-string → ISO timestamp, or null when unparseable. Shared with
+ * the export-zip parser (~/lib/import-zip), which reads Substack CSV dates. */
+export function isoDate(raw: string | null): string | null {
   if (!raw) return null;
   const date = new Date(raw.trim());
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
