@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   adoptMirror,
+  clearPublishedImport,
   countRecentImportFetches,
   insertImportFetch,
   insertImportItem,
@@ -78,6 +79,18 @@ describe("mirror lookup and adoption", () => {
     expect(params).toContain(RKEY);
     expect(sql).toContain('"adopted_at"');
     expect(sql.toLowerCase()).toContain('"adopted_at" is null');
+    expect(sql.toLowerCase()).toContain("returning");
+  });
+
+  it("clearPublishedImport (record deleted) nulls the publish state so the guid becomes reimportable", () => {
+    const { sql, params } = clearPublishedImport(db, DID, RKEY).toSQL();
+    expectDidBound(sql, params);
+    expect(params).toContain(RKEY);
+    // All three publish-state fields reset; the row (and its dedupe key) stays.
+    expect(sql).toContain('"published_rkey"');
+    expect(sql).toContain('"draft_id"');
+    expect(sql).toContain('"adopted_at"');
+    expect(sql.toLowerCase()).not.toContain("delete from");
     expect(sql.toLowerCase()).toContain("returning");
   });
 });

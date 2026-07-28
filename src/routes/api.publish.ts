@@ -32,6 +32,7 @@ import {
 } from "~/lib/import";
 import {
   adoptMirror,
+  clearPublishedImport,
   selectImportItemByDraft,
   setPublishedRkey,
 } from "~/lib/import-store";
@@ -445,6 +446,13 @@ async function deleteDocument({ rpc, form, did }: WriteContext) {
     console.error("deleteRecord failed", res.status, res.data);
     return backToDashboard({ error: `delete_failed:${res.data.error}` });
   }
+  // If the deleted record was an imported mirror, clear the ledger row's
+  // publish state — otherwise the feed item would be refused as "already
+  // imported" forever after its post is gone. No-op for native posts (zero
+  // rows match); best-effort, same policy as the other ledger write-backs.
+  await clearPublishedImport(drizzle(env.DB), did, rkey).catch((err) => {
+    console.warn("import ledger cleanup after delete failed", err);
+  });
   return backToDashboard({ deleted: "1" });
 }
 

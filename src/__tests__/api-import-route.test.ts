@@ -258,6 +258,19 @@ describe("/api/import — feed resolution", () => {
     );
   });
 
+  it("a cleared row (published post later deleted) is NOT flagged as imported", async () => {
+    stubFetch({ "https://w.example/feed": () => new Response(FEED_XML) });
+    // clearPublishedImport left the row with no draft and no rkey.
+    store.selectImportItems.mockImplementation(async () => [
+      { guidHash: await hashOf("g-one"), draftId: null, publishedRkey: null },
+    ]);
+    const res = await callImport({ url: "https://w.example/feed" });
+    const data = (await res.json()) as {
+      items: { alreadyImported: boolean }[];
+    };
+    expect(data.items[0].alreadyImported).toBe(false);
+  });
+
   it("does not count a still-live-draft check as imported when the draft is gone", async () => {
     stubFetch({ "https://w.example/feed": () => new Response(FEED_XML) });
     // Ledger row exists for g-one, unpublished, pointing at a DELETED draft.
