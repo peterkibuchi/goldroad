@@ -22,6 +22,7 @@ import {
 import { blobImagePath, coverImageCid } from "~/lib/blob";
 import { checkHidden } from "~/lib/moderation";
 import { CANONICAL_ORIGIN } from "~/lib/origin";
+import { formatReadingTime, listItemReadingMinutes } from "~/lib/reading-time";
 
 /**
  * Public publication page — calm register. Everything
@@ -72,6 +73,8 @@ export const Route = createFileRoute("/@{$handle}/")({
           const rkey = rkeyFromUri(r.uri);
           if (!rkey || typeof r.value.title !== "string") return [];
           const coverCid = coverImageCid(r.value.coverImage);
+          const textContent =
+            typeof r.value.textContent === "string" ? r.value.textContent : "";
           return [
             {
               rkey,
@@ -87,6 +90,9 @@ export const Route = createFileRoute("/@{$handle}/")({
               // Validated cover, served through the /img proxy (never the
               // PDS hostname). Same-origin path — safe to render directly.
               coverPath: coverCid ? blobImagePath(did, coverCid) : null,
+              // Bounded scan (see ~/lib/reading-time): this loop can see up
+              // to 50 third-party records per page.
+              readingMinutes: listItemReadingMinutes(textContent),
             },
           ];
         })
@@ -162,13 +168,17 @@ function PublicationPage() {
   return (
     <div className="min-h-screen bg-paper font-body text-ink">
       <main className="mx-auto max-w-[42rem] px-6 py-16 md:py-24">
-        <header className="mb-4 border-ink border-b pb-8">
-          <h1 className="text-balance font-semibold text-4xl text-ink leading-[1.1] md:text-5xl">
+        {/* The masthead: the writer's name is the largest text on the page —
+            this is their publication, not a Goldroad page. */}
+        <header className="mb-14 border-ink border-b pb-10">
+          <h1 className="text-balance font-semibold text-5xl text-ink leading-[1.05] md:text-6xl">
             {publication?.name ?? ident}
           </h1>
-          <p className="mt-3 font-display text-ink-soft text-sm">@{ident}</p>
+          <p className="mt-4 font-display text-ink-soft text-sm tracking-wide">
+            @{ident}
+          </p>
           {publication?.description ? (
-            <p className="mt-5 max-w-[52ch] text-ink-soft text-lg italic leading-relaxed">
+            <p className="mt-6 max-w-[52ch] text-ink-soft text-lg italic leading-relaxed">
               {publication.description}
             </p>
           ) : null}
@@ -177,26 +187,32 @@ function PublicationPage() {
           <ul>
             {posts.map((post) => {
               const date = formatDate(post.publishedAt ?? undefined);
+              const readingLabel = formatReadingTime(post.readingMinutes);
               return (
                 <li className="border-rule border-b" key={post.rkey}>
                   <a
-                    className="group flex items-start gap-5 py-7"
+                    className="group flex items-start gap-6 py-8"
                     href={`/@${encodeURIComponent(ident)}/${encodeURIComponent(post.rkey)}`}
                   >
                     <span className="min-w-0 flex-1">
-                      <h2 className="text-balance font-semibold text-ink text-xl leading-snug group-hover:underline group-hover:underline-offset-4">
+                      <h2 className="text-balance font-semibold text-2xl text-ink leading-snug group-hover:underline group-hover:underline-offset-4">
                         {post.title}
                       </h2>
                       {post.description ? (
-                        <p className="mt-2 line-clamp-2 text-base text-ink-soft leading-relaxed">
+                        <p className="mt-2.5 line-clamp-2 text-base text-ink-soft leading-relaxed">
                           {post.description}
                         </p>
                       ) : null}
-                      {date && (
-                        <p className="mt-3 font-display text-ink-soft text-sm">
-                          <time dateTime={post.publishedAt ?? undefined}>
-                            {date}
-                          </time>
+                      {(date || readingLabel) && (
+                        // Quiet caps: secondary to the title at a glance.
+                        <p className="mt-3 font-display text-ink-soft text-xs uppercase tracking-wide">
+                          {date && (
+                            <time dateTime={post.publishedAt ?? undefined}>
+                              {date}
+                            </time>
+                          )}
+                          {date && readingLabel && " · "}
+                          {readingLabel}
                         </p>
                       )}
                     </span>
@@ -222,7 +238,7 @@ function PublicationPage() {
         )}
         {nextCursor && (
           // Calm register: a quiet text link, no buttons, no page numbers.
-          <p className="mt-10">
+          <p className="mt-12">
             <a
               className="font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
               href={`/@${encodeURIComponent(ident)}?cursor=${encodeURIComponent(nextCursor)}`}

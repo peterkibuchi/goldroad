@@ -22,17 +22,17 @@ function strip<P extends { node?: unknown }>(props: P): Omit<P, "node"> {
 const components: Components = {
   h1: (p) => (
     <h2
-      className="mt-10 text-balance font-semibold text-2xl leading-snug"
+      className="mt-12 text-balance font-semibold text-2xl leading-snug"
       {...strip(p)}
     />
   ),
   h2: (p) => (
     <h3
-      className="mt-8 text-balance font-semibold text-xl leading-snug"
+      className="mt-10 text-balance font-semibold text-xl leading-snug"
       {...strip(p)}
     />
   ),
-  h3: (p) => <h4 className="mt-6 font-semibold text-lg" {...strip(p)} />,
+  h3: (p) => <h4 className="mt-8 font-semibold text-lg" {...strip(p)} />,
   h4: (p) => <h5 className="mt-6 font-semibold" {...strip(p)} />,
   h5: (p) => <h6 className="mt-6 font-semibold" {...strip(p)} />,
   h6: (p) => <h6 className="mt-6 font-semibold text-base" {...strip(p)} />,
@@ -50,23 +50,23 @@ const components: Components = {
   li: (p) => <li className="pl-1" {...strip(p)} />,
   blockquote: (p) => (
     <blockquote
-      className="mt-5 border-rule border-l-2 pl-5 text-ink-soft italic"
+      className="mt-6 border-rule border-l-2 pl-6 text-ink-soft text-xl italic leading-snug"
       {...strip(p)}
     />
   ),
   code: (p) => (
     <code
-      className="rounded-none bg-ink/5 px-1 font-mono text-[0.9em]"
+      className="rounded-sm bg-ink/5 px-1 font-mono text-[0.9em]"
       {...strip(p)}
     />
   ),
   pre: (p) => (
     <pre
-      className="mt-5 overflow-x-auto bg-ink/5 p-4 font-mono text-sm [&>code]:bg-transparent [&>code]:p-0"
+      className="mt-5 overflow-x-auto rounded-sm bg-ink/5 p-4 font-mono text-sm [&>code]:bg-transparent [&>code]:p-0"
       {...strip(p)}
     />
   ),
-  hr: (p) => <hr className="mt-8 border-rule border-t" {...strip(p)} />,
+  hr: (p) => <hr className="mt-10 border-rule border-t" {...strip(p)} />,
   img: (p) => (
     // biome-ignore lint/a11y/useAltText: alt comes from the markdown source when present
     <img className="mt-5 max-w-full" loading="lazy" {...strip(p)} />
