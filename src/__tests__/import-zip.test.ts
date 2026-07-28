@@ -12,8 +12,10 @@ import { describe, expect, it } from "vitest";
  */
 import {
   constructSourceUrl,
+  ExportTooComplexError,
   MAX_ENTRY_BYTES,
   MAX_EXPORT_POSTS,
+  MAX_ZIP_ENTRIES,
   normalizeHost,
   parseCsv,
   parsePostsCsv,
@@ -175,7 +177,7 @@ describe("parseSubstackExport — defensive paths", () => {
     expect(real?.preview).toBe(false);
   });
 
-  it(`cuts archives past ${MAX_EXPORT_POSTS} posts, keeping the newest, and says so`, () => {
+  it(`cuts archives past ${MAX_EXPORT_POSTS} posts BEFORE inflating them, and says so`, () => {
     const files: Record<string, string> = {};
     for (let i = 0; i < MAX_EXPORT_POSTS + 5; i++) {
       files[`posts/${1000 + i}.post-${i}.html`] = LONG_HTML;
@@ -183,9 +185,22 @@ describe("parseSubstackExport — defensive paths", () => {
     const parsed = parseSubstackExport(exportZip(files));
     expect(parsed.posts).toHaveLength(MAX_EXPORT_POSTS);
     expect(parsed.truncated).toBe(5);
-    // No dates (no csv) → numeric-id descending keeps the newest ids.
+    // The cap keeps the archive's first entries (never inflating the rest);
+    // no dates (no csv) → numeric-id descending sorts what was read.
     expect(parsed.posts[0].postId).toBe(
-      `${1000 + MAX_EXPORT_POSTS + 4}.post-${MAX_EXPORT_POSTS + 4}`,
+      `${1000 + MAX_EXPORT_POSTS - 1}.post-${MAX_EXPORT_POSTS - 1}`,
+    );
+  });
+
+  it("refuses entry-count floods before reading anything (quadratic-parse guard)", () => {
+    // Empty entries pass every byte cap; only the entry-count ceiling stops
+    // an archive built to make the per-entry directory walk quadratic.
+    const files: Record<string, [Uint8Array, { level: 0 }]> = {};
+    for (let i = 0; i < MAX_ZIP_ENTRIES + 1; i++) {
+      files[`junk/${i}`] = [new Uint8Array(0), { level: 0 }];
+    }
+    expect(() => parseSubstackExport(zipSync(files))).toThrow(
+      ExportTooComplexError,
     );
   });
 });

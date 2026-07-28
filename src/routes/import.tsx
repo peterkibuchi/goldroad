@@ -96,6 +96,8 @@ const FETCH_ERRORS: Record<string, string> = {
     "That file couldn't be read as a zip archive — re-download your export and try again.",
   not_an_export:
     "We couldn't find any posts in that zip — a Substack export keeps them in a posts/ folder. Re-download it from Substack's Settings → Exports and try again.",
+  zip_too_many_files:
+    "That zip holds far more files than a Substack posts export carries, so we stopped before reading it. Make sure you picked the export zip itself.",
   status_failed:
     "Your export was read, but checking it against your drafts failed — try again in a moment.",
 };
@@ -278,8 +280,13 @@ function ImportPage() {
         parsed = zip.parseSubstackExport(
           new Uint8Array(await file.arrayBuffer()),
         );
-      } catch {
-        setError({ code: "zip_unreadable" });
+      } catch (err) {
+        setError({
+          code:
+            err instanceof zip.ExportTooComplexError
+              ? "zip_too_many_files"
+              : "zip_unreadable",
+        });
         return;
       }
       if (parsed.posts.length === 0) {
@@ -712,8 +719,9 @@ function PickList({
       )}
       {isZip && data.zip && data.zip.truncated > 0 && (
         <p className="mt-2 font-display text-ink-soft text-sm">
-          Your archive holds {data.totalItems} posts — showing the newest{" "}
-          {data.items.length}.
+          Your archive holds {data.totalItems} posts — one upload reads the
+          first {data.items.length}. For the rest, zip the remaining posts/
+          files into their own export and upload that.
         </p>
       )}
       {isZip && data.zip && data.zip.failures > 0 && (
