@@ -219,8 +219,8 @@ export function SignIn({
         Sign in to write
       </h1>
       <p className="mt-3 font-body text-ink-soft leading-relaxed">
-        Your press runs on your own account — sign in with your Bluesky (or any
-        atproto) handle.
+        Goldroad publishes from your own account — sign in with your Bluesky (or
+        any atproto) handle.
       </p>
       {message && <Notice tone="alert">{message}</Notice>}
       <form
@@ -477,7 +477,8 @@ function postDraft(payload: {
   });
 }
 
-function Compose({
+/** Exported for tests (write-editor-submit.test.tsx) — not a route. */
+export function Compose({
   draft,
   resumed,
   error,
@@ -702,55 +703,67 @@ function Compose({
           The editor needs JavaScript. Enable it to write on Goldroad.
         </p>
       </noscript>
-      <form
-        action="/api/publish"
-        encType="multipart/form-data"
-        method="post"
-        onBlur={handleBlur}
-        onSubmit={handleSubmit}
-      >
-        {editing && <input name="rkey" type="hidden" value={draft.rkey} />}
-        {/* Mirrored post (imported; the original lives elsewhere): editing
-            offers adoption — one deliberate checkbox, submitted with the
-            save. Adopting stops the "originally published at" note and lets
-            search engines index this page as the post's home. */}
-        {editing && draft.mirror && (
-          <div className="mb-6 border border-rule px-4 py-3">
-            <p className="font-display text-ink-soft text-sm leading-relaxed">
-              This post is a mirror — readers see a note pointing to the
-              original{mirrorHost ? ` at ${mirrorHost}` : ""}, and search
-              engines are told to index the original, not this copy.
-            </p>
-            <label className="mt-2 flex min-h-9 cursor-pointer items-center gap-2 font-display text-ink text-sm">
-              <input name="adoptOriginal" type="checkbox" value="1" />
-              Make this the Goldroad original — remove the note and let this
-              page be indexed
-            </label>
-          </div>
-        )}
-        {!editing && (
-          <input name="draftId" ref={draftIdInputRef} type="hidden" />
-        )}
-        <input name="body" ref={bodyRef} type="hidden" />
-        <CoverPicker
-          existingPath={draft?.coverPath ?? null}
-          onBusyChange={setCoverBusy}
-        />
-        <label className="sr-only" htmlFor="title">
-          Title
-        </label>
-        <input
-          className="w-full rounded-none border-0 border-transparent border-b-2 bg-paper px-1 py-2 font-semibold text-3xl text-ink leading-tight placeholder:text-ink-soft/50 focus-visible:border-spot focus-visible:outline-none md:text-4xl"
-          defaultValue={draft?.title ?? resumed?.title ?? ""}
-          id="title"
-          name="title"
-          onChange={handleDraftChange}
-          placeholder="Title"
-          ref={titleRef}
-          required
-          type="text"
-        />
-        <div className="-mx-1 mt-4 min-h-96 border-rule border-t pt-5 text-lg">
+      {/* The BlockNote editor must live OUTSIDE the publish <form>: its UI
+          buttons (side-menu +, drag handle, slash-menu items) don't set
+          type="button", and a type-less button inside a form is a submit
+          button — hovering a block and pressing + would publish the post.
+          The form wraps only the inputs; the Publish button re-joins it from
+          outside via the form attribute (and stays the form's default button,
+          so Enter in the title still publishes deliberately). The wrapper div
+          carries onBlur (focusout bubbles) so both the title and the editor
+          keep flushing pending autosaves. */}
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: not an interactive control — a bubbling focusout relay for the autosave flush */}
+      <div onBlur={handleBlur}>
+        <form
+          action="/api/publish"
+          encType="multipart/form-data"
+          id="publish-form"
+          method="post"
+          onSubmit={handleSubmit}
+        >
+          {editing && <input name="rkey" type="hidden" value={draft.rkey} />}
+          {/* Mirrored post (imported; the original lives elsewhere): editing
+              offers adoption — one deliberate checkbox, submitted with the
+              save. Adopting stops the "originally published at" note and lets
+              search engines index this page as the post's home. */}
+          {editing && draft.mirror && (
+            <div className="mb-6 border border-rule px-4 py-3">
+              <p className="font-display text-ink-soft text-sm leading-relaxed">
+                This post is a mirror — readers see a note pointing to the
+                original{mirrorHost ? ` at ${mirrorHost}` : ""}, and search
+                engines are told to index the original, not this copy.
+              </p>
+              <label className="mt-2 flex min-h-9 cursor-pointer items-center gap-2 font-display text-ink text-sm">
+                <input name="adoptOriginal" type="checkbox" value="1" />
+                Make this the Goldroad original — remove the note and let this
+                page be indexed
+              </label>
+            </div>
+          )}
+          {!editing && (
+            <input name="draftId" ref={draftIdInputRef} type="hidden" />
+          )}
+          <input name="body" ref={bodyRef} type="hidden" />
+          <CoverPicker
+            existingPath={draft?.coverPath ?? null}
+            onBusyChange={setCoverBusy}
+          />
+          <label className="sr-only" htmlFor="title">
+            Title
+          </label>
+          <input
+            className="w-full rounded-none border-0 border-transparent border-b-2 bg-paper px-1 py-2 font-semibold text-3xl text-ink leading-tight placeholder:text-ink-soft/50 focus-visible:border-spot focus-visible:outline-none md:text-4xl"
+            defaultValue={draft?.title ?? resumed?.title ?? ""}
+            id="title"
+            name="title"
+            onChange={handleDraftChange}
+            placeholder="Title"
+            ref={titleRef}
+            required
+            type="text"
+          />
+        </form>
+        <div className="mt-4 min-h-96 border-rule border-t pt-5 text-lg">
           <ClientOnly fallback={<EditorFallback />}>
             <Suspense fallback={<EditorFallback />}>
               <Editor
@@ -766,6 +779,7 @@ function Compose({
           <button
             className="min-h-11 cursor-pointer bg-spot px-8 py-2.5 font-bold font-display text-base text-paper transition-colors hover:bg-ink disabled:cursor-default disabled:opacity-40"
             disabled={!editor || coverBusy}
+            form="publish-form"
             type="submit"
           >
             {editing ? "Save changes" : "Publish"}
@@ -777,7 +791,7 @@ function Compose({
           </p>
           {!editing && <SaveIndicator state={saveState} />}
         </div>
-      </form>
+      </div>
     </main>
   );
 }
