@@ -86,9 +86,9 @@ const ROWS: Row[] = [
   },
   {
     label: "Import from Substack",
-    goldroad: "Bring your archive and paid subscribers across",
+    goldroad:
+      "Upload your Substack export or paste any feed — your archive arrives as private drafts",
     substack: "—",
-    roadmap: true,
   },
 ];
 
@@ -212,18 +212,18 @@ export function LeavingSubstack() {
           </figure>
         </MarketingSection>
 
-        {/* Mirror-mode teaser — described as coming, not available. */}
+        {/* Mirror mode — shipped: import + provenance back to the original. */}
         <MarketingSection divider>
-          <Kicker>Coming</Kicker>
+          <Kicker>Here now</Kicker>
           <h2 className="mt-4 max-w-[22ch] text-balance font-black font-display text-3xl text-ink leading-tight tracking-tight md:text-4xl">
             Keep publishing on Substack, too.
           </h2>
           <p className="mt-4 max-w-[60ch] text-pretty text-ink-soft text-lg leading-relaxed">
-            Moving shouldn't mean burning the boat. Mirror mode brings what you
-            publish on Substack over to Goldroad — your Substack stays exactly
-            as it is — so you can bring readers over at your own pace instead of
-            all at once. It's on the roadmap — not shipped yet — and we'll keep
-            saying so plainly right up to the day it lands.
+            Moving shouldn't mean burning the boat, and you don't have to
+            migrate day one — import mirrors your posts: the originals stay
+            untouched on Substack, and readers are pointed to the original until
+            you say otherwise. Bring readers over at your own pace instead of
+            all at once.
           </p>
         </MarketingSection>
 
@@ -234,9 +234,10 @@ export function LeavingSubstack() {
             Move when the machinery's ready — not before.
           </h2>
           <p className="mt-4 max-w-[58ch] text-pretty text-ink-soft text-lg leading-relaxed">
-            Newsletters, Substack import, and reader payments are being hardened
-            before we ask anyone whose income depends on them to switch. Join
-            the founding writers and we'll bring you in the moment it's solid.
+            Substack import is live — your archive can come across today.
+            Newsletters and reader payments are still being hardened before we
+            ask anyone whose income depends on them to switch. Join the founding
+            writers and we'll bring you in the moment it's solid.
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3">
             <CtaLink href="/#join">Join the founding writers</CtaLink>
