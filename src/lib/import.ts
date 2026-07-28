@@ -167,7 +167,9 @@ export async function readFeedBody(res: Response): Promise<string> {
   return new TextDecoder().decode(bytes);
 }
 
-export type FeedItem = {
+/** One INBOUND feed item (importing someone's archive) — distinct from
+ * ~/lib/feed's FeedItem, which is our OUTBOUND rss.xml serialization shape. */
+export type ImportFeedItem = {
   /** guid/atom id, falling back to the item link — the dedupe identity. */
   guid: string;
   /** The item's public URL (validated https), or null. */
@@ -187,7 +189,7 @@ export type FeedItem = {
 
 export type ParsedFeed = {
   title: string;
-  items: FeedItem[];
+  items: ImportFeedItem[];
   /** Items the feed carried before the MAX_ITEMS_PER_RUN cut. */
   totalItems: number;
 };
@@ -306,7 +308,7 @@ export function parseFeedDocument(xml: string): ParsedFeed | null {
     return hasFeedRoot ? { title: feedTitle, items: [], totalItems: 0 } : null;
   }
 
-  const items: FeedItem[] = [];
+  const items: ImportFeedItem[] = [];
   for (const el of raw.slice(0, MAX_ITEMS_PER_RUN)) {
     const scope = el as Element;
     const link = safeLink(itemLink(scope));
@@ -406,10 +408,14 @@ export async function guidHash(guid: string): Promise<string> {
 /**
  * First markdown image URL in a body — the publish-time cover candidate for
  * imported posts. Only public https URLs qualify (the fetch that follows is
- * SSRF-guarded again regardless).
+ * SSRF-guarded again regardless). Pattern hardening matches ~/lib/feed's
+ * stripMarkdown: `[` excluded from the text class and `(`/`)` from the URL
+ * class, so bracket floods fail fast instead of scanning to the end.
  */
 export function extractFirstImageUrl(markdown: string): string | null {
-  for (const match of markdown.matchAll(/!\[[^\]]*\]\(([^()\s]+)[^)]*\)/g)) {
+  for (const match of markdown.matchAll(
+    /!\[[^[\]]*\]\(\s*([^()\s]+)[^()]*\)/g,
+  )) {
     const candidate = safeLink(match[1]);
     if (candidate) return candidate;
   }
