@@ -1,12 +1,15 @@
 /**
- * /import — one-time feed import (RSS/Atom → drafts). Writer surface in the
- * dashboard chrome family. The flow is paste → pick → import → done:
+ * /import — one-time import (feed OR Substack export zip → drafts). Writer
+ * surface in the dashboard chrome family. Two sources feed ONE pipeline:
  *
- *  1. Paste: one field; the server tries the URL as a feed and autodiscovers
- *     (/feed, /rss/, link rel=alternate) when it gets HTML back.
- *  2. Pick: the found items — full posts checked by default, previews and
- *     already-imported items honestly flagged and unchecked. The header
- *     names the horizon plainly (feeds carry a window, not the archive).
+ *  1. Source: paste a feed address (the server fetches + parses it, capped at
+ *     the feed's recent window), or upload a Substack export zip — parsed
+ *     ENTIRELY in the browser (~/lib/import-zip; the zip never leaves the
+ *     machine), which carries the whole archive, not just recent posts.
+ *  2. Pick: the found items — full posts checked by default (capped at the
+ *     drafts headroom), previews and already-imported items honestly flagged
+ *     and unchecked. Already-imported flags for the zip path come from
+ *     /api/import/status (hashes only cross the wire).
  *  3. Import: the BROWSER converts each item's HTML to editor blocks
  *     (BlockNote's parser structurally drops script/iframe/unknown nodes —
  *     conversion is the sanitizer) and saves it as a private draft, one
@@ -62,13 +65,18 @@ type ImportItem = {
   contentHtml: string;
   preview: boolean;
   alreadyImported: boolean;
+  /** Zip path only: the CSV says this post never published on Substack. */
+  unpublishedAtSource?: boolean;
 };
 
 type ImportFeed = {
+  kind: "feed" | "zip";
   feed: { title: string; url: string };
   totalItems: number;
   draftSlotsRemaining: number;
   items: ImportItem[];
+  /** Zip path only: per-entry failures + archive-cap cut, reported honestly. */
+  zip?: { failures: number; truncated: number; withoutProvenance: boolean };
 };
 
 const FETCH_ERRORS: Record<string, string> = {
@@ -82,7 +90,70 @@ const FETCH_ERRORS: Record<string, string> = {
   rate_limited:
     "That's a lot of feed fetches in one hour — take a breather and try again soon. Your drafts are unaffected.",
   not_signed_in: "Your session expired — sign in again to import.",
+  zip_too_large:
+    "That file is over 50 MB — Substack post exports are usually a few MB. Make sure you picked the export zip, not a full media backup.",
+  zip_unreadable:
+    "That file couldn't be read as a zip archive — re-download your export and try again.",
+  not_an_export:
+    "We couldn't find any posts in that zip — a Substack export keeps them in a posts/ folder. Re-download it from Substack's Settings → Exports and try again.",
+  status_failed:
+    "Your export was read, but checking it against your drafts failed — try again in a moment.",
 };
+
+/** Is this address (or its hostname) a substack.com publication? Used to
+ * choose the honest error: Substack refuses all fetches from our server, so
+ * "try again" would be a lie — the export upload is the working path. */
+export function isSubstackHost(raw: string): boolean {
+  const candidate = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw)
+    ? raw
+    : `https://${raw}`;
+  try {
+    const host = new URL(candidate).hostname;
+    return host === "substack.com" || host.endsWith(".substack.com");
+  } catch {
+    return false;
+  }
+}
+
+export type SourceError = { code: string; url?: string };
+
+/** The one error the retry-shaped copy would misdescribe: the host is
+ * refusing our server, and the export upload is the path that works. */
+function isBlockedError(error: SourceError): boolean {
+  return (
+    error.code === "upstream_blocked" ||
+    ((error.code === "fetch_failed" || error.code === "not_a_feed") &&
+      isSubstackHost(error.url ?? ""))
+  );
+}
+
+function SourceErrorNotice({ error }: { error: SourceError }) {
+  if (isBlockedError(error)) {
+    const named = isSubstackHost(error.url ?? "");
+    return (
+      <Notice tone="alert">
+        {named
+          ? "Substack blocks automated fetching from our server. "
+          : "That site is blocking automated fetching from our server. If it's a Substack publication (custom domains included), "}
+        <a
+          className="font-bold underline underline-offset-2"
+          href="#substack-export"
+        >
+          {named
+            ? "Upload your Substack export"
+            : "upload your Substack export"}
+        </a>{" "}
+        instead — it works better anyway (your full archive, not just recent
+        posts).
+      </Notice>
+    );
+  }
+  return (
+    <Notice tone="alert">
+      {FETCH_ERRORS[error.code] ?? "Something went wrong — try again."}
+    </Notice>
+  );
+}
 
 type ItemStatus =
   | { kind: "pending" }
@@ -91,7 +162,8 @@ type ItemStatus =
   | { kind: "skipped"; reason: string }
   | { kind: "failed"; reason: string };
 
-type Phase = "paste" | "fetching" | "pick" | "importing" | "done";
+type Phase = "source" | "pick" | "importing" | "done";
+type Busy = null | "feed" | "reading" | "checking";
 
 /** Does the conversion hold any actual content? BlockNote returns a single
  * empty paragraph for input it can't map (pinned in import-conversion.test),
@@ -112,8 +184,8 @@ function isBlankConversion(blocks: unknown[]): boolean {
   });
 }
 
-/** Feed-item HTML → editor blocks, in the browser. Unmappable content
- * degrades to visible plain text — imported words never vanish silently. */
+/** Item HTML → editor blocks, in the browser. Unmappable content degrades to
+ * visible plain text — imported words never vanish silently. */
 function htmlToBlocks(
   editor: { tryParseHTMLToBlocks: (html: string) => unknown[] },
   html: string,
@@ -139,50 +211,143 @@ function paragraphBlock(text: string) {
 
 function ImportPage() {
   const { ident } = Route.useLoaderData();
-  const [phase, setPhase] = useState<Phase>("paste");
-  const [url, setUrl] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [phase, setPhase] = useState<Phase>("source");
+  const [busy, setBusy] = useState<Busy>(null);
+  const [error, setError] = useState<SourceError | null>(null);
   const [data, setData] = useState<ImportFeed | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [status, setStatus] = useState<Record<string, ItemStatus>>({});
 
-  async function findPosts(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (phase === "fetching") return;
-    setPhase("fetching");
+  function showPicker(next: ImportFeed) {
+    setData(next);
+    // Default selection: every NEW, full item, capped at the drafts headroom
+    // (previews and already-imported items start unchecked — a preview
+    // import is a deliberate act, never an accident).
+    setSelected(
+      new Set(
+        next.items
+          .filter((item) => !item.preview && !item.alreadyImported)
+          .slice(0, next.draftSlotsRemaining)
+          .map((item) => item.guidHash),
+      ),
+    );
+    setStatus({});
+    setError(null);
+    setPhase("pick");
+  }
+
+  async function findPosts(url: string) {
+    if (busy) return;
+    setBusy("feed");
     setError(null);
     try {
       const res = await fetch("/api/import", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ url: url.trim() }),
+        body: JSON.stringify({ url }),
       });
       const body = (await res.json()) as
-        | ({ ok: true } & ImportFeed)
+        | ({ ok: true } & Omit<ImportFeed, "kind">)
         | { ok: false; error?: string };
       if (!body.ok) {
-        setError(
-          FETCH_ERRORS[body.error ?? ""] ?? "Something went wrong — try again.",
-        );
-        setPhase("paste");
+        setError({ code: body.error ?? "fetch_failed", url });
         return;
       }
-      setData(body);
-      // Default selection: every NEW, full item — previews and
-      // already-imported items start unchecked (a preview import is a
-      // deliberate act, never an accident).
-      setSelected(
-        new Set(
-          body.items
-            .filter((item) => !item.preview && !item.alreadyImported)
-            .map((item) => item.guidHash),
-        ),
-      );
-      setStatus({});
-      setPhase("pick");
+      showPicker({ ...body, kind: "feed" });
     } catch {
-      setError(FETCH_ERRORS.fetch_failed);
-      setPhase("paste");
+      setError({ code: "fetch_failed", url });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function readExport(file: File, hostInput: string) {
+    if (busy) return;
+    setBusy("reading");
+    setError(null);
+    try {
+      // The parser (and fflate inside it) loads only when an upload actually
+      // happens — it never enters the worker bundle or the initial chunk.
+      const zip = await import("~/lib/import-zip");
+      if (file.size > zip.MAX_EXPORT_ZIP_BYTES) {
+        setError({ code: "zip_too_large" });
+        return;
+      }
+      let parsed: import("~/lib/import-zip").ParsedExport;
+      try {
+        parsed = zip.parseSubstackExport(
+          new Uint8Array(await file.arrayBuffer()),
+        );
+      } catch {
+        setError({ code: "zip_unreadable" });
+        return;
+      }
+      if (parsed.posts.length === 0) {
+        setError({ code: "not_an_export" });
+        return;
+      }
+      const host = zip.normalizeHost(hostInput);
+      const items = await Promise.all(
+        parsed.posts.map(async (post): Promise<ImportItem> => {
+          const guid = zip.zipPostGuid(post.postId);
+          return {
+            guid,
+            guidHash: await zip.guidHash(guid),
+            link: zip.constructSourceUrl(host, post.slug),
+            title: post.title,
+            publishedAt: post.publishedAt,
+            contentHtml: post.contentHtml,
+            preview: post.preview,
+            alreadyImported: false,
+            unpublishedAtSource: post.publishedAtSource === false,
+          };
+        }),
+      );
+      setBusy("checking");
+      const res = await fetch("/api/import/status", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          guidHashes: items.map((item) => item.guidHash),
+        }),
+      });
+      const body = (await res.json().catch(() => ({}))) as
+        | {
+            ok: true;
+            draftSlotsRemaining: number;
+            alreadyImported: string[];
+          }
+        | { ok?: false; error?: string };
+      if (!("ok" in body) || body.ok !== true) {
+        setError({
+          code:
+            body.error === "not_signed_in" ? "not_signed_in" : "status_failed",
+        });
+        return;
+      }
+      const imported = new Set(body.alreadyImported);
+      showPicker({
+        kind: "zip",
+        feed: {
+          title: "Your Substack export",
+          url: host ? `https://${host}` : "",
+        },
+        totalItems: parsed.posts.length + parsed.truncated,
+        draftSlotsRemaining: body.draftSlotsRemaining,
+        items: items.map((item) => ({
+          ...item,
+          alreadyImported: imported.has(item.guidHash),
+        })),
+        zip: {
+          failures: parsed.failures.length,
+          truncated: parsed.truncated,
+          withoutProvenance: host === null,
+        },
+      });
+    } catch {
+      setError({ code: "zip_unreadable" });
+    } finally {
+      setBusy(null);
     }
   }
 
@@ -276,20 +441,22 @@ function ImportPage() {
       imported,
       picked: picked.length,
       totalItems: data.totalItems,
+      source: data.kind,
     });
     setPhase("done");
   }
 
   return (
-    <AppShell header={{ variant: "signed-in", ident }}>
+    <AppShell header={{ variant: "signed-in", ident, active: "import" }}>
       <main className="mx-auto w-full max-w-2xl px-6 py-10">
         <h1 className="font-black font-display text-3xl text-ink tracking-tight">
           Import your writing
         </h1>
         <p className="mt-2 max-w-[54ch] text-ink-soft">
-          Paste your publication's address — Substack, Ghost, Medium, WordPress,
-          or anywhere with a feed. Your posts arrive here as private drafts;
-          nothing publishes until you say so, and nothing changes at the source.
+          Bring your posts over as private drafts — nothing publishes until you
+          say so. You don't have to migrate day one: imported posts mirror your
+          originals, the source stays untouched, and readers are pointed to the
+          original until you say otherwise.
         </p>
         <noscript>
           <p className="mt-6 border border-ink px-4 py-3 font-display text-ink text-sm">
@@ -298,57 +465,22 @@ function ImportPage() {
           </p>
         </noscript>
 
-        {(phase === "paste" || phase === "fetching") && (
-          <form className="mt-8" onSubmit={findPosts}>
-            <label
-              className="font-bold font-display text-ink text-sm"
-              htmlFor="feed-url"
-            >
-              Your publication's address (or its RSS feed)
-            </label>
-            <div className="mt-2 flex flex-wrap gap-3">
-              <input
-                className="min-h-11 min-w-0 flex-1 border border-ink bg-paper px-4 py-2.5 font-body text-base text-ink placeholder:text-ink-soft"
-                id="feed-url"
-                inputMode="url"
-                onChange={(event) => setUrl(event.currentTarget.value)}
-                placeholder="https://you.substack.com"
-                required
-                type="text"
-                value={url}
-              />
-              <button
-                className="min-h-11 cursor-pointer bg-spot px-6 py-2.5 font-bold font-display text-base text-paper transition-colors hover:bg-ink disabled:cursor-default disabled:opacity-40"
-                disabled={phase === "fetching"}
-                type="submit"
-              >
-                Find my posts
-              </button>
-            </div>
-            {error && <Notice tone="alert">{error}</Notice>}
-            {phase === "fetching" && (
-              <div
-                aria-label="Looking for your posts"
-                aria-live="polite"
-                role="status"
-              >
-                <div className="mt-6 animate-pulse space-y-3 motion-reduce:animate-none">
-                  <div className="h-4 w-full bg-rule/50" />
-                  <div className="h-4 w-11/12 bg-rule/50" />
-                  <div className="h-4 w-3/5 bg-rule/50" />
-                </div>
-                <p className="sr-only">Looking for your posts…</p>
-              </div>
-            )}
-          </form>
+        {phase === "source" && (
+          <SourcePicker
+            busy={busy}
+            error={error}
+            onFeed={findPosts}
+            onZip={readExport}
+          />
         )}
 
         {phase === "pick" && data && (
           <PickList
             data={data}
             onBack={() => {
-              setPhase("paste");
+              setPhase("source");
               setData(null);
+              setError(null);
             }}
             onImport={runImport}
             onToggle={toggle}
@@ -366,6 +498,166 @@ function ImportPage() {
         )}
       </main>
     </AppShell>
+  );
+}
+
+/**
+ * Step 1, both doors: paste a feed address, or upload the Substack export.
+ * Exported for tests (import-page.test.tsx) — not a route.
+ */
+export function SourcePicker({
+  busy,
+  error,
+  onFeed,
+  onZip,
+}: {
+  busy: Busy;
+  error: SourceError | null;
+  onFeed: (url: string) => void;
+  onZip: (file: File, host: string) => void;
+}) {
+  const [url, setUrl] = useState("");
+  const [host, setHost] = useState("");
+  const [dragging, setDragging] = useState(false);
+  const reading = busy === "reading" || busy === "checking";
+
+  return (
+    <>
+      <form
+        className="mt-8"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!busy) onFeed(url.trim());
+        }}
+      >
+        <label
+          className="font-bold font-display text-ink text-sm"
+          htmlFor="feed-url"
+        >
+          Paste your publication's address (or its RSS feed)
+        </label>
+        <p className="mt-1 max-w-[54ch] font-display text-ink-soft text-sm">
+          Ghost, Medium, WordPress, beehiiv — anywhere with a feed. Feeds carry
+          your most recent posts.
+        </p>
+        <div className="mt-2 flex flex-wrap gap-3">
+          <input
+            className="min-h-11 min-w-0 flex-1 border border-ink bg-paper px-4 py-2.5 font-body text-base text-ink placeholder:text-ink-soft"
+            id="feed-url"
+            inputMode="url"
+            onChange={(event) => setUrl(event.currentTarget.value)}
+            placeholder="https://your.publication.com"
+            required
+            type="text"
+            value={url}
+          />
+          <button
+            className="min-h-11 cursor-pointer bg-spot px-6 py-2.5 font-bold font-display text-base text-paper transition-colors hover:bg-ink disabled:cursor-default disabled:opacity-40"
+            disabled={busy !== null}
+            type="submit"
+          >
+            Find my posts
+          </button>
+        </div>
+        {error && <SourceErrorNotice error={error} />}
+        {busy === "feed" && (
+          <div
+            aria-label="Looking for your posts"
+            aria-live="polite"
+            role="status"
+          >
+            <div className="mt-6 animate-pulse space-y-3 motion-reduce:animate-none">
+              <div className="h-4 w-full bg-rule/50" />
+              <div className="h-4 w-11/12 bg-rule/50" />
+              <div className="h-4 w-3/5 bg-rule/50" />
+            </div>
+            <p className="sr-only">Looking for your posts…</p>
+          </div>
+        )}
+      </form>
+
+      <section aria-labelledby="substack-export" className="mt-10">
+        <h2
+          className="border-rule border-t pt-6 font-bold font-display text-ink text-sm"
+          id="substack-export"
+        >
+          Or upload your Substack export
+        </h2>
+        <p className="mt-1 max-w-[54ch] font-display text-ink-soft text-sm">
+          In Substack, open Settings → Exports and choose "Create new export" —
+          you'll get a zip of your whole archive, not just recent posts. It's
+          read right here in your browser and never uploaded.
+        </p>
+        <label
+          className="mt-3 block max-w-[54ch] font-display text-ink-soft text-sm"
+          htmlFor="pub-host"
+        >
+          Your publication's address{" "}
+          <span className="text-ink-soft/80">
+            (optional — with it, each draft keeps a link to its original;
+            without it, posts arrive as plain drafts with no link back)
+          </span>
+        </label>
+        <input
+          className="mt-2 min-h-11 w-full max-w-xs border border-ink bg-paper px-4 py-2.5 font-body text-base text-ink placeholder:text-ink-soft"
+          id="pub-host"
+          onChange={(event) => setHost(event.currentTarget.value)}
+          placeholder="you.substack.com"
+          type="text"
+          value={host}
+        />
+        {reading ? (
+          <div
+            aria-live="polite"
+            className="mt-4 border border-ink border-dashed px-6 py-8 font-display text-ink text-sm"
+            role="status"
+          >
+            {busy === "reading"
+              ? "Reading your export — the zip stays on your machine…"
+              : "Checking your posts against your existing drafts…"}
+          </div>
+        ) : (
+          // biome-ignore lint/a11y/noStaticElementInteractions: drag-drop is a pointer-only convenience — the accessible path is the labeled file input inside; keyboard/AT users never need this surface
+          <div
+            className={`mt-4 border border-dashed px-6 py-8 text-center ${
+              dragging ? "border-spot bg-spot/5" : "border-ink"
+            }`}
+            onDragLeave={() => setDragging(false)}
+            onDragOver={(event) => {
+              event.preventDefault();
+              setDragging(true);
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              setDragging(false);
+              const file = event.dataTransfer.files?.[0];
+              if (file && !busy) onZip(file, host);
+            }}
+          >
+            <label
+              className="inline-flex min-h-11 cursor-pointer items-center bg-ink px-6 font-bold font-display text-base text-paper transition-colors hover:bg-spot"
+              htmlFor="export-zip"
+            >
+              Choose your export .zip
+              <input
+                accept=".zip,application/zip,application/x-zip-compressed"
+                className="sr-only"
+                id="export-zip"
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+                  event.currentTarget.value = "";
+                  if (file && !busy) onZip(file, host);
+                }}
+                type="file"
+              />
+            </label>
+            <p className="mt-3 font-display text-ink-soft text-sm">
+              or drag it here — up to 50 MB
+            </p>
+          </div>
+        )}
+      </section>
+    </>
   );
 }
 
@@ -394,24 +686,49 @@ function PickList({
   const previews = data.items.length - full;
   const count = selected.size;
   const overCap = count > data.draftSlotsRemaining;
+  const isZip = data.kind === "zip";
   return (
     <section aria-labelledby="picker-heading" className="mt-8">
       <h2
         className="border-rule border-b pb-2 font-display font-semibold text-ink-soft text-xs uppercase tracking-[0.08em]"
         id="picker-heading"
       >
-        {data.feed.title ? `${data.feed.title} · ` : ""}found your{" "}
-        {data.items.length} most recent{" "}
-        {data.items.length === 1 ? "post" : "posts"}
-        {data.totalItems <= data.items.length
-          ? " (that's everything the feed carries)"
-          : ` of ${data.totalItems} in the feed`}{" "}
-        — {full} full, {previews} {previews === 1 ? "preview" : "previews"}
+        {data.feed.title ? `${data.feed.title} · ` : ""}
+        {isZip
+          ? `found ${data.items.length} ${data.items.length === 1 ? "post" : "posts"} in your archive`
+          : `found your ${data.items.length} most recent ${data.items.length === 1 ? "post" : "posts"}${
+              data.totalItems <= data.items.length
+                ? " (that's everything the feed carries)"
+                : ` of ${data.totalItems} in the feed`
+            }`}{" "}
+        — {full} full, {previews}{" "}
+        {previews === 1 ? "flagged as a preview" : "flagged as previews"}
       </h2>
-      {data.items.length >= 20 && (
+      {!isZip && data.items.length >= 20 && (
         <p className="mt-2 font-display text-ink-soft text-sm">
-          Older posts can come across with the export-file import — on the
-          roadmap.
+          Feeds carry a recent window, not the archive — Substack writers can go
+          back and upload their export to bring everything.
+        </p>
+      )}
+      {isZip && data.zip && data.zip.truncated > 0 && (
+        <p className="mt-2 font-display text-ink-soft text-sm">
+          Your archive holds {data.totalItems} posts — showing the newest{" "}
+          {data.items.length}.
+        </p>
+      )}
+      {isZip && data.zip && data.zip.failures > 0 && (
+        <Notice tone="alert">
+          {data.zip.failures} {data.zip.failures === 1 ? "file" : "files"} in
+          the export couldn't be read and{" "}
+          {data.zip.failures === 1 ? "was" : "were"} skipped — the rest came
+          through fine.
+        </Notice>
+      )}
+      {isZip && data.zip?.withoutProvenance && (
+        <p className="mt-2 max-w-[54ch] font-display text-ink-soft text-sm">
+          No publication address given, so these import as plain drafts — no
+          link back to the originals. Go back and add it if you want each draft
+          to keep one.
         </p>
       )}
       {overCap && (
@@ -445,8 +762,13 @@ function PickList({
                 {date && (
                   <time dateTime={item.publishedAt ?? undefined}>{date}</time>
                 )}
+                {item.unpublishedAtSource && !item.alreadyImported && (
+                  <Badge>Unpublished</Badge>
+                )}
                 {item.preview && !item.alreadyImported && (
-                  <Badge>Preview only</Badge>
+                  <Badge>
+                    {isZip ? "Might be incomplete" : "Preview only"}
+                  </Badge>
                 )}
                 {item.alreadyImported && <Badge>Already imported</Badge>}
               </span>
@@ -468,12 +790,13 @@ function PickList({
           onClick={onBack}
           type="button"
         >
-          Try a different address
+          {isZip ? "Start over" : "Try a different address"}
         </button>
       </div>
       <p className="mt-3 font-display text-ink-soft text-xs">
-        Previews hold only what the feed shared — paywalled posts arrive as
-        excerpts, flagged so nothing partial slips out as if it were whole.
+        {isZip
+          ? "Flagged posts look too short to be complete — often a paywalled stub in the export. They import exactly as they are when you check them."
+          : "Previews hold only what the feed shared — paywalled posts arrive as excerpts, flagged so nothing partial slips out as if it were whole."}
       </p>
     </section>
   );
