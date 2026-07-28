@@ -1,10 +1,11 @@
 import { AppShell } from "~/components/site-chrome";
 
 /**
- * System pages — 404, error boundary, route-pending skeleton. The 404 and
- * error pages speak as Goldroad (Pressroom register); the pending skeleton
- * stays calm and shape-neutral because most slow loads are reading surfaces
- * waiting on a writer's PDS.
+ * System pages — 404, error boundary, route-pending skeleton. System
+ * messages are plain and outcome-first — zero press metaphor (the visual
+ * system carries the register; the words carry the facts). The pending
+ * skeleton stays calm and shape-neutral because most slow loads are reading
+ * surfaces waiting on a writer's PDS.
  */
 
 export function NotFoundPage() {
@@ -15,7 +16,7 @@ export function NotFoundPage() {
           404<span className="text-spot">.</span>
         </p>
         <h1 className="mt-6 text-balance font-black font-display text-2xl text-ink tracking-tight md:text-3xl">
-          This page was never set in type.
+          There's nothing at this address.
         </h1>
         <p className="mt-4 max-w-[52ch] text-ink-soft text-lg">
           The address may be mistyped, or whatever lived here has moved on.
@@ -40,12 +41,11 @@ export function ErrorPage({ error }: { error: Error }) {
     <AppShell header={{ variant: "signed-out" }}>
       <main className="mx-auto w-full max-w-2xl px-6 py-20 md:py-28">
         <h1 className="text-balance font-black font-display text-3xl text-ink tracking-tight md:text-4xl">
-          The press jammed.
+          Something went wrong.
         </h1>
         <p className="mt-4 max-w-[52ch] text-ink-soft text-lg">
-          Something went wrong on our side while composing this page. Your work
-          and your records are safe in your own repo — this is a display
-          problem, not a data problem.
+          This page failed to load on our side. Your writing is safe in your own
+          data repo, not lost — try again in a moment.
         </p>
         <div className="mt-8 flex flex-wrap items-center gap-4">
           <button

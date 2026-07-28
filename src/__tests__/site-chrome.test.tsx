@@ -112,7 +112,7 @@ describe("system pages", () => {
   it("error page offers recovery and never blames the writer", () => {
     render(<ErrorPage error={new Error("boom")} />);
     expect(screen.getByRole("button", { name: /try again/i })).toBeDefined();
-    expect(screen.getByText(/not a data problem/i)).toBeDefined();
+    expect(screen.getByText(/safe in your own data repo/i)).toBeDefined();
   });
 
   it("pending skeleton is announced to assistive tech", () => {
