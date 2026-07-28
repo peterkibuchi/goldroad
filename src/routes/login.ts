@@ -1,3 +1,4 @@
+import { OAuthResolverError } from "@atcute/oauth-node-client";
 import { createFileRoute } from "@tanstack/react-router";
 
 import { isHandle } from "~/lib/atproto";
@@ -10,7 +11,7 @@ import { createOAuthClient, safeReturnTo } from "~/lib/oauth";
  * along so the writer fixes the typo instead of retyping it.
  */
 function backToSignIn(
-  error: "invalid_handle" | "handle_not_found",
+  error: "invalid_handle" | "handle_not_found" | "signin_unavailable",
   handle: string,
 ): Response {
   const params = new URLSearchParams({ error });
@@ -57,10 +58,20 @@ async function startLogin(
       headers: { location: url.toString() },
     });
   } catch (err) {
-    // Well-formed handle that wouldn't resolve (typo'd name, dead server,
-    // network flake) — same designed path, different copy.
     console.error("authorize failed", err);
-    return backToSignIn("handle_not_found", trimmed);
+    // Two different failures hide in authorize(), and blaming the handle for
+    // both misdirects the writer. OAuthResolverError is the library's wrapper
+    // for every resolution miss on THEIR side of the fence — unknown handle,
+    // dead DNS/.well-known, their PDS's metadata unreachable — so it keeps
+    // the "check the handle" copy. Anything else (PAR push, client-assertion
+    // keys, our D1 state store) is OUR infrastructure failing: say that, and
+    // don't send the writer off to respell a handle that resolves fine.
+    return backToSignIn(
+      err instanceof OAuthResolverError
+        ? "handle_not_found"
+        : "signin_unavailable",
+      trimmed,
+    );
   }
 }
 
