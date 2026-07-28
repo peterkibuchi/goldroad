@@ -26,6 +26,14 @@ import { isOwnPublicationUrl, TID_RE } from "~/lib/publish";
 import { readSessionDid } from "~/lib/session";
 import { env } from "cloudflare:workers";
 
+/** bsky.app profile/post URL. DIDs and handles go in RAW: bsky.app's router
+ * rejects percent-encoded colons (`did%3Aplc%3A…` → "Invalid DID or handle"),
+ * and both shapes are already URL-path-safe (validated upstream as isDid /
+ * isHandle; TID rkeys are base32). */
+function bskyPostUrl(actor: string, rkey: string): string {
+  return `https://bsky.app/profile/${actor}/post/${rkey}`;
+}
+
 const ERROR_MESSAGES: Record<string, string> = {
   missing_rkey: "That action was missing its post. Try again from this page.",
   not_found: "That post isn't in your repo anymore.",
@@ -282,7 +290,7 @@ export function DeletePostForm({
           <p className="mt-2 font-display text-sm">
             <ExternalLink
               className="underline underline-offset-2 transition-colors hover:text-spot"
-              href={`https://bsky.app/profile/${encodeURIComponent(announced.did)}/post/${encodeURIComponent(announced.postRkey)}`}
+              href={bskyPostUrl(announced.did, announced.postRkey)}
             >
               View the Bluesky post
             </ExternalLink>{" "}
@@ -488,7 +496,7 @@ function DashboardPage() {
             back here.{" "}
             <ExternalLink
               className="underline underline-offset-2"
-              href={`https://bsky.app/profile/${encodeURIComponent(ident)}/post/${announced}`}
+              href={bskyPostUrl(ident, announced)}
             >
               View your post on Bluesky
             </ExternalLink>
@@ -579,7 +587,10 @@ function DashboardPage() {
                           <>
                             <ExternalLink
                               className="-my-2 inline-flex min-h-9 items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
-                              href={`https://bsky.app/profile/${encodeURIComponent(row.announced.did)}/post/${row.announced.postRkey}`}
+                              href={bskyPostUrl(
+                                row.announced.did,
+                                row.announced.postRkey,
+                              )}
                               title="View the announcement post on Bluesky"
                             >
                               Announced ↗
