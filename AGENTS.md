@@ -91,9 +91,11 @@ Keep tests green.
 
 ## Verification & review
 
-- **Every change runs the gate** — `pnpm check && pnpm typecheck && pnpm test &&
-  pnpm build` — and PRs land green. Report actual command output, not assertions.
-  UI work should include a screenshot.
+- **Every change runs the fast gate** — `pnpm check && pnpm typecheck && pnpm test`
+  — and PRs land green; run `pnpm build` once before opening the PR (CI builds it
+  anyway). Report actual command output, not assertions. UI work includes a
+  screenshot at meaningful checkpoints, not for every edit — verification effort
+  stays proportional to risk.
 - **Human review, line-by-line** for: public API/route signatures, lexicon schemas &
   NSIDs (permanent!), auth/OAuth paths, payment code, DB migrations, and anything
   touching user data.
