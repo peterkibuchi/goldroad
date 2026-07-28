@@ -19,10 +19,17 @@ type SiteHeaderProps =
 function Wordmark({ href }: { href: string }) {
   return (
     <a
-      className="inline-flex min-h-11 items-center font-black font-display text-ink text-lg tracking-tight"
+      className="inline-flex min-h-11 items-center gap-2 font-black font-display text-ink text-lg tracking-tight"
       href={href}
     >
-      Goldroad<span className="text-spot">.</span>
+      <span>
+        Goldroad<span className="text-spot">.</span>
+      </span>
+      {/* Product-phase label, not infrastructure: remove this one element at
+          GA — releases keep flowing through the same channels regardless. */}
+      <span className="border border-ink-soft px-1.5 py-0.5 font-semibold text-[0.6rem] text-ink-soft uppercase tracking-[0.12em]">
+        beta
+      </span>
     </a>
   );
 }
