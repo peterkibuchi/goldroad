@@ -24,20 +24,13 @@ import {
   mapDashboardRows,
 } from "~/lib/dashboard";
 import { listDrafts } from "~/lib/drafts";
+import { bskyPostUrl } from "~/lib/engagement";
 import { LEGACY_ORIGINS, ownOrigins } from "~/lib/origin";
 import { capture } from "~/lib/posthog";
 import { isOwnPublicationUrl, TID_RE } from "~/lib/publish";
 import { readSessionDid } from "~/lib/session";
 import type { StatsResponse } from "~/lib/stats";
 import { env } from "cloudflare:workers";
-
-/** bsky.app profile/post URL. DIDs and handles go in RAW: bsky.app's router
- * rejects percent-encoded colons (`did%3Aplc%3A…` → "Invalid DID or handle"),
- * and both shapes are already URL-path-safe (validated upstream as isDid /
- * isHandle; TID rkeys are base32). */
-function bskyPostUrl(actor: string, rkey: string): string {
-  return `https://bsky.app/profile/${actor}/post/${rkey}`;
-}
 
 const ERROR_MESSAGES: Record<string, string> = {
   missing_rkey: "That action was missing its post. Try again from this page.",
