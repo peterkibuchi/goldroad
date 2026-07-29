@@ -38,6 +38,8 @@ import { Route as PHandleRkeyRouteImport } from './routes/p.$handle.$rkey'
 import { Route as ImgDidCidRouteImport } from './routes/img.$did.$cid'
 import { Route as ApiImportStatusRouteImport } from './routes/api.import.status'
 import { Route as ApiImportDraftRouteImport } from './routes/api.import.draft'
+import { Route as ApiAccountExportRouteImport } from './routes/api.account.export'
+import { Route as ApiAccountDeleteRouteImport } from './routes/api.account.delete'
 
 const WriteRoute = WriteRouteImport.update({
   id: '/write',
@@ -188,6 +190,16 @@ const ApiImportDraftRoute = ApiImportDraftRouteImport.update({
   path: '/draft',
   getParentRoute: () => ApiImportRoute,
 } as any)
+const ApiAccountExportRoute = ApiAccountExportRouteImport.update({
+  id: '/api/account/export',
+  path: '/api/account/export',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiAccountDeleteRoute = ApiAccountDeleteRouteImport.update({
+  id: '/api/account/delete',
+  path: '/api/account/delete',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -215,6 +227,8 @@ export interface FileRoutesByFullPath {
   '/oauth/client-metadata.json': typeof OauthClientMetadataDotjsonRoute
   '/oauth/jwks.json': typeof OauthJwksDotjsonRoute
   '/@{$handle}/': typeof AtChar123handleChar125IndexRoute
+  '/api/account/delete': typeof ApiAccountDeleteRoute
+  '/api/account/export': typeof ApiAccountExportRoute
   '/api/import/draft': typeof ApiImportDraftRoute
   '/api/import/status': typeof ApiImportStatusRoute
   '/img/$did/$cid': typeof ImgDidCidRoute
@@ -246,6 +260,8 @@ export interface FileRoutesByTo {
   '/oauth/client-metadata.json': typeof OauthClientMetadataDotjsonRoute
   '/oauth/jwks.json': typeof OauthJwksDotjsonRoute
   '/@{$handle}': typeof AtChar123handleChar125IndexRoute
+  '/api/account/delete': typeof ApiAccountDeleteRoute
+  '/api/account/export': typeof ApiAccountExportRoute
   '/api/import/draft': typeof ApiImportDraftRoute
   '/api/import/status': typeof ApiImportStatusRoute
   '/img/$did/$cid': typeof ImgDidCidRoute
@@ -278,6 +294,8 @@ export interface FileRoutesById {
   '/oauth/client-metadata.json': typeof OauthClientMetadataDotjsonRoute
   '/oauth/jwks.json': typeof OauthJwksDotjsonRoute
   '/@{$handle}/': typeof AtChar123handleChar125IndexRoute
+  '/api/account/delete': typeof ApiAccountDeleteRoute
+  '/api/account/export': typeof ApiAccountExportRoute
   '/api/import/draft': typeof ApiImportDraftRoute
   '/api/import/status': typeof ApiImportStatusRoute
   '/img/$did/$cid': typeof ImgDidCidRoute
@@ -311,6 +329,8 @@ export interface FileRouteTypes {
     | '/oauth/client-metadata.json'
     | '/oauth/jwks.json'
     | '/@{$handle}/'
+    | '/api/account/delete'
+    | '/api/account/export'
     | '/api/import/draft'
     | '/api/import/status'
     | '/img/$did/$cid'
@@ -342,6 +362,8 @@ export interface FileRouteTypes {
     | '/oauth/client-metadata.json'
     | '/oauth/jwks.json'
     | '/@{$handle}'
+    | '/api/account/delete'
+    | '/api/account/export'
     | '/api/import/draft'
     | '/api/import/status'
     | '/img/$did/$cid'
@@ -373,6 +395,8 @@ export interface FileRouteTypes {
     | '/oauth/client-metadata.json'
     | '/oauth/jwks.json'
     | '/@{$handle}/'
+    | '/api/account/delete'
+    | '/api/account/export'
     | '/api/import/draft'
     | '/api/import/status'
     | '/img/$did/$cid'
@@ -405,6 +429,8 @@ export interface RootRouteChildren {
   OauthClientMetadataDotjsonRoute: typeof OauthClientMetadataDotjsonRoute
   OauthJwksDotjsonRoute: typeof OauthJwksDotjsonRoute
   AtChar123handleChar125IndexRoute: typeof AtChar123handleChar125IndexRoute
+  ApiAccountDeleteRoute: typeof ApiAccountDeleteRoute
+  ApiAccountExportRoute: typeof ApiAccountExportRoute
   ImgDidCidRoute: typeof ImgDidCidRoute
   PHandleRkeyRoute: typeof PHandleRkeyRoute
 }
@@ -614,6 +640,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiImportDraftRouteImport
       parentRoute: typeof ApiImportRoute
     }
+    '/api/account/export': {
+      id: '/api/account/export'
+      path: '/api/account/export'
+      fullPath: '/api/account/export'
+      preLoaderRoute: typeof ApiAccountExportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/account/delete': {
+      id: '/api/account/delete'
+      path: '/api/account/delete'
+      fullPath: '/api/account/delete'
+      preLoaderRoute: typeof ApiAccountDeleteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -657,6 +697,8 @@ const rootRouteChildren: RootRouteChildren = {
   OauthClientMetadataDotjsonRoute: OauthClientMetadataDotjsonRoute,
   OauthJwksDotjsonRoute: OauthJwksDotjsonRoute,
   AtChar123handleChar125IndexRoute: AtChar123handleChar125IndexRoute,
+  ApiAccountDeleteRoute: ApiAccountDeleteRoute,
+  ApiAccountExportRoute: ApiAccountExportRoute,
   ImgDidCidRoute: ImgDidCidRoute,
   PHandleRkeyRoute: PHandleRkeyRoute,
 }
