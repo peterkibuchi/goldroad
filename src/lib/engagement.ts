@@ -1,0 +1,205 @@
+/**
+ * Cross-network engagement for the reading surfaces: per-post like/reply/
+ * repost/quote counts pulled from the PUBLIC Bluesky AppView
+ * (app.bsky.feed.getPosts), keyed off the announce write-back
+ * (StandardDocument.bskyPostRef). Unauthenticated, no PDS involved — this is
+ * the one thing a reading surface talks to public.api.bsky.app for directly
+ * rather than the writer's own repo.
+ *
+ * Scope (owner decision #2, substack-patterns dossier): counts exist ONLY for
+ * announced posts. An unannounced post gets silence on the public page, never
+ * a zero — "null ≠ zero" is already this codebase's discipline (dashboard
+ * load failures, ~/lib/stats's absent-path rows). Every failure mode here
+ * degrades the same way: return nothing, never block the page render.
+ *
+ * Pure module — no `cloudflare:workers` import — so tests exercise it
+ * directly; the Workers Cache lookup is feature-detected exactly like
+ * ~/lib/read-cache and the /img route, not threaded through env.
+ */
+import { type Did, parseAtUri } from "~/lib/atproto";
+import { readBodyCapped } from "~/lib/blob";
+
+/** The AppView host this module is allowed to talk to — FIXED, never derived
+ * from a DID document or any other untrusted input (unlike resolveDidToPds,
+ * which legitimately follows an attacker-influenced hostname). SSRF guard by
+ * construction: no code path here builds this URL from a variable host. */
+const APPVIEW_HOST = "public.api.bsky.app";
+
+/** app.bsky.feed.getPosts accepts at most this many URIs per call. */
+export const MAX_GET_POSTS_BATCH = 25;
+
+const FETCH_TIMEOUT_MS = 5_000;
+
+/** Hard cap on the upstream response body — a batch of 25 posts' worth of
+ * JSON runs a few KB; anything near this size is malformed or hostile. */
+const MAX_RESPONSE_BYTES = 262_144; // 256 KB
+
+/** Every count is OPTIONAL in the AppView response — "uncounted", not zero.
+ * Rendered UI must skip a metric entirely when it's undefined here, never
+ * show a false "0". */
+export type EngagementCounts = {
+  likeCount?: number;
+  replyCount?: number;
+  repostCount?: number;
+  quoteCount?: number;
+};
+
+/** Edge-cache TTL for one post's engagement counts. Longer than the reading
+ * surfaces' own 60s page cache (~/lib/read-cache): this decouples the
+ * AppView call's own cost/rate limit from how often the page itself gets a
+ * fresh render — the same reasoning ~/lib/stats uses its own longer TTL for. */
+export const ENGAGEMENT_CACHE_TTL_SECONDS = 300;
+
+/** bsky.app profile/post URL — DIDs and handles go in RAW: bsky.app's router
+ * rejects percent-encoded colons (`did%3Aplc%3A…` → "Invalid DID or handle"),
+ * and both shapes are already URL-path-safe (validated upstream as isDid /
+ * isHandle; TID rkeys are base32). Shared with the writer dashboard's
+ * "Announced ↗" / "View on Bluesky" links so the two surfaces never drift. */
+export function bskyPostUrl(actor: string, rkey: string): string {
+  return `https://bsky.app/profile/${actor}/post/${rkey}`;
+}
+
+/** bsky.app profile URL — same raw-actor rule as bskyPostUrl. */
+export function bskyProfileUrl(actor: string): string {
+  return `https://bsky.app/profile/${actor}`;
+}
+
+/** A document's bskyPostRef, validated down to the canonical at:// URI
+ * app.bsky.feed.getPosts expects — or null (never announced, or the ref is
+ * malformed/points somewhere else). Rebuilds the URI from parseAtUri's
+ * validated parts rather than trusting the ref's raw string verbatim. */
+export function announcedPostUri(
+  ref: { uri?: unknown } | undefined,
+): { uri: string; did: Did; rkey: string } | null {
+  if (typeof ref?.uri !== "string") return null;
+  const parts = parseAtUri(ref.uri);
+  if (parts?.collection !== "app.bsky.feed.post") return null;
+  return {
+    uri: `at://${parts.did}/${parts.collection}/${parts.rkey}`,
+    did: parts.did,
+    rkey: parts.rkey,
+  };
+}
+
+function numOrUndefined(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : undefined;
+}
+
+/**
+ * Batched app.bsky.feed.getPosts — chunks into groups of
+ * MAX_GET_POSTS_BATCH, public + unauthenticated. Every failure mode
+ * (non-2xx, network error, timeout, oversized/malformed body) drops just
+ * that chunk's URIs from the result map rather than throwing — a partial
+ * answer beats none, and the caller never blocks on this.
+ */
+export async function fetchPostsEngagement(
+  uris: string[],
+  fetcher: typeof fetch = fetch,
+): Promise<Map<string, EngagementCounts>> {
+  const result = new Map<string, EngagementCounts>();
+  const validUris = uris.filter((u) => u.startsWith("at://"));
+  for (let i = 0; i < validUris.length; i += MAX_GET_POSTS_BATCH) {
+    const batch = validUris.slice(i, i + MAX_GET_POSTS_BATCH);
+    if (batch.length === 0) continue;
+    const params = new URLSearchParams();
+    for (const uri of batch) params.append("uris", uri);
+    const url = `https://${APPVIEW_HOST}/xrpc/app.bsky.feed.getPosts?${params}`;
+    try {
+      const res = await fetcher(url, {
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      });
+      if (!res.ok) continue;
+      const bytes = await readBodyCapped(res, MAX_RESPONSE_BYTES);
+      if (!bytes) continue;
+      const body: unknown = JSON.parse(new TextDecoder().decode(bytes));
+      const posts = (body as { posts?: unknown } | null)?.posts;
+      if (!Array.isArray(posts)) continue;
+      for (const post of posts) {
+        const p = post as Record<string, unknown> | null;
+        if (typeof p?.uri !== "string") continue;
+        result.set(p.uri, {
+          likeCount: numOrUndefined(p.likeCount),
+          replyCount: numOrUndefined(p.replyCount),
+          repostCount: numOrUndefined(p.repostCount),
+          quoteCount: numOrUndefined(p.quoteCount),
+        });
+      }
+    } catch {
+      // Degrade silently — one bad chunk never blocks the rest, or the page.
+    }
+  }
+  return result;
+}
+
+/** Feature-detected Workers Cache API access — absent under plain vitest/
+ * node, same pattern as ~/lib/read-cache / the /img route. */
+function defaultCache(): Cache | undefined {
+  return (globalThis as { caches?: { default?: Cache } }).caches?.default;
+}
+
+/** Synthetic, cacheable-key URL for one post's engagement — public data
+ * (unlike ~/lib/stats's per-writer key), so the raw URI is fine to carry
+ * directly; still a synthetic internal host, never a routable path. */
+function engagementCacheUrl(uri: string): string {
+  return `https://goldroad-engagement.internal/v1/${encodeURIComponent(uri)}`;
+}
+
+export type DocumentEngagement = {
+  counts: EngagementCounts;
+  /** bsky.app thread — the reply count's link target (owner decision #2:
+   * "the network is the comment section", DECISIONS #61). */
+  threadUrl: string;
+};
+
+/**
+ * The document-page-facing entry point: given a document's raw bskyPostRef,
+ * returns its engagement counts + the bsky.app thread URL, or null when the
+ * post was never announced, the ref is malformed, or every upstream attempt
+ * failed — the caller renders nothing in all three cases (owner decision #2:
+ * honest silence, never a zero). Cached at the edge for
+ * ENGAGEMENT_CACHE_TTL_SECONDS so a burst of reads on one popular post makes
+ * at most one upstream AppView call per cache window.
+ */
+export async function getDocumentEngagement(
+  ref: { uri?: unknown } | undefined,
+  options: { fetcher?: typeof fetch; cache?: Cache } = {},
+): Promise<DocumentEngagement | null> {
+  const announced = announcedPostUri(ref);
+  if (!announced) return null;
+
+  const cache = options.cache ?? defaultCache();
+  const cacheUrl = engagementCacheUrl(announced.uri);
+  if (cache) {
+    const hit = await cache.match(cacheUrl).catch(() => undefined);
+    if (hit) {
+      const cached = (await hit.json().catch(() => null)) as {
+        counts?: EngagementCounts;
+      } | null;
+      if (cached?.counts) {
+        return {
+          counts: cached.counts,
+          threadUrl: bskyPostUrl(announced.did, announced.rkey),
+        };
+      }
+    }
+  }
+
+  const fetcher = options.fetcher ?? fetch;
+  const byUri = await fetchPostsEngagement([announced.uri], fetcher);
+  const counts = byUri.get(announced.uri);
+  if (!counts) return null;
+
+  if (cache) {
+    const response = new Response(JSON.stringify({ counts }), {
+      headers: {
+        "content-type": "application/json",
+        "cache-control": `public, s-maxage=${ENGAGEMENT_CACHE_TTL_SECONDS}`,
+      },
+    });
+    await cache.put(cacheUrl, response).catch(() => {});
+  }
+
+  return { counts, threadUrl: bskyPostUrl(announced.did, announced.rkey) };
+}
