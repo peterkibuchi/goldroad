@@ -318,4 +318,7 @@ export type StandardPublication = {
   description?: string;
   /** Base publication URL; canonical document URL = url + document.path. */
   url?: string;
+  /** Square identity image (lexicon: image/*, ≤1MB, ≥256×256) — untrusted
+   * shape, validate with coverImageCid (~/lib/blob) before dereferencing. */
+  icon?: unknown;
 };

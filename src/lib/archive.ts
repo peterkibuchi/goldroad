@@ -1,0 +1,72 @@
+/**
+ * Pure display helpers for the publication archive/masthead page
+ * (`~/routes/@{$handle}.index`): month/year grouping, the quiet client-side
+ * search affordance, and the no-cover thumbnail monogram. No network/atproto
+ * imports — these run over data the route already fetched.
+ */
+
+/** "January 2026" for a group header. Records with no publishedAt (drafts
+ * imported without a date, or a legacy record predating the field) fall into
+ * a shared "Undated" bucket at the end rather than being silently dropped —
+ * they're still real posts in the writer's archive. */
+export function monthYearLabel(iso: string | null): string {
+  const date = iso ? new Date(iso) : null;
+  if (!date || Number.isNaN(date.getTime())) return "Undated";
+  return date.toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+export type ArchiveGroup<T> = { label: string; posts: T[] };
+
+/**
+ * Groups an ALREADY-SORTED (newest first) post list into consecutive
+ * month/year buckets — a pure client-side skim rhythm, no new data and no
+ * re-sort (a label appearing twice non-consecutively would be a caller sort
+ * bug, not something this function should paper over).
+ */
+export function groupPostsByMonth<T extends { publishedAt: string | null }>(
+  posts: T[],
+): ArchiveGroup<T>[] {
+  const groups: ArchiveGroup<T>[] = [];
+  for (const post of posts) {
+    const label = monthYearLabel(post.publishedAt);
+    const current = groups.at(-1);
+    if (current && current.label === label) {
+      current.posts.push(post);
+    } else {
+      groups.push({ label, posts: [post] });
+    }
+  }
+  return groups;
+}
+
+/**
+ * Quiet client-side search: case-insensitive substring match over the title
+ * or dek of ALREADY-LOADED posts — no new backend, no new fetch. An empty
+ * (or whitespace-only) query is "no filter", not "match nothing".
+ */
+export function filterPostsByQuery<
+  T extends { title: string; description: string | null },
+>(posts: T[], query: string): T[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return posts;
+  return posts.filter(
+    (post) =>
+      post.title.toLowerCase().includes(q) ||
+      (post.description?.toLowerCase().includes(q) ?? false),
+  );
+}
+
+/** First grapheme, uppercased — the monogram for a cover-less thumbnail
+ * placeholder (never splits an emoji/combining sequence, same primitive
+ * ~/lib/announce uses for grapheme-safe truncation). Never empty: a blank
+ * or whitespace-only name falls back to "?". */
+export function monogram(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) return "?";
+  const first = [...new Intl.Segmenter().segment(trimmed)][0]?.segment ?? "?";
+  return first.toUpperCase();
+}
