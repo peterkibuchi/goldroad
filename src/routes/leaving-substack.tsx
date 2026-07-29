@@ -85,9 +85,9 @@ const ROWS: Row[] = [
     roadmap: true,
   },
   {
-    label: "Import from Substack",
+    label: "Import your archive",
     goldroad:
-      "Upload your Substack export or paste any feed — your archive arrives as private drafts",
+      "Upload your Substack, Medium, Ghost, or WordPress export — or paste any feed — your archive arrives as private drafts",
     substack: "—",
   },
 ];
