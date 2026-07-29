@@ -1,11 +1,13 @@
 import { notFound, useLocation } from "@tanstack/react-router";
 
 import { ExternalLink } from "~/components/external-link";
+import { HeartIcon, ReplyIcon, RepostIcon } from "~/components/icons";
 import { Prose } from "~/components/prose";
 import {
   getRecordEntry,
   isDid,
   isHandle,
+  listRecordsPage,
   NotFoundError,
   parseAtUri,
   RKEY_RE,
@@ -15,14 +17,24 @@ import {
   type StandardPublication,
 } from "~/lib/atproto";
 import { blobImagePath, coverImageCid } from "~/lib/blob";
+import {
+  bskyProfileUrl,
+  type DocumentEngagement,
+  getDocumentEngagement,
+} from "~/lib/engagement";
 import { buildArticleJsonLd, jsonLdScriptContent } from "~/lib/json-ld";
 import { checkMirror, type MirrorInfo } from "~/lib/mirror";
 import { checkHidden, recordAtUri } from "~/lib/moderation";
 import { CANONICAL_ORIGIN } from "~/lib/origin";
 import { composeDocumentUrl } from "~/lib/publish";
 import { documentReadingMinutes, formatReadingTime } from "~/lib/reading-time";
+import {
+  RELATED_POSTS_LIMIT,
+  type RelatedPost,
+  selectRelatedPosts,
+} from "~/lib/related-posts";
 
-/** A validated cover image reference, serveable through /img/$did/$cid. */
+/** A validated cover/icon image reference, serveable through /img/$did/$cid. */
 export type CoverRef = { did: string; cid: string };
 
 /**
@@ -69,39 +81,78 @@ export async function loadDocument(identParam: string, rkey: string) {
     );
     const doc = entry.value;
 
-    // Resolve the document's publication (same-repo at:// site refs only) for
-    // the standard.site canonical URL (publication.url + document.path) and
-    // the byline's publication name.
-    let publicationUrl: string | undefined;
-    let publicationName: string | null = null;
+    // The document's publication (same-repo at:// site refs only) — backs
+    // the standard.site canonical URL (publication.url + document.path), the
+    // byline's name/icon, and the end-of-post follow-card's description.
     const siteRef = typeof doc.site === "string" ? parseAtUri(doc.site) : null;
-    if (
+    const pubPromise =
       siteRef &&
       siteRef.did === did &&
       siteRef.collection === "site.standard.publication"
-    ) {
-      const pub = await getRecordEntry<StandardPublication>(
-        pds,
-        siteRef.did,
-        siteRef.collection,
-        siteRef.rkey,
-      ).catch(() => null);
-      if (typeof pub?.value.url === "string") publicationUrl = pub.value.url;
-      if (typeof pub?.value.name === "string" && pub.value.name.trim() !== "")
-        publicationName = pub.value.name;
-    }
+        ? getRecordEntry<StandardPublication>(
+            pds,
+            siteRef.did,
+            siteRef.collection,
+            siteRef.rkey,
+          ).catch(() => null)
+        : Promise.resolve(null);
+
+    // "More from @handle" (owner decision #3: same-writer only) — a small
+    // extra page of the writer's own document records, same call shape the
+    // archive page already makes. A short buffer over the display limit
+    // covers the current document (and a few unkeyed/untitled records)
+    // without needing a second round trip.
+    const relatedPromise = listRecordsPage<StandardDocument>(
+      pds,
+      did,
+      "site.standard.document",
+      { limit: RELATED_POSTS_LIMIT + 3 },
+    ).catch(() => ({ records: [], cursor: null }));
+
+    // Cross-network engagement (owner decision #2): announced-only, cached,
+    // and NEVER allowed to fail the page — every error degrades to null.
+    const engagementPromise = getDocumentEngagement(doc.bskyPostRef).catch(
+      () => null,
+    );
 
     // Mirror lookup (import ledger): a hit swaps the canonical tag for
     // noindex and adds the "Originally published at …" line below. Null =
     // native post, adopted mirror, or a flaked read (fail open).
-    const mirror = await checkMirror({ data: { did, rkey } });
+    const mirrorPromise = checkMirror({ data: { did, rkey } });
+
+    const [pub, relatedPage, engagement, mirror] = await Promise.all([
+      pubPromise,
+      relatedPromise,
+      engagementPromise,
+      mirrorPromise,
+    ]);
+
+    let publicationUrl: string | undefined;
+    let publicationName: string | null = null;
+    let publicationDescription: string | null = null;
+    let publicationIcon: CoverRef | null = null;
+    if (typeof pub?.value.url === "string") publicationUrl = pub.value.url;
+    if (typeof pub?.value.name === "string" && pub.value.name.trim() !== "")
+      publicationName = pub.value.name;
+    if (
+      typeof pub?.value.description === "string" &&
+      pub.value.description.trim() !== ""
+    ) {
+      publicationDescription = pub.value.description;
+    }
+    const iconCid = coverImageCid(pub?.value.icon);
+    if (iconCid) publicationIcon = { did, cid: iconCid };
 
     const coverCid = coverImageCid(doc.coverImage);
     return {
       doc,
       ident,
       publicationName,
+      publicationDescription,
+      publicationIcon,
       mirror,
+      relatedPosts: selectRelatedPosts(relatedPage.records, rkey),
+      engagement,
       // Validated cover blob (allowlisted raster, within the lexicon cap) —
       // rendered via the /img proxy so the PDS hostname never leaks into HTML.
       cover: coverCid ? ({ did, cid: coverCid } satisfies CoverRef) : null,
@@ -248,18 +299,82 @@ function provenanceHost(url: string | null): string | null {
   }
 }
 
+/** True when at least one engagement metric is actually counted — an
+ * announced post whose AppView entry carries zero counted fields (all
+ * `undefined`) renders nothing, same as an unannounced one (owner decision
+ * #2: honest silence, never a false zero). */
+function hasCountedEngagement(counts: DocumentEngagement["counts"]): boolean {
+  return (
+    counts.likeCount !== undefined ||
+    counts.replyCount !== undefined ||
+    counts.repostCount !== undefined ||
+    counts.quoteCount !== undefined
+  );
+}
+
+/** Quiet like/reply/repost+quote row (owner decision #2) — only the reply
+ * count is a link, to the bsky.app thread ("the network is the comment
+ * section", DECISIONS #61). Plain ink-soft icon+number pairs, never a
+ * colored badge — this must not read as generic social-media chrome. */
+function EngagementRow({ engagement }: { engagement: DocumentEngagement }) {
+  const { counts, threadUrl } = engagement;
+  const reposts = (counts.repostCount ?? 0) + (counts.quoteCount ?? 0);
+  const showReposts =
+    counts.repostCount !== undefined || counts.quoteCount !== undefined;
+  return (
+    <div className="mb-10 flex items-center gap-6 border-rule border-b pb-6 font-display text-ink-soft text-sm">
+      {counts.likeCount !== undefined && (
+        <span
+          className="inline-flex items-center gap-1.5"
+          title={`${counts.likeCount} likes on Bluesky`}
+        >
+          <HeartIcon className="h-4 w-4" />
+          {counts.likeCount}
+        </span>
+      )}
+      {counts.replyCount !== undefined && (
+        <ExternalLink
+          className="inline-flex items-center gap-1.5 transition-colors hover:text-ink"
+          href={threadUrl}
+          title="View replies on Bluesky"
+        >
+          <ReplyIcon className="h-4 w-4" />
+          {counts.replyCount}
+        </ExternalLink>
+      )}
+      {showReposts && (
+        <span
+          className="inline-flex items-center gap-1.5"
+          title={`${reposts} reposts and quotes on Bluesky`}
+        >
+          <RepostIcon className="h-4 w-4" />
+          {reposts}
+        </span>
+      )}
+    </div>
+  );
+}
+
 export function DocumentArticle({
   doc,
   ident,
   publicationName,
+  publicationDescription,
+  publicationIcon,
   cover,
   mirror,
+  relatedPosts,
+  engagement,
 }: {
   doc: StandardDocument;
   ident: string;
   publicationName?: string | null;
+  publicationDescription?: string | null;
+  publicationIcon?: CoverRef | null;
   cover?: CoverRef | null;
   mirror?: MirrorInfo | null;
+  relatedPosts?: RelatedPost[];
+  engagement?: DocumentEngagement | null;
 }) {
   const body = doc.textContent ?? "";
   const date = formatDate(doc.publishedAt);
@@ -267,6 +382,9 @@ export function DocumentArticle({
   const publicationHref = `/@${encodeURIComponent(ident)}`;
   const mirrorHost = mirror ? provenanceHost(mirror.sourceUrl) : null;
   const readingLabel = formatReadingTime(documentReadingMinutes(body));
+  // Owner decision #1: the dek is ALWAYS shown when set — no longer just a
+  // no-body fallback — as its own line under the H1.
+  const dek = doc.description?.trim() || null;
 
   return (
     <div className="min-h-screen bg-paper font-body text-ink">
@@ -290,35 +408,50 @@ export function DocumentArticle({
           <h1 className="text-balance font-semibold text-4xl text-ink leading-[1.1] md:text-5xl">
             {doc.title ?? "Untitled"}
           </h1>
+          {dek && (
+            <p className="mt-4 text-ink-soft text-xl italic leading-relaxed">
+              {dek}
+            </p>
+          )}
           {/* One byline row carries every attribution/metadata fact — the
-              title stands alone above it, carrying its own weight. */}
-          <p className="mt-5 font-display text-ink-soft text-sm">
-            {publicationName && (
-              <>
-                <a
-                  className="transition-colors hover:text-ink"
-                  href={publicationHref}
-                >
-                  {publicationName}
-                </a>
-                {" · "}
-              </>
+              title (and now the dek) stand alone above it, carrying their
+              own weight. Avatar-if-any sits inline with the name. */}
+          <div className="mt-6 flex items-center gap-2.5 font-display text-ink-soft text-sm">
+            {publicationIcon && (
+              <img
+                alt=""
+                className="h-6 w-6 shrink-0 object-cover"
+                src={blobImagePath(publicationIcon.did, publicationIcon.cid)}
+              />
             )}
-            <a
-              className="transition-colors hover:text-ink"
-              href={publicationHref}
-            >
-              @{ident}
-            </a>
-            {date && (
-              <>
-                {" · "}
-                <time dateTime={doc.publishedAt}>{date}</time>
-              </>
-            )}
-            {readingLabel && <> · {readingLabel}</>}
-            {updated && updated !== date && <span> · updated {updated}</span>}
-          </p>
+            <p>
+              {publicationName && (
+                <>
+                  <a
+                    className="transition-colors hover:text-ink"
+                    href={publicationHref}
+                  >
+                    {publicationName}
+                  </a>
+                  {" · "}
+                </>
+              )}
+              <a
+                className="transition-colors hover:text-ink"
+                href={publicationHref}
+              >
+                @{ident}
+              </a>
+              {date && (
+                <>
+                  {" · "}
+                  <time dateTime={doc.publishedAt}>{date}</time>
+                </>
+              )}
+              {readingLabel && <> · {readingLabel}</>}
+              {updated && updated !== date && <span> · updated {updated}</span>}
+            </p>
+          </div>
           {/* Provenance for mirrored posts (import ledger): the original
               lives elsewhere and this page says so, visibly — the honest
               half of "keep your Substack". Calm register, no ornament. */}
@@ -334,12 +467,14 @@ export function DocumentArticle({
             </p>
           )}
         </header>
+        {/* Engagement row (owner decision #2): announced posts only, and
+            only when the AppView actually returned a counted metric —
+            silence, never a placeholder or a false zero. */}
+        {engagement && hasCountedEngagement(engagement.counts) && (
+          <EngagementRow engagement={engagement} />
+        )}
         {body.trim() !== "" ? (
           <Prose markdown={body} />
-        ) : doc.description ? (
-          <p className="text-ink-soft text-lg italic leading-relaxed">
-            {doc.description}
-          </p>
         ) : (
           <p className="font-display text-ink-soft text-sm">
             This document keeps its full text elsewhere
@@ -358,17 +493,71 @@ export function DocumentArticle({
             .
           </p>
         )}
-        <footer className="mt-16 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 border-rule border-t pt-6">
-          <p className="font-display text-ink-soft text-xs">
-            <a
-              className="underline underline-offset-2 transition-colors hover:text-ink"
-              href={publicationHref}
-            >
-              More from {publicationName ?? `@${ident}`}
-            </a>
-          </p>
-          {/* Whisper-level platform credit (two-surface rule: the writer owns
-              this page; Goldroad stays out of the way). */}
+        <aside className="mt-16 border-rule border-t pt-10">
+          {/* End-of-post follow-card — the honest stand-in for a subscribe
+              card until newsletters ship (dossier §1: "inline subscribe
+              card", adapt-lite verdict). Frictionless and native: it links
+              straight to the writer's own Bluesky profile. */}
+          <div className="border border-rule p-6">
+            <p className="font-display font-semibold text-base text-ink">
+              {publicationName ?? `@${ident}`}
+            </p>
+            {publicationDescription && (
+              <p className="mt-2 text-base text-ink-soft leading-relaxed">
+                {publicationDescription}
+              </p>
+            )}
+            <p className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 font-display text-sm">
+              <ExternalLink
+                className="font-semibold text-ink underline underline-offset-2 transition-colors hover:text-ink-soft"
+                href={bskyProfileUrl(ident)}
+              >
+                Follow @{ident} on Bluesky
+              </ExternalLink>
+              <a
+                className="text-ink-soft underline underline-offset-2 transition-colors hover:text-ink"
+                href={`${publicationHref}/rss.xml`}
+              >
+                RSS
+              </a>
+            </p>
+          </div>
+          {relatedPosts && relatedPosts.length > 0 && (
+            <div className="mt-10">
+              <p className="font-display font-semibold text-ink-soft text-xs uppercase tracking-wide">
+                More from {publicationName ?? `@${ident}`}
+              </p>
+              <ul>
+                {relatedPosts.map((post) => {
+                  const postDate = formatDate(post.publishedAt ?? undefined);
+                  return (
+                    <li
+                      className="border-rule border-t py-4 first:border-t-0"
+                      key={post.rkey}
+                    >
+                      <a
+                        className="font-semibold text-ink leading-snug hover:underline hover:underline-offset-4"
+                        href={`${publicationHref}/${encodeURIComponent(post.rkey)}`}
+                      >
+                        {post.title}
+                      </a>
+                      {postDate && (
+                        <p className="mt-1 font-display text-ink-soft text-xs uppercase tracking-wide">
+                          <time dateTime={post.publishedAt ?? undefined}>
+                            {postDate}
+                          </time>
+                        </p>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+        </aside>
+        {/* Whisper-level platform credit (two-surface rule: the writer owns
+            this page; Goldroad stays out of the way). */}
+        <footer className="mt-10 border-rule border-t pt-6">
           <p className="font-display text-ink-soft/80 text-xs">
             Published by its author on the open network ·{" "}
             <a
