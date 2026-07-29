@@ -9,6 +9,7 @@ import {
   QuietLink,
   RegMark,
 } from "~/components/marketing";
+import { Notice } from "~/components/notice";
 import { SiteFooter, SiteHeader } from "~/components/site-chrome";
 import {
   resetTurnstileWidgets,
@@ -19,6 +20,11 @@ import { CANONICAL_ORIGIN } from "~/lib/origin";
 import { capture } from "~/lib/posthog";
 
 export const Route = createFileRoute("/")({
+  validateSearch: (search: Record<string, unknown>) => {
+    const out: { notice?: "goodbye" } = {};
+    if (search.notice === "goodbye") out.notice = "goodbye";
+    return out;
+  },
   head: () => ({
     meta: [
       { title: "Goldroad — your publication on the open network" },
@@ -38,7 +44,7 @@ export const Route = createFileRoute("/")({
     ],
     links: [{ rel: "canonical", href: `${CANONICAL_ORIGIN}/` }],
   }),
-  component: Landing,
+  component: LandingRoute,
 });
 
 /**
@@ -300,10 +306,34 @@ function FoundingWritersForm() {
   );
 }
 
-export function Landing() {
+/**
+ * Reads the search-param notice from the matched route, then hands off to the
+ * pure `Landing` component — same split as ~/routes/write's SignIn: the
+ * hook-dependent wrapper is the route's `component`, the exported piece stays
+ * router-context-free and directly render-testable (see home.test.tsx).
+ */
+function LandingRoute() {
+  const { notice } = Route.useSearch();
+  return <Landing notice={notice} />;
+}
+
+export function Landing({ notice }: { notice?: "goodbye" } = {}) {
   return (
     <div className="flex min-h-screen flex-col bg-paper font-body text-ink">
       <SiteHeader variant="marketing" />
+
+      {/* Post-account-deletion goodbye: search-param-driven, same pattern as
+          /settings and /dashboard's notices. Calm, not apologetic — deleting
+          an account is a normal, supported action. */}
+      {notice === "goodbye" && (
+        <div className="mx-auto w-full max-w-5xl px-6 pt-6 md:px-16">
+          <Notice>
+            Your Goldroad account is gone — drafts, import history, and your
+            sign-in all deleted. Anything you published stays exactly where it
+            always lived: your own repo. Come back anytime.
+          </Notice>
+        </div>
+      )}
 
       {/* Homepage speaks to Bluesky-native writers; /leaving-substack is the
           separate entry point for writers migrating from other platforms —

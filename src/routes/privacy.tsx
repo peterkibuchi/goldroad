@@ -81,9 +81,17 @@ function PrivacyPage() {
 
       <LegalSection heading="Your rights">
         <p>
-          Wherever you live — including under the EU/UK GDPR — you can ask to
-          access, correct, or delete your data, or object to processing. Email{" "}
-          {privacy} and we'll act on it. You can leave the waitlist at any time.
+          If you've connected a Bluesky account, Settings → Your data lets you
+          download everything we hold for your account and delete it yourself,
+          immediately — no waiting on us. (Deleting your account never touches
+          what you've published: those posts live in your own data repo, not
+          ours.)
+        </p>
+        <p className="mt-3">
+          If you're only on the waitlist — no account connected — email{" "}
+          {privacy} to be removed; we act on it by hand. Wherever you live —
+          including under the EU/UK GDPR — you can also ask to access, correct,
+          or delete your data, or object to processing, the same way.
         </p>
       </LegalSection>
 
@@ -92,7 +100,8 @@ function PrivacyPage() {
           items={[
             "Waitlist email: kept until you ask us to remove it, or until the waitlist is retired.",
             "Analytics: aggregated, not tied to your identity.",
-            "Sign-in sessions: kept until you sign out or the session expires.",
+            "Drafts and import history: kept until you delete them (Settings → Your data) or delete your account, which removes both immediately.",
+            "Sign-in sessions: kept until you sign out, delete your account, or the session expires.",
             "Server logs: short-lived (days), then discarded.",
           ]}
         />
