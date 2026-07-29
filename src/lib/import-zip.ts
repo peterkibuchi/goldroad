@@ -29,21 +29,25 @@
  * top. The HTML itself is sanitized downstream exactly like feed HTML: the
  * BlockNote conversion structurally drops script/iframe/unknown nodes.
  */
-import { unzipSync } from "fflate";
-
 import {
   detectPreview,
   guidHash,
   isoDate,
   MAX_EXPORT_POSTS,
 } from "~/lib/import";
+import { MAX_EXPORT_ZIP_BYTES, normalizeHost } from "~/lib/import-formats";
 import { MAX_TITLE_LENGTH } from "~/lib/publish";
+import {
+  createBudgetedInflater,
+  EntryTooLargeError,
+  ExportTooComplexError,
+  listZipEntries,
+} from "~/lib/zip-safety";
 
-export { guidHash, MAX_EXPORT_POSTS };
-
-/** Upload cap. Substack's posts export is text-only HTML + CSVs — real
- * archives measure a few MB; 50 MB is generous, not permissive. */
-export const MAX_EXPORT_ZIP_BYTES = 50 * 1024 * 1024;
+/** Re-exported from ~/lib/import-formats — the SAME cap ~/lib/import-medium
+ * uses, and the SAME hostname normalizer ~/lib/import-ghost uses (both take
+ * an optional publication address for provenance-link reconstruction). */
+export { guidHash, MAX_EXPORT_POSTS, MAX_EXPORT_ZIP_BYTES, normalizeHost };
 
 /** Per-entry inflated cap: matches the feed pipeline's whole-feed bound — a
  * single post's HTML has no business being larger. */
@@ -63,8 +67,10 @@ export const MAX_TOTAL_INFLATED_BYTES = 100 * 1024 * 1024;
 export const MAX_ZIP_ENTRIES = 10_000;
 
 /** The archive was refused before any entry was inflated — too many entries
- * to be a Substack posts export. The page shows its own copy for this. */
-export class ExportTooComplexError extends Error {}
+ * to be a Substack posts export. The page shows its own copy for this.
+ * Re-exported from ~/lib/zip-safety, the shared zip-bomb defense used by
+ * every export-zip parser (this one, and ~/lib/import-medium). */
+export { ExportTooComplexError };
 
 export type ZipPostFailure = {
   name: string;
@@ -103,24 +109,6 @@ export type ParsedExport = {
  * (Substack keeps post_id fixed), which is what makes re-uploads idempotent. */
 export function zipPostGuid(postId: string): string {
   return `substack-export:${postId}`;
-}
-
-/** Hostname-shaped input only — the writer types their publication's address
- * to give imported drafts a provenance link. Anything else (paths, schemes,
- * ports, spaces) is dropped rather than guessed at. */
-export function normalizeHost(raw: string): string | null {
-  const trimmed = raw
-    .trim()
-    .replace(/^https?:\/\//i, "")
-    .replace(/\/.*$/, "");
-  if (trimmed === "" || trimmed.length > 253) return null;
-  if (
-    !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(
-      trimmed,
-    )
-  )
-    return null;
-  return trimmed.toLowerCase();
 }
 
 /** The post's public URL, reconstructed Substack-style (`https://host/p/slug`)
@@ -253,33 +241,6 @@ function isPostsCsv(name: string): boolean {
   );
 }
 
-/** Inflates exactly one named entry, size-gated before AND after inflation
- * (central-directory sizes are attacker-controlled claims, not facts). */
-function inflateEntry(
-  bytes: Uint8Array,
-  name: string,
-  cap: number,
-): Uint8Array {
-  let declaredOversize = false;
-  const files = unzipSync(bytes, {
-    filter: (file) => {
-      if (file.name !== name) return false;
-      if (file.originalSize > cap) {
-        declaredOversize = true;
-        return false;
-      }
-      return true;
-    },
-  });
-  if (declaredOversize) throw new EntryTooLargeError();
-  const data = files[name];
-  if (!data) throw new Error(`entry vanished: ${name}`);
-  if (data.length > cap) throw new EntryTooLargeError();
-  return data;
-}
-
-class EntryTooLargeError extends Error {}
-
 /**
  * The whole export → picker-ready posts. Throws only when the bytes aren't a
  * readable zip at all, or carry more entries than a posts export plausibly
@@ -291,22 +252,11 @@ class EntryTooLargeError extends Error {}
  */
 export function parseSubstackExport(bytes: Uint8Array): ParsedExport {
   // Listing pass: names + declared sizes only, nothing inflated.
-  const entryNames: string[] = [];
-  unzipSync(bytes, {
-    filter: (file) => {
-      entryNames.push(file.name);
-      return false;
-    },
-  });
+  const entryNames = listZipEntries(bytes);
   if (entryNames.length > MAX_ZIP_ENTRIES) throw new ExportTooComplexError();
 
   const decoder = new TextDecoder();
-  let inflatedBudget = MAX_TOTAL_INFLATED_BYTES;
-  const inflate = (name: string, cap: number): Uint8Array => {
-    const data = inflateEntry(bytes, name, Math.min(cap, inflatedBudget));
-    inflatedBudget -= data.length;
-    return data;
-  };
+  const inflate = createBudgetedInflater(bytes, MAX_TOTAL_INFLATED_BYTES);
 
   // The CSV first (metadata for everything else). Unreadable = absent.
   let csv: Map<string, CsvMeta> | null = null;
