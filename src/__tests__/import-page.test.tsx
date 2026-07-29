@@ -3,11 +3,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 /**
  * The /import source step: two clearly labeled doors (paste a feed, upload
- * the Substack export) and the honest per-host error copy. The Substack
- * branch matters most — Substack answers 429 to every fetch from our server,
- * so "try again" copy would be a lie; the error must point at the upload
- * path that actually works. import.tsx is a route file: the
- * `cloudflare:workers` alias in vitest.config.ts stubs its bindings.
+ * an export file) and the honest per-host error copy. The Substack branch
+ * matters most — Substack answers 429 to every fetch from our server, so
+ * "try again" copy would be a lie; the error must point at the upload path
+ * that actually works. import.tsx is a route file: the `cloudflare:workers`
+ * alias in vitest.config.ts stubs its bindings.
  */
 import { isSubstackHost, SourcePicker } from "../routes/import";
 
@@ -17,17 +17,17 @@ function renderPicker(
   props: Partial<React.ComponentProps<typeof SourcePicker>> = {},
 ) {
   const onFeed = vi.fn();
-  const onZip = vi.fn();
+  const onFile = vi.fn();
   render(
     <SourcePicker
       busy={null}
       error={null}
       onFeed={onFeed}
-      onZip={onZip}
+      onFile={onFile}
       {...props}
     />,
   );
-  return { onFeed, onZip };
+  return { onFeed, onFile };
 }
 
 describe("SourcePicker — the two doors", () => {
@@ -37,28 +37,42 @@ describe("SourcePicker — the two doors", () => {
       screen.getByLabelText(/paste your publication's address/i),
     ).toBeDefined();
     expect(
-      screen.getByRole("heading", { name: /upload your substack export/i }),
+      screen.getByRole("heading", { name: /upload your export/i }),
     ).toBeDefined();
-    // One plain line says how to get the export — current Substack UI path.
-    expect(
-      screen.getByText(/settings → exports.*create new export/i),
-    ).toBeDefined();
-    // The zip is parsed locally; the page says so.
+    // The file is parsed locally; the page says so.
     expect(screen.getByText(/never uploaded/i)).toBeDefined();
   });
 
-  it("takes a .zip via the file input and passes the confirmed host along", () => {
-    const { onZip } = renderPicker();
+  it("names all four supported export platforms honestly", () => {
+    renderPicker();
+    const text = screen.getByText(/upload the export file/i).textContent ?? "";
+    for (const platform of ["Substack", "Medium", "Ghost", "WordPress"]) {
+      expect(text).toContain(platform);
+    }
+  });
+
+  it("accepts a zip, json, or xml export file", () => {
+    renderPicker();
     const input = screen.getByLabelText<HTMLInputElement>(
-      /choose your export \.zip/i,
+      /choose your export file/i,
     );
-    expect(input.getAttribute("accept")).toContain(".zip");
+    const accept = input.getAttribute("accept") ?? "";
+    expect(accept).toContain(".zip");
+    expect(accept).toContain(".json");
+    expect(accept).toContain(".xml");
+  });
+
+  it("takes an export file via the file input and passes the confirmed host along", () => {
+    const { onFile } = renderPicker();
+    const input = screen.getByLabelText<HTMLInputElement>(
+      /choose your export file/i,
+    );
     fireEvent.change(screen.getByLabelText(/address \(optional/i), {
       target: { value: "you.substack.com" },
     });
     const file = new File(["PK"], "export.zip", { type: "application/zip" });
     fireEvent.change(input, { target: { files: [file] } });
-    expect(onZip).toHaveBeenCalledWith(file, "you.substack.com");
+    expect(onFile).toHaveBeenCalledWith(file, "you.substack.com");
   });
 
   it("submits the feed path with the pasted address", () => {

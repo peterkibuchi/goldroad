@@ -1,15 +1,23 @@
 /**
- * /import — one-time import (feed OR Substack export zip → drafts). Writer
- * surface in the dashboard chrome family. Two sources feed ONE pipeline:
+ * /import — one-time import (feed OR an uploaded export file → drafts).
+ * Writer surface in the dashboard chrome family. Two sources feed ONE
+ * pipeline:
  *
  *  1. Source: paste a feed address (the server fetches + parses it, capped at
- *     the feed's recent window), or upload a Substack export zip — parsed
- *     ENTIRELY in the browser (~/lib/import-zip; the zip never leaves the
- *     machine), which carries the whole archive, not just recent posts.
+ *     the feed's recent window), or upload ONE export file — a Substack or
+ *     Medium export zip, a Ghost JSON export, or a WordPress WXR XML export.
+ *     Every file format is detected (~/lib/import-formats) and parsed
+ *     ENTIRELY in the browser (~/lib/import-zip, ~/lib/import-medium,
+ *     ~/lib/import-ghost, ~/lib/import-wxr — the file never leaves the
+ *     machine), and carries the writer's whole archive, not just recent
+ *     posts.
  *  2. Pick: the found items — full posts checked by default (capped at the
  *     drafts headroom), previews and already-imported items honestly flagged
- *     and unchecked. Already-imported flags for the zip path come from
- *     /api/import/status (hashes only cross the wire).
+ *     and unchecked. Already-imported flags for the file path come from
+ *     /api/import/status (hashes only cross the wire). Non-post entries each
+ *     format's export carries (WordPress pages/attachments, Ghost pages,
+ *     Medium responses/comments) are filtered before the picker and reported
+ *     honestly as a skip count, never silently imported as posts.
  *  3. Import: the BROWSER converts each item's HTML to editor blocks
  *     (BlockNote's parser structurally drops script/iframe/unknown nodes —
  *     conversion is the sanitizer) and saves it as a private draft, one
@@ -29,6 +37,12 @@ import { formatDate } from "~/components/document-article";
 import { Notice } from "~/components/notice";
 import { AppShell } from "~/components/site-chrome";
 import { resolveDidToHandle } from "~/lib/atproto";
+import {
+  detectFileKind,
+  detectZipVariant,
+  MAX_EXPORT_TEXT_BYTES,
+  MAX_EXPORT_ZIP_BYTES,
+} from "~/lib/import-formats";
 import { capture } from "~/lib/posthog";
 import { readSessionDid } from "~/lib/session";
 import { env } from "cloudflare:workers";
@@ -65,18 +79,33 @@ type ImportItem = {
   contentHtml: string;
   preview: boolean;
   alreadyImported: boolean;
-  /** Zip path only: the CSV says this post never published on Substack. */
+  /** File-upload path only: the export says this post never published at
+   * the source (a draft, or — Substack's CSV specifically — unpublished). */
   unpublishedAtSource?: boolean;
 };
 
+/** Which export format an uploaded file was recognized as — drives the
+ * picker's copy and, for Substack/Ghost, whether the optional host input
+ * feeds a reconstructed provenance link. */
+type FileFormat = "substack" | "medium" | "ghost" | "wordpress";
+
 type ImportFeed = {
-  kind: "feed" | "zip";
+  kind: "feed" | "file";
+  format?: FileFormat;
   feed: { title: string; url: string };
   totalItems: number;
   draftSlotsRemaining: number;
   items: ImportItem[];
-  /** Zip path only: per-entry failures + archive-cap cut, reported honestly. */
-  zip?: { failures: number; truncated: number; withoutProvenance: boolean };
+  /** File-upload path only: per-entry failures, the archive-cap cut, and
+   * honest non-post skip counts (pages, attachments, responses/comments —
+   * whichever the format carries), reported plainly rather than silently
+   * imported as posts. */
+  file?: {
+    failures: number;
+    truncated: number;
+    withoutProvenance: boolean;
+    skipped: { label: string; count: number }[];
+  };
 };
 
 const FETCH_ERRORS: Record<string, string> = {
@@ -90,14 +119,24 @@ const FETCH_ERRORS: Record<string, string> = {
   rate_limited:
     "That's a lot of feed fetches in one hour — take a breather and try again soon. Your drafts are unaffected.",
   not_signed_in: "Your session expired — sign in again to import.",
+  unsupported_file_type:
+    "We can only read a Substack or Medium export .zip, a Ghost export .json, or a WordPress export .xml file.",
   zip_too_large:
-    "That file is over 50 MB — Substack post exports are usually a few MB. Make sure you picked the export zip, not a full media backup.",
+    "That zip is over 50 MB — post-only exports are usually a few MB. Make sure you picked the export file itself, not a full media backup.",
   zip_unreadable:
     "That file couldn't be read as a zip archive — re-download your export and try again.",
   not_an_export:
-    "We couldn't find any posts in that zip — a Substack export keeps them in a posts/ folder. Re-download it from Substack's Settings → Exports and try again.",
+    "We couldn't find any posts in that zip — a Substack export keeps them in a posts/ folder, and so does a Medium export. Re-download your export and try again.",
   zip_too_many_files:
-    "That zip holds far more files than a Substack posts export carries, so we stopped before reading it. Make sure you picked the export zip itself.",
+    "That zip holds far more files than a posts export carries, so we stopped before reading it. Make sure you picked the export file itself.",
+  json_too_large:
+    "That file is over 30 MB — a Ghost content export is usually much smaller.",
+  not_a_ghost_export:
+    "We couldn't find any posts in that file — a Ghost export keeps them in a posts array. Re-export from Settings → Advanced → Import/export and try again.",
+  xml_too_large:
+    "That file is over 30 MB — a WordPress export is usually much smaller.",
+  not_a_wxr_export:
+    "We couldn't find any posts in that file — only pages, attachments, or neither. Re-export from Tools → Export in WordPress and try again.",
   status_failed:
     "Your export was read, but checking it against your drafts failed — try again in a moment.",
 };
@@ -211,6 +250,252 @@ function paragraphBlock(text: string) {
   };
 }
 
+type ParsedFile = {
+  format: FileFormat;
+  sourceTitle: string;
+  sourceUrl: string;
+  totalItems: number;
+  items: ImportItem[];
+  fileMeta: NonNullable<ImportFeed["file"]>;
+};
+type ParseFileError = { code: string };
+
+function skipLine(
+  label: string,
+  count: number,
+): { label: string; count: number } {
+  return { label, count };
+}
+
+async function parseSubstackFile(
+  bytes: Uint8Array,
+  hostInput: string,
+): Promise<ParsedFile | ParseFileError> {
+  const zip = await import("~/lib/import-zip");
+  let parsed: import("~/lib/import-zip").ParsedExport;
+  try {
+    parsed = zip.parseSubstackExport(bytes);
+  } catch (err) {
+    return {
+      code:
+        err instanceof zip.ExportTooComplexError
+          ? "zip_too_many_files"
+          : "zip_unreadable",
+    };
+  }
+  if (parsed.posts.length === 0) return { code: "not_an_export" };
+  const host = zip.normalizeHost(hostInput);
+  const items = await Promise.all(
+    parsed.posts.map(async (post): Promise<ImportItem> => {
+      const guid = zip.zipPostGuid(post.postId);
+      return {
+        guid,
+        guidHash: await zip.guidHash(guid),
+        link: zip.constructSourceUrl(host, post.slug),
+        title: post.title,
+        publishedAt: post.publishedAt,
+        contentHtml: post.contentHtml,
+        preview: post.preview,
+        alreadyImported: false,
+        unpublishedAtSource: post.publishedAtSource === false,
+      };
+    }),
+  );
+  return {
+    format: "substack",
+    sourceTitle: "Your Substack export",
+    sourceUrl: host ? `https://${host}` : "",
+    totalItems: parsed.posts.length + parsed.truncated,
+    items,
+    fileMeta: {
+      failures: parsed.failures.length,
+      truncated: parsed.truncated,
+      withoutProvenance: host === null,
+      skipped: [],
+    },
+  };
+}
+
+async function parseMediumFile(
+  bytes: Uint8Array,
+): Promise<ParsedFile | ParseFileError> {
+  const medium = await import("~/lib/import-medium");
+  let parsed: import("~/lib/import-medium").ParsedMediumExport;
+  try {
+    parsed = medium.parseMediumExport(bytes);
+  } catch (err) {
+    return {
+      code:
+        err instanceof medium.ExportTooComplexError
+          ? "zip_too_many_files"
+          : "zip_unreadable",
+    };
+  }
+  if (parsed.posts.length === 0) return { code: "not_an_export" };
+  const items = await Promise.all(
+    parsed.posts.map(async (post): Promise<ImportItem> => {
+      const guid = medium.mediumPostGuid(post.fileSlug);
+      return {
+        guid,
+        guidHash: await medium.guidHash(guid),
+        link: post.link,
+        title: post.title,
+        publishedAt: post.publishedAt,
+        contentHtml: post.contentHtml,
+        preview: post.preview,
+        alreadyImported: false,
+        unpublishedAtSource: post.publishedAtSource === false,
+      };
+    }),
+  );
+  return {
+    format: "medium",
+    sourceTitle: "Your Medium export",
+    sourceUrl: "",
+    totalItems: parsed.posts.length + parsed.truncated,
+    items,
+    fileMeta: {
+      failures: parsed.failures.length,
+      truncated: parsed.truncated,
+      withoutProvenance: false,
+      skipped:
+        parsed.skippedResponses > 0
+          ? [skipLine("responses/comments", parsed.skippedResponses)]
+          : [],
+    },
+  };
+}
+
+async function parseGhostFile(
+  text: string,
+  hostInput: string,
+): Promise<ParsedFile | ParseFileError> {
+  const ghost = await import("~/lib/import-ghost");
+  const parsed = ghost.parseGhostExport(text);
+  if (parsed.posts.length === 0) return { code: "not_a_ghost_export" };
+  const host = ghost.normalizeHost(hostInput);
+  const items = await Promise.all(
+    parsed.posts.map(async (post): Promise<ImportItem> => {
+      const guid = ghost.ghostPostGuid(post.id);
+      return {
+        guid,
+        guidHash: await ghost.guidHash(guid),
+        link: ghost.constructGhostSourceUrl(host, post.slug),
+        title: post.title,
+        publishedAt: post.publishedAt,
+        contentHtml: post.contentHtml,
+        preview: post.preview,
+        alreadyImported: false,
+        unpublishedAtSource: post.publishedAtSource === false,
+      };
+    }),
+  );
+  return {
+    format: "ghost",
+    sourceTitle: "Your Ghost export",
+    sourceUrl: host ? `https://${host}` : "",
+    totalItems: parsed.posts.length + parsed.truncated,
+    items,
+    fileMeta: {
+      failures: parsed.failures.length,
+      truncated: parsed.truncated,
+      withoutProvenance: host === null,
+      skipped:
+        parsed.skippedPages > 0 ? [skipLine("pages", parsed.skippedPages)] : [],
+    },
+  };
+}
+
+async function parseWordPressFile(
+  text: string,
+): Promise<ParsedFile | ParseFileError> {
+  const wxr = await import("~/lib/import-wxr");
+  const parsed = wxr.parseWxrExport(text);
+  if (parsed.malformed) return { code: "not_a_wxr_export" };
+  if (parsed.posts.length === 0) return { code: "not_a_wxr_export" };
+  const items = await Promise.all(
+    parsed.posts.map(async (post): Promise<ImportItem> => {
+      const guid = wxr.wordpressPostGuid(post.id);
+      return {
+        guid,
+        guidHash: await wxr.guidHash(guid),
+        link: post.link,
+        title: post.title,
+        publishedAt: post.publishedAt,
+        contentHtml: post.contentHtml,
+        preview: post.preview,
+        alreadyImported: false,
+        unpublishedAtSource: post.publishedAtSource === false,
+      };
+    }),
+  );
+  const skipped = [
+    ...(parsed.skipped.pages > 0
+      ? [skipLine("pages", parsed.skipped.pages)]
+      : []),
+    ...(parsed.skipped.attachments > 0
+      ? [skipLine("attachments", parsed.skipped.attachments)]
+      : []),
+    ...(parsed.skipped.other > 0
+      ? [skipLine("other content types", parsed.skipped.other)]
+      : []),
+  ];
+  return {
+    format: "wordpress",
+    sourceTitle: "Your WordPress export",
+    sourceUrl: "",
+    totalItems: parsed.posts.length + parsed.truncated,
+    items,
+    fileMeta: {
+      failures: 0,
+      truncated: parsed.truncated,
+      withoutProvenance: false,
+      skipped,
+    },
+  };
+}
+
+/**
+ * File-upload dispatch: detects the format (~/lib/import-formats, a cheap
+ * dependency-free check — zip variant needs a directory listing, so
+ * ~/lib/zip-safety is imported first just for that), then hands the bytes
+ * to the matching parser. Every heavier module (fflate, this route's own
+ * per-format parsers) loads only past this point — never in the initial
+ * bundle, never for a format the writer didn't upload.
+ */
+async function parseUploadedFile(
+  file: File,
+  hostInput: string,
+): Promise<ParsedFile | ParseFileError> {
+  const kind = detectFileKind(file);
+  if (kind === "unsupported") return { code: "unsupported_file_type" };
+
+  if (kind === "zip") {
+    if (file.size > MAX_EXPORT_ZIP_BYTES) return { code: "zip_too_large" };
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const { listZipEntries } = await import("~/lib/zip-safety");
+    let entryNames: string[];
+    try {
+      entryNames = listZipEntries(bytes);
+    } catch {
+      return { code: "zip_unreadable" };
+    }
+    const variant = detectZipVariant(entryNames);
+    if (variant === "substack") return parseSubstackFile(bytes, hostInput);
+    if (variant === "medium") return parseMediumFile(bytes);
+    return { code: "not_an_export" };
+  }
+
+  if (kind === "json") {
+    if (file.size > MAX_EXPORT_TEXT_BYTES) return { code: "json_too_large" };
+    return parseGhostFile(await file.text(), hostInput);
+  }
+
+  // kind === "xml"
+  if (file.size > MAX_EXPORT_TEXT_BYTES) return { code: "xml_too_large" };
+  return parseWordPressFile(await file.text());
+}
+
 function ImportPage() {
   const { ident } = Route.useLoaderData();
   const [phase, setPhase] = useState<Phase>("source");
@@ -263,59 +548,22 @@ function ImportPage() {
     }
   }
 
-  async function readExport(file: File, hostInput: string) {
+  async function readExportFile(file: File, hostInput: string) {
     if (busy) return;
     setBusy("reading");
     setError(null);
     try {
-      // The parser (and fflate inside it) loads only when an upload actually
-      // happens — it never enters the worker bundle or the initial chunk.
-      const zip = await import("~/lib/import-zip");
-      if (file.size > zip.MAX_EXPORT_ZIP_BYTES) {
-        setError({ code: "zip_too_large" });
+      const parsed = await parseUploadedFile(file, hostInput);
+      if ("code" in parsed) {
+        setError({ code: parsed.code });
         return;
       }
-      let parsed: import("~/lib/import-zip").ParsedExport;
-      try {
-        parsed = zip.parseSubstackExport(
-          new Uint8Array(await file.arrayBuffer()),
-        );
-      } catch (err) {
-        setError({
-          code:
-            err instanceof zip.ExportTooComplexError
-              ? "zip_too_many_files"
-              : "zip_unreadable",
-        });
-        return;
-      }
-      if (parsed.posts.length === 0) {
-        setError({ code: "not_an_export" });
-        return;
-      }
-      const host = zip.normalizeHost(hostInput);
-      const items = await Promise.all(
-        parsed.posts.map(async (post): Promise<ImportItem> => {
-          const guid = zip.zipPostGuid(post.postId);
-          return {
-            guid,
-            guidHash: await zip.guidHash(guid),
-            link: zip.constructSourceUrl(host, post.slug),
-            title: post.title,
-            publishedAt: post.publishedAt,
-            contentHtml: post.contentHtml,
-            preview: post.preview,
-            alreadyImported: false,
-            unpublishedAtSource: post.publishedAtSource === false,
-          };
-        }),
-      );
       setBusy("checking");
       const res = await fetch("/api/import/status", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          guidHashes: items.map((item) => item.guidHash),
+          guidHashes: parsed.items.map((item) => item.guidHash),
         }),
       });
       const body = (await res.json().catch(() => ({}))) as
@@ -334,22 +582,16 @@ function ImportPage() {
       }
       const imported = new Set(body.alreadyImported);
       showPicker({
-        kind: "zip",
-        feed: {
-          title: "Your Substack export",
-          url: host ? `https://${host}` : "",
-        },
-        totalItems: parsed.posts.length + parsed.truncated,
+        kind: "file",
+        format: parsed.format,
+        feed: { title: parsed.sourceTitle, url: parsed.sourceUrl },
+        totalItems: parsed.totalItems,
         draftSlotsRemaining: body.draftSlotsRemaining,
-        items: items.map((item) => ({
+        items: parsed.items.map((item) => ({
           ...item,
           alreadyImported: imported.has(item.guidHash),
         })),
-        zip: {
-          failures: parsed.failures.length,
-          truncated: parsed.truncated,
-          withoutProvenance: host === null,
-        },
+        file: parsed.fileMeta,
       });
     } catch {
       setError({ code: "zip_unreadable" });
@@ -477,7 +719,7 @@ function ImportPage() {
             busy={busy}
             error={error}
             onFeed={findPosts}
-            onZip={readExport}
+            onFile={readExportFile}
           />
         )}
 
@@ -509,19 +751,19 @@ function ImportPage() {
 }
 
 /**
- * Step 1, both doors: paste a feed address, or upload the Substack export.
+ * Step 1, both doors: paste a feed address, or upload an export file.
  * Exported for tests (import-page.test.tsx) — not a route.
  */
 export function SourcePicker({
   busy,
   error,
   onFeed,
-  onZip,
+  onFile,
 }: {
   busy: Busy;
   error: SourceError | null;
   onFeed: (url: string) => void;
-  onZip: (file: File, host: string) => void;
+  onFile: (file: File, host: string) => void;
 }) {
   const [url, setUrl] = useState("");
   const [host, setHost] = useState("");
@@ -588,12 +830,13 @@ export function SourcePicker({
           className="border-rule border-t pt-6 font-bold font-display text-ink text-sm"
           id="substack-export"
         >
-          Or upload your Substack export
+          Or upload your export
         </h2>
         <p className="mt-1 max-w-[54ch] font-display text-ink-soft text-sm">
-          In Substack, open Settings → Exports and choose "Create new export" —
-          you'll get a zip of your whole archive, not just recent posts. It's
-          read right here in your browser and never uploaded.
+          Substack (Settings → Exports), Medium, Ghost (Settings → Advanced →
+          Import/export), or WordPress (Tools → Export) — upload the export file
+          and it's read right here in your browser, never uploaded. It carries
+          your whole archive, not just recent posts.
         </p>
         <label
           className="mt-3 block max-w-[54ch] font-display text-ink-soft text-sm"
@@ -601,8 +844,9 @@ export function SourcePicker({
         >
           Your publication's address{" "}
           <span className="text-ink-soft/80">
-            (optional — with it, each draft keeps a link to its original;
-            without it, posts arrive as plain drafts with no link back)
+            (optional, for Substack and Ghost exports — with it, each draft
+            keeps a link to its original; Medium and WordPress exports already
+            carry their own link, and this is unused for those)
           </span>
         </label>
         <input
@@ -620,7 +864,7 @@ export function SourcePicker({
             role="status"
           >
             {busy === "reading"
-              ? "Reading your export — the zip stays on your machine…"
+              ? "Reading your export — the file stays on your machine…"
               : "Checking your posts against your existing drafts…"}
           </div>
         ) : (
@@ -638,28 +882,28 @@ export function SourcePicker({
               event.preventDefault();
               setDragging(false);
               const file = event.dataTransfer.files?.[0];
-              if (file && !busy) onZip(file, host);
+              if (file && !busy) onFile(file, host);
             }}
           >
             <label
               className="inline-flex min-h-11 cursor-pointer items-center bg-ink px-6 font-bold font-display text-base text-paper transition-colors hover:bg-spot"
-              htmlFor="export-zip"
+              htmlFor="export-file"
             >
-              Choose your export .zip
+              Choose your export file
               <input
-                accept=".zip,application/zip,application/x-zip-compressed"
+                accept=".zip,.json,.xml,application/zip,application/x-zip-compressed,application/json,text/xml,application/xml"
                 className="sr-only"
-                id="export-zip"
+                id="export-file"
                 onChange={(event) => {
                   const file = event.currentTarget.files?.[0];
                   event.currentTarget.value = "";
-                  if (file && !busy) onZip(file, host);
+                  if (file && !busy) onFile(file, host);
                 }}
                 type="file"
               />
             </label>
             <p className="mt-3 font-display text-ink-soft text-sm">
-              or drag it here — up to 50 MB
+              or drag it here — zip up to 50 MB, JSON/XML up to 30 MB
             </p>
           </div>
         )}
@@ -674,6 +918,18 @@ function Badge({ children }: { children: React.ReactNode }) {
       {children}
     </span>
   );
+}
+
+/** "3 pages and 41 attachments skipped" — the honest non-post skip notice
+ * every file format (WordPress pages/attachments, Ghost pages, Medium
+ * responses/comments) surfaces the same way. Null when nothing was skipped. */
+function formatSkipped(
+  skipped: { label: string; count: number }[],
+): string | null {
+  if (skipped.length === 0) return null;
+  const parts = skipped.map((s) => `${s.count} ${s.label}`);
+  if (parts.length === 1) return `${parts[0]} skipped`;
+  return `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)} skipped`;
 }
 
 function PickList({
@@ -693,7 +949,8 @@ function PickList({
   const previews = data.items.length - full;
   const count = selected.size;
   const overCap = count > data.draftSlotsRemaining;
-  const isZip = data.kind === "zip";
+  const isFile = data.kind === "file";
+  const skippedNotice = data.file ? formatSkipped(data.file.skipped) : null;
   return (
     <section aria-labelledby="picker-heading" className="mt-8">
       <h2
@@ -701,7 +958,7 @@ function PickList({
         id="picker-heading"
       >
         {data.feed.title ? `${data.feed.title} · ` : ""}
-        {isZip
+        {isFile
           ? `found ${data.items.length} ${data.items.length === 1 ? "post" : "posts"} in your archive`
           : `found your ${data.items.length} most recent ${data.items.length === 1 ? "post" : "posts"}${
               data.totalItems <= data.items.length
@@ -711,28 +968,34 @@ function PickList({
         — {full} full, {previews}{" "}
         {previews === 1 ? "flagged as a preview" : "flagged as previews"}
       </h2>
-      {!isZip && data.items.length >= 20 && (
+      {!isFile && data.items.length >= 20 && (
         <p className="mt-2 font-display text-ink-soft text-sm">
-          Feeds carry a recent window, not the archive — Substack writers can go
-          back and upload their export to bring everything.
+          Feeds carry a recent window, not the archive — writers on Substack,
+          Ghost, Medium, or WordPress can go back and upload their export to
+          bring everything.
         </p>
       )}
-      {isZip && data.zip && data.zip.truncated > 0 && (
+      {isFile && data.file && data.file.truncated > 0 && (
         <p className="mt-2 font-display text-ink-soft text-sm">
           Your archive holds {data.totalItems} posts — one upload reads the
-          first {data.items.length}. For the rest, zip the remaining posts/
-          files into their own export and upload that.
+          first {data.items.length}. For the rest, export the remaining posts on
+          their own and upload that.
         </p>
       )}
-      {isZip && data.zip && data.zip.failures > 0 && (
+      {isFile && skippedNotice && (
+        <p className="mt-2 max-w-[54ch] font-display text-ink-soft text-sm">
+          {skippedNotice} — never imported as posts.
+        </p>
+      )}
+      {isFile && data.file && data.file.failures > 0 && (
         <Notice tone="alert">
-          {data.zip.failures} {data.zip.failures === 1 ? "file" : "files"} in
+          {data.file.failures} {data.file.failures === 1 ? "file" : "files"} in
           the export couldn't be read and{" "}
-          {data.zip.failures === 1 ? "was" : "were"} skipped — the rest came
+          {data.file.failures === 1 ? "was" : "were"} skipped — the rest came
           through fine.
         </Notice>
       )}
-      {isZip && data.zip?.withoutProvenance && (
+      {isFile && data.file?.withoutProvenance && (
         <p className="mt-2 max-w-[54ch] font-display text-ink-soft text-sm">
           No publication address given, so these import as plain drafts — no
           link back to the originals. Go back and add it if you want each draft
@@ -775,7 +1038,7 @@ function PickList({
                 )}
                 {item.preview && !item.alreadyImported && (
                   <Badge>
-                    {isZip ? "Might be incomplete" : "Preview only"}
+                    {isFile ? "Might be incomplete" : "Preview only"}
                   </Badge>
                 )}
                 {item.alreadyImported && <Badge>Already imported</Badge>}
@@ -798,11 +1061,11 @@ function PickList({
           onClick={onBack}
           type="button"
         >
-          {isZip ? "Start over" : "Try a different address"}
+          {isFile ? "Start over" : "Try a different address"}
         </button>
       </div>
       <p className="mt-3 font-display text-ink-soft text-xs">
-        {isZip
+        {isFile
           ? "Flagged posts look too short to be complete — often a paywalled stub in the export. They import exactly as they are when you check them."
           : "Previews hold only what the feed shared — paywalled posts arrive as excerpts, flagged so nothing partial slips out as if it were whole."}
       </p>
