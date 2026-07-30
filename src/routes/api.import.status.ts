@@ -23,10 +23,10 @@ import { isDid } from "~/lib/atproto";
 import { readBodyCapped } from "~/lib/blob";
 import { countDrafts } from "~/lib/drafts";
 import { MAX_DRAFTS_PER_USER } from "~/lib/drafts-schema";
-import { isCrossSite } from "~/lib/import";
 import { computeImportedSet } from "~/lib/import-flags";
 import { MAX_EXPORT_POSTS } from "~/lib/import-zip";
 import { readLiveSessionDid } from "~/lib/live-session";
+import { isCrossSite } from "~/lib/origin";
 import { env } from "cloudflare:workers";
 
 function json(data: unknown, status = 200): Response {

@@ -40,6 +40,7 @@ import { createOAuthClient } from "~/lib/oauth";
 import {
   CANONICAL_ORIGIN,
   canonicalOrigin,
+  isCrossSite,
   LEGACY_ORIGINS,
   ownOrigins,
 } from "~/lib/origin";
@@ -120,11 +121,22 @@ async function findOwnPublication(
  * The single write path to the user's PDS. ALL record writes (documents and
  * publications, discriminated by the `intent` form field) go through this one
  * handler so token refreshes are not raced across isolates.
+ *
+ * CSRF: the same one-header defense-in-depth every other mutating handler
+ * runs (isCrossSite, ~/lib/origin), and the most consequential place to run
+ * it — this writes public records to the writer's repo, and `intent=delete`
+ * removes them. SameSite=Lax is the real barrier; the Origin comparison
+ * covers legacy browsers, and it runs before the session is read so a
+ * cross-site POST costs nothing. A bare 403 (not a redirect back to /write)
+ * is deliberate: no legitimate caller is anything but our own form.
  */
 export const Route = createFileRoute("/api/publish")({
   server: {
     handlers: {
       POST: async ({ request }) => {
+        if (isCrossSite(request)) {
+          return new Response("Cross-site request refused", { status: 403 });
+        }
         const url = new URL(request.url);
         const did = await readSessionDid(request, env.COOKIE_SECRET);
         if (!did || !isDid(did)) {

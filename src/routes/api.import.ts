@@ -35,7 +35,6 @@ import {
   fetchImportable,
   guidHash,
   ImportError,
-  isCrossSite,
   looksLikeHtml,
   MAX_IMPORT_URL_LENGTH,
   MAX_IMPORTS_PER_HOUR,
@@ -50,6 +49,7 @@ import {
   pruneImportFetches,
 } from "~/lib/import-store";
 import { readLiveSessionDid } from "~/lib/live-session";
+import { isCrossSite } from "~/lib/origin";
 import { env } from "cloudflare:workers";
 
 function json(data: unknown, status = 200): Response {

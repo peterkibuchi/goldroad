@@ -44,6 +44,7 @@ import {
   MAX_DRAFTS_PER_USER,
 } from "~/lib/drafts-schema";
 import { readLiveSessionDid } from "~/lib/live-session";
+import { isCrossSite } from "~/lib/origin";
 import { env } from "cloudflare:workers";
 
 function json(data: unknown, status = 200): Response {
@@ -55,16 +56,6 @@ function json(data: unknown, status = 200): Response {
 
 async function requireDid(request: Request): Promise<string | null> {
   return readLiveSessionDid(request, env.COOKIE_SECRET, drizzle(env.DB));
-}
-
-/** CSRF defense-in-depth for the mutating methods: SameSite=Lax already
- * keeps the session cookie off cross-site POSTs, so this only matters for
- * legacy browsers — but it's one header comparison. Browsers send Origin on
- * all POST/DELETE (same-origin included); absent means a non-browser client,
- * which the cookie requirement already covers. */
-function isCrossSite(request: Request): boolean {
-  const origin = request.headers.get("origin");
-  return origin !== null && origin !== new URL(request.url).origin;
 }
 
 /** Stored content is server-serialized JSON (an array, written by POST), so a

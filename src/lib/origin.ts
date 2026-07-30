@@ -41,6 +41,22 @@ export const LEGACY_ORIGINS = ["https://goldroad.kibuchi.workers.dev"] as const;
  * to production would make PR previews useless). */
 const PREVIEW_HOST_SUFFIX = "-goldroad.kibuchi.workers.dev";
 
+/**
+ * CSRF defense-in-depth for mutating handlers, shared by every one of them:
+ * SameSite=Lax already keeps the session cookie off cross-site POSTs, so this
+ * only matters for legacy browsers — but it's one header comparison. Browsers
+ * send Origin on all POST/DELETE (same-origin included); absent means a
+ * non-browser client, which the cookie requirement already gates.
+ *
+ * Compared against the REQUEST's origin, not CANONICAL_ORIGIN: the worker
+ * legitimately answers on preview and loopback hostnames, and a form posted
+ * from the page that served it is same-origin on all of them.
+ */
+export function isCrossSite(request: Request): boolean {
+  const origin = request.headers.get("origin");
+  return origin !== null && origin !== new URL(request.url).origin;
+}
+
 export function isLoopbackOrigin(origin: string): boolean {
   const { hostname } = new URL(origin);
   return (
