@@ -25,6 +25,21 @@ vi.mock("~/lib/oauth", () => ({
 import { signSession } from "../lib/session";
 import { Route } from "../routes/api.account.delete";
 
+// The liveness half of the session gate needs a real database, which these
+// route suites deliberately don't have — they stub the stores. So the D1 read
+// is mocked to "the session is live" and the cookie half runs for real, which
+// is what these suites are about. Revocation itself is covered end-to-end in
+// live-session.test.ts.
+vi.mock("~/lib/live-session", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/live-session")>();
+  const { readSessionDid } = await import("../lib/session");
+  return {
+    ...actual,
+    readLiveSessionDid: (request: Request, secret: string) =>
+      readSessionDid(request, secret),
+  };
+});
+
 type Handler = (ctx: { request: Request }) => Promise<Response> | Response;
 const handler = (
   Route.options as unknown as {

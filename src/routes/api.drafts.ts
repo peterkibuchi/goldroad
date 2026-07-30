@@ -28,7 +28,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { drizzle } from "drizzle-orm/d1";
 
-import { isDid } from "~/lib/atproto";
 import { readBodyCapped } from "~/lib/blob";
 import {
   countDrafts,
@@ -44,7 +43,7 @@ import {
   MAX_DRAFT_BODY_BYTES,
   MAX_DRAFTS_PER_USER,
 } from "~/lib/drafts-schema";
-import { readSessionDid } from "~/lib/session";
+import { readLiveSessionDid } from "~/lib/live-session";
 import { env } from "cloudflare:workers";
 
 function json(data: unknown, status = 200): Response {
@@ -55,8 +54,7 @@ function json(data: unknown, status = 200): Response {
 }
 
 async function requireDid(request: Request): Promise<string | null> {
-  const did = await readSessionDid(request, env.COOKIE_SECRET);
-  return did && isDid(did) ? did : null;
+  return readLiveSessionDid(request, env.COOKIE_SECRET, drizzle(env.DB));
 }
 
 /** CSRF defense-in-depth for the mutating methods: SameSite=Lax already

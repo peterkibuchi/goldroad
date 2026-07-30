@@ -49,7 +49,7 @@ import {
   insertImportFetch,
   pruneImportFetches,
 } from "~/lib/import-store";
-import { readSessionDid } from "~/lib/session";
+import { readLiveSessionDid } from "~/lib/live-session";
 import { env } from "cloudflare:workers";
 
 function json(data: unknown, status = 200): Response {
@@ -123,7 +123,11 @@ export const Route = createFileRoute("/api/import")({
       POST: async ({ request }) => {
         if (isCrossSite(request))
           return json({ ok: false, error: "cross_site" }, 403);
-        const did = await readSessionDid(request, env.COOKIE_SECRET);
+        const did = await readLiveSessionDid(
+          request,
+          env.COOKIE_SECRET,
+          drizzle(env.DB),
+        );
         if (!did || !isDid(did))
           return json({ ok: false, error: "not_signed_in" }, 401);
 

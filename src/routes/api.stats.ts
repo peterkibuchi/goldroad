@@ -19,7 +19,7 @@ import {
   snapshotSeries,
   utcDay,
 } from "~/lib/follower-snapshots";
-import { readSessionDid } from "~/lib/session";
+import { readLiveSessionDid } from "~/lib/live-session";
 import {
   buildDailyViewsQuery,
   buildReferrerQuery,
@@ -74,7 +74,11 @@ export const Route = createFileRoute("/api/stats")({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        const did = await readSessionDid(request, env.COOKIE_SECRET);
+        const did = await readLiveSessionDid(
+          request,
+          env.COOKIE_SECRET,
+          drizzle(env.DB),
+        );
         if (!did || !isDid(did)) {
           return privateJson({ error: "unauthorized" }, 401);
         }
