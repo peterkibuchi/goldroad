@@ -21,6 +21,7 @@ import {
   bskyProfileUrl,
   type DocumentEngagement,
   getDocumentEngagement,
+  hasCountedEngagement,
 } from "~/lib/engagement";
 import { buildArticleJsonLd, jsonLdScriptContent } from "~/lib/json-ld";
 import { checkMirror, type MirrorInfo } from "~/lib/mirror";
@@ -97,11 +98,10 @@ export async function loadDocument(identParam: string, rkey: string) {
           ).catch(() => null)
         : Promise.resolve(null);
 
-    // "More from @handle" (owner decision #3: same-writer only) — a small
-    // extra page of the writer's own document records, same call shape the
-    // archive page already makes. A short buffer over the display limit
-    // covers the current document (and a few unkeyed/untitled records)
-    // without needing a second round trip.
+    // "More from @handle" — same-writer only: a small extra page of the
+    // writer's own document records, the same call shape the archive page
+    // already makes. A short buffer over the display limit covers the current
+    // document (and a few unkeyed/untitled records) without a second round trip.
     const relatedPromise = listRecordsPage<StandardDocument>(
       pds,
       did,
@@ -109,8 +109,8 @@ export async function loadDocument(identParam: string, rkey: string) {
       { limit: RELATED_POSTS_LIMIT + 3 },
     ).catch(() => ({ records: [], cursor: null }));
 
-    // Cross-network engagement (owner decision #2): announced-only, cached,
-    // and NEVER allowed to fail the page — every error degrades to null.
+    // Cross-network engagement: announced posts only, cached, and NEVER
+    // allowed to fail the page — every error degrades to null.
     const engagementPromise = getDocumentEngagement(doc.bskyPostRef).catch(
       () => null,
     );
@@ -299,23 +299,10 @@ function provenanceHost(url: string | null): string | null {
   }
 }
 
-/** True when at least one engagement metric is actually counted — an
- * announced post whose AppView entry carries zero counted fields (all
- * `undefined`) renders nothing, same as an unannounced one (owner decision
- * #2: honest silence, never a false zero). */
-function hasCountedEngagement(counts: DocumentEngagement["counts"]): boolean {
-  return (
-    counts.likeCount !== undefined ||
-    counts.replyCount !== undefined ||
-    counts.repostCount !== undefined ||
-    counts.quoteCount !== undefined
-  );
-}
-
-/** Quiet like/reply/repost+quote row (owner decision #2) — only the reply
- * count is a link, to the bsky.app thread ("the network is the comment
- * section"). Plain ink-soft icon+number pairs, never a
- * colored badge — this must not read as generic social-media chrome. */
+/** Quiet like/reply/repost+quote row — only the reply count is a link, to the
+ * bsky.app thread, because the conversation lives on the network. Plain
+ * ink-soft icon+number pairs, never a colored badge: this must not read as
+ * generic social-media chrome. */
 function EngagementRow({ engagement }: { engagement: DocumentEngagement }) {
   const { counts, threadUrl } = engagement;
   const reposts = (counts.repostCount ?? 0) + (counts.quoteCount ?? 0);
@@ -467,7 +454,7 @@ export function DocumentArticle({
             </p>
           )}
         </header>
-        {/* Engagement row (owner decision #2): announced posts only, and
+        {/* Engagement row: announced posts only, and
             only when the AppView actually returned a counted metric —
             silence, never a placeholder or a false zero. */}
         {engagement && hasCountedEngagement(engagement.counts) && (

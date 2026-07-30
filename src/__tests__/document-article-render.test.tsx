@@ -29,8 +29,8 @@ describe("DocumentArticle — title block (title -> dek -> byline)", () => {
       />,
     );
     expect(screen.getByText("A one-sentence hook.")).toBeDefined();
-    // The dek renders even though the body is non-empty (owner decision #1:
-    // no longer just a no-body fallback).
+    // The dek renders even though the body is non-empty — it is no longer
+    // just a no-body fallback.
     expect(screen.getByText("Full body text here.")).toBeDefined();
   });
 
@@ -77,7 +77,7 @@ describe("DocumentArticle — title block (title -> dek -> byline)", () => {
   });
 });
 
-describe("DocumentArticle — engagement row (owner decision #2)", () => {
+describe("DocumentArticle — engagement row", () => {
   const threadUrl = "https://bsky.app/profile/writer.example/post/abc123";
 
   it("renders like/reply/repost+quote counts with quiet icons", () => {

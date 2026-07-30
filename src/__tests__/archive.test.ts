@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   filterPostsByQuery,
   groupPostsByMonth,
+  matchesPostQuery,
   monogram,
   monthYearLabel,
 } from "../lib/archive";
@@ -93,5 +94,29 @@ describe("monogram", () => {
 
   it("never splits an emoji/combining sequence", () => {
     expect(monogram("👋 hello")).toBe("👋");
+  });
+});
+
+describe('matchesPostQuery — one definition of "matches"', () => {
+  const post = { title: "The Zebra Question", description: "About stripes." };
+
+  it("matches on the title, case-insensitively", () => {
+    expect(matchesPostQuery(post, "zebra")).toBe(true);
+    expect(matchesPostQuery(post, "ZEBRA")).toBe(true);
+  });
+
+  it("matches on the dek too", () => {
+    expect(matchesPostQuery(post, "stripes")).toBe(true);
+  });
+
+  it("treats an empty or whitespace query as no filter, not no match", () => {
+    expect(matchesPostQuery(post, "")).toBe(true);
+    expect(matchesPostQuery(post, "   ")).toBe(true);
+  });
+
+  it("tolerates a missing dek", () => {
+    expect(
+      matchesPostQuery({ title: "Untitled", description: null }, "x"),
+    ).toBe(false);
   });
 });

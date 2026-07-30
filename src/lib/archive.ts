@@ -44,20 +44,36 @@ export function groupPostsByMonth<T extends { publishedAt: string | null }>(
 }
 
 /**
- * Quiet client-side search: case-insensitive substring match over the title
- * or dek of ALREADY-LOADED posts — no new backend, no new fetch. An empty
- * (or whitespace-only) query is "no filter", not "match nothing".
+ * Does one post match a search query? Case-insensitive substring over its
+ * title or dek. An empty (or whitespace-only) query matches everything —
+ * "no filter", not "match nothing".
+ *
+ * Split out from filterPostsByQuery below so the row-at-a-time callers (the
+ * writer's posts manager hands this to a table's global-filter hook) and the
+ * whole-list caller (the public archive) can never drift into two different
+ * definitions of "matches".
+ */
+export function matchesPostQuery(
+  post: { title: string; description: string | null },
+  query: string,
+): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return (
+    post.title.toLowerCase().includes(q) ||
+    (post.description?.toLowerCase().includes(q) ?? false)
+  );
+}
+
+/**
+ * Quiet client-side search over ALREADY-LOADED posts — no new backend, no new
+ * fetch.
  */
 export function filterPostsByQuery<
   T extends { title: string; description: string | null },
 >(posts: T[], query: string): T[] {
-  const q = query.trim().toLowerCase();
-  if (!q) return posts;
-  return posts.filter(
-    (post) =>
-      post.title.toLowerCase().includes(q) ||
-      (post.description?.toLowerCase().includes(q) ?? false),
-  );
+  if (query.trim() === "") return posts;
+  return posts.filter((post) => matchesPostQuery(post, query));
 }
 
 /** First grapheme, uppercased — the monogram for a cover-less thumbnail
