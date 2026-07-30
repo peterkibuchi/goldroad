@@ -1,54 +1,75 @@
 /**
- * Writer-stats provider for /api/stats: per-publication pageview aggregates
- * from the PostHog Query API (HogQL). Env-gated end to end:
+ * Reader-stats provider for /api/stats: the PostHog Query API (HogQL) side of
+ * the writer's analytics — per-day totals, per-path totals, and referring
+ * domains, each bounded and each mapped through a tolerant reader.
  *
- * - POSTHOG_QUERY_API_KEY + POSTHOG_PROJECT_ID absent → the route answers
- *   `{ enabled: false }` and this module is never asked to fetch anything.
- * - Both present → one bounded HogQL query per (writer, 10 minutes),
- *   aggregating `$pageview` events on the writer's own publication paths.
+ * Env-gated end to end: without POSTHOG_QUERY_API_KEY + POSTHOG_PROJECT_ID the
+ * route reports the reader-count sections as `not_configured` and this module
+ * is never asked to fetch anything. (The follower and Bluesky-engagement
+ * sections don't touch PostHog, so /stats is a real destination either way.)
  *
  * Isolation invariant (the one that matters): the path filter is DERIVED
- * SERVER-SIDE from the session DID — nothing the client sends participates
- * in the query, so a writer can never widen the filter onto someone else's
- * publication. Path roots are compared with equals/startsWith rather than
- * LIKE: DIDs may legally contain `%` (did:web percent-encoding), which under
- * LIKE would act as a wildcard and quietly widen the match.
+ * SERVER-SIDE from the session DID — nothing the client sends participates in
+ * the query, so a writer can never widen the filter onto someone else's
+ * publication. The one client-supplied value, `range`, is validated against a
+ * frozen allowlist and mapped to an integer from a frozen record before it can
+ * influence a query at all. Path roots are compared with equals/startsWith
+ * rather than LIKE: DIDs may legally contain `%` (did:web percent-encoding),
+ * which under LIKE would act as a wildcard and quietly widen the match.
  *
  * Pure module — no `cloudflare:workers` import, so tests can exercise it.
  */
 
 import { readBodyCapped } from "~/lib/blob";
-
-/** Workers-cache TTL for one writer's stats payload. */
-export const STATS_CACHE_TTL_SECONDS = 600; // 10 minutes
+import { isDay } from "~/lib/follower-snapshots";
 
 /** The PostHog Query API must answer within this budget. */
 const QUERY_TIMEOUT_MS = 10_000;
 
-/** Hard cap on the upstream response body (the mapped result is ≤200 rows —
- * anything near this size is malformed or hostile). */
+/** Hard cap on the upstream response body. The largest mapped result is ≤800
+ * day rows — anything near this size is malformed or hostile. */
 const MAX_RESPONSE_BYTES = 262_144; // 256 KB
 
-/** At most this many per-path rows come back (a publication with more
- * distinct pageview paths than this still gets a correct top-N + total of N). */
+/** At most this many per-path rows come back (a publication with more distinct
+ * pageview paths than this still gets a correct top-N). */
 const MAX_PATH_ROWS = 200;
 
-export type WriterStats =
-  | {
-      enabled: true;
-      total: number;
-      paths: Array<{ path: string; views: number }>;
-    }
-  | { enabled: true; error: "unavailable" };
+/** Day rows. Covers the widest window we ask for (two years of daily rows)
+ * with room to spare, so the cap never silently truncates a series. */
+const MAX_DAY_ROWS = 800;
 
-/** The full response shape GET /api/stats can serve, including the
- * feature-off arm — one type for client code to import instead of
- * re-deriving the union at the call site. */
-export type StatsResponse = { enabled: false } | WriterStats;
+/** Referring-domain rows. The tail past this cut is reconciled into "Other
+ * sites" by ~/lib/referrers rather than dropped. */
+const MAX_REFERRER_ROWS = 100;
 
-/** The provider is configured but this request couldn't be served — mapped
- * from EVERY upstream failure mode without carrying upstream detail. */
-const UNAVAILABLE: WriterStats = { enabled: true, error: "unavailable" };
+/** Selectable windows, and the day count each means. Frozen: this record is
+ * the ONLY path from the client's `range` string to a number that reaches a
+ * query, which is what makes the client's input non-participating. */
+export const RANGE_DAYS = Object.freeze({
+  "7d": 7,
+  "30d": 30,
+  "90d": 90,
+  all: null,
+} as const);
+
+export type StatsRange = keyof typeof RANGE_DAYS;
+
+const RANGE_VALUES = Object.keys(RANGE_DAYS) as StatsRange[];
+
+export const DEFAULT_RANGE: StatsRange = "30d";
+
+/** A range from untrusted input. Anything unrecognized silently becomes the
+ * default — a stray query string must never 400 a writer's own analytics. */
+export function parseStatsRange(value: unknown): StatsRange {
+  return typeof value === "string" && (RANGE_VALUES as string[]).includes(value)
+    ? (value as StatsRange)
+    : DEFAULT_RANGE;
+}
+
+/** Days in a range, or null for "as far back as we can see". */
+export function rangeDays(range: StatsRange): number | null {
+  return RANGE_DAYS[range];
+}
 
 /**
  * The path roots a writer's publication answers on. Reading surfaces accept
@@ -62,30 +83,55 @@ export function writerPathRoots(did: string, handle: string | null): string[] {
 }
 
 /** HogQL string-literal escaping: backslash first, then single quote. The
- * inputs are already shape-validated (DID regex, handle grammar — neither
- * admits quotes), so this is defence in depth, not the primary guard. */
+ * inputs are already shape-validated (DID regex, handle grammar, day regex —
+ * none admits quotes), so this is defence in depth, not the primary guard. */
 export function escapeHogQLString(value: string): string {
   return value.replaceAll("\\", "\\\\").replaceAll("'", "\\'");
 }
 
+/** Pageviews on the publication page itself (`equals`) and everything beneath
+ * it (`startsWith` with an explicit trailing slash, so `/@ab` never matches
+ * `/@abc`'s traffic). */
+function pathPredicate(roots: string[]): string {
+  return roots
+    .map((root) => {
+      const lit = escapeHogQLString(root);
+      return `equals(properties.$pathname, '${lit}') OR startsWith(properties.$pathname, '${lit}/')`;
+    })
+    .join(" OR ");
+}
+
 /**
- * Builds the aggregate query for one writer's path roots: pageviews on the
- * publication page itself (`equals`) and everything beneath it
- * (`startsWith` with an explicit trailing slash, so `/@ab` never matches
- * `/@abc`'s traffic). Production events only — dev/preview carry a
- * different app_env stamp.
+ * The shared WHERE clauses: production events only (dev/preview carry a
+ * different app_env stamp), this writer's paths only, and — when a window is
+ * asked for — a UTC day floor. `sinceDay` is re-validated here even though it
+ * is minted from our own clock: a day string is about to be interpolated into a
+ * query, so it gets checked at the point of interpolation, not just at birth.
  */
-export function buildStatsQuery(roots: string[]): string {
-  const perRoot = roots.map((root) => {
-    const lit = escapeHogQLString(root);
-    return `equals(properties.$pathname, '${lit}') OR startsWith(properties.$pathname, '${lit}/')`;
-  });
+function whereClauses(roots: string[], sinceDay: string | null): string[] {
+  const clauses = [
+    "WHERE event = '$pageview'",
+    "AND properties.app_env = 'production'",
+    `AND (${pathPredicate(roots)})`,
+  ];
+  if (sinceDay !== null) {
+    if (!isDay(sinceDay)) throw new Error("invalid day floor");
+    clauses.push(
+      `AND timestamp >= toDateTime('${escapeHogQLString(sinceDay)} 00:00:00', 'UTC')`,
+    );
+  }
+  return clauses;
+}
+
+/** Per-path totals — feeds the per-post table and the "most read" card. */
+export function buildStatsQuery(
+  roots: string[],
+  sinceDay: string | null = null,
+): string {
   return [
     "SELECT properties.$pathname AS path, count() AS views",
     "FROM events",
-    "WHERE event = '$pageview'",
-    "AND properties.app_env = 'production'",
-    `AND (${perRoot.join(" OR ")})`,
+    ...whereClauses(roots, sinceDay),
     "GROUP BY path",
     "ORDER BY views DESC",
     `LIMIT ${MAX_PATH_ROWS}`,
@@ -93,13 +139,138 @@ export function buildStatsQuery(roots: string[]): string {
 }
 
 /**
- * Workers-cache key for one writer's stats. The Cache API is SHARED across
- * every request in the colo, so per-writer privacy rests entirely on key
- * separation: a synthetic internal URL (never a routable path) carrying the
- * SHA-256 of the DID. Distinct DIDs → distinct digests → one writer's cached
- * stats can never answer another's request.
+ * Per-day totals in UTC. Days are bucketed in UTC here and follower snapshots
+ * are stored in UTC, so the two series a writer can toggle between agree about
+ * what a day is — the alternative (shifting one and not the other) is a chart
+ * that lies at every boundary.
  */
-export async function statsCacheKey(did: string): Promise<string> {
+export function buildDailyViewsQuery(
+  roots: string[],
+  sinceDay: string | null = null,
+): string {
+  return [
+    "SELECT toString(toDate(timestamp, 'UTC')) AS day, count() AS views",
+    "FROM events",
+    ...whereClauses(roots, sinceDay),
+    "GROUP BY day",
+    "ORDER BY day",
+    `LIMIT ${MAX_DAY_ROWS}`,
+  ].join(" ");
+}
+
+/** Referring domains, most traffic first. The tail past the limit is
+ * reconciled against the authoritative total (see ~/lib/referrers). */
+export function buildReferrerQuery(
+  roots: string[],
+  sinceDay: string | null = null,
+): string {
+  return [
+    "SELECT properties.$referring_domain AS domain, count() AS views",
+    "FROM events",
+    ...whereClauses(roots, sinceDay),
+    "GROUP BY domain",
+    "ORDER BY views DESC",
+    `LIMIT ${MAX_REFERRER_ROWS}`,
+  ].join(" ");
+}
+
+/** The `results: [[col, col], …]` matrix, or null when the body isn't one. */
+function resultRows(data: unknown): unknown[][] | null {
+  const results = (data as { results?: unknown } | null)?.results;
+  if (!Array.isArray(results)) return null;
+  return results.filter((row): row is unknown[] => Array.isArray(row));
+}
+
+function asCount(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+}
+
+export type PathRow = { path: string; views: number };
+export type DayRow = { day: string; views: number };
+
+/** Per-path rows, malformed rows dropped. Null means the body wasn't a
+ * result set at all — an upstream problem, not an empty writer. */
+export function mapPathRows(data: unknown): PathRow[] | null {
+  const rows = resultRows(data);
+  if (rows === null) return null;
+  const out: PathRow[] = [];
+  for (const [path, views] of rows) {
+    const count = asCount(views);
+    if (typeof path !== "string" || count === null) continue;
+    out.push({ path, views: count });
+  }
+  return out;
+}
+
+/**
+ * Per-day rows, oldest first. The day column is accepted as either a bare
+ * `YYYY-MM-DD` or a full datetime string and truncated to the day — HogQL's
+ * date rendering is an upstream detail, and a series that silently empties
+ * because of a formatting change would be a very quiet bug.
+ */
+export function mapDayRows(data: unknown): DayRow[] | null {
+  const rows = resultRows(data);
+  if (rows === null) return null;
+  const out: DayRow[] = [];
+  for (const [day, views] of rows) {
+    const count = asCount(views);
+    if (typeof day !== "string" || count === null) continue;
+    const normalized = day.slice(0, 10);
+    if (!isDay(normalized)) continue;
+    out.push({ day: normalized, views: count });
+  }
+  return out.sort((a, b) => a.day.localeCompare(b.day));
+}
+
+export type DomainRow = { domain: string | null; views: number };
+
+/** Referring-domain rows. A null/absent domain is kept as null — it is the
+ * "no referrer was passed on" case, which is a real bucket, not a bad row. */
+export function mapDomainRows(data: unknown): DomainRow[] | null {
+  const rows = resultRows(data);
+  if (rows === null) return null;
+  const out: DomainRow[] = [];
+  for (const [domain, views] of rows) {
+    const count = asCount(views);
+    if (count === null) continue;
+    out.push({
+      domain: typeof domain === "string" ? domain : null,
+      views: count,
+    });
+  }
+  return out;
+}
+
+/** The cacheable sections of the envelope. */
+export type StatsSection = "views" | "sources" | "followers" | "engagement";
+
+/** Per-section Workers-cache lifetimes. Followers change once a day, so a
+ * long TTL there costs nothing; reader counts and Bluesky counts move
+ * continuously and get short ones. */
+export const SECTION_TTL_SECONDS: Readonly<Record<StatsSection, number>> =
+  Object.freeze({
+    views: 600,
+    sources: 600,
+    engagement: 900,
+    followers: 3600,
+  });
+
+/**
+ * Workers-cache key for ONE SECTION of one writer's stats at one range.
+ *
+ * The Cache API is SHARED across every request in the colo, so per-writer
+ * privacy rests entirely on key separation: a synthetic internal URL (never a
+ * routable path) carrying the SHA-256 of the DID, plus the section and range as
+ * distinct path segments. Distinct DIDs → distinct digests, and a 7-day payload
+ * can never answer a 30-day request.
+ */
+export async function statsCacheKey(
+  did: string,
+  section: StatsSection,
+  range: StatsRange,
+): Promise<string> {
   const digest = await crypto.subtle.digest(
     "SHA-256",
     new TextEncoder().encode(did),
@@ -107,42 +278,21 @@ export async function statsCacheKey(did: string): Promise<string> {
   const hex = [...new Uint8Array(digest)]
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
-  return `https://goldroad-stats.internal/v1/${hex}`;
-}
-
-/** Maps the Query API response (`results: [[path, views], …]`) to the stable
- * public shape, dropping malformed rows. A body without a results array is
- * an upstream problem → unavailable. */
-export function mapQueryResults(data: unknown): WriterStats {
-  const results = (data as { results?: unknown } | null)?.results;
-  if (!Array.isArray(results)) return UNAVAILABLE;
-  const paths: Array<{ path: string; views: number }> = [];
-  let total = 0;
-  for (const row of results) {
-    if (!Array.isArray(row)) continue;
-    const [path, views] = row as unknown[];
-    if (typeof path !== "string") continue;
-    if (typeof views !== "number" || !Number.isFinite(views) || views < 0)
-      continue;
-    paths.push({ path, views });
-    total += views;
-  }
-  return { enabled: true, total, paths };
+  return `https://goldroad-stats.internal/v2/${hex}/${section}/${range}`;
 }
 
 /**
- * Runs the writer's aggregate query against the PostHog Query API. Bounded:
- * request timeout, response-size cap, and every failure mode — non-2xx,
- * malformed body, network error, timeout — collapses to `unavailable`
+ * Runs one HogQL query. Bounded: request timeout, response-size cap, and every
+ * failure mode — non-2xx, malformed body, network error, timeout — returns null
  * without surfacing upstream detail to the caller (or the client).
  */
-export async function fetchWriterStats(options: {
+export async function runHogQL(options: {
   apiKey: string;
   projectId: string;
-  roots: string[];
+  query: string;
   fetcher?: typeof fetch;
-}): Promise<WriterStats> {
-  const { apiKey, projectId, roots, fetcher = fetch } = options;
+}): Promise<unknown | null> {
+  const { apiKey, projectId, query, fetcher = fetch } = options;
   const url = `https://us.posthog.com/api/projects/${encodeURIComponent(projectId)}/query/`;
   try {
     const res = await fetcher(url, {
@@ -151,20 +301,18 @@ export async function fetchWriterStats(options: {
         authorization: `Bearer ${apiKey}`,
         "content-type": "application/json",
       },
-      body: JSON.stringify({
-        query: { kind: "HogQLQuery", query: buildStatsQuery(roots) },
-      }),
+      body: JSON.stringify({ query: { kind: "HogQLQuery", query } }),
       signal: AbortSignal.timeout(QUERY_TIMEOUT_MS),
     });
     if (!res.ok) {
       // Status only — never the body, which could carry upstream detail.
       console.warn("stats query failed", res.status);
-      return UNAVAILABLE;
+      return null;
     }
     const bytes = await readBodyCapped(res, MAX_RESPONSE_BYTES);
-    if (!bytes) return UNAVAILABLE;
-    return mapQueryResults(JSON.parse(new TextDecoder().decode(bytes)));
+    if (!bytes) return null;
+    return JSON.parse(new TextDecoder().decode(bytes));
   } catch {
-    return UNAVAILABLE;
+    return null;
   }
 }

@@ -235,6 +235,35 @@ export async function listRecordsPage<T>(
   };
 }
 
+/** Pages an archive read walks at most. Four pages of fifty is two hundred
+ * records — deep enough to cover any beta-era archive, bounded so a prolific
+ * writer can't turn one page load into an unbounded PDS crawl. Surfaces that
+ * hit the ceiling say so rather than presenting a page as the whole. */
+export const MAX_ARCHIVE_PAGES = 4;
+
+/**
+ * Walks up to `maxPages` pages of one collection, oldest cursor first, and
+ * reports whether the PDS still had more. Sequential by necessity — each page's
+ * cursor comes from the previous response — and bounded by construction.
+ */
+export async function listRecordPages<T>(
+  pds: string,
+  did: string,
+  collection: string,
+  opts: { maxPages?: number } = {},
+): Promise<{ records: ListedRecord<T>[]; truncated: boolean }> {
+  const maxPages = Math.max(1, opts.maxPages ?? MAX_ARCHIVE_PAGES);
+  const records: ListedRecord<T>[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < maxPages; page++) {
+    const result = await listRecordsPage<T>(pds, did, collection, { cursor });
+    records.push(...result.records);
+    if (result.cursor === null) return { records, truncated: false };
+    cursor = result.cursor;
+  }
+  return { records, truncated: true };
+}
+
 /** Single-page listRecords (no pagination) — see listRecordsPage. */
 export async function listRecords<T>(
   pds: string,
