@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   buildExceptionEvent,
+  captureHandledFailure,
   captureServerException,
   DEFAULT_POSTHOG_HOST,
   parseStackFrames,
@@ -53,6 +54,16 @@ describe("buildExceptionEvent — the $exception body", () => {
     expect(stacktrace?.frames[0]).toMatchObject({
       platform: "custom",
       in_app: true,
+    });
+  });
+
+  it("can express a HANDLED failure — the degradation paths need this", () => {
+    const event = buildExceptionEvent(new Error("upstream"), REQUEST, "k", {
+      handled: true,
+    });
+    expect(event.properties.$exception_list[0].mechanism).toEqual({
+      handled: true,
+      synthetic: false,
     });
   });
 
@@ -175,6 +186,46 @@ describe("captureServerException — gating and delivery", () => {
       fetchFn,
     });
     await expect(scheduled[0]).resolves.toBeUndefined();
+  });
+});
+
+describe("captureHandledFailure — degradations reach the tracker too", () => {
+  it("sends the same event marked handled, so crashes stay filterable", async () => {
+    const fetchFn = okFetch();
+    const { ctx, scheduled } = makeCtx();
+    const sent = captureHandledFailure(
+      new Error("stats section died"),
+      REQUEST,
+      { apiKey: "phc_key", fetchFn },
+      ctx.waitUntil,
+    );
+    expect(sent).toBe(true);
+    await Promise.all(scheduled);
+    const body = JSON.parse(String(fetchFn.mock.calls[0][1]?.body)) as {
+      properties: {
+        $exception_list: {
+          value: string;
+          mechanism: { handled: boolean };
+        }[];
+      };
+    };
+    expect(body.properties.$exception_list[0].value).toBe("stats section died");
+    expect(body.properties.$exception_list[0].mechanism.handled).toBe(true);
+  });
+
+  it("is off without a key, exactly like the unhandled path", () => {
+    const fetchFn = okFetch();
+    const { ctx, scheduled } = makeCtx();
+    expect(
+      captureHandledFailure(
+        new Error("x"),
+        REQUEST,
+        { fetchFn },
+        ctx.waitUntil,
+      ),
+    ).toBe(false);
+    expect(scheduled).toHaveLength(0);
+    expect(fetchFn).not.toHaveBeenCalled();
   });
 });
 
