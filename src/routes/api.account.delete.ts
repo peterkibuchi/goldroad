@@ -1,8 +1,9 @@
 /**
  * Account deletion — the destructive action beneath "Your data" on /settings.
- * Purges OUR copies only: drafts, import ledger + rate-limit rows, and the
- * D1-side OAuth session, then clears the session cookie. Session-authed POST,
- * re-verified here (never trust a client-supplied identity for a delete).
+ * Purges OUR copies only: drafts, import ledger + rate-limit rows, the daily
+ * follower snapshots, and the D1-side OAuth session, then clears the session
+ * cookie. Session-authed POST, re-verified here (never trust a
+ * client-supplied identity for a delete).
  *
  * ARCHITECTURAL NOTE, worth restating at the one place that could get it
  * wrong: this does NOT touch the writer's published posts or their Bluesky
@@ -30,6 +31,7 @@ import { isDid } from "~/lib/atproto";
 import { createOAuthClient } from "~/lib/oauth";
 import {
   deleteDraftsForDid,
+  deleteFollowerSnapshotsForDid,
   deleteImportFetchesForDid,
   deleteImportItemsForDid,
   deleteOAuthSessionForDid,
@@ -75,6 +77,7 @@ export const Route = createFileRoute("/api/account/delete")({
           deleteDraftsForDid(db, did),
           deleteImportItemsForDid(db, did),
           deleteImportFetchesForDid(db, did),
+          deleteFollowerSnapshotsForDid(db, did),
         ]);
 
         // Upstream token revocation is best-effort (same posture as

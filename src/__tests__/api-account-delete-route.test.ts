@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  */
 const store = vi.hoisted(() => ({
   deleteDraftsForDid: vi.fn(),
+  deleteFollowerSnapshotsForDid: vi.fn(),
   deleteImportItemsForDid: vi.fn(),
   deleteImportFetchesForDid: vi.fn(),
   deleteOAuthSessionForDid: vi.fn(),
@@ -77,9 +78,15 @@ describe("guards", () => {
 });
 
 describe("deletion", () => {
-  it("deletes drafts, import ledger, and import-fetch rows for the SESSION did", async () => {
+  it("deletes drafts, import ledger, import-fetch rows, and follower history for the SESSION did", async () => {
     await call();
     expect(store.deleteDraftsForDid).toHaveBeenCalledWith(
+      expect.anything(),
+      DID,
+    );
+    // Every table keyed by a writer's DID is swept here. A row category that
+    // ships without its delete is one nobody can ever reach again.
+    expect(store.deleteFollowerSnapshotsForDid).toHaveBeenCalledWith(
       expect.anything(),
       DID,
     );

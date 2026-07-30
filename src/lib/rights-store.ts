@@ -7,16 +7,27 @@
  * (awaitable), unit-testable via .toSQL() without a live D1.
  *
  * Scope, deliberately narrow (see AGENTS.md architectural note): these are
- * the ONLY four places a writer's DID appears in our D1 — drafts,
- * import_items, import_fetches, and the oauth_kv session row. Published
- * posts live in the writer's own atproto repo and are never touched here;
- * deleting an account purges our copies only.
+ * the ONLY five places a writer's DID appears in our D1 — drafts,
+ * import_items, import_fetches, follower_snapshots, and the oauth_kv session
+ * row. Published posts live in the writer's own atproto repo and are never
+ * touched here; deleting an account purges our copies only.
+ *
+ * Anything new that stores a DID belongs in both halves of this file, in the
+ * same change that creates it. A table that ships without its export and
+ * delete wiring is how an instance ends up holding rows nobody can reach.
  */
-import { desc, eq } from "drizzle-orm";
+import { asc, desc, eq } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/d1";
 
-import { drafts, importFetches, importItems, oauthKv } from "~/db/schema";
+import {
+  drafts,
+  followerSnapshots,
+  importFetches,
+  importItems,
+  oauthKv,
+} from "~/db/schema";
 import { MAX_DRAFTS_PER_USER } from "~/lib/drafts-schema";
+import { SNAPSHOT_RETENTION_DAYS } from "~/lib/follower-snapshots";
 
 type DrizzleD1 = ReturnType<typeof drizzle>;
 
@@ -53,6 +64,10 @@ export function selectDraftsForExport(db: DrizzleD1, did: string) {
     .limit(MAX_DRAFTS_PER_USER);
 }
 
+/** A writer can hold at most one snapshot per retained day, so the retention
+ * window is the natural cap (+1 for the boundary day the prune keeps). */
+export const MAX_SNAPSHOT_ROWS_PER_EXPORT = SNAPSHOT_RETENTION_DAYS + 1;
+
 /** All of a writer's import-ledger rows — the export download's import
  * section. */
 export function selectImportItemsForExport(db: DrizzleD1, did: string) {
@@ -61,6 +76,28 @@ export function selectImportItemsForExport(db: DrizzleD1, did: string) {
     .from(importItems)
     .where(eq(importItems.did, did))
     .limit(MAX_LEDGER_ROWS_PER_EXPORT);
+}
+
+/**
+ * A writer's own follower history — the export download's followers section,
+ * oldest day first.
+ *
+ * This is data about them that we hold and they can't reconstruct from
+ * anywhere else (upstream reports a follower count for today and keeps no
+ * history), so it goes out with the rest of their export as a matter of
+ * course, not on request.
+ */
+export function selectFollowerSnapshotsForExport(db: DrizzleD1, did: string) {
+  return db
+    .select({
+      day: followerSnapshots.day,
+      followers: followerSnapshots.followers,
+      posts: followerSnapshots.posts,
+    })
+    .from(followerSnapshots)
+    .where(eq(followerSnapshots.did, did))
+    .orderBy(asc(followerSnapshots.day))
+    .limit(MAX_SNAPSHOT_ROWS_PER_EXPORT);
 }
 
 /** Deletes every draft a writer owns (account deletion, not the single-draft
@@ -85,6 +122,16 @@ export function deleteImportFetchesForDid(db: DrizzleD1, did: string) {
     .delete(importFetches)
     .where(eq(importFetches.did, did))
     .returning({ id: importFetches.id });
+}
+
+/** Deletes every follower snapshot a writer owns (account deletion). Their
+ * history stops being sampled as soon as the session row goes too, so nothing
+ * re-creates these rows afterwards. */
+export function deleteFollowerSnapshotsForDid(db: DrizzleD1, did: string) {
+  return db
+    .delete(followerSnapshots)
+    .where(eq(followerSnapshots.did, did))
+    .returning({ id: followerSnapshots.id });
 }
 
 /**

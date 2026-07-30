@@ -269,9 +269,9 @@ function SettingsPage() {
           </h2>
           <p className="mt-2 max-w-[56ch] text-ink-soft text-sm leading-relaxed">
             Goldroad stores remarkably little for your account: drafts, your
-            import history, and your sign-in session — that's it. What you've
-            published lives in your own atproto repo, not here, so nothing below
-            touches it.
+            import history, your daily follower count, and your sign-in session
+            — that's it. What you've published lives in your own atproto repo,
+            not here, so nothing below touches it.
           </p>
           <p className="mt-3 font-display text-ink-soft text-sm">
             {dataCounts
@@ -286,10 +286,10 @@ function SettingsPage() {
               Delete your account
             </h3>
             <p className="mt-2 max-w-[56ch] text-ink-soft text-sm leading-relaxed">
-              Deletes your drafts, import history, and sign-in from our servers,
-              permanently. Your published posts and any Bluesky announces stay
-              exactly where they are — they're records in your own repo, not
-              ours.
+              Deletes your drafts, import history, follower history, and sign-in
+              from our servers, permanently. Your published posts and any
+              Bluesky announces stay exactly where they are — they're records in
+              your own repo, not ours.
             </p>
             <div className="mt-4">
               <DeleteAccountForm ident={ident} />
@@ -412,10 +412,11 @@ export function DeleteAccountForm({ ident }: { ident: string }) {
           className="mt-3 text-ink-soft leading-relaxed"
           id="delete-account-desc"
         >
-          This deletes your drafts, import history, and sign-in from our servers
-          — it can't be undone. It does NOT delete anything you've published:
-          those records live in your own repo and stay exactly where they are,
-          and any posts announcing them on Bluesky stay up too.
+          This deletes your drafts, import history, follower history, and
+          sign-in from our servers — it can't be undone. It does NOT delete
+          anything you've published: those records live in your own repo and
+          stay exactly where they are, and any posts announcing them on Bluesky
+          stay up too.
         </p>
         <p className="mt-2 font-display text-sm">
           <ExternalLink

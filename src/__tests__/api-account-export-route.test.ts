@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  */
 const store = vi.hoisted(() => ({
   selectDraftsForExport: vi.fn(),
+  selectFollowerSnapshotsForExport: vi.fn(),
   selectImportItemsForExport: vi.fn(),
 }));
 vi.mock("~/lib/rights-store", () => store);
@@ -58,6 +59,7 @@ beforeEach(() => {
   for (const fn of Object.values(atproto)) fn.mockReset();
   store.selectDraftsForExport.mockResolvedValue([]);
   store.selectImportItemsForExport.mockResolvedValue([]);
+  store.selectFollowerSnapshotsForExport.mockResolvedValue([]);
   atproto.resolveDidToHandle.mockRejectedValue(new Error("no handle"));
   atproto.resolveDidToPds.mockRejectedValue(new Error("no pds"));
 });
@@ -166,6 +168,29 @@ describe("response shape", () => {
         createdAt: NOW.toISOString(),
       },
     ]);
+  });
+
+  it("includes the follower history we hold — it's the writer's own data, and nobody can rebuild it from upstream", async () => {
+    store.selectFollowerSnapshotsForExport.mockResolvedValue([
+      { day: "2026-07-28", followers: 120, posts: 8 },
+      { day: "2026-07-29", followers: 124, posts: null },
+    ]);
+    const res = await call();
+    expect(store.selectFollowerSnapshotsForExport).toHaveBeenCalledWith(
+      expect.anything(),
+      DID,
+    );
+    const body = (await res.json()) as {
+      followerHistory: { day: string; followers: number }[];
+      manifest: string;
+    };
+    expect(body.followerHistory).toEqual([
+      { day: "2026-07-28", followers: 120, posts: 8 },
+      { day: "2026-07-29", followers: 124, posts: null },
+    ]);
+    // The manifest is the writer's plain-language index of what we hold, so it
+    // has to name this too — it can't quietly list only the older categories.
+    expect(body.manifest).toMatch(/follower/i);
   });
 
   it("degrades ownPosts to null (never fails the export) when the PDS read flakes", async () => {
