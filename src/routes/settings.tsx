@@ -149,28 +149,27 @@ export const Route = createFileRoute("/settings")({
  */
 export function SettingsSection({
   children,
-  heavyRule,
   id,
   intro,
+  rule = "hair",
   title,
 }: {
   children: React.ReactNode;
-  /** The destructive band: a full ink rule, not a hairline — the separation
-   * is the warning. */
-  heavyRule?: boolean;
   id: string;
   intro?: string;
+  /** The band's top separator: a hairline between ordinary bands, a full ink
+   * rule before the destructive one (the separation is the warning), and none
+   * for the first band under the page title. */
+  rule?: "hair" | "heavy" | "none";
   title: string;
 }) {
+  const RULES = {
+    hair: "mt-12 border-rule border-t pt-8",
+    heavy: "mt-16 border-ink border-t-2 pt-8",
+    none: "mt-8",
+  } as const;
   return (
-    <section
-      aria-labelledby={`${id}-heading`}
-      className={
-        heavyRule
-          ? "mt-16 border-ink border-t-2 pt-8"
-          : "mt-12 border-rule border-t pt-8"
-      }
-    >
+    <section aria-labelledby={`${id}-heading`} className={RULES[rule]}>
       <h2
         className="font-bold font-display text-ink text-lg tracking-tight"
         id={`${id}-heading`}
@@ -178,7 +177,7 @@ export function SettingsSection({
         {title}
       </h2>
       {intro && (
-        <p className="mt-2 max-w-[58ch] text-ink-soft text-sm leading-relaxed">
+        <p className="mt-2 max-w-[58ch] text-pretty text-ink-soft text-sm leading-relaxed">
           {intro}
         </p>
       )}
@@ -376,6 +375,7 @@ function SettingsPage() {
 
         <SettingsSection
           id="publication"
+          rule="none"
           intro="Your publication lives in your own data repo — you own it, and any app on the open network can read it. Posts you publish attach to it."
           title="Publication"
         >
@@ -476,8 +476,8 @@ function SettingsPage() {
         </SettingsSection>
 
         <SettingsSection
-          heavyRule
           id="delete-account"
+          rule="heavy"
           intro="Deletes your drafts, import history, follower history, and sign-in from our servers, permanently. Your published posts and any Bluesky announces stay exactly where they are — they're records in your own repo, not ours."
           title="Delete your account"
         >

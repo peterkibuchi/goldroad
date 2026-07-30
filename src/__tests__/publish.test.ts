@@ -152,6 +152,14 @@ describe("buildDocumentRecord", () => {
     expect(Date.parse(record.publishedAt)).not.toBeNaN();
   });
 
+  it("keeps a title to one line — a pasted line break becomes a space", () => {
+    const record = buildDocumentRecord({
+      ...input,
+      title: "  The archive\nshould   move with you  ",
+    });
+    expect(record.title).toBe("The archive should move with you");
+  });
+
   it("stores the body in textContent with normalized newlines + a description excerpt", () => {
     const record = buildDocumentRecord(input);
     expect(record.textContent).toBe("First paragraph.\n\nSecond paragraph.");

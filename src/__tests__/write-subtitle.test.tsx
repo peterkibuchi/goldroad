@@ -42,6 +42,28 @@ function subtitle() {
   return screen.getByLabelText("Subtitle") as HTMLTextAreaElement;
 }
 
+describe("/write — the title is one wrapping line, not a text input", () => {
+  it("moves to the subtitle on Enter instead of breaking the line", () => {
+    render(
+      <Compose
+        draft={null}
+        error={undefined}
+        reconnectHandle={null}
+        resumed={null}
+      />,
+    );
+    const title = screen.getByLabelText("Title") as HTMLTextAreaElement;
+    // A textarea so a long title wraps the way the published page wraps it.
+    expect(title.tagName).toBe("TEXTAREA");
+    expect(title.required).toBe(true);
+
+    fireEvent.change(title, { target: { value: "A title" } });
+    const event = fireEvent.keyDown(title, { key: "Enter" });
+    expect(event).toBe(false); // preventDefault: no newline in a title
+    expect(document.activeElement).toBe(screen.getByLabelText("Subtitle"));
+  });
+});
+
 describe("/write — the subtitle field", () => {
   it("sits in the publish form, so it travels with the post", () => {
     render(

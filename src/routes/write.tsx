@@ -416,7 +416,7 @@ function CoverPicker({
         >
           Add a cover image
           <span className="hidden text-xs sm:inline">
-            — it heads your post, and the card when it's shared
+            · heads your post, and the card when it's shared
           </span>
         </label>
       )}
@@ -586,7 +586,7 @@ export function Compose({
     parseDraftBlocks(resumed?.blocksJson),
   );
   const bodyRef = useRef<HTMLInputElement>(null);
-  const titleRef = useRef<HTMLInputElement>(null);
+  const titleRef = useRef<HTMLTextAreaElement>(null);
   const dekRef = useRef<HTMLTextAreaElement>(null);
   const draftIdInputRef = useRef<HTMLInputElement>(null);
   const editing = draft !== null;
@@ -732,6 +732,15 @@ export function Compose({
     scheduleSave();
   }
 
+  /** Enter in the title moves on to the subtitle rather than breaking the
+   * line: a record title is one line, and the writer's next thought belongs in
+   * the field below. */
+  function handleTitleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    dekRef.current?.focus();
+  }
+
   /** Blur is a natural pause — flush the pending save immediately. (React's
    * onBlur is focusout, so it bubbles here from the title and the editor.) */
   function handleBlur() {
@@ -847,16 +856,22 @@ export function Compose({
           <label className="sr-only" htmlFor="title">
             Title
           </label>
-          <input
-            className="w-full rounded-none border-0 border-transparent border-b-2 bg-paper px-1 py-1 font-body font-semibold text-4xl text-ink leading-[1.1] placeholder:text-ink-soft/40 focus-visible:border-spot focus-visible:outline-none md:text-5xl"
+          {/* A textarea, not a text input: a long title has to WRAP the way it
+              will on the published page, and a single-line input scrolls it
+              out of sight instead. Enter is caught below so the field still
+              behaves like one line of writing — no newlines in a title, and no
+              accidental publish. */}
+          <textarea
+            className="field-sizing-content w-full resize-none rounded-none border-0 border-transparent border-b-2 bg-paper px-1 py-1 font-body font-semibold text-4xl text-ink leading-[1.1] placeholder:text-ink-soft/40 focus-visible:border-spot focus-visible:outline-none md:text-5xl"
             defaultValue={draft?.title ?? resumed?.title ?? ""}
             id="title"
             name="title"
             onChange={handleDraftChange}
+            onKeyDown={handleTitleKeyDown}
             placeholder="Title"
             ref={titleRef}
             required
-            type="text"
+            rows={1}
           />
           <SubtitleField
             defaultValue={draft?.dek ?? resumed?.dek ?? ""}
