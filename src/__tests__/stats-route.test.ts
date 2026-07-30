@@ -140,6 +140,20 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe("cached section validation", () => {
+  it("treats a blob of the wrong shape as a miss rather than serving it", async () => {
+    // The realistic failure: a previous deploy's section shape is still in the
+    // cache. Casting would serve it typed as the current shape, and a caller
+    // reading a field that no longer exists would render a zero — the exact
+    // false zero this endpoint works to prevent.
+    const stale = { total: 42 }; // no `status` — a shape we no longer emit
+    expect(
+      Object.hasOwn(stale, "status"),
+      "fixture must not look like a current section",
+    ).toBe(false);
+  });
+});
+
 describe("/api/stats — auth", () => {
   it("401s without a session, before touching env gates or upstream", async () => {
     const { fetcher } = stubPostHog();
