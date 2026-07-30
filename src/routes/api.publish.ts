@@ -36,6 +36,7 @@ import {
   selectImportItemByDraft,
   setPublishedRkey,
 } from "~/lib/import-store";
+import { readLiveSessionDid } from "~/lib/live-session";
 import { createOAuthClient } from "~/lib/oauth";
 import {
   CANONICAL_ORIGIN,
@@ -60,7 +61,7 @@ import {
   TID_RE,
   updateDocumentRecord,
 } from "~/lib/publish";
-import { readSessionDid, sessionClearCookie } from "~/lib/session";
+import { sessionClearCookie } from "~/lib/session";
 import { env } from "cloudflare:workers";
 
 function redirectTo(location: string, extra?: HeadersInit): Response {
@@ -138,7 +139,11 @@ export const Route = createFileRoute("/api/publish")({
           return new Response("Cross-site request refused", { status: 403 });
         }
         const url = new URL(request.url);
-        const did = await readSessionDid(request, env.COOKIE_SECRET);
+        const did = await readLiveSessionDid(
+          request,
+          env.COOKIE_SECRET,
+          drizzle(env.DB),
+        );
         if (!did || !isDid(did)) {
           return new Response("Not signed in", { status: 401 });
         }

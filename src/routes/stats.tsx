@@ -1,6 +1,7 @@
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
+import { drizzle } from "drizzle-orm/d1";
 import { useEffect, useState } from "react";
 
 import { formatDate } from "~/components/document-article";
@@ -26,7 +27,7 @@ import {
   type StandardDocument,
 } from "~/lib/atproto";
 import { announcedPostUri } from "~/lib/engagement";
-import { readSessionDid } from "~/lib/session";
+import { readLiveSessionDid } from "~/lib/live-session";
 import { parseStatsRange, type StatsRange } from "~/lib/stats";
 import {
   approximateReadingMinutes,
@@ -79,7 +80,11 @@ const READING_SCAN_LIMIT = 200_000;
 
 const getStats = createServerFn({ method: "GET" }).handler(async () => {
   const request = getRequest();
-  const did = await readSessionDid(request, env.COOKIE_SECRET);
+  const did = await readLiveSessionDid(
+    request,
+    env.COOKIE_SECRET,
+    drizzle(env.DB),
+  );
   if (!did) return null;
 
   const handle = await resolveDidToHandle(did).catch(() => null);

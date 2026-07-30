@@ -13,8 +13,17 @@
  * client-side gesture against an attacker holding the cookie, when those are
  * exactly the actions a person takes *because* they think it was exposed.
  *
- * So: endpoints that touch a writer's own data verify the signature AND that
- * the session row is still there. One indexed single-row read on an exact key.
+ * So: everything that touches a writer's own data — API endpoints AND page
+ * loaders — verifies the signature AND that the session row is still there. One
+ * indexed single-row read on an exact key.
+ *
+ * There is exactly ONE deliberate exemption, and it is `/logout`: signing out
+ * has to work even when the session row is already gone, and it protects
+ * nothing — it revokes upstream and clears a cookie. Every other caller of the
+ * signature-only `readSessionDid` is either this module or a test.
+ *
+ * If you are adding an endpoint and reaching for `readSessionDid` because it
+ * takes fewer arguments: that is the wrong one. Use this.
  */
 import { eq } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/d1";
