@@ -1,14 +1,52 @@
+/**
+ * The posts manager — the writer's content workbench, and the only surface
+ * whose job is "find and act on a piece of my writing".
+ *
+ * Two tabs, because a writer has exactly two work states today: Published
+ * (their repo) and Drafts (our D1). There is no Scheduled tab, because
+ * scheduled publishing does not exist — an empty third tab would promise a
+ * feature we don't have.
+ *
+ * Sorting, searching and the row models are TanStack Table's, driven headless:
+ * the library owns the row pipeline, this file owns every pixel. The rows are
+ * a list, not a data grid — a five-column table would be unreadable on a
+ * phone and these rows are summaries, not cells — so nothing here renders a
+ * <table>, which is precisely what "headless" buys.
+ *
+ * PAGINATION, HONESTLY. Posts arrive from the writer's PDS one cursor page at
+ * a time, so there are two layers and only one of them can reach a record we
+ * haven't fetched:
+ *   - the PDS cursor ("Older posts →") is the real pagination, and it is the
+ *     only thing that can load records we don't have;
+ *   - the table runs in `manualPagination` mode over the page already loaded,
+ *     which is TanStack Table's contract for exactly this arrangement — it
+ *     sorts and filters what's here and never pretends to page beyond it.
+ * Search therefore covers the loaded page, and the UI says so whenever more
+ * pages exist rather than letting a writer conclude a post was deleted
+ * because a search didn't surface it.
+ */
 import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
+import {
+  type ColumnDef,
+  getCoreRowModel,
+  getFilteredRowModel,
+  getSortedRowModel,
+  type SortingState,
+  useReactTable,
+} from "@tanstack/react-table";
 import { drizzle } from "drizzle-orm/d1";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { formatDate } from "~/components/document-article";
 import { ExternalLink } from "~/components/external-link";
+import { SearchIcon } from "~/components/icons";
 import { MovePublicationNotice } from "~/components/move-publication-notice";
 import { Notice } from "~/components/notice";
+import { PostMetrics, PostThumb } from "~/components/post-summary";
 import { AppShell } from "~/components/site-chrome";
+import { matchesPostQuery } from "~/lib/archive";
 import {
   isValidCursor,
   listRecords,
@@ -19,17 +57,29 @@ import {
   type StandardPublication,
 } from "~/lib/atproto";
 import {
+  DATE_COLUMN,
   type DashboardRow,
-  joinStatsToRows,
+  type DraftRow,
   mapDashboardRows,
+  type PostSort,
+  type PostsTab,
+  sortingStateFor,
+  VIEWS_COLUMN,
+  viewsByRkey,
 } from "~/lib/dashboard";
 import { listDrafts } from "~/lib/drafts";
-import { bskyPostUrl } from "~/lib/engagement";
+import {
+  bskyPostUrl,
+  type DocumentEngagement,
+  getPostsEngagement,
+} from "~/lib/engagement";
 import { LEGACY_ORIGINS, ownOrigins } from "~/lib/origin";
 import { capture } from "~/lib/posthog";
 import { isOwnPublicationUrl, TID_RE } from "~/lib/publish";
+import { formatReadingTime } from "~/lib/reading-time";
 import { readSessionDid } from "~/lib/session";
-import type { StatsResponse } from "~/lib/stats";
+import { useWriterStats } from "~/lib/use-writer-stats";
+import { cn } from "~/lib/utils";
 import { env } from "cloudflare:workers";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -112,10 +162,36 @@ const getDashboard = createServerFn({ method: "GET" })
           ])
         : ([null, false] as const),
     ]);
+    const rows = page ? mapDashboardRows(page.records, did) : null;
+    // Cross-network counts for this page's announced posts: one batched,
+    // edge-cached AppView call rather than one per row. It costs the page a
+    // round trip on a cold cache, which is the same trade the public reading
+    // surfaces already make; it can never fail the page.
+    const engagement = rows
+      ? await getPostsEngagement(
+          // Rebuilt from the row's already-validated announce parts rather
+          // than re-reading the raw record: same value, and it can't drift
+          // from what the row's "Announced ↗" link points at.
+          rows.flatMap((row) =>
+            row.announced
+              ? [
+                  {
+                    key: row.rkey,
+                    ref: {
+                      uri: `at://${row.announced.did}/app.bsky.feed.post/${row.announced.postRkey}`,
+                    },
+                  },
+                ]
+              : [],
+          ),
+        ).catch(() => new Map<string, DocumentEngagement>())
+      : new Map<string, DocumentEngagement>();
     return {
       ident: handle ?? did,
       handle,
-      rows: page ? mapDashboardRows(page.records) : null,
+      rows,
+      // Maps don't survive the loader's serialization — send plain entries.
+      engagement: [...engagement],
       nextCursor: page?.cursor ?? null,
       onLegacyUrl,
       // ISO strings, not Dates: loader data must serialize identically on
@@ -125,6 +201,7 @@ const getDashboard = createServerFn({ method: "GET" })
           id: d.id,
           title: d.title,
           updatedAt: d.updatedAt.toISOString(),
+          description: null,
         })) ?? null,
     };
   });
@@ -138,6 +215,7 @@ export const Route = createFileRoute("/dashboard")({
       deleted?: boolean;
       moved?: boolean;
       cursor?: string;
+      tab?: PostsTab;
     } = {};
     if (typeof search.error === "string") out.error = search.error;
     // rkeys get interpolated into URLs below — only accept well-formed TIDs.
@@ -148,6 +226,9 @@ export const Route = createFileRoute("/dashboard")({
     if (search.deleted === "1" || search.deleted === 1) out.deleted = true;
     if (search.moved === "1" || search.moved === 1) out.moved = true;
     if (isValidCursor(search.cursor)) out.cursor = search.cursor;
+    // The tab is a real address so the overview can link straight to drafts.
+    if (search.tab === "drafts" || search.tab === "published")
+      out.tab = search.tab;
     return out;
   },
   loaderDeps: ({ search }) => ({ cursor: search.cursor }),
@@ -168,6 +249,12 @@ export const Route = createFileRoute("/dashboard")({
 
 const ANNOUNCE_EXPLAINER =
   "Share this post to your Bluesky followers — it appears as a rich card linking here.";
+
+/** Shared shape for the inline actions on a row and in the notices. */
+const INLINE_ACTION =
+  "-my-2 inline-flex min-h-9 items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink";
+const DESTRUCTIVE_ACTION =
+  "-my-2 inline-flex min-h-9 cursor-pointer items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-spot";
 
 function AnnounceButton({
   rkey,
@@ -192,7 +279,7 @@ function AnnounceButton({
       <input name="intent" type="hidden" value="announce" />
       <input name="rkey" type="hidden" value={rkey} />
       <button
-        className="-my-2 inline-flex min-h-9 cursor-pointer items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
+        className={cn(INLINE_ACTION, "cursor-pointer")}
         title={ANNOUNCE_EXPLAINER}
         type="submit"
       >
@@ -254,10 +341,7 @@ export function DeletePostForm({
       >
         <input name="intent" type="hidden" value="delete" />
         <input name="rkey" type="hidden" value={rkey} />
-        <button
-          className="-my-2 inline-flex min-h-9 cursor-pointer items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-spot"
-          type="submit"
-        >
+        <button className={DESTRUCTIVE_ACTION} type="submit">
           Delete
         </button>
       </form>
@@ -326,38 +410,487 @@ export function DeletePostForm({
   );
 }
 
-type DraftListItem = { id: string; title: string; updatedAt: string };
+/** A published row with whatever quick metrics we actually have for it.
+ * `views` undefined and `engagement` null both mean "nothing to say" — they
+ * are never rendered as zero. */
+type ManagerRow = DashboardRow & {
+  views?: number;
+  engagement: DocumentEngagement | null;
+};
 
 /**
- * The writer's unpublished drafts — private to them, resumable in the editor.
- * Delete is a fetch (the drafts API is JSON, unlike the form-posting publish
- * intents) followed by a router invalidate to refresh the loader data;
- * confirm-before-delete and destructive hover match the posts list.
- * `drafts: null` = the read flaked — said honestly, never shown as "no
- * drafts" (same policy as the posts list).
+ * The row pipeline both tabs share: TanStack Table in headless, controlled
+ * mode. `manualPagination` declares that paging is somebody else's job (the
+ * PDS cursor's), so the table sorts and filters the loaded set and leaves the
+ * page boundary alone.
  */
-function DraftsSection({ drafts }: { drafts: DraftListItem[] | null }) {
+function useManagerTable<
+  T extends { title: string; description: string | null },
+>(
+  data: T[],
+  columns: ColumnDef<T, unknown>[],
+  sorting: SortingState,
+  globalFilter: string,
+) {
+  return useReactTable({
+    data,
+    columns,
+    state: { sorting, globalFilter },
+    // One definition of "matches", shared with the public archive's search.
+    globalFilterFn: (row, _columnId, value: string) =>
+      matchesPostQuery(row.original, value),
+    getCoreRowModel: getCoreRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    manualPagination: true,
+    rowCount: data.length,
+  });
+}
+
+/** Quiet uppercase section label — the same one the drafts list and the
+ * archive already use, so writer surfaces keep one heading voice. */
+function SectionRule({
+  children,
+  id,
+}: {
+  children: React.ReactNode;
+  id?: string;
+}) {
+  return (
+    <p
+      className="border-rule border-b pb-2 font-display font-semibold text-ink-soft text-xs uppercase tracking-[0.08em]"
+      id={id}
+    >
+      {children}
+    </p>
+  );
+}
+
+function TabButton({
+  active,
+  count,
+  label,
+  onSelect,
+  panelId,
+  tabId,
+}: {
+  active: boolean;
+  /** Omitted when a count would be a lie (a paginated list shows a page). */
+  count?: number;
+  label: string;
+  onSelect: () => void;
+  panelId: string;
+  tabId: string;
+}) {
+  return (
+    <button
+      aria-controls={panelId}
+      aria-selected={active}
+      className={cn(
+        "-mb-px inline-flex min-h-11 cursor-pointer items-center gap-2 border-b-2 px-1 font-display text-sm transition-colors",
+        active
+          ? "border-ink font-bold text-ink"
+          : "border-transparent text-ink-soft hover:text-ink",
+      )}
+      id={tabId}
+      onClick={onSelect}
+      role="tab"
+      tabIndex={active ? 0 : -1}
+      type="button"
+    >
+      {label}
+      {/* A zero is left off: "Drafts" with nothing after it already says
+          there are none, and a lone 0 reads as a broken counter. */}
+      {count !== undefined && count > 0 && (
+        <span className="font-normal tabular-nums">{count}</span>
+      )}
+    </button>
+  );
+}
+
+/**
+ * The manager itself, separated from the route so it can be rendered — and
+ * tested — without a router. `tab` is lifted to the route, where it lives in
+ * the URL; everything else (query, sort) is view state that belongs to this
+ * component.
+ */
+export function PostsManager({
+  ident,
+  rows,
+  engagement,
+  drafts,
+  cursor,
+  nextCursor,
+  tab,
+  onTabChange,
+}: {
+  ident: string;
+  /** null = the PDS read flaked. Never the same claim as "no posts". */
+  rows: DashboardRow[] | null;
+  engagement: Map<string, DocumentEngagement>;
+  /** null = the drafts read flaked. */
+  drafts: DraftRow[] | null;
+  cursor?: string;
+  nextCursor: string | null;
+  tab: PostsTab;
+  onTabChange: (tab: PostsTab) => void;
+}) {
+  const stats = useWriterStats();
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<PostSort>("newest");
+
+  // A view count exists only where the analytics provider recorded that exact
+  // path; every other row keeps `undefined`, which renders as nothing.
+  const views = useMemo(
+    () =>
+      stats.status === "ready"
+        ? viewsByRkey(rows ?? [], stats.paths, ident)
+        : new Map<string, number>(),
+    [rows, stats, ident],
+  );
+  const canSortByViews = views.size > 0;
+
+  const postRows = useMemo<ManagerRow[]>(
+    () =>
+      (rows ?? []).map((row) => ({
+        ...row,
+        views: views.get(row.rkey),
+        engagement: engagement.get(row.rkey) ?? null,
+      })),
+    [rows, views, engagement],
+  );
+
+  const postColumns = useMemo<ColumnDef<ManagerRow, unknown>[]>(
+    () => [
+      // The only globally-filtered column: the filter reads the whole row, so
+      // letting every column run it would just repeat identical work.
+      { id: "post", accessorFn: (row) => row.title, enableGlobalFilter: true },
+      {
+        id: DATE_COLUMN,
+        accessorFn: (row) =>
+          row.publishedAt ? Date.parse(row.publishedAt) : undefined,
+        enableGlobalFilter: false,
+        // Undated records sort to the end either way rather than pretending
+        // to be the oldest thing the writer ever published.
+        sortUndefined: "last",
+      },
+      {
+        id: VIEWS_COLUMN,
+        accessorFn: (row) => row.views,
+        enableGlobalFilter: false,
+        // Absence is not a low score: posts the provider never recorded park
+        // at the end of a most-read sort instead of below the zero-view ones.
+        sortUndefined: "last",
+      },
+    ],
+    [],
+  );
+
+  const draftColumns = useMemo<ColumnDef<DraftRow, unknown>[]>(
+    () => [
+      { id: "post", accessorFn: (row) => row.title, enableGlobalFilter: true },
+      {
+        id: DATE_COLUMN,
+        accessorFn: (row) => Date.parse(row.updatedAt),
+        enableGlobalFilter: false,
+        sortUndefined: "last",
+      },
+    ],
+    [],
+  );
+
+  // Drafts have no readers, so "most read" has no meaning there — it falls
+  // back to newest rather than silently doing nothing.
+  const draftSort: PostSort = sort === "most-read" ? "newest" : sort;
+  const postsTable = useManagerTable(
+    postRows,
+    postColumns,
+    sortingStateFor(sort),
+    query,
+  );
+  const draftsTable = useManagerTable(
+    drafts ?? [],
+    draftColumns,
+    sortingStateFor(draftSort),
+    query,
+  );
+
+  const isSearching = query.trim() !== "";
+  const paginated = Boolean(cursor || nextCursor);
+  const visiblePosts = postsTable.getRowModel().rows;
+  const visibleDrafts = draftsTable.getRowModel().rows;
+  const firstRun =
+    rows !== null &&
+    rows.length === 0 &&
+    drafts !== null &&
+    drafts.length === 0;
+
+  return (
+    <>
+      {/* Tabs are the manager's spine: one job per tab, and no tab for a
+          feature that doesn't exist. */}
+      <div className="mt-8 border-rule border-b">
+        <div aria-label="Post lists" className="flex gap-6" role="tablist">
+          <TabButton
+            active={tab === "published"}
+            // A page count dressed as a total would be a lie; a complete list
+            // is honestly countable.
+            count={rows !== null && !paginated ? rows.length : undefined}
+            label="Published"
+            onSelect={() => onTabChange("published")}
+            panelId="panel-published"
+            tabId="tab-published"
+          />
+          <TabButton
+            active={tab === "drafts"}
+            count={drafts?.length}
+            label="Drafts"
+            onSelect={() => onTabChange("drafts")}
+            panelId="panel-drafts"
+            tabId="tab-drafts"
+          />
+        </div>
+      </div>
+
+      {/* Search + sort. Hidden on a genuinely empty account, where there is
+          nothing to search and the controls would be furniture. */}
+      {!firstRun && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+          <label className="flex min-h-9 items-center gap-2 border-rule border-b pb-1 text-ink-soft focus-within:border-ink">
+            <SearchIcon className="h-4 w-4 shrink-0" />
+            <span className="sr-only">Search your posts by title</span>
+            <input
+              className="w-40 bg-transparent font-display text-ink text-sm placeholder:text-ink-soft/60 focus:outline-none sm:w-56"
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search titles"
+              type="search"
+              value={query}
+            />
+          </label>
+          <label className="flex min-h-9 items-center gap-2 font-display text-ink-soft text-sm">
+            <span>Sort</span>
+            <select
+              className="cursor-pointer border-rule border-b bg-transparent pb-1 font-display text-ink text-sm focus:outline-none"
+              onChange={(event) => setSort(event.target.value as PostSort)}
+              value={sort}
+            >
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+              {/* Only offered once there are counts to sort by — a sort that
+                  can't move anything is a dead control. */}
+              {canSortByViews && <option value="most-read">Most read</option>}
+            </select>
+          </label>
+        </div>
+      )}
+
+      <div
+        aria-labelledby="tab-published"
+        hidden={tab !== "published"}
+        id="panel-published"
+        role="tabpanel"
+      >
+        {rows === null ? (
+          <Notice tone="alert">
+            Your posts couldn't be loaded right now — your data server may be
+            briefly unreachable. They're safe in your repo; refresh to try
+            again.
+          </Notice>
+        ) : firstRun ? (
+          <FirstRun />
+        ) : rows.length === 0 ? (
+          <p className="mt-8 text-ink-soft leading-relaxed">
+            Nothing published yet — your drafts are on the{" "}
+            <button
+              className="cursor-pointer underline underline-offset-2 transition-colors hover:text-ink"
+              onClick={() => onTabChange("drafts")}
+              type="button"
+            >
+              Drafts tab
+            </button>
+            .
+          </p>
+        ) : visiblePosts.length === 0 ? (
+          <p className="mt-8 text-ink-soft leading-relaxed">
+            No posts on this page match "{query.trim()}".
+          </p>
+        ) : (
+          <>
+            <p className="mt-6 font-display text-ink-soft text-xs">
+              {visiblePosts.length}{" "}
+              {visiblePosts.length === 1 ? "post" : "posts"}
+              {/* An honest scope: a paginated view holds a page, and search
+                  can only see what's been fetched. */}
+              {paginated
+                ? isSearching
+                  ? " on this page"
+                  : " on this page — older posts load below"
+                : ""}
+            </p>
+            <ul className="mt-2">
+              {visiblePosts.map(({ original: row }) => (
+                <PublishedRow ident={ident} key={row.rkey} row={row} />
+              ))}
+            </ul>
+            {nextCursor && (
+              <p className="mt-6">
+                <a
+                  className="font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
+                  href={`/dashboard?cursor=${encodeURIComponent(nextCursor)}`}
+                >
+                  Older posts →
+                </a>
+              </p>
+            )}
+          </>
+        )}
+      </div>
+
+      <div
+        aria-labelledby="tab-drafts"
+        hidden={tab !== "drafts"}
+        id="panel-drafts"
+        role="tabpanel"
+      >
+        {drafts === null ? (
+          <Notice tone="alert">
+            Your drafts couldn't be loaded right now — they're safe; refresh to
+            try again.
+          </Notice>
+        ) : drafts.length === 0 ? (
+          <p className="mt-8 text-ink-soft leading-relaxed">
+            No drafts in progress.{" "}
+            <a
+              className="underline underline-offset-2 transition-colors hover:text-ink"
+              href="/write"
+            >
+              Start something new
+            </a>{" "}
+            — a draft is private to you until you publish it.
+          </p>
+        ) : visibleDrafts.length === 0 ? (
+          <p className="mt-8 text-ink-soft leading-relaxed">
+            No drafts match "{query.trim()}".
+          </p>
+        ) : (
+          <>
+            <SectionRule>
+              {visibleDrafts.length}{" "}
+              {visibleDrafts.length === 1 ? "draft" : "drafts"} · only you can
+              see these
+            </SectionRule>
+            <ul>
+              {visibleDrafts.map(({ original: draft }) => (
+                <DraftListRow draft={draft} key={draft.id} />
+              ))}
+            </ul>
+          </>
+        )}
+      </div>
+    </>
+  );
+}
+
+function PublishedRow({ ident, row }: { ident: string; row: ManagerRow }) {
+  const date = formatDate(row.publishedAt ?? undefined);
+  const readingLabel = formatReadingTime(row.readingMinutes);
+  const href = `/@${encodeURIComponent(ident)}/${encodeURIComponent(row.rkey)}`;
+  return (
+    <li className="flex items-start gap-4 border-rule border-b py-5">
+      <PostThumb coverPath={row.coverPath} title={row.title} />
+      <div className="min-w-0 flex-1">
+        <a
+          className="font-semibold text-ink text-lg leading-snug hover:underline hover:underline-offset-4"
+          href={href}
+        >
+          {row.title}
+        </a>
+        {row.description && (
+          <p className="mt-1 line-clamp-1 text-ink-soft text-sm leading-relaxed">
+            {row.description}
+          </p>
+        )}
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-display text-ink-soft text-xs">
+          <span>
+            {date && (
+              <time dateTime={row.publishedAt ?? undefined}>{date}</time>
+            )}
+            {date && readingLabel && " · "}
+            {readingLabel}
+            {row.updatedAt
+              ? date || readingLabel
+                ? " · edited"
+                : "Edited"
+              : null}
+            {!row.editable && (
+              <span>
+                {date || readingLabel ? " · " : ""}Written in another app
+              </span>
+            )}
+          </span>
+          <PostMetrics engagement={row.engagement} views={row.views} />
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-x-4">
+          {row.editable && (
+            <a
+              className={INLINE_ACTION}
+              href={`/write?edit=${encodeURIComponent(row.rkey)}`}
+            >
+              Edit
+            </a>
+          )}
+          {row.announced ? (
+            <>
+              <ExternalLink
+                className={INLINE_ACTION}
+                href={bskyPostUrl(row.announced.did, row.announced.postRkey)}
+                title="View the announcement post on Bluesky"
+              >
+                Announced ↗
+              </ExternalLink>
+              <AnnounceButton
+                confirmMessage="Already announced — post again?"
+                label="Announce again"
+                rkey={row.rkey}
+              />
+            </>
+          ) : (
+            <AnnounceButton label="Announce" rkey={row.rkey} />
+          )}
+          <DeletePostForm
+            announced={row.announced}
+            rkey={row.rkey}
+            title={row.title}
+          />
+        </div>
+      </div>
+    </li>
+  );
+}
+
+/**
+ * One draft row. Delete is a fetch (the drafts API is JSON, unlike the
+ * form-posting publish intents) followed by a router invalidate to refresh
+ * the loader data; confirm-before-delete and destructive hover match the
+ * published rows.
+ */
+function DraftListRow({ draft }: { draft: DraftRow }) {
   const router = useRouter();
   const [failed, setFailed] = useState(false);
-  if (drafts !== null && drafts.length === 0) return null;
-  if (drafts === null) {
-    return (
-      <Notice tone="alert">
-        Your drafts couldn't be loaded right now — they're safe; refresh to try
-        again.
-      </Notice>
-    );
-  }
+  const name = draft.title.trim() || "(untitled draft)";
+  const date = formatDate(draft.updatedAt);
+  const resumeHref = `/write?draft=${encodeURIComponent(draft.id)}`;
 
-  async function deleteDraft(draft: DraftListItem) {
-    const name = draft.title.trim() || "(untitled draft)";
+  async function deleteDraft() {
     if (!window.confirm(`Delete the draft "${name}"? This can't be undone.`))
       return;
     setFailed(false);
     try {
       const res = await fetch(
         `/api/drafts?id=${encodeURIComponent(draft.id)}`,
-        { method: "DELETE" },
+        {
+          method: "DELETE",
+        },
       );
       // 404 = already gone (another tab) — refreshing the list is the fix.
       if (!res.ok && res.status !== 404) throw new Error(String(res.status));
@@ -368,182 +901,82 @@ function DraftsSection({ drafts }: { drafts: DraftListItem[] | null }) {
   }
 
   return (
-    <section aria-labelledby="drafts-heading" className="mt-8">
-      <h2
-        className="border-rule border-b pb-2 font-display font-semibold text-ink-soft text-xs uppercase tracking-[0.08em]"
-        id="drafts-heading"
-      >
-        {drafts.length} {drafts.length === 1 ? "draft" : "drafts"} · only you
-        can see these
-      </h2>
-      {failed && (
-        <Notice tone="alert">
-          That draft couldn't be deleted right now. Try again.
-        </Notice>
-      )}
-      <ul>
-        {drafts.map((draft) => {
-          const date = formatDate(draft.updatedAt);
-          return (
-            <li
-              className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-rule border-b py-4"
-              key={draft.id}
-            >
-              <span>
-                <a
-                  className="font-semibold text-ink leading-snug hover:underline hover:underline-offset-4"
-                  href={`/write?draft=${encodeURIComponent(draft.id)}`}
-                >
-                  {draft.title.trim() || "(untitled draft)"}
-                </a>
-                {date && (
-                  <span className="ml-3 font-display text-ink-soft text-sm">
-                    <time dateTime={draft.updatedAt}>{date}</time>
-                  </span>
-                )}
-              </span>
-              <span className="flex flex-wrap items-center gap-x-4">
-                <a
-                  className="-my-2 inline-flex min-h-9 items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
-                  href={`/write?draft=${encodeURIComponent(draft.id)}`}
-                >
-                  Resume
-                </a>
-                <button
-                  className="-my-2 inline-flex min-h-9 cursor-pointer items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-spot"
-                  onClick={() => void deleteDraft(draft)}
-                  type="button"
-                >
-                  Delete
-                </button>
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-    </section>
+    <li className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-rule border-b py-4">
+      <span>
+        <a
+          className="font-semibold text-ink leading-snug hover:underline hover:underline-offset-4"
+          href={resumeHref}
+        >
+          {name}
+        </a>
+        {date && (
+          <span className="ml-3 font-display text-ink-soft text-sm">
+            Edited <time dateTime={draft.updatedAt}>{date}</time>
+          </span>
+        )}
+        {failed && (
+          <Notice tone="alert">
+            That draft couldn't be deleted right now. Try again.
+          </Notice>
+        )}
+      </span>
+      <span className="flex flex-wrap items-center gap-x-4">
+        <a className={INLINE_ACTION} href={resumeHref}>
+          Resume
+        </a>
+        <button
+          className={DESTRUCTIVE_ACTION}
+          onClick={() => void deleteDraft()}
+          type="button"
+        >
+          Delete
+        </button>
+      </span>
+    </li>
   );
 }
 
-type StatsState =
-  | { status: "loading" }
-  | { status: "off" }
-  | { status: "unavailable" }
-  | {
-      status: "ready";
-      total: number;
-      paths: Array<{ path: string; views: number }>;
-    };
-
-/**
- * Fetches the writer's own /api/stats once, client-side, after mount — no
- * loader wiring, no polling. Session-authed + same-origin, so a bare fetch
- * carries the cookie for free. Runs after hydration only (never during SSR),
- * so the initial render is always "loading": server and client agree, and a
- * flaky/slow PostHog Query API upstream never holds up the dashboard's own
- * page load.
- */
-function useWriterStats(): StatsState {
-  const [state, setState] = useState<StatsState>({ status: "loading" });
-  useEffect(() => {
-    let cancelled = false;
-    fetch("/api/stats")
-      .then((res) =>
-        res.ok
-          ? (res.json() as Promise<StatsResponse>)
-          : Promise.reject(new Error(String(res.status))),
-      )
-      .then((data) => {
-        if (cancelled) return;
-        if (!data.enabled) {
-          setState({ status: "off" });
-        } else if ("error" in data) {
-          setState({ status: "unavailable" });
-        } else {
-          setState({ status: "ready", total: data.total, paths: data.paths });
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setState({ status: "unavailable" });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  return state;
-}
-
-/**
- * "Readers" — the writer-stats seam's dashboard face. The feature doesn't
- * exist until POSTHOG_QUERY_API_KEY + POSTHOG_PROJECT_ID are configured on
- * the worker: `off` (and the still-loading instant before the fetch
- * resolves) render nothing at all, not a teaser or an empty box. Numbers and
- * rules only — no charts in v1.
- * Exported for tests (dashboard-stats.test.tsx) — not a route.
- */
-export function ReadersSection({
-  ident,
-  rows,
-}: {
-  ident: string;
-  rows: DashboardRow[];
-}) {
-  const stats = useWriterStats();
-  if (stats.status === "loading" || stats.status === "off") return null;
-
-  if (stats.status === "unavailable") {
-    return (
-      <p className="mt-8 font-display text-ink-soft text-sm">
-        Stats are catching their breath — check back shortly.
-      </p>
-    );
-  }
-
-  const perPost = joinStatsToRows(rows, stats.paths, ident);
+/** Nothing published and nothing drafted — teach the next step rather than
+ * showing an empty list with controls above it. */
+function FirstRun() {
   return (
-    <section aria-labelledby="readers-heading" className="mt-8">
-      <h2
-        className="border-rule border-b pb-2 font-display font-semibold text-ink-soft text-xs uppercase tracking-[0.08em]"
-        id="readers-heading"
-      >
-        Readers
+    <div className="mt-8 border-2 border-ink p-8">
+      <h2 className="font-black font-display text-ink text-xl tracking-tight">
+        No posts yet.
       </h2>
-      <p className="mt-4 font-display text-2xl text-ink tracking-tight">
-        <span className="font-black">{stats.total.toLocaleString()}</span>{" "}
-        <span className="font-display font-normal text-ink-soft text-sm">
-          all-time views
-        </span>
+      <p className="mt-3 max-w-[52ch] text-ink-soft leading-relaxed">
+        Your first post publishes straight to your own data repo and goes live
+        on your public page. Announce it and it reaches your Bluesky followers
+        as a rich card linking back here.
       </p>
-      {perPost.length > 0 && (
-        <ul className="mt-4">
-          {perPost.map((post) => (
-            <li
-              className="flex items-center justify-between gap-4 border-rule border-b py-2"
-              key={post.rkey}
-            >
-              <span className="min-w-0 truncate font-display text-ink-soft text-sm">
-                {post.title}
-              </span>
-              <span className="shrink-0 font-display text-ink text-sm">
-                {post.views.toLocaleString()}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-      <p className="mt-3 font-display text-ink-soft text-xs">
-        Counts are approximate — privacy-respecting analytics miss some readers.
+      <a
+        className="mt-6 inline-flex min-h-11 items-center bg-ink px-6 font-bold font-display text-base text-paper transition-colors hover:bg-spot"
+        href="/write"
+      >
+        Write your first post
+      </a>
+      <p className="mt-4 font-display text-ink-soft text-sm">
+        Coming from Substack or another platform?{" "}
+        <a
+          className="underline underline-offset-2 transition-colors hover:text-ink"
+          href="/import"
+        >
+          Import your writing
+        </a>{" "}
+        — posts arrive as private drafts, and nothing changes at the source.
       </p>
-    </section>
+    </div>
   );
 }
 
 function DashboardPage() {
-  const { ident, handle, rows, nextCursor, onLegacyUrl, drafts } =
+  const { ident, handle, rows, engagement, nextCursor, onLegacyUrl, drafts } =
     Route.useLoaderData();
-  const { error, published, announced, deleted, moved, cursor } =
-    Route.useSearch();
+  const search = Route.useSearch();
+  const { error, published, announced, deleted, moved, cursor } = search;
+  const navigate = Route.useNavigate();
   const message = errorMessage(error);
+  const tab: PostsTab = search.tab ?? "published";
 
   // Analytics (cookieless, no-op without a PostHog key): the server redirects
   // land here with the result in the query string — the closest client-side
@@ -557,7 +990,7 @@ function DashboardPage() {
 
   return (
     <AppShell header={{ variant: "signed-in", ident, active: "posts" }}>
-      <main className="mx-auto w-full max-w-2xl px-6 py-10">
+      <main className="mx-auto w-full max-w-3xl px-6 py-10">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="font-black font-display text-3xl text-ink tracking-tight">
@@ -642,132 +1075,23 @@ function DashboardPage() {
           </Notice>
         )}
 
-        <DraftsSection drafts={drafts} />
-
-        {rows === null ? (
-          <Notice tone="alert">
-            Your posts couldn't be loaded right now — your data server may be
-            briefly unreachable. They're safe in your repo; refresh to try
-            again.
-          </Notice>
-        ) : rows.length > 0 ? (
-          <>
-            <p className="mt-8 border-rule border-b pb-2 font-display font-semibold text-ink-soft text-xs uppercase tracking-[0.08em]">
-              {rows.length} {rows.length === 1 ? "post" : "posts"}
-              {/* An honest count: a paginated view shows a page, not the archive. */}
-              {cursor || nextCursor ? " on this page" : ""} · newest first
-            </p>
-            <ul>
-              {rows.map((row) => {
-                const date = formatDate(row.publishedAt ?? undefined);
-                return (
-                  <li className="border-rule border-b py-5" key={row.rkey}>
-                    <a
-                      className="font-semibold text-ink text-lg leading-snug hover:underline hover:underline-offset-4"
-                      href={`/@${encodeURIComponent(ident)}/${encodeURIComponent(row.rkey)}`}
-                    >
-                      {row.title}
-                    </a>
-                    {row.description && (
-                      <p className="mt-1 line-clamp-1 text-ink-soft text-sm leading-relaxed">
-                        {row.description}
-                      </p>
-                    )}
-                    <div className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-                      <span className="font-display text-ink-soft text-sm">
-                        {date && (
-                          <time dateTime={row.publishedAt ?? undefined}>
-                            {date}
-                          </time>
-                        )}
-                        {row.updatedAt ? (date ? " · edited" : "Edited") : null}
-                        {!row.editable && (
-                          <span>{date ? " · " : ""}Written in another app</span>
-                        )}
-                      </span>
-                      <span className="flex flex-wrap items-center gap-x-4">
-                        {row.editable && (
-                          <a
-                            className="-my-2 inline-flex min-h-9 items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
-                            href={`/write?edit=${encodeURIComponent(row.rkey)}`}
-                          >
-                            Edit
-                          </a>
-                        )}
-                        {row.announced ? (
-                          <>
-                            <ExternalLink
-                              className="-my-2 inline-flex min-h-9 items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
-                              href={bskyPostUrl(
-                                row.announced.did,
-                                row.announced.postRkey,
-                              )}
-                              title="View the announcement post on Bluesky"
-                            >
-                              Announced ↗
-                            </ExternalLink>
-                            <AnnounceButton
-                              confirmMessage="Already announced — post again?"
-                              label="Announce again"
-                              rkey={row.rkey}
-                            />
-                          </>
-                        ) : (
-                          <AnnounceButton label="Announce" rkey={row.rkey} />
-                        )}
-                        <DeletePostForm
-                          announced={row.announced}
-                          rkey={row.rkey}
-                          title={row.title}
-                        />
-                      </span>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-            {nextCursor && (
-              <p className="mt-6">
-                <a
-                  className="font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
-                  href={`/dashboard?cursor=${encodeURIComponent(nextCursor)}`}
-                >
-                  Older posts →
-                </a>
-              </p>
-            )}
-          </>
-        ) : (
-          <div className="mt-10 border-2 border-ink p-8">
-            <h2 className="font-black font-display text-ink text-xl tracking-tight">
-              No posts yet.
-            </h2>
-            <p className="mt-3 max-w-[52ch] text-ink-soft leading-relaxed">
-              Your first post publishes straight to your own data repo and goes
-              live on your public page. Announce it and it reaches your Bluesky
-              followers as a rich card linking back here.
-            </p>
-            <a
-              className="mt-6 inline-flex min-h-11 items-center bg-ink px-6 font-bold font-display text-base text-paper transition-colors hover:bg-spot"
-              href="/write"
-            >
-              Write your first post
-            </a>
-            <p className="mt-4 font-display text-ink-soft text-sm">
-              Coming from Substack or another platform?{" "}
-              <a
-                className="underline underline-offset-2 transition-colors hover:text-ink"
-                href="/import"
-              >
-                Import your writing
-              </a>{" "}
-              — posts arrive as private drafts, and nothing changes at the
-              source.
-            </p>
-          </div>
-        )}
-
-        <ReadersSection ident={ident} rows={rows ?? []} />
+        <PostsManager
+          cursor={cursor}
+          drafts={drafts}
+          engagement={new Map(engagement)}
+          ident={ident}
+          nextCursor={nextCursor}
+          onTabChange={(next) =>
+            // The tab is an address, but switching it must not re-run the
+            // loader or push a history entry for every glance.
+            void navigate({
+              replace: true,
+              search: (prev) => ({ ...prev, tab: next }),
+            })
+          }
+          rows={rows}
+          tab={tab}
+        />
       </main>
     </AppShell>
   );

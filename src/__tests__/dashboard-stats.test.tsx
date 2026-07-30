@@ -4,7 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 // dashboard.tsx is a route file: it reads Workers bindings at module scope —
 // the `cloudflare:workers` alias in vitest.config.ts stubs them for this import.
 import type { DashboardRow } from "../lib/dashboard";
-import { ReadersSection } from "../routes/dashboard";
+import type { DocumentEngagement } from "../lib/engagement";
+import { PostsManager } from "../routes/dashboard";
 
 afterEach(() => {
   cleanup();
@@ -18,8 +19,10 @@ function row(rkey: string, title: string): DashboardRow {
     rkey,
     title,
     description: null,
-    publishedAt: null,
+    publishedAt: "2026-07-01T00:00:00.000Z",
     updatedAt: null,
+    coverPath: null,
+    readingMinutes: 0,
     editable: true,
     announced: null,
   };
@@ -32,84 +35,161 @@ function stubStatsFetch(body: unknown, status = 200) {
   );
 }
 
-describe("ReadersSection — enabled: false (feature not configured)", () => {
-  it("renders nothing at all, not even an empty container, once the fetch resolves", async () => {
+function renderManager(
+  rows: DashboardRow[],
+  engagement = new Map<string, DocumentEngagement>(),
+) {
+  return render(
+    <PostsManager
+      drafts={[]}
+      engagement={engagement}
+      ident={IDENT}
+      nextCursor={null}
+      onTabChange={() => {}}
+      rows={rows}
+      tab="published"
+    />,
+  );
+}
+
+/**
+ * The stats seam feeds the manager's inline per-post metrics. All three of its
+ * non-ready states must render the same thing on a row: nothing. A "0 views"
+ * would tell a writer their post went unread — a claim cookieless analytics
+ * can never make.
+ */
+describe("posts manager metrics — stats seam not configured", () => {
+  it("renders the row but no view count at all", async () => {
     stubStatsFetch({ enabled: false });
-    const { container } = render(
-      <ReadersSection ident={IDENT} rows={[row("3aaa2aaa2aaa2", "a post")]} />,
-    );
+    renderManager([row("3aaa2aaa2aaa2", "a post")]);
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
-    // Flush the effect's state update before asserting the DOM stays bare.
-    await waitFor(() => expect(container.innerHTML).toBe(""));
+    screen.getByText("a post");
+    expect(screen.queryByText(/^\d+ views?$/)).toBeNull();
   });
 
-  it("renders nothing before the fetch resolves either", () => {
+  it("offers no most-read sort when there is nothing to sort by", async () => {
     stubStatsFetch({ enabled: false });
-    const { container } = render(
-      <ReadersSection ident={IDENT} rows={[row("3aaa2aaa2aaa2", "a post")]} />,
-    );
-    expect(container.innerHTML).toBe("");
+    renderManager([row("3aaa2aaa2aaa2", "a post")]);
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("option", { name: /most read/i })).toBeNull();
   });
 });
 
-describe("ReadersSection — enabled: true, data", () => {
-  it("shows the total and a per-post views list joined by path", async () => {
+describe("posts manager metrics — stats seam answering", () => {
+  it("shows a view count only on the rows the provider actually recorded", async () => {
     stubStatsFetch({
       enabled: true,
-      total: 42,
+      total: 35,
       paths: [
         { path: `/@${IDENT}/3aaa2aaa2aaa2`, views: 30 },
-        { path: `/@${IDENT}`, views: 12 },
+        { path: `/@${IDENT}`, views: 5 },
       ],
     });
-    render(
-      <ReadersSection
-        ident={IDENT}
-        rows={[
-          row("3aaa2aaa2aaa2", "the post with views"),
-          row("3bbb2bbb2bbb2", "the post with no recorded views"),
-        ]}
-      />,
-    );
+    renderManager([
+      row("3aaa2aaa2aaa2", "the recorded post"),
+      row("3bbb2bbb2bbb2", "the unrecorded post"),
+    ]);
 
-    await screen.findByText("42");
-    screen.getByText("all-time views");
-    screen.getByText("the post with views");
-    screen.getByText("30");
-    // Absence isn't zero: a post the stats API never mentioned shows nothing.
-    expect(screen.queryByText("the post with no recorded views")).toBeNull();
-    screen.getByText(/approximate.*miss some readers/i);
+    await screen.findByText("30 views");
+    // Both rows are listed; only one carries a number. Absence isn't zero.
+    screen.getByText("the unrecorded post");
+    expect(screen.queryByText("0 views")).toBeNull();
+    expect(screen.getAllByText(/^\d+ views?$/)).toHaveLength(1);
   });
 
-  it("still shows the total-views line when no post has a matching path", async () => {
+  it("uses the singular for a single view", async () => {
     stubStatsFetch({
       enabled: true,
-      total: 5,
-      paths: [{ path: `/@${IDENT}`, views: 5 }],
+      total: 1,
+      paths: [{ path: `/@${IDENT}/3aaa2aaa2aaa2`, views: 1 }],
     });
-    render(
-      <ReadersSection ident={IDENT} rows={[row("3aaa2aaa2aaa2", "post")]} />,
-    );
-    await screen.findByText("5");
-    expect(screen.queryByText("post")).toBeNull();
+    renderManager([row("3aaa2aaa2aaa2", "a post")]);
+    await screen.findByText("1 view");
+  });
+
+  it("offers the most-read sort once counts exist", async () => {
+    stubStatsFetch({
+      enabled: true,
+      total: 30,
+      paths: [{ path: `/@${IDENT}/3aaa2aaa2aaa2`, views: 30 }],
+    });
+    renderManager([row("3aaa2aaa2aaa2", "a post")]);
+    await screen.findByRole("option", { name: /most read/i });
   });
 });
 
-describe("ReadersSection — enabled: true, error: unavailable", () => {
-  it("shows a single quiet line, no numbers", async () => {
+describe("posts manager metrics — stats seam unavailable", () => {
+  it("renders no numbers, and the list still works", async () => {
     stubStatsFetch({ enabled: true, error: "unavailable" });
-    render(<ReadersSection ident={IDENT} rows={[]} />);
-    await screen.findByText(/catching their breath/i);
+    renderManager([row("3aaa2aaa2aaa2", "a post")]);
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    screen.getByText("a post");
+    expect(screen.queryByText(/^\d+ views?$/)).toBeNull();
   });
 
-  it("also falls back to the quiet line on a network/parse failure", async () => {
+  it("degrades the same way on a network failure", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => {
         throw new Error("network down");
       }),
     );
-    render(<ReadersSection ident={IDENT} rows={[]} />);
-    await screen.findByText(/catching their breath/i);
+    renderManager([row("3aaa2aaa2aaa2", "a post")]);
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    screen.getByText("a post");
+    expect(screen.queryByText(/^\d+ views?$/)).toBeNull();
+  });
+});
+
+/**
+ * Cross-network counts come from the announcement's Bluesky post, independent
+ * of the analytics seam — including their own absence rules.
+ */
+describe("posts manager metrics — cross-network counts", () => {
+  const threadUrl = "https://bsky.app/profile/writer.example/post/abc123";
+
+  it("renders the counted metrics and links the reply count to the thread", async () => {
+    stubStatsFetch({ enabled: false });
+    renderManager(
+      [row("3aaa2aaa2aaa2", "an announced post")],
+      new Map([
+        [
+          "3aaa2aaa2aaa2",
+          {
+            counts: { likeCount: 12, replyCount: 3, repostCount: 4 },
+            threadUrl,
+          },
+        ],
+      ]),
+    );
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    screen.getByText("12");
+    screen.getByText("4");
+    const reply = screen.getByTitle("View the replies on Bluesky");
+    expect(reply.getAttribute("href")).toBe(threadUrl);
+  });
+
+  it("skips a metric the AppView left uncounted rather than showing zero", async () => {
+    stubStatsFetch({ enabled: false });
+    renderManager(
+      [row("3aaa2aaa2aaa2", "an announced post")],
+      new Map([["3aaa2aaa2aaa2", { counts: { likeCount: 7 }, threadUrl }]]),
+    );
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    screen.getByText("7");
+    expect(screen.queryByTitle("View the replies on Bluesky")).toBeNull();
+    expect(screen.queryByText("0")).toBeNull();
+  });
+
+  it("renders nothing for an announced post whose every count came back uncounted", async () => {
+    stubStatsFetch({ enabled: false });
+    renderManager(
+      [row("3aaa2aaa2aaa2", "an announced post")],
+      new Map([["3aaa2aaa2aaa2", { counts: {}, threadUrl }]]),
+    );
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    screen.getByText("an announced post");
+    expect(screen.queryByText("0")).toBeNull();
+    expect(screen.queryByTitle("View the replies on Bluesky")).toBeNull();
   });
 });
