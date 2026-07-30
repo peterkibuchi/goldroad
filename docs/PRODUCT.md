@@ -36,8 +36,8 @@ a tradeoff that was previously unavoidable.
 These are load-bearing. A change that violates one needs to argue against the principle,
 not around it.
 
-1. **The writer owns everything.** Records in their repository, revenue in their Stripe
-   account, identity in their DID. Leaving Goldroad loses nothing.
+1. **The writer owns everything.** Records in their repository, revenue in their own
+   payment processor, identity in their DID. Leaving Goldroad loses nothing.
 2. **Charge writer costs, never writer revenue.** The 0% take on reader payments is
    permanent positioning, not an introductory promotion. Paid plans sell costs with a
    margin — custom domains, email delivery, analytics — because those are things we
@@ -72,7 +72,7 @@ not around it.
 Stated plainly because the interface never claims otherwise — unshipped features are
 labelled as such on marketing surfaces, never written in the present tense.
 
-Newsletters (email delivery) · reader payments through the writer's own Stripe · custom
+Newsletters (email delivery) · reader payments through the writer's own processor · custom
 domains and subdomains · our own extension lexicon · continuous mirroring from an
 existing publication · writer theming · a supported self-hosting path.
 

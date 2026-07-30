@@ -17,7 +17,8 @@ so leaving Goldroad never means losing your work, your readers, or your byline.
 
 The economics follow the same principle: **we charge for writer costs (hosting, email,
 domains), never writer revenue.** Reader payments — when they ship — flow through the
-writer's own Stripe account. 0% platform take, permanently.
+writer's own payment processor, whichever one serves their country. 0% platform take,
+permanently.
 
 ## What works today
 
