@@ -54,6 +54,26 @@ describe("assertImportableUrl", () => {
     }
   });
 
+  it("refuses SUBDOMAINS of our own zone, not just the apex", () => {
+    for (const url of [
+      "https://www.trygoldroad.com/feed",
+      "https://blog.trygoldroad.com/feed",
+      "https://a.b.trygoldroad.com/feed",
+      "https://TryGoldroad.com/feed", // hostname match is case-insensitive
+      "https://WWW.TryGoldroad.com/feed",
+    ]) {
+      expect(() => assertImportableUrl(url)).toThrow(ImportError);
+    }
+  });
+
+  it("still accepts a host that merely ENDS WITH our zone's name (label boundary)", () => {
+    // nottrygoldroad.com is somebody else's domain — the suffix match must
+    // only ever fire on a real dot-separated label boundary.
+    expect(assertImportableUrl("https://nottrygoldroad.com/feed").href).toBe(
+      "https://nottrygoldroad.com/feed",
+    );
+  });
+
   it("refuses over-long URLs before any parsing", () => {
     expect(() =>
       assertImportableUrl(`https://a.example/${"x".repeat(2100)}`),
