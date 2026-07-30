@@ -1,11 +1,26 @@
 name: CI
 
+# Every install here runs `--ignore-scripts`. On a `pull_request` from a fork
+# the checked-out tree is untrusted, and a plain `pnpm install` executes
+# lifecycle scripts from THAT tree: the root package.json's own
+# preinstall/postinstall/prepare (always run, allowlist or not) and any package
+# the branch adds to `allowBuilds` in pnpm-workspace.yaml. Both are
+# contributor-editable in a PR, i.e. arbitrary code on the runner. Skipping
+# scripts costs us only husky's `prepare` hook, which is meaningless in CI.
+#
+# The alternative — not running CI on fork PRs — was rejected: contributors
+# would get no signal, which is worse than the residual risk of building
+# untrusted source with scripts off.
+
 on:
   pull_request:
     branches: ["*"]
   push:
     branches: ["main"]
   merge_group:
+
+permissions:
+  contents: read
 
 jobs:
   lint:
@@ -25,7 +40,7 @@ jobs:
           cache: "pnpm"
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Copy `.env.example` files to `.env`
         shell: bash
@@ -51,7 +66,7 @@ jobs:
           cache: "pnpm"
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Copy `.env.example` files to `.env`
         shell: bash
@@ -76,7 +91,7 @@ jobs:
           cache: "pnpm"
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Copy `.env.example` files to `.env`
         shell: bash
