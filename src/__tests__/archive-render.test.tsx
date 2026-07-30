@@ -2,6 +2,8 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { filterPostsByQuery, groupPostsByMonth, monogram } from "#/lib/archive";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 // No vitest globals in this repo — RTL auto-cleanup doesn't run; do it by hand.
 afterEach(cleanup);
@@ -126,5 +128,28 @@ describe("archive search affordance — client-side over loaded rows", () => {
 
   it("an empty query is 'no filter', never 'match nothing'", () => {
     expect(filterPostsByQuery(posts, "  ")).toHaveLength(2);
+  });
+});
+
+/**
+ * The archive page's close, checked at the source level for the reason given
+ * at the top of this file: its component tree needs a live router context.
+ * What matters is the shape — the writer's items (open network, RSS) lead,
+ * and Goldroad's single printer's-mark line points at /open, minted from the
+ * canonical origin so a shared page never carries a preview hostname.
+ */
+describe("archive close — printer's mark", () => {
+  const source = readFileSync(
+    join(import.meta.dirname, "..", "routes", "@{$handle}.index.tsx"),
+    "utf8",
+  );
+
+  it("closes with the open-source line, pointed at /open", () => {
+    expect(source).toContain("Goldroad — open-source, writer-owned publishing");
+    expect(source).toMatch(/CANONICAL_ORIGIN\}\/open/);
+  });
+
+  it("no longer sends readers to the marketing homepage instead", () => {
+    expect(source).not.toContain("via Goldroad");
   });
 });
