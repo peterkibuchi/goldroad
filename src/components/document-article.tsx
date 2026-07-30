@@ -407,52 +407,63 @@ export function DocumentArticle({
             />
           </div>
         )}
+        {/* THE FLAG — the writer's masthead, above their own headline.
+            This page is where every timeline card lands, so "whose page is
+            this" has to be answered before the title, not footnoted under it.
+            The archive page already sets the publication name like a masthead;
+            the article page used to give the same identity a 24px icon and a
+            grey line of small text. The calm register says the platform
+            disappears and the WRITER'S identity dominates — this is the second
+            half of that sentence, finally executed. */}
+        {(publicationName || publicationIcon) && (
+          <div className="mb-12 border-rule border-b pb-4">
+            <a
+              className="inline-flex items-center gap-2.5 transition-colors hover:text-ink"
+              href={publicationHref}
+            >
+              {publicationIcon && (
+                <img
+                  alt=""
+                  className="h-7 w-7 shrink-0 object-cover"
+                  src={blobImagePath(publicationIcon.did, publicationIcon.cid)}
+                />
+              )}
+              <span className="font-display font-semibold text-[0.85rem] text-ink uppercase tracking-[0.14em]">
+                {publicationName ?? `@${ident}`}
+              </span>
+            </a>
+          </div>
+        )}
         <header className="mb-10 border-rule border-b pb-8">
           <h1 className="text-balance font-semibold text-4xl text-ink leading-[1.1] md:text-5xl">
             {doc.title ?? "Untitled"}
           </h1>
+          {/* Roman, not italic. Italic had become a default soft voice across
+              the product rather than an emphasis, which costs it all meaning. */}
           {dek && (
-            <p className="mt-4 text-ink-soft text-xl italic leading-relaxed">
-              {dek}
-            </p>
+            <p className="mt-4 text-ink-soft text-xl leading-relaxed">{dek}</p>
           )}
-          {/* One byline row carries every attribution/metadata fact — the
-              title (and now the dek) stand alone above it, carrying their
-              own weight. Avatar-if-any sits inline with the name. */}
-          <div className="mt-6 flex items-center gap-2.5 font-display text-ink-soft text-sm">
-            {publicationIcon && (
-              <img
-                alt=""
-                className="h-6 w-6 shrink-0 object-cover"
-                src={blobImagePath(publicationIcon.did, publicationIcon.cid)}
-              />
-            )}
+          {/* The byline, split in two. Five facts used to share one whisper —
+              the person's name deserves its own line at ink weight; the
+              circumstances of publication belong beneath it, softer. */}
+          <div className="mt-6 font-display text-sm">
             <p>
-              {publicationName && (
-                <>
-                  <a
-                    className="transition-colors hover:text-ink"
-                    href={publicationHref}
-                  >
-                    {publicationName}
-                  </a>
-                  {" · "}
-                </>
-              )}
               <a
-                className="transition-colors hover:text-ink"
+                className="font-semibold text-ink transition-colors hover:text-ink-soft"
                 href={publicationHref}
               >
                 @{ident}
               </a>
-              {date && (
+            </p>
+            <p className="mt-1 text-ink-soft">
+              {date && <time dateTime={doc.publishedAt}>{date}</time>}
+              {readingLabel && (
                 <>
-                  {" · "}
-                  <time dateTime={doc.publishedAt}>{date}</time>
+                  {date && " · "}
+                  {readingLabel}
                 </>
               )}
-              {readingLabel && <> · {readingLabel}</>}
-              {updated && updated !== date && <span> · updated {updated}</span>}
+              {updated && updated !== date && <> · updated {updated}</>}
             </p>
           </div>
           {/* Provenance for mirrored posts (import ledger): the original
@@ -496,40 +507,53 @@ export function DocumentArticle({
             .
           </p>
         )}
+        {/* THE COLOPHON — the signature moment, placed where goodwill is
+            highest: directly after the last line of the piece, before the
+            letters. A magazine's contributor note, not a leftover grey box.
+            This is the reading surface's ONE capture moment and it belongs to
+            the writer, not to us; when newsletters ship, the email field lands
+            here and nowhere else. No sticky bar, no modal, no second ask. */}
+        <aside className="mt-14 border-ink border-t pt-8">
+          <div className="flex items-start gap-4">
+            {publicationIcon && (
+              <img
+                alt=""
+                className="h-10 w-10 shrink-0 object-cover"
+                src={blobImagePath(publicationIcon.did, publicationIcon.cid)}
+              />
+            )}
+            <div className="min-w-0">
+              <p className="font-bold font-display text-ink text-lg leading-tight">
+                {publicationName ?? `@${ident}`}
+              </p>
+              {publicationDescription && (
+                <p className="mt-2 text-base text-ink-soft leading-relaxed">
+                  {publicationDescription}
+                </p>
+              )}
+              <p className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 font-display text-sm">
+                <ExternalLink
+                  className="font-semibold text-ink underline underline-offset-2 transition-colors hover:text-ink-soft"
+                  href={bskyProfileUrl(ident)}
+                >
+                  Follow @{ident} on Bluesky
+                </ExternalLink>
+                <a
+                  className="text-ink-soft underline underline-offset-2 transition-colors hover:text-ink"
+                  href={`${publicationHref}/rss.xml`}
+                >
+                  RSS
+                </a>
+              </p>
+            </div>
+          </div>
+        </aside>
         {/* The conversation that already exists on the network. Announced
             posts with at least one readable reply only — a post nobody has
             replied to (or that was never announced) renders nothing here, and
             so does an AppView that was down. No empty state to design. */}
         {conversation && <Conversation conversation={conversation} />}
         <aside className="mt-16 border-rule border-t pt-10">
-          {/* End-of-post follow-card — the honest stand-in for a subscribe
-              card until newsletters ship (the "inline subscribe
-              card", adapt-lite verdict). Frictionless and native: it links
-              straight to the writer's own Bluesky profile. */}
-          <div className="border border-rule p-6">
-            <p className="font-display font-semibold text-base text-ink">
-              {publicationName ?? `@${ident}`}
-            </p>
-            {publicationDescription && (
-              <p className="mt-2 text-base text-ink-soft leading-relaxed">
-                {publicationDescription}
-              </p>
-            )}
-            <p className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 font-display text-sm">
-              <ExternalLink
-                className="font-semibold text-ink underline underline-offset-2 transition-colors hover:text-ink-soft"
-                href={bskyProfileUrl(ident)}
-              >
-                Follow @{ident} on Bluesky
-              </ExternalLink>
-              <a
-                className="text-ink-soft underline underline-offset-2 transition-colors hover:text-ink"
-                href={`${publicationHref}/rss.xml`}
-              >
-                RSS
-              </a>
-            </p>
-          </div>
           {relatedPosts && relatedPosts.length > 0 && (
             <div className="mt-10">
               <p className="font-display font-semibold text-ink-soft text-xs uppercase tracking-wide">
