@@ -492,7 +492,7 @@ function SubtitleField({
       </label>
       <textarea
         aria-describedby="dek-help"
-        className="field-sizing-content mt-4 w-full resize-none rounded-none border-0 border-transparent border-b-2 bg-paper px-1 py-1 font-body text-ink-soft text-xl italic leading-relaxed placeholder:text-ink-soft/50 focus-visible:border-spot focus-visible:outline-none"
+        className="field-sizing-content mt-4 w-full resize-none overflow-hidden rounded-none border-0 border-transparent border-b-2 bg-paper px-1 py-1 font-body text-ink-soft text-xl italic leading-relaxed placeholder:text-ink-soft/50 focus-visible:border-spot focus-visible:outline-none"
         defaultValue={defaultValue}
         id="dek"
         maxLength={MAX_DEK_LENGTH}
@@ -862,7 +862,7 @@ export function Compose({
               behaves like one line of writing — no newlines in a title, and no
               accidental publish. */}
           <textarea
-            className="field-sizing-content w-full resize-none rounded-none border-0 border-transparent border-b-2 bg-paper px-1 py-1 font-body font-semibold text-4xl text-ink leading-[1.1] placeholder:text-ink-soft/40 focus-visible:border-spot focus-visible:outline-none md:text-5xl"
+            className="field-sizing-content w-full resize-none overflow-hidden rounded-none border-0 border-transparent border-b-2 bg-paper px-1 py-1 font-body font-semibold text-4xl text-ink leading-[1.1] placeholder:text-ink-soft/40 focus-visible:border-spot focus-visible:outline-none md:text-5xl"
             defaultValue={draft?.title ?? resumed?.title ?? ""}
             id="title"
             name="title"
