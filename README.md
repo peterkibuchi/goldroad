@@ -32,8 +32,10 @@ permanently.
 - RSS per publication, plus a sitemap
 - Import an archive from Substack, Ghost, Medium or WordPress — parsed in your browser,
   landing as private drafts
+- Read the conversation: replies to a post's Bluesky announcement render under the post
+  itself, so the network is the comment section
 - Export everything, or delete your account outright
-- A 27-check production canary, 734 tests, and an adversarially-reviewed pipeline
+- A 27-check production canary, 1,087 tests, and an adversarially-reviewed pipeline
 
 Newsletters, reader payments, custom domains and continuous mirroring are **not** built
 yet — [`docs/PRODUCT.md`](docs/PRODUCT.md) lists exactly what's shipped and what isn't.
