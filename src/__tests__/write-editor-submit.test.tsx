@@ -5,7 +5,15 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 // Regression guard for the add-block-publishes bug: BlockNote's internal UI
 // buttons (side-menu +, drag handle, slash-menu items) don't set
@@ -47,6 +55,29 @@ import { Compose } from "../routes/write";
 
 // No vitest globals in this repo — RTL auto-cleanup doesn't run; do it by hand.
 afterEach(cleanup);
+
+// Mounting this route the first time carries a one-time cost that has nothing
+// to do with what these tests assert: resolving the
+// `lazy(() => import("~/components/editor"))` chunk, plus first-call warmup of
+// React's render path and testing-library's role engine. Measured on a busy
+// box that first mount takes seconds while later ones take ~100ms — so left
+// where it falls it lands inside the FIRST test's findBy* window and that test
+// alone fails on machine load rather than on behaviour.
+//
+// Do it once here, off the clock, and every wait below covers only rendering.
+// This is a warmup, not a fixture: each test still mounts its own Compose.
+beforeAll(async () => {
+  render(
+    <Compose
+      draft={null}
+      error={undefined}
+      reconnectHandle={null}
+      resumed={null}
+    />,
+  );
+  await screen.findByRole("button", { name: "+" }, { timeout: 30_000 });
+  cleanup();
+}, 60_000);
 
 describe("/write — editor buttons must never submit the publish form", () => {
   let submitSpy: ReturnType<typeof vi.spyOn>;
