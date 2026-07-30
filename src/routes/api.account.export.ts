@@ -1,9 +1,10 @@
 /**
  * Account data export — the "Download your data" action on /settings ("Your
  * data" section). Assembles everything WE hold for the signed-in DID into one
- * JSON attachment: full draft content and the import ledger, both from our D1
- * (ownership enforced in ~/lib/rights-store's SQL, same contract as
- * ~/lib/drafts and ~/lib/import-store).
+ * JSON attachment: full draft content, the import ledger, and the daily
+ * follower-count history, all from our D1 (ownership enforced in
+ * ~/lib/rights-store's SQL, same contract as ~/lib/drafts and
+ * ~/lib/import-store).
  *
  * ARCHITECTURAL NOTE, worth restating here: your published posts are NOT in
  * this export, because they are not in our database — they live in your own
@@ -30,6 +31,7 @@ import {
 import { canonicalOrigin } from "~/lib/origin";
 import {
   selectDraftsForExport,
+  selectFollowerSnapshotsForExport,
   selectImportItemsForExport,
 } from "~/lib/rights-store";
 import { readSessionDid } from "~/lib/session";
@@ -74,12 +76,14 @@ export const Route = createFileRoute("/api/account/export")({
         const origin = canonicalOrigin(url.origin);
         const db = drizzle(env.DB);
 
-        const [draftRows, ledgerRows, handle, pds] = await Promise.all([
-          selectDraftsForExport(db, did),
-          selectImportItemsForExport(db, did),
-          resolveDidToHandle(did).catch(() => null),
-          resolveDidToPds(did).catch(() => null),
-        ]);
+        const [draftRows, ledgerRows, followerRows, handle, pds] =
+          await Promise.all([
+            selectDraftsForExport(db, did),
+            selectImportItemsForExport(db, did),
+            selectFollowerSnapshotsForExport(db, did),
+            resolveDidToHandle(did).catch(() => null),
+            resolveDidToPds(did).catch(() => null),
+          ]);
         const ident = handle ?? did;
 
         // Best-effort convenience listing only — never blocks the export of
@@ -120,13 +124,17 @@ export const Route = createFileRoute("/api/account/export")({
           exportedAt: new Date().toISOString(),
           account: { did, handle: handle ?? null },
           manifest:
-            "Goldroad stores remarkably little for your account: your drafts and " +
-            "import history below, plus a record of your sign-in session — that's " +
-            "it. Your published posts live in your own atproto data repo, not in " +
-            "our database, so deleting your Goldroad account never touches them. " +
-            "`ownPosts` is a best-effort convenience listing read live from your " +
-            "repo (not from our storage); use `pdsRepoExportUrl` to export your " +
-            "entire repo yourself, any time, with or without Goldroad.",
+            "Goldroad stores remarkably little for your account: your drafts, " +
+            "import history and daily follower counts below, plus a record of " +
+            "your sign-in session — that's it. `followerHistory` is your own " +
+            "public follower count, read once a day and kept because Bluesky " +
+            "only ever reports today's number — nobody can reconstruct the past " +
+            "from it, so we write it down while it's true. Your published posts " +
+            "live in your own atproto data repo, not in our database, so " +
+            "deleting your Goldroad account never touches them. `ownPosts` is a " +
+            "best-effort convenience listing read live from your repo (not from " +
+            "our storage); use `pdsRepoExportUrl` to export your entire repo " +
+            "yourself, any time, with or without Goldroad.",
           drafts: draftRows.map((row) => ({
             id: row.id,
             title: row.title,
@@ -142,6 +150,11 @@ export const Route = createFileRoute("/api/account/export")({
             publishedRkey: row.publishedRkey,
             adoptedAt: row.adoptedAt?.toISOString() ?? null,
             createdAt: row.createdAt.toISOString(),
+          })),
+          followerHistory: followerRows.map((row) => ({
+            day: row.day,
+            followers: row.followers,
+            posts: row.posts,
           })),
           ownPosts: {
             publicPage: `${origin}/@${encodeURIComponent(ident)}`,

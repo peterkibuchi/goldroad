@@ -7,11 +7,14 @@ import {
   countDraftsForDid,
   countImportItemsForDid,
   deleteDraftsForDid,
+  deleteFollowerSnapshotsForDid,
   deleteImportFetchesForDid,
   deleteImportItemsForDid,
   deleteOAuthSessionForDid,
   MAX_LEDGER_ROWS_PER_EXPORT,
+  MAX_SNAPSHOT_ROWS_PER_EXPORT,
   selectDraftsForExport,
+  selectFollowerSnapshotsForExport,
   selectImportItemsForExport,
 } from "../lib/rights-store";
 
@@ -70,6 +73,17 @@ describe("export reads — full content, capped, DID-scoped", () => {
       String(MAX_LEDGER_ROWS_PER_EXPORT),
     );
   });
+
+  it("selectFollowerSnapshotsForExport binds the DID, orders by day, and caps", () => {
+    const { sql, params } = selectFollowerSnapshotsForExport(db, DID).toSQL();
+    expectDidBound(sql, params);
+    expect(sql.toLowerCase()).toContain('from "follower_snapshots"');
+    expect(sql.toLowerCase()).toContain("order by");
+    expect(sql.toLowerCase()).toContain("limit");
+    expect([...params, sql].join(" ")).toContain(
+      String(MAX_SNAPSHOT_ROWS_PER_EXPORT),
+    );
+  });
 });
 
 describe("account-deletion deletes — DID-scoped, RETURNing so callers can see what fell", () => {
@@ -91,6 +105,13 @@ describe("account-deletion deletes — DID-scoped, RETURNing so callers can see 
     const { sql, params } = deleteImportFetchesForDid(db, DID).toSQL();
     expectDidBound(sql, params);
     expect(sql.toLowerCase()).toContain('delete from "import_fetches"');
+    expect(sql.toLowerCase()).toContain("returning");
+  });
+
+  it("deleteFollowerSnapshotsForDid deletes only the caller's history", () => {
+    const { sql, params } = deleteFollowerSnapshotsForDid(db, DID).toSQL();
+    expectDidBound(sql, params);
+    expect(sql.toLowerCase()).toContain('delete from "follower_snapshots"');
     expect(sql.toLowerCase()).toContain("returning");
   });
 

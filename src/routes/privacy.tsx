@@ -101,6 +101,7 @@ function PrivacyPage() {
             "Waitlist email: kept until you ask us to remove it, or until the waitlist is retired.",
             "Analytics: aggregated, not tied to your identity.",
             "Drafts and import history: kept until you delete them (Settings → Your data) or delete your account, which removes both immediately.",
+            "Follower counts: while you have an account we record your public Bluesky follower count once a day, so you can see your own growth over time — Bluesky only reports today's number, and the past can't be recovered later. It's in your data export, and deleting your account deletes it.",
             "Sign-in sessions: kept until you sign out, delete your account, or the session expires.",
             "Server logs: short-lived (days), then discarded.",
           ]}

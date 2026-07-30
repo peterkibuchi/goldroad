@@ -54,7 +54,11 @@ describe("DeleteAccountForm — the highest-stakes confirm on the page", () => {
     render(<DeleteAccountForm ident="sana.example" />);
     fireEvent.click(screen.getByRole("button", { name: "Delete account" }));
     const dialog = screen.getByRole("alertdialog");
-    expect(dialog.textContent).toContain("drafts, import history, and sign-in");
+    // Every category of row we hold is named, so the dialog can't quietly
+    // fall out of date with what account deletion actually removes.
+    expect(dialog.textContent).toContain(
+      "drafts, import history, follower history, and sign-in",
+    );
     expect(dialog.textContent).toContain(
       "does NOT delete anything you've published",
     );
