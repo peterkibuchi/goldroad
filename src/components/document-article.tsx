@@ -1,5 +1,6 @@
 import { notFound, useLocation } from "@tanstack/react-router";
 
+import { Conversation } from "~/components/conversation";
 import { ExternalLink } from "~/components/external-link";
 import { HeartIcon, ReplyIcon, RepostIcon } from "~/components/icons";
 import { Prose } from "~/components/prose";
@@ -17,6 +18,7 @@ import {
   type StandardPublication,
 } from "~/lib/atproto";
 import { blobImagePath, coverImageCid } from "~/lib/blob";
+import { getPostConversation, type PostConversation } from "~/lib/comments";
 import {
   bskyProfileUrl,
   type DocumentEngagement,
@@ -115,17 +117,28 @@ export async function loadDocument(identParam: string, rkey: string) {
       () => null,
     );
 
+    // The conversation: replies to the announcement, off the same ref. Runs
+    // concurrently with the PDS reads above (so it costs no serial latency in
+    // the common case) and degrades to null on absolutely everything —
+    // ~/lib/comments already swallows its own failures; this .catch is the
+    // belt to that braces, because nothing about replies may fail this page.
+    const conversationPromise = getPostConversation(doc.bskyPostRef).catch(
+      () => null,
+    );
+
     // Mirror lookup (import ledger): a hit swaps the canonical tag for
     // noindex and adds the "Originally published at …" line below. Null =
     // native post, adopted mirror, or a flaked read (fail open).
     const mirrorPromise = checkMirror({ data: { did, rkey } });
 
-    const [pub, relatedPage, engagement, mirror] = await Promise.all([
-      pubPromise,
-      relatedPromise,
-      engagementPromise,
-      mirrorPromise,
-    ]);
+    const [pub, relatedPage, engagement, conversation, mirror] =
+      await Promise.all([
+        pubPromise,
+        relatedPromise,
+        engagementPromise,
+        conversationPromise,
+        mirrorPromise,
+      ]);
 
     let publicationUrl: string | undefined;
     let publicationName: string | null = null;
@@ -153,6 +166,7 @@ export async function loadDocument(identParam: string, rkey: string) {
       mirror,
       relatedPosts: selectRelatedPosts(relatedPage.records, rkey),
       engagement,
+      conversation,
       // Validated cover blob (allowlisted raster, within the lexicon cap) —
       // rendered via the /img proxy so the PDS hostname never leaks into HTML.
       cover: coverCid ? ({ did, cid: coverCid } satisfies CoverRef) : null,
@@ -352,6 +366,7 @@ export function DocumentArticle({
   mirror,
   relatedPosts,
   engagement,
+  conversation,
 }: {
   doc: StandardDocument;
   ident: string;
@@ -362,6 +377,7 @@ export function DocumentArticle({
   mirror?: MirrorInfo | null;
   relatedPosts?: RelatedPost[];
   engagement?: DocumentEngagement | null;
+  conversation?: PostConversation | null;
 }) {
   const body = doc.textContent ?? "";
   const date = formatDate(doc.publishedAt);
@@ -480,6 +496,11 @@ export function DocumentArticle({
             .
           </p>
         )}
+        {/* The conversation that already exists on the network. Announced
+            posts with at least one readable reply only — a post nobody has
+            replied to (or that was never announced) renders nothing here, and
+            so does an AppView that was down. No empty state to design. */}
+        {conversation && <Conversation conversation={conversation} />}
         <aside className="mt-16 border-rule border-t pt-10">
           {/* End-of-post follow-card — the honest stand-in for a subscribe
               card until newsletters ship (the "inline subscribe
