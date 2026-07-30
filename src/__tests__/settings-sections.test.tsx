@@ -39,8 +39,8 @@ describe("SettingsSection — the page's structure is scannable", () => {
 
     const { container: heavy } = render(
       <SettingsSection
-        heavyRule
         id="delete-account"
+        rule="heavy"
         title="Delete your account"
       >
         <p>danger</p>

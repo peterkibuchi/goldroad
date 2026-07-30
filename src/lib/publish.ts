@@ -88,7 +88,9 @@ export function excerpt(body: string): string {
 }
 
 function validateTitleAndBody(rawTitle: string, rawBody: string) {
-  const title = rawTitle.trim();
+  // A title is one line. The field can't produce a newline, but a paste can —
+  // collapse rather than store a record title that renders broken everywhere.
+  const title = rawTitle.replace(/\s+/g, " ").trim();
   const body = rawBody.replace(/\r\n/g, "\n").trim();
   if (!title) throw new Error("title is required");
   if (title.length > MAX_TITLE_LENGTH)
