@@ -15,7 +15,7 @@ export const Route = createFileRoute("/privacy")({
       {
         name: "description",
         content:
-          "What Goldroad collects, why, and your rights. We collect almost nothing and never sell your data.",
+          "What Goldroad collects, why, and your rights — including exporting or deleting everything we hold, any day you like.",
       },
     ],
   }),
