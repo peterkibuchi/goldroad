@@ -17,7 +17,7 @@ export const Route = createFileRoute("/leaving-substack")({
       {
         name: "description",
         content:
-          "Bring your readers, your subscriber list, and your name to the open network — and keep 100% of what they pay you. An honest look at how Goldroad compares to Substack, roadmap and all.",
+          "Bring your readers, your subscriber list, and — once reader payments ship — the Stripe account your paying subscribers already pay into. 0% taken where Substack takes 10%. An honest look at how Goldroad compares, roadmap and all.",
       },
       { property: "og:title", content: "Leaving Substack — Goldroad" },
       {
@@ -80,7 +80,8 @@ const ROWS: Row[] = [
   },
   {
     label: "Reader payments",
-    goldroad: "Your own Stripe, 0% taken",
+    goldroad:
+      "The same Stripe account your Substack subscribers already pay into — they keep paying, and 0% is taken",
     substack: "Yes, minus 10%",
     roadmap: true,
   },
@@ -173,9 +174,10 @@ export function LeavingSubstack() {
             </h1>
             <p className="mt-6 max-w-[54ch] text-pretty font-body text-ink-soft text-lg italic md:text-xl">
               Goldroad is writer-owned publishing on the open network: your
-              writing on a page you own, your subscriber list in your hands, and
-              — once reader payments ship — your money through your own Stripe.
-              Substack takes 10% of what readers pay you; we take 0%.
+              writing on a page you own, and your subscriber list in your hands.
+              Once reader payments ship, the readers already paying you keep
+              paying — through the same Stripe account they use today. Substack
+              takes 10% of what readers pay you; we take 0%.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3">
               <CtaLink href="/#join">Join the founding writers</CtaLink>
@@ -224,6 +226,29 @@ export function LeavingSubstack() {
             untouched on Substack, and readers are pointed to the original until
             you say otherwise. Bring readers over at your own pace instead of
             all at once.
+          </p>
+        </MarketingSection>
+
+        {/* Payments portability — the hardest part of leaving Substack is the
+            paying subscribers, and they're portable because the Stripe account
+            is already the writer's. Strictly future-tense: reader payments are
+            not shipped, and the kicker plus the closing line say so. */}
+        <MarketingSection divider>
+          <Kicker>On the roadmap</Kicker>
+          <h2 className="mt-4 max-w-[24ch] text-balance font-black font-display text-3xl text-ink leading-tight tracking-tight md:text-4xl">
+            Your paying subscribers will come with you.
+          </h2>
+          <p className="mt-4 max-w-[60ch] text-pretty text-ink-soft text-lg leading-relaxed">
+            Substack charges your paid subscriptions through Stripe, and that
+            Stripe account is yours — it holds your subscribers and their
+            payment methods. When reader payments ship, you'll connect that same
+            account to Goldroad, and the readers already paying you keep paying:
+            same cards, same schedule, nothing for them to sign up for again.
+            The 10% stays with you instead.
+          </p>
+          <p className="mt-8 max-w-[56ch] border-rule border-t pt-4 font-display text-ink-soft text-sm leading-normal">
+            Reader payments are still being built — this is the plan for when
+            they ship, not today's product.
           </p>
         </MarketingSection>
 
