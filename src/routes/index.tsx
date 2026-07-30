@@ -475,8 +475,8 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
                 0% of what readers pay
               </dt>
               <dd className="mt-2 text-ink-soft text-sm leading-relaxed">
-                When reader payments ship, they'll run through your own Stripe
-                and we'll take zero — permanently, not a launch promo. Substack
+                When reader payments ship, readers will pay you directly and
+                we'll take zero — permanently, not a launch promo. Substack
                 takes 10%.
               </dd>
             </div>
