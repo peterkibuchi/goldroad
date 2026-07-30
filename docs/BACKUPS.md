@@ -10,7 +10,9 @@ Two mechanisms cover that, and they cover different things.
 
 ## 1. Time Travel — already on, nothing to configure
 
-Every D1 database has a 30-day point-in-time restore built in, on every plan.
+Every D1 database has point-in-time restore built in. **On the Workers Free plan
+the window is 7 days** (30 days on Workers Paid) — verified against Cloudflare's
+current D1 limits. We are on Free, so assume 7.
 It is the right tool for the failure modes that actually happen: a migration
 that drops the wrong column, a `DELETE` without a `WHERE`, a backfill that
 corrupts a column. There is no setup and no cost.
@@ -30,22 +32,23 @@ pnpm wrangler d1 time-travel restore goldroad-db --bookmark 00000085-00000000-00
 ```
 
 Timestamps take a Unix seconds value or RFC3339, and **must be within the last
-30 days** — wrangler rejects anything older, or in the future. Both commands act
+the retention window (7 days on Free)** — wrangler rejects anything older, or in the future. Both commands act
 on the remote database.
 
 Restoring is itself a write, so the state you restored *from* is also inside the
-window: an unwanted restore can be walked back for the next 30 days.
+window: an unwanted restore can be walked back for the rest of the retention period.
 
 ### What Time Travel does not cover
 
 Three gaps, all narrow, all fatal:
 
 - **It lives inside the database.** Delete the database — or lose access to the
-  account — and its 30 days of history go with it.
+  account — and its history goes with it.
 - **It restores in place.** There is no way to get the bytes out, to inspect a
   dump, to diff two points in time, or to move to another provider.
-- **Nothing older than 30 days exists.** A problem noticed on day 31 is
-  unrecoverable.
+- **Nothing older than the window exists.** On Free that is 7 days: a problem
+  noticed on day 8 is unrecoverable from Time Travel alone. This is the single
+  strongest argument for the off-platform copy below.
 
 Section 2 exists only for those.
 
@@ -139,7 +142,7 @@ pnpm wrangler d1 execute goldroad-db --remote \
 Use section 1. This is what you want for a bad migration or a bad delete: it is
 faster, it needs no keys, and it loses nothing.
 
-### From an encrypted dump — database is gone, or you need >30 days
+### From an encrypted dump — database is gone, or you need to go back further
 
 Download the artifact from the workflow run, then:
 
@@ -168,7 +171,7 @@ Stated plainly, because a backup you have wrong assumptions about is worse than
 one you know the edges of:
 
 - **Artifact retention is 90 days**, the ceiling this plan allows. That is longer
-  than Time Travel's 30 days, which is the point — but it is a rolling window,
+  than Time Travel's 7-day Free window, which is the point — but it is a rolling window,
   not an archive. If you want a copy you keep forever, download one periodically
   and store it yourself. Nothing automates that here, because doing it for free
   and off-platform would mean putting credentials for some third party into CI.
