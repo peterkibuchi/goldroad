@@ -54,7 +54,7 @@ describe("AppShell — marketing/signed-out", () => {
 });
 
 /**
- * The command rail, with its inert "Soon" rows folded in. Desktop rail and
+ * The command rail, with its inert "Soon" row folded in. Desktop rail and
  * mobile tab bar both render in the DOM at once (CSS media queries pick which
  * is visible), so
  * every query below scopes to one landmark via `within` rather than the
@@ -62,7 +62,9 @@ describe("AppShell — marketing/signed-out", () => {
  * aria-label="Writer" navigation region and repeat the same link labels.
  */
 describe("AppShell — signed-in (command rail)", () => {
-  function renderShell(active?: "write" | "import" | "posts" | "settings") {
+  function renderShell(
+    active?: "write" | "import" | "posts" | "stats" | "settings",
+  ) {
     render(
       <AppShell
         header={{ active, ident: "writer.bsky.social", variant: "signed-in" }}
@@ -175,21 +177,44 @@ describe("AppShell — signed-in (command rail)", () => {
     }
   });
 
-  it("shows Stats and Newsletter as legible, non-interactive 'Soon' rows", () => {
+  it("carries Stats as a real destination, after Posts", () => {
+    renderShell("posts");
+    const nav = railNav();
+    const stats = within(nav).getByRole("link", { name: "Stats" });
+    expect(stats.getAttribute("href")).toBe("/stats");
+    const labels = [...nav.querySelectorAll("a")].map((a) => a.textContent);
+    expect(labels.indexOf("Stats")).toBe(labels.indexOf("Posts") + 1);
+    expect(labels.indexOf("Settings")).toBe(labels.indexOf("Stats") + 1);
+  });
+
+  it("marks Stats active on its own surface", () => {
+    renderShell("stats");
+    const nav = railNav();
+    expect(
+      within(nav)
+        .getByRole("link", { name: "Stats" })
+        .getAttribute("aria-current"),
+    ).toBe("page");
+    expect(
+      within(nav)
+        .getByRole("link", { name: "Posts" })
+        .getAttribute("aria-current"),
+    ).toBeNull();
+  });
+
+  it("shows Newsletter as a legible, non-interactive 'Soon' row", () => {
     renderShell("posts");
     const nav = railNav();
     // "Soon" rows are inert — never real links (nowhere to go yet), so they
     // must not appear in the nav's link list at all.
-    expect(within(nav).queryByRole("link", { name: /stats/i })).toBeNull();
     expect(within(nav).queryByRole("link", { name: /newsletter/i })).toBeNull();
     // But the promise is visible in the rail's static text.
-    expect(within(nav).getByText("Stats")).toBeDefined();
     expect(within(nav).getByText("Newsletter")).toBeDefined();
-    expect(within(nav).getAllByText("Soon")).toHaveLength(2);
-    // Unavailable must not mean unreadable: the rows carry no opacity dimming
-    // (which dropped them under the 4.5:1 contrast floor) — the chip and the
+    expect(within(nav).getAllByText("Soon")).toHaveLength(1);
+    // Unavailable must not mean unreadable: the row carries no opacity dimming
+    // (which dropped it under the 4.5:1 contrast floor) — the chip and the
     // absent hover response say "not yet" instead.
-    const soonRow = within(nav).getByText("Stats");
+    const soonRow = within(nav).getByText("Newsletter");
     expect(soonRow.className).not.toContain("opacity");
     expect(soonRow.className).toContain("text-ink-soft");
   });
@@ -201,6 +226,10 @@ describe("AppShell — signed-in (command rail)", () => {
     expect(navs).toHaveLength(2);
     const tabBar = navs[1];
     expect(within(tabBar).getByRole("link", { name: "Write" })).toBeDefined();
+    // Stats graduated out of the Soon slot, so it belongs in the tab bar too.
+    expect(
+      within(tabBar).getByRole("link", { name: "Stats" }).getAttribute("href"),
+    ).toBe("/stats");
     expect(within(tabBar).queryByText("Soon")).toBeNull();
   });
 });
