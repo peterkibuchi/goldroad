@@ -23,11 +23,19 @@ writer's own Stripe account. 0% platform take, permanently.
 
 - Sign in with your Bluesky (atproto) identity — OAuth confidential client, DPoP + PAR,
   running on Cloudflare Workers
-- Write in a block editor; publish `site.standard.document` records into **your** repo
+- Write in a block editor with autosaving private drafts; publish
+  `site.standard.document` records into **your** repo
 - Publication pages (`/@handle`) and document pages for **any** atproto author's
   standard.site records, not just ours
 - Announce posts to Bluesky as native rich cards
-- A 20+-check production canary, ~130 tests, and an adversarially-reviewed pipeline
+- RSS per publication, plus a sitemap
+- Import an archive from Substack, Ghost, Medium or WordPress — parsed in your browser,
+  landing as private drafts
+- Export everything, or delete your account outright
+- A 27-check production canary, 734 tests, and an adversarially-reviewed pipeline
+
+Newsletters, reader payments, custom domains and continuous mirroring are **not** built
+yet — [`docs/PRODUCT.md`](docs/PRODUCT.md) lists exactly what's shipped and what isn't.
 
 ## Stack
 
@@ -36,6 +44,13 @@ TanStack Start · React 19 · Tailwind v4 · Cloudflare Workers + D1 · Drizzle 
 conventions, and the contribution gate live in [`AGENTS.md`](AGENTS.md); see
 [`CONTRIBUTING.md`](CONTRIBUTING.md) to get started and [`SELF_HOSTING.md`](SELF_HOSTING.md)
 to run your own instance.
+
+## Docs
+
+- [`docs/PRODUCT.md`](docs/PRODUCT.md) — what this is for, which tradeoffs are settled,
+  what's shipped and what isn't. Read before proposing a feature.
+- [`docs/DESIGN.md`](docs/DESIGN.md) — the two-surface visual system, tokens, and voice.
+  Read before touching UI.
 
 ## Develop
 
