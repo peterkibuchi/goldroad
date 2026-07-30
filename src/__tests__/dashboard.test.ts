@@ -3,9 +3,13 @@ import { describe, expect, it } from "vitest";
 
 import type { ListedRecord, StandardDocument } from "../lib/atproto";
 import {
+  DATE_COLUMN,
   type DashboardRow,
   joinStatsToRows,
   mapDashboardRows,
+  sortingStateFor,
+  VIEWS_COLUMN,
+  viewsByRkey,
 } from "../lib/dashboard";
 
 const DID = "did:plc:fakefakefakefakefakefake";
@@ -145,6 +149,8 @@ describe("joinStatsToRows", () => {
       description: null,
       publishedAt: null,
       updatedAt: null,
+      coverPath: null,
+      readingMinutes: 0,
       editable: true,
       announced: null,
     };
@@ -196,5 +202,104 @@ describe("joinStatsToRows", () => {
       IDENT,
     );
     expect(joined).toEqual([]);
+  });
+});
+
+describe("mapDashboardRows — row metrics", () => {
+  it("serves a cover blob through the /img proxy when the writer's DID is known", () => {
+    const [row] = mapDashboardRows(
+      [
+        rec("3aaa2aaa2aaa2", {
+          title: "with a cover",
+          coverImage: {
+            $type: "blob",
+            ref: {
+              $link:
+                "bafkreialhpg6bpwsn3ffbwmnrsg2ur4pbnzlwd3xatgcyvjdxbmhefjxya",
+            },
+            mimeType: "image/jpeg",
+            size: 1234,
+          },
+        } as never),
+      ],
+      DID,
+    );
+    // The /img proxy path encodes the DID — colons are escaped.
+    expect(row.coverPath).toBe(
+      `/img/${encodeURIComponent(DID)}/bafkreialhpg6bpwsn3ffbwmnrsg2ur4pbnzlwd3xatgcyvjdxbmhefjxya`,
+    );
+  });
+
+  it("leaves rows cover-less when there is no cover or no DID to serve it from", () => {
+    const [noCover] = mapDashboardRows(
+      [rec("3aaa2aaa2aaa2", { title: "plain" })],
+      DID,
+    );
+    expect(noCover.coverPath).toBeNull();
+    const [noDid] = mapDashboardRows([
+      rec("3aaa2aaa2aaa2", { title: "plain" }),
+    ]);
+    expect(noDid.coverPath).toBeNull();
+  });
+
+  it("estimates reading time from the record's own body, and 0 when there is none", () => {
+    const [withBody] = mapDashboardRows([
+      rec("3aaa2aaa2aaa2", {
+        title: "an essay",
+        textContent: "word ".repeat(500),
+      }),
+    ]);
+    expect(withBody.readingMinutes).toBeGreaterThan(0);
+    const [empty] = mapDashboardRows([rec("3bbb2bbb2bbb2", { title: "stub" })]);
+    expect(empty.readingMinutes).toBe(0);
+  });
+});
+
+describe("viewsByRkey", () => {
+  const IDENT = "writer.example";
+  function plain(rkey: string): DashboardRow {
+    return {
+      rkey,
+      title: "a post",
+      description: null,
+      publishedAt: null,
+      updatedAt: null,
+      coverPath: null,
+      readingMinutes: 0,
+      editable: true,
+      announced: null,
+    };
+  }
+
+  it("keys the join by rkey for a row-at-a-time lookup", () => {
+    const map = viewsByRkey(
+      [plain("3aaa2aaa2aaa2")],
+      [{ path: `/@${IDENT}/3aaa2aaa2aaa2`, views: 12 }],
+      IDENT,
+    );
+    expect(map.get("3aaa2aaa2aaa2")).toBe(12);
+  });
+
+  it("leaves an unrecorded post OUT of the map — absence, never zero", () => {
+    const map = viewsByRkey([plain("3aaa2aaa2aaa2")], [], IDENT);
+    expect(map.has("3aaa2aaa2aaa2")).toBe(false);
+    expect(map.get("3aaa2aaa2aaa2")).toBeUndefined();
+  });
+});
+
+describe("sortingStateFor", () => {
+  it("maps newest and oldest onto one date column, in both directions", () => {
+    expect(sortingStateFor("newest")).toEqual([
+      { id: DATE_COLUMN, desc: true },
+    ]);
+    expect(sortingStateFor("oldest")).toEqual([
+      { id: DATE_COLUMN, desc: false },
+    ]);
+  });
+
+  it("maps most-read onto the views column, descending", () => {
+    expect(sortingStateFor("most-read")).toEqual([
+      { id: VIEWS_COLUMN, desc: true },
+    ]);
   });
 });

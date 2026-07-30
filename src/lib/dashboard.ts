@@ -1,6 +1,7 @@
 /**
- * Dashboard row mapping — pure record → view-model transform over the
- * writer's own site.standard.document listRecords page (untrusted shapes).
+ * Posts-manager view models — pure record → row transforms over the writer's
+ * own site.standard.document listRecords page (untrusted shapes), plus the
+ * client-side ordering the manager's sort control applies.
  */
 import {
   type ListedRecord,
@@ -8,6 +9,8 @@ import {
   rkeyFromUri,
   type StandardDocument,
 } from "~/lib/atproto";
+import { blobImagePath, coverImageCid } from "~/lib/blob";
+import { listItemReadingMinutes } from "~/lib/reading-time";
 
 export type DashboardRow = {
   rkey: string;
@@ -16,6 +19,16 @@ export type DashboardRow = {
   description: string | null;
   publishedAt: string | null;
   updatedAt: string | null;
+  /**
+   * The post's cover image, served through the /img proxy — null when the
+   * record has no valid cover blob. The row's thumbnail slot falls back to a
+   * monogram so a cover-less post never leaves a hole in the list rhythm.
+   */
+  coverPath: string | null;
+  /** Reading-time estimate over the record's own body; 0 when there is no
+   * body to estimate from (an empty post, or one whose text lives in a
+   * content union we don't read). */
+  readingMinutes: number;
   /**
    * Rich-content-union documents (e.g. Leaflet's pub.leaflet.content) are not
    * editable here (editing only textContent would silently fork what readers
@@ -46,17 +59,29 @@ function announcedFromRef(
 
 /** Maps + sorts (newest first, by publishedAt then rkey) and drops records
  * without a usable rkey. Untitled records stay visible — they're still
- * deletable — under a placeholder title. */
+ * deletable — under a placeholder title.
+ *
+ * `did` is what turns a cover blob into a servable /img path; omit it and
+ * every row simply comes back cover-less (the monogram fallback covers that
+ * case anyway), so callers that only need titles and dates can skip it. */
 export function mapDashboardRows(
   records: ListedRecord<StandardDocument>[],
+  did?: string,
 ): DashboardRow[] {
   return records
     .flatMap((r) => {
       const rkey = rkeyFromUri(r.uri);
       if (!rkey) return [];
+      const coverCid = did ? coverImageCid(r.value.coverImage) : null;
+      const textContent =
+        typeof r.value.textContent === "string" ? r.value.textContent : "";
       return [
         {
           rkey,
+          coverPath: did && coverCid ? blobImagePath(did, coverCid) : null,
+          // Bounded scan: this loop can see a full page of third-party
+          // records, so it takes the list-sized reading-time budget.
+          readingMinutes: listItemReadingMinutes(textContent),
           title:
             typeof r.value.title === "string" && r.value.title.trim() !== ""
               ? r.value.title
@@ -107,3 +132,53 @@ export function joinStatsToRows(
       : [{ rkey: row.rkey, title: row.title, views }];
   });
 }
+
+/** The same join as above, keyed for a row-by-row lookup. Built ON TOP of
+ * joinStatsToRows rather than beside it so the absence rule — a post the
+ * stats provider never mentioned is missing from the map, not present with
+ * 0 — can only ever be defined in one place. */
+export function viewsByRkey(
+  rows: DashboardRow[],
+  paths: Array<{ path: string; views: number }>,
+  ident: string,
+): Map<string, number> {
+  return new Map(
+    joinStatsToRows(rows, paths, ident).map((p) => [p.rkey, p.views]),
+  );
+}
+
+/** The posts manager's two work states. Scheduled publishing doesn't exist,
+ * so there is no third tab to render. */
+export type PostsTab = "published" | "drafts";
+
+/** Column ids the manager sorts by. Kept as constants because they're the
+ * contract between the column definitions and the sort control. */
+export const DATE_COLUMN = "date";
+export const VIEWS_COLUMN = "views";
+
+/**
+ * The manager's sort choices. "most-read" is offered ONLY while the stats
+ * seam is answering — a sort by a metric we don't have would silently do
+ * nothing, which is worse than not offering it.
+ */
+export type PostSort = "newest" | "oldest" | "most-read";
+
+/** Sort choice → the table's sorting state. One mapping, so the select and
+ * the table can't disagree about what "oldest" means. */
+export function sortingStateFor(
+  sort: PostSort,
+): Array<{ id: string; desc: boolean }> {
+  if (sort === "most-read") return [{ id: VIEWS_COLUMN, desc: true }];
+  return [{ id: DATE_COLUMN, desc: sort === "newest" }];
+}
+
+/** One draft row in the manager's Drafts tab. `description: null` is carried
+ * deliberately: it lets drafts flow through the same title/dek search filter
+ * the published list and the public archive use. */
+export type DraftRow = {
+  id: string;
+  title: string;
+  /** ISO string — loader data must serialize identically on both sides. */
+  updatedAt: string;
+  description: null;
+};
