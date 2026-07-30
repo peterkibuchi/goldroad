@@ -376,22 +376,24 @@ function PublicationPage() {
             </a>
           </p>
         )}
+        {/* Same close as the article page: the writer's items lead, Goldroad
+            gets one printer's-mark line last (two-surface rule). */}
         <footer className="mt-16 border-rule border-t pt-6">
-          {/* Whisper-level platform credit (two-surface rule). */}
           <p className="font-display text-ink-soft/80 text-xs">
             Published by its author on the open network ·{" "}
-            <a
-              className="transition-colors hover:text-ink"
-              href={`${CANONICAL_ORIGIN}/`}
-            >
-              via Goldroad
-            </a>{" "}
-            ·{" "}
             <a
               className="transition-colors hover:text-ink"
               href={`/@${encodeURIComponent(ident)}/rss.xml`}
             >
               RSS
+            </a>
+          </p>
+          <p className="mt-1 font-display text-ink-soft/80 text-xs">
+            <a
+              className="transition-colors hover:text-ink"
+              href={`${CANONICAL_ORIGIN}/open`}
+            >
+              Goldroad — open-source, writer-owned publishing
             </a>{" "}
             · <ReportLink />
           </p>

@@ -197,3 +197,42 @@ describe("DocumentArticle — end-of-post module", () => {
     expect(screen.queryByText(/More from/)).toBeNull();
   });
 });
+
+/**
+ * The printer's mark. The two-surface rule says the platform disappears on a
+ * reading page; the trust mandate says the platform has to be discoverable.
+ * A printed book settles this the same way: the author owns the title page,
+ * the printer's device sits small at the very end. So the writer's fact leads
+ * and Goldroad gets exactly one line, last — never a band, never a badge.
+ */
+describe("DocumentArticle — the close", () => {
+  it("leads with the writer's fact and closes with one Goldroad line", () => {
+    render(<DocumentArticle doc={baseDoc} ident="writer.example" />);
+    const close = screen
+      .getByText(/published by its author/i)
+      .closest("footer");
+    const lines = [...(close?.querySelectorAll("p") ?? [])].map(
+      (p) => p.textContent ?? "",
+    );
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatch(/^Published by its author on the open network\.$/);
+    expect(lines[1]).toMatch(
+      /^Goldroad — open-source, writer-owned publishing/,
+    );
+  });
+
+  it("points that line at /open, from the canonical origin", () => {
+    render(<DocumentArticle doc={baseDoc} ident="writer.example" />);
+    expect(
+      screen
+        .getByRole("link", { name: /goldroad — open-source/i })
+        .getAttribute("href"),
+    ).toBe("https://trygoldroad.com/open");
+  });
+
+  it("keeps the reading surface free of the marketing footer", () => {
+    render(<DocumentArticle doc={baseDoc} ident="writer.example" />);
+    expect(screen.queryByRole("navigation", { name: "Open" })).toBeNull();
+    expect(screen.queryByText(/leave anytime/i)).toBeNull();
+  });
+});

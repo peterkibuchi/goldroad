@@ -563,16 +563,22 @@ export function DocumentArticle({
             </div>
           )}
         </aside>
-        {/* Whisper-level platform credit (two-surface rule: the writer owns
-            this page; Goldroad stays out of the way). */}
+        {/* The close, in two voices — the printed-book settlement between the
+            two-surface rule and the need to be findable. The writer's fact
+            leads; Goldroad gets exactly one line, last, at printer's-mark
+            volume. Never a band, never a badge. The line is also the only
+            surface a reader who might become a writer ever meets us on, so it
+            points at /open rather than at a pitch. */}
         <footer className="mt-10 border-rule border-t pt-6">
           <p className="font-display text-ink-soft/80 text-xs">
-            Published by its author on the open network ·{" "}
+            Published by its author on the open network.
+          </p>
+          <p className="mt-1 font-display text-ink-soft/80 text-xs">
             <a
               className="transition-colors hover:text-ink"
-              href={`${CANONICAL_ORIGIN}/`}
+              href={`${CANONICAL_ORIGIN}/open`}
             >
-              via Goldroad
+              Goldroad — open-source, writer-owned publishing
             </a>{" "}
             · <ReportLink />
           </p>
