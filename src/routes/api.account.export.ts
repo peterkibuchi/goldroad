@@ -28,13 +28,13 @@ import {
   resolveDidToPds,
   type StandardDocument,
 } from "~/lib/atproto";
+import { readLiveSessionDid } from "~/lib/live-session";
 import { canonicalOrigin } from "~/lib/origin";
 import {
   selectDraftsForExport,
   selectFollowerSnapshotsForExport,
   selectImportItemsForExport,
 } from "~/lib/rights-store";
-import { readSessionDid } from "~/lib/session";
 import { env } from "cloudflare:workers";
 
 /** Same check as ~/routes/api.drafts: SameSite=Lax already keeps the session
@@ -68,7 +68,11 @@ export const Route = createFileRoute("/api/account/export")({
       POST: async ({ request }) => {
         if (isCrossSite(request))
           return json({ ok: false, error: "cross_site" }, 403);
-        const did = await readSessionDid(request, env.COOKIE_SECRET);
+        const did = await readLiveSessionDid(
+          request,
+          env.COOKIE_SECRET,
+          drizzle(env.DB),
+        );
         if (!did || !isDid(did))
           return json({ ok: false, error: "not_signed_in" }, 401);
 

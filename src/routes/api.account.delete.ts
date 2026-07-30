@@ -28,6 +28,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { drizzle } from "drizzle-orm/d1";
 
 import { isDid } from "~/lib/atproto";
+import { readLiveSessionDid } from "~/lib/live-session";
 import { createOAuthClient } from "~/lib/oauth";
 import {
   deleteDraftsForDid,
@@ -36,7 +37,7 @@ import {
   deleteImportItemsForDid,
   deleteOAuthSessionForDid,
 } from "~/lib/rights-store";
-import { readSessionDid, sessionClearCookie } from "~/lib/session";
+import { sessionClearCookie } from "~/lib/session";
 import { env } from "cloudflare:workers";
 
 function isCrossSite(request: Request): boolean {
@@ -64,7 +65,11 @@ export const Route = createFileRoute("/api/account/delete")({
         if (isCrossSite(request)) {
           return backToSettings("delete_account_failed");
         }
-        const did = await readSessionDid(request, env.COOKIE_SECRET);
+        const did = await readLiveSessionDid(
+          request,
+          env.COOKIE_SECRET,
+          drizzle(env.DB),
+        );
         if (!did || !isDid(did)) {
           return backToSettings("delete_account_failed");
         }
