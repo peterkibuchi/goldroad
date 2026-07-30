@@ -101,6 +101,7 @@ export const Route = createFileRoute("/api/drafts")({
             draft: {
               id: row.id,
               title: row.title,
+              dek: row.dek,
               content: parseStoredContent(row.content),
               createdAt: row.createdAt.toISOString(),
               updatedAt: row.updatedAt.toISOString(),
@@ -154,6 +155,7 @@ export const Route = createFileRoute("/api/drafts")({
         if (parsed.data.id) {
           const [row] = await updateDraft(db, did, parsed.data.id, {
             title: parsed.data.title,
+            dek: parsed.data.dek,
             content,
           });
           if (!row) return json({ ok: false, error: "not_found" }, 404);
@@ -174,6 +176,7 @@ export const Route = createFileRoute("/api/drafts")({
           id: crypto.randomUUID(),
           did,
           title: parsed.data.title,
+          dek: parsed.data.dek,
           content,
         });
         return json(

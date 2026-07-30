@@ -82,6 +82,16 @@
   padding-inline: 0.25rem;
   caret-color: var(--color-ink);
 }
+/* Reading comfort while writing: the leading and paragraph air of the
+   published page, so a draft on screen is the piece the reader will get.
+   BlockNote sets leading on the block content itself, so that is where this
+   has to land. */
+.bn-container .bn-block-content {
+  line-height: 1.7;
+}
+.bn-container .bn-block-outer:not(:first-child) {
+  padding-top: 0.4rem;
+}
 /* Side menu (+ ⋮⋮), shown on block hover/focus in the margin: ink-soft
    glyphs only — no fill, no border, no shadow (calm register). */
 .bn-container .bn-side-menu button {

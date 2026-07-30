@@ -4,7 +4,7 @@
  */
 import { z } from "zod";
 
-import { MAX_TITLE_LENGTH } from "~/lib/publish";
+import { MAX_DEK_LENGTH, MAX_TITLE_LENGTH } from "~/lib/publish";
 
 /**
  * Hard cap on the /api/drafts request body, enforced BEFORE any JSON parsing
@@ -33,10 +33,15 @@ export function isDraftId(value: string): boolean {
  * an array of blocks the server treats as opaque JSON (the editor is the only
  * reader); it is re-serialized server-side for storage. `id` present = update
  * my existing draft; absent = create a new one.
+ *
+ * `dek` (the subtitle) defaults to "" so a save from an older client — or from
+ * any caller that simply has no subtitle to send — is a valid save rather than
+ * a rejected one.
  */
 export const draftPayload = z.object({
   id: z.string().regex(DRAFT_ID_RE).optional(),
   title: z.string().max(MAX_TITLE_LENGTH),
+  dek: z.string().max(MAX_DEK_LENGTH).default(""),
   content: z.array(z.unknown()),
 });
 

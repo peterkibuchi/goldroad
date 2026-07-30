@@ -43,6 +43,13 @@
       "when": 1785345174123,
       "tag": "0005_boring_miek",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1785398360585,
+      "tag": "0006_overconfident_tyrannus",
+      "breakpoints": true
     }
   ]
 }

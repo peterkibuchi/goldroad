@@ -140,6 +140,9 @@ export const Route = createFileRoute("/api/import/draft")({
           id: draftId,
           did,
           title,
+          // Imported items carry no subtitle of their own: the writer adds one
+          // in the editor, or publishing generates the excerpt as before.
+          dek: "",
           content: contentJson,
         });
         // One implicit transaction: the draft and its ledger row land (or

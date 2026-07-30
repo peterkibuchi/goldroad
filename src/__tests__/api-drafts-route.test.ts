@@ -196,9 +196,48 @@ describe("POST — upsert", () => {
     expect(res.status).toBe(200);
     expect(store.updateDraft).toHaveBeenCalledWith(expect.anything(), DID, ID, {
       title: "Hi",
+      // Absent from the payload: an older client's save is still valid, and
+      // stores an empty subtitle rather than failing.
+      dek: "",
       content: '[{"type":"paragraph"}]',
     });
     expect(store.countDrafts).not.toHaveBeenCalled(); // cap is create-only
+  });
+
+  it("stores the subtitle alongside the blocks, never inside them", async () => {
+    store.updateDraft.mockResolvedValue([{ id: ID, updatedAt: NOW }]);
+    const res = await call(
+      "POST",
+      "",
+      JSON.stringify({
+        id: ID,
+        title: "Hi",
+        dek: "What this one is about",
+        content: [{ type: "paragraph" }],
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(store.updateDraft).toHaveBeenCalledWith(expect.anything(), DID, ID, {
+      title: "Hi",
+      dek: "What this one is about",
+      content: '[{"type":"paragraph"}]',
+    });
+  });
+
+  it("hands the stored subtitle back when a draft is fetched", async () => {
+    store.selectDraft.mockResolvedValue([
+      {
+        id: ID,
+        title: "Hello",
+        dek: "A subtitle",
+        content: '[{"type":"paragraph"}]',
+        createdAt: NOW,
+        updatedAt: NOW,
+      },
+    ]);
+    const res = await call("GET", `?id=${ID}`);
+    const data = (await res.json()) as { draft: { dek: string } };
+    expect(data.draft.dek).toBe("A subtitle");
   });
 
   it("404s an update of a missing/foreign draft — same answer for both", async () => {

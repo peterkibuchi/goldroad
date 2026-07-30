@@ -19,7 +19,12 @@ import { selectDraft } from "~/lib/drafts";
 import { isDraftId, MAX_DRAFTS_PER_USER } from "~/lib/drafts-schema";
 import { downscaleImage } from "~/lib/image";
 import { selectMirror } from "~/lib/import-store";
-import { TID_RE } from "~/lib/publish";
+import {
+  MAX_DEK_LENGTH,
+  RECOMMENDED_DEK_LENGTH,
+  TID_RE,
+  writerDek,
+} from "~/lib/publish";
 import { readSessionDid } from "~/lib/session";
 import { env } from "cloudflare:workers";
 
@@ -62,6 +67,9 @@ function errorMessage(code: string | undefined): string | null {
 type Draft = {
   rkey: string;
   title: string;
+  /** The writer's own subtitle, or "" when the record's description is just
+   * the generated body excerpt (see writerDek). */
+  dek: string;
   textContent: string;
   /** Same-origin /img path for the existing cover, when the record has one. */
   coverPath: string | null;
@@ -75,6 +83,7 @@ type Draft = {
 type ResumedDraft = {
   id: string;
   title: string;
+  dek: string;
   /** The stored BlockNote JSON, verbatim (loader data must be plainly
    * serializable); the client parses it and falls back to an empty editor
    * when it's unreadable. */
@@ -116,7 +125,12 @@ const getWriteContext = createServerFn({ method: "GET" })
       try {
         const [row] = await selectDraft(drizzle(env.DB), did, data.draft);
         if (row) {
-          resumed = { id: row.id, title: row.title, blocksJson: row.content };
+          resumed = {
+            id: row.id,
+            title: row.title,
+            dek: row.dek,
+            blocksJson: row.content,
+          };
         } else {
           draftError = "draft_not_found";
         }
@@ -152,6 +166,7 @@ const getWriteContext = createServerFn({ method: "GET" })
           draft = {
             rkey: data.edit,
             title: doc.title ?? "",
+            dek: writerDek(doc),
             textContent: doc.textContent ?? "",
             coverPath: coverCid ? blobImagePath(did, coverCid) : null,
             mirror: mirror ? { sourceUrl: mirror.sourceUrl } : null,
@@ -291,6 +306,10 @@ function EditorFallback() {
  * browser (canvas → JPEG ≤1MB, see ~/lib/image) and written back into the
  * file input via DataTransfer, so the plain multipart form submit carries
  * the processed file; the server re-enforces the caps regardless.
+ *
+ * With no cover yet it draws an empty slot exactly where the cover will sit,
+ * so the control teaches by position instead of by label alone — and gives
+ * the whole strip as a touch target rather than one line of link text.
  */
 function CoverPicker({
   existingPath,
@@ -353,7 +372,7 @@ function CoverPicker({
     "inline-flex min-h-9 cursor-pointer items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink peer-focus-visible:outline-2 peer-focus-visible:outline-spot peer-focus-visible:outline-offset-2";
 
   return (
-    <div className="mb-6">
+    <div className="mb-8">
       <input
         accept="image/jpeg,image/png,image/webp,image/avif,image/gif"
         className="peer sr-only"
@@ -374,10 +393,10 @@ function CoverPicker({
         <div className="peer-focus-visible:outline-2 peer-focus-visible:outline-spot peer-focus-visible:outline-offset-2">
           <img
             alt="Cover preview"
-            className="max-h-64 w-full border border-rule object-cover"
+            className="aspect-video w-full bg-ink/5 object-cover"
             src={preview}
           />
-          <div className="mt-1 flex flex-wrap items-center gap-x-4">
+          <div className="mt-2 flex flex-wrap items-center gap-x-5">
             <label className={linkClass} htmlFor="cover">
               Replace cover
             </label>
@@ -391,8 +410,14 @@ function CoverPicker({
           </div>
         </div>
       ) : (
-        <label className={linkClass} htmlFor="cover">
-          + Add a cover image
+        <label
+          className="flex min-h-11 w-full cursor-pointer flex-wrap items-center justify-center gap-x-2 border border-rule border-dashed px-4 py-2 text-center font-display text-ink-soft text-sm transition-colors hover:border-ink hover:text-ink peer-focus-visible:outline-2 peer-focus-visible:outline-spot peer-focus-visible:outline-offset-2"
+          htmlFor="cover"
+        >
+          Add a cover image
+          <span className="hidden text-xs sm:inline">
+            — it heads your post, and the card when it's shared
+          </span>
         </label>
       )}
       <p aria-live="polite" className="sr-only" role="status">
@@ -414,23 +439,81 @@ type SaveState = "idle" | "saving" | "saved" | "error" | "limit";
 const SAVE_INDICATOR_TEXT: Record<SaveState, string> = {
   idle: "",
   saving: "Saving…",
-  saved: "Saved",
+  saved: "Draft saved",
   error: "Couldn't save — retrying as you write",
   limit: `You have ${MAX_DRAFTS_PER_USER} drafts — delete one from your posts page to keep autosaving`,
 };
 
-/** Autosave status in the calm register: text only, no spinners. The live
- * region politely announces transitions to screen readers. Exported for
- * tests — not a route. */
+/**
+ * Autosave status in the calm register: text only, no spinners. It sits at the
+ * top of the page, where a writer's eye already is, and keeps its line even
+ * when it has nothing to say (`min-h-4`) so nothing below it ever jumps as the
+ * text changes. The live region announces transitions politely.
+ * Exported for tests — not a route.
+ */
 export function SaveIndicator({ state }: { state: SaveState }) {
   return (
     <p
       aria-live="polite"
-      className="ml-auto font-display text-ink-soft text-xs"
+      className="mb-2 min-h-4 text-right font-display text-ink-soft text-xs leading-4"
       role="status"
     >
       {SAVE_INDICATOR_TEXT[state]}
     </p>
+  );
+}
+
+/**
+ * The subtitle (dek) — its own field between title and body, written to the
+ * record's `description`, which is what a reader sees under the title, what
+ * the archive row shows, and what rides along on a shared card.
+ *
+ * Own component, own state: the length note re-renders on every keystroke,
+ * and Compose (which holds the editor) must not. The cap is the lexicon's,
+ * not our taste — past the recommended length the note says what actually
+ * happens rather than refusing the words.
+ */
+function SubtitleField({
+  defaultValue,
+  fieldRef,
+  onChange,
+}: {
+  defaultValue: string;
+  fieldRef: React.RefObject<HTMLTextAreaElement | null>;
+  onChange: () => void;
+}) {
+  const [length, setLength] = useState(defaultValue.length);
+  const long = length > RECOMMENDED_DEK_LENGTH;
+
+  return (
+    <>
+      <label className="sr-only" htmlFor="dek">
+        Subtitle
+      </label>
+      <textarea
+        aria-describedby="dek-help"
+        className="field-sizing-content mt-4 w-full resize-none rounded-none border-0 border-transparent border-b-2 bg-paper px-1 py-1 font-body text-ink-soft text-xl italic leading-relaxed placeholder:text-ink-soft/50 focus-visible:border-spot focus-visible:outline-none"
+        defaultValue={defaultValue}
+        id="dek"
+        maxLength={MAX_DEK_LENGTH}
+        name="dek"
+        onChange={(event) => {
+          setLength(event.currentTarget.value.length);
+          onChange();
+        }}
+        placeholder="Add a subtitle"
+        ref={fieldRef}
+        rows={1}
+      />
+      <p
+        className="mt-2 px-1 font-display text-ink-soft text-xs leading-relaxed"
+        id="dek-help"
+      >
+        {long
+          ? `${length} characters — past about ${RECOMMENDED_DEK_LENGTH}, shared cards and archive rows trim it.`
+          : "Optional — a sentence or two, shown under your title and on shared cards."}
+      </p>
+    </>
   );
 }
 
@@ -463,6 +546,7 @@ function parseDraftBlocks(
 function postDraft(payload: {
   id?: string;
   title: string;
+  dek: string;
   content: unknown;
 }): Promise<Response> {
   const body = JSON.stringify(payload);
@@ -503,6 +587,7 @@ export function Compose({
   );
   const bodyRef = useRef<HTMLInputElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
+  const dekRef = useRef<HTMLTextAreaElement>(null);
   const draftIdInputRef = useRef<HTMLInputElement>(null);
   const editing = draft !== null;
   /** Display host for the mirror-adoption notice ("writer.substack.com"). */
@@ -558,8 +643,15 @@ export function Compose({
     if (editing || publishingRef.current || savingRef.current) return;
     if (!editor || !dirtyRef.current) return;
     const title = titleRef.current?.value ?? "";
+    const dek = dekRef.current?.value ?? "";
     const blocks = editor.document;
-    if (!draftIdRef.current && title.trim() === "" && isBlankDocument(blocks))
+    // A subtitle alone is worth a draft row too — it's words the writer typed.
+    if (
+      !draftIdRef.current &&
+      title.trim() === "" &&
+      dek.trim() === "" &&
+      isBlankDocument(blocks)
+    )
       return;
     savingRef.current = true;
     dirtyRef.current = false;
@@ -569,6 +661,7 @@ export function Compose({
       let res = await postDraft({
         id: draftIdRef.current ?? undefined,
         title,
+        dek,
         content: blocks,
       });
       if (res.status === 404 && draftIdRef.current && !publishingRef.current) {
@@ -577,7 +670,7 @@ export function Compose({
         // publish: there the deletion IS the completion, and recreating
         // would resurrect the just-published draft.
         draftIdRef.current = null;
-        res = await postDraft({ title, content: blocks });
+        res = await postDraft({ title, dek, content: blocks });
       }
       if (res.ok) {
         const data = (await res.json()) as { draft?: { id?: string } };
@@ -693,13 +786,6 @@ export function Compose({
           </span>
         </form>
       )}
-      {!editing && (
-        <p className="mb-8 max-w-prose font-display text-ink-soft text-sm leading-relaxed">
-          Publishing saves this post to your own data repo — the same account
-          behind your handle — and puts it live on your public page. It's yours;
-          Goldroad just holds the pen.
-        </p>
-      )}
       <noscript>
         <p className="mb-6 border border-ink px-4 py-3 font-display text-ink text-sm">
           The editor needs JavaScript. Enable it to write on Goldroad.
@@ -716,6 +802,9 @@ export function Compose({
           keep flushing pending autosaves. */}
       {/* biome-ignore lint/a11y/noStaticElementInteractions: not an interactive control — a bubbling focusout relay for the autosave flush */}
       <div onBlur={handleBlur}>
+        {/* Autosave status leads the page: visible while writing, rather than
+            a screen away at the bottom of a long draft. */}
+        {!editing && <SaveIndicator state={saveState} />}
         <form
           action="/api/publish"
           encType="multipart/form-data"
@@ -750,11 +839,16 @@ export function Compose({
             existingPath={draft?.coverPath ?? null}
             onBusyChange={setCoverBusy}
           />
+          {/* Title and subtitle carry the type of the published page (serif,
+              same sizes, same italic dek) so the draft reads as the piece it
+              will become rather than as a form. Focus shows as a spot rule
+              under the line being written; the global focus ring is opted out
+              of here so a box never wraps the manuscript's own words. */}
           <label className="sr-only" htmlFor="title">
             Title
           </label>
           <input
-            className="w-full rounded-none border-0 border-transparent border-b-2 bg-paper px-1 py-2 font-semibold text-3xl text-ink leading-tight placeholder:text-ink-soft/50 focus-visible:border-spot focus-visible:outline-none md:text-4xl"
+            className="w-full rounded-none border-0 border-transparent border-b-2 bg-paper px-1 py-1 font-body font-semibold text-4xl text-ink leading-[1.1] placeholder:text-ink-soft/40 focus-visible:border-spot focus-visible:outline-none md:text-5xl"
             defaultValue={draft?.title ?? resumed?.title ?? ""}
             id="title"
             name="title"
@@ -764,8 +858,13 @@ export function Compose({
             required
             type="text"
           />
+          <SubtitleField
+            defaultValue={draft?.dek ?? resumed?.dek ?? ""}
+            fieldRef={dekRef}
+            onChange={handleDraftChange}
+          />
         </form>
-        <div className="mt-4 min-h-96 border-rule border-t pt-5 text-lg">
+        <div className="mt-8 min-h-[26rem] border-rule border-t pt-8 text-lg">
           <ClientOnly fallback={<EditorFallback />}>
             <Suspense fallback={<EditorFallback />}>
               <Editor
@@ -777,7 +876,9 @@ export function Compose({
             </Suspense>
           </ClientOnly>
         </div>
-        <div className="mt-8 flex flex-wrap items-center gap-4 border-rule border-t pt-6">
+        {/* The consequence of the button is stated beside the button, where the
+            decision is actually made. */}
+        <div className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-3 border-rule border-t pt-6">
           <button
             className="min-h-11 cursor-pointer bg-spot px-8 py-2.5 font-bold font-display text-base text-paper transition-colors hover:bg-ink disabled:cursor-default disabled:opacity-40"
             disabled={!editor || coverBusy}
@@ -786,12 +887,11 @@ export function Compose({
           >
             {editing ? "Save changes" : "Publish"}
           </button>
-          <p className="font-display text-ink-soft text-xs">
+          <p className="max-w-[44ch] font-display text-ink-soft text-xs leading-relaxed">
             {editing
               ? "Saves the changes to the post in your own data repo."
-              : "Goes live on your public page the moment you press it."}
+              : "Goes live on your public page the moment you press it, and saves to your own data repo — the account behind your handle. It's yours; Goldroad just holds the pen."}
           </p>
-          {!editing && <SaveIndicator state={saveState} />}
         </div>
       </div>
     </main>
