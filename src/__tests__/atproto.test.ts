@@ -90,11 +90,14 @@ describe("listRecords", () => {
     value: { title: "A post" },
   };
 
+  // A real Response, not a hand-rolled double: these reads are byte-capped, so
+  // the body is streamed and content-length consulted. An object with only
+  // `json()` would pass a test the production path could never satisfy.
   function mockFetch(payload: unknown, ok = true) {
-    const fn = vi.fn(async (..._args: [URL | string, RequestInit?]) => ({
-      ok,
-      json: async () => payload,
-    }));
+    const fn = vi.fn(
+      async (..._args: [URL | string, RequestInit?]) =>
+        new Response(JSON.stringify(payload), { status: ok ? 200 : 404 }),
+    );
     vi.stubGlobal("fetch", fn);
     return fn;
   }
@@ -194,10 +197,10 @@ describe("listRecordsPage — cursor mapping", () => {
   });
 
   function mockFetch(payload: unknown) {
-    const fn = vi.fn(async (..._args: [URL | string, RequestInit?]) => ({
-      ok: true,
-      json: async () => payload,
-    }));
+    const fn = vi.fn(
+      async (..._args: [URL | string, RequestInit?]) =>
+        new Response(JSON.stringify(payload)),
+    );
     vi.stubGlobal("fetch", fn);
     return fn;
   }

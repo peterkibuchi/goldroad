@@ -2,6 +2,7 @@
  * Minimal atproto public-read helpers — no auth, no AppView.
  * Rendering one publication needs only: handle → DID → PDS → getRecord.
  */
+import { readBodyCapped } from "~/lib/blob";
 
 const HANDLE_RE =
   /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
@@ -58,19 +59,57 @@ export function assertPublicHttpsUrl(urlString: string): URL {
   return url;
 }
 
+/**
+ * Every read in this module talks to a host the *subject* chose: a `did:web`
+ * document is a static file on any web server, so an unauthenticated request
+ * for `/@did:web:evil.example/<rkey>` makes us fetch whatever that server
+ * serves. Two bounds apply to all of it.
+ */
+
+/** A slow server must not hold a render open. Matches the import path's budget. */
+const FETCH_TIMEOUT_MS = 10_000;
+
+/** Ceiling for one atproto JSON response. A 50-record `listRecords` page sits
+ * far under this; a DID document is a fraction of it. Generous enough never to
+ * bite a legitimate PDS, small enough that a hostile one can't exhaust memory. */
+const MAX_JSON_BYTES = 1_000_000;
+
 /** fetch() for the URLs above: never follow redirects (a public host could
- * otherwise bounce us to an internal one). res.ok stays false for 3xx. */
+ * otherwise bounce us to an internal one), and never wait forever. res.ok
+ * stays false for 3xx. */
 function fetchPublic(url: URL): Promise<Response> {
   // redirect:"manual", not "error" — "error" throws inconsistently on workerd.
-  return fetch(url, { redirect: "manual" });
+  return fetch(url, {
+    redirect: "manual",
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+}
+
+/**
+ * `res.json()` with a hard byte cap — never call it directly on these hosts.
+ * Buffering an unbounded body is how a hostile PDS exhausts the isolate, which
+ * is the rule `~/lib/blob` already states and this module had not followed.
+ *
+ * Returns null when the body is oversized or isn't JSON; callers treat that the
+ * same as a missing record, because to a reader it is one.
+ */
+async function readJsonCapped<T>(res: Response): Promise<T | null> {
+  const bytes = await readBodyCapped(res, MAX_JSON_BYTES);
+  if (!bytes) return null;
+  try {
+    return JSON.parse(new TextDecoder().decode(bytes)) as T;
+  } catch {
+    return null;
+  }
 }
 
 export async function resolveHandleToDid(handle: string): Promise<Did> {
   const res = await fetch(
     `https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle=${encodeURIComponent(handle)}`,
+    { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) },
   );
   if (!res.ok) throw new NotFoundError(`handle ${handle} did not resolve`);
-  const { did } = (await res.json()) as { did: string };
+  const did = (await readJsonCapped<{ did: string }>(res))?.did ?? "";
   if (!isDid(did)) throw new NotFoundError("resolved DID is malformed");
   return did;
 }
@@ -89,7 +128,9 @@ async function fetchDidDocument(did: string): Promise<DidDocument> {
   );
   const res = await fetchPublic(url);
   if (!res.ok) throw new NotFoundError(`DID document for ${did} not found`);
-  return (await res.json()) as DidDocument;
+  const doc = await readJsonCapped<DidDocument>(res);
+  if (!doc) throw new NotFoundError(`DID document for ${did} was unreadable`);
+  return doc;
 }
 
 /** Resolve a DID to its PDS service endpoint via the DID document. */
@@ -135,7 +176,7 @@ export async function getRecordEntry<T>(
   if (!res.ok)
     throw new NotFoundError(`record ${collection}/${rkey} not found`);
   // Untrusted network shape — reject non-object bodies before touching fields.
-  const body: unknown = await res.json().catch(() => null);
+  const body: unknown = await readJsonCapped<unknown>(res);
   if (typeof body !== "object" || body === null)
     throw new NotFoundError(`record ${collection}/${rkey} is malformed`);
   const json = body as RecordEntry<T>;
@@ -211,8 +252,11 @@ export async function listRecordsPage<T>(
   const res = await fetchPublic(url);
   if (!res.ok)
     throw new NotFoundError(`could not list ${collection} for ${did}`);
-  const json = (await res.json()) as { records?: unknown; cursor?: unknown };
-  if (!Array.isArray(json.records)) return { records: [], cursor: null };
+  const json = await readJsonCapped<{ records?: unknown; cursor?: unknown }>(
+    res,
+  );
+  if (!json || !Array.isArray(json.records))
+    return { records: [], cursor: null };
   return {
     // Drop malformed entries instead of trusting the shape. `cid` is checked
     // too — the ListedRecord type promises it, and callers build strongRefs
