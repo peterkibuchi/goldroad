@@ -262,7 +262,9 @@ function WriterRail({
     // whose toolbars make `vh` lie.
     <aside className="sticky top-0 hidden h-dvh w-56 shrink-0 flex-col border-ink border-r-3 border-double md:flex">
       <div className="shrink-0 px-4 pt-4 pb-2">
-        <Wordmark href="/dashboard" />
+        {/* The wordmark is home: for a signed-in writer that's the overview,
+            not the posts manager. */}
+        <Wordmark href="/home" />
       </div>
       {/* The one region permitted to scroll, and only when the rows genuinely
           outgrow the viewport — at these counts they never do, but a writer on
@@ -299,7 +301,7 @@ function WriterRail({
 function WriterTopStrip({ ident }: { ident: string }) {
   return (
     <div className="flex items-center justify-between border-ink border-b-3 border-double px-4 py-2 md:hidden">
-      <Wordmark href="/dashboard" showBeta={false} />
+      <Wordmark href="/home" showBeta={false} />
       {/* Touch surface: these two get full-height hit areas, even though the
           text stays small. */}
       <div className="flex items-center gap-3 font-display text-ink-soft text-xs">
