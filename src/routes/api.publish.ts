@@ -49,6 +49,7 @@ import {
   type CoverImageBlob,
   composeDocumentUrl,
   generateTid,
+  type IconBlob,
   isOwnPublicationUrl,
   MAX_BODY_LENGTH,
   MAX_DEK_LENGTH,
@@ -613,6 +614,32 @@ async function savePublication({
     return backToSettings("too_long");
   if (!pds) return backToSettings("save_failed:pds_unresolved");
 
+  // ---- Icon: optional multipart file → com.atproto.repo.uploadBlob, on the
+  // same terms as a document cover (image/*, ≤1MB, SVG excluded — the client
+  // squares and shrinks it first, and this is where that is enforced). An
+  // upload that outlives a failed record write stays unreferenced and the PDS
+  // reclaims it.
+  const iconFile = form.get("icon");
+  let iconBlob: IconBlob | undefined;
+  if (iconFile instanceof File && iconFile.size > 0) {
+    if (!isAllowedImageMime(iconFile.type)) return backToSettings("icon_type");
+    if (iconFile.size > MAX_IMAGE_BLOB_BYTES)
+      return backToSettings("icon_too_large");
+    const uploaded = await rpc.post("com.atproto.repo.uploadBlob", {
+      headers: { "content-type": iconFile.type },
+      input: iconFile,
+    });
+    if (!uploaded.ok) {
+      if (isInsufficientScope(uploaded)) return backToSettings("icon_scope");
+      console.error("icon uploadBlob failed", uploaded.status, uploaded.data);
+      return backToSettings(`save_failed:${uploaded.data.error}`);
+    }
+    iconBlob = uploaded.data.blob;
+  }
+  // Removing an icon is explicit on the wire: an empty file input means
+  // "keep the one that's there".
+  const removeIcon = form.get("removeIcon") === "1";
+
   const own = await findOwnPublication(pds, did, origins);
   // Saving never silently rewrites a legacy publication URL — the writer moves
   // it explicitly via the `migrate` intent, so the two changes stay separate.
@@ -620,7 +647,16 @@ async function savePublication({
     own && typeof own.value.url === "string"
       ? own.value.url
       : `${origin}/@${ident}`;
-  const record = buildPublicationRecord({ name, description, url }, own?.value);
+  const record = buildPublicationRecord(
+    {
+      name,
+      description,
+      url,
+      // blob = replace, null = remove, undefined = keep the existing icon.
+      icon: iconBlob ?? (removeIcon ? null : undefined),
+    },
+    own?.value,
+  );
   const rkey = own ? rkeyFromUri(own.uri) : generateTid();
   if (!rkey) return backToSettings("save_failed:bad_rkey");
 
