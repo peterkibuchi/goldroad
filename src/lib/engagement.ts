@@ -23,7 +23,7 @@ import { readBodyCapped } from "~/lib/blob";
  * from a DID document or any other untrusted input (unlike resolveDidToPds,
  * which legitimately follows an attacker-influenced hostname). SSRF guard by
  * construction: no code path here builds this URL from a variable host. */
-const APPVIEW_HOST = "public.api.bsky.app";
+export const APPVIEW_HOST = "public.api.bsky.app";
 
 /** app.bsky.feed.getPosts accepts at most this many URIs per call. */
 export const MAX_GET_POSTS_BATCH = 25;
