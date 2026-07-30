@@ -214,7 +214,11 @@ describe("parseMediumExport — defensive paths", () => {
     const parsed = parseMediumExport(exportZip(files));
     expect(parsed.posts).toHaveLength(MAX_EXPORT_POSTS);
     expect(parsed.truncated).toBe(5);
-  });
+    // Deflating 1005 long documents is the point of this fixture, not overhead
+    // to optimise away: if the cap ever regressed into inflating everything,
+    // that is what would catch it. The work costs ~2.5s idle and several times
+    // that on a busy box, so the 5s default leaves too little headroom.
+  }, 30_000);
 });
 
 describe("identity helper", () => {

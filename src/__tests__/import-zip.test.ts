@@ -190,7 +190,11 @@ describe("parseSubstackExport — defensive paths", () => {
     expect(parsed.posts[0].postId).toBe(
       `${1000 + MAX_EXPORT_POSTS - 1}.post-${MAX_EXPORT_POSTS - 1}`,
     );
-  });
+    // Deflating 1005 long documents is the point of this fixture, not overhead
+    // to optimise away: if the cap ever regressed into inflating everything,
+    // that is what would catch it. The work costs ~2s idle and several times
+    // that on a busy box, so the 5s default leaves too little headroom.
+  }, 30_000);
 
   it("refuses entry-count floods before reading anything (quadratic-parse guard)", () => {
     // Empty entries pass every byte cap; only the entry-count ceiling stops
