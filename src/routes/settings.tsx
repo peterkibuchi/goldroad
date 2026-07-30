@@ -462,7 +462,7 @@ function SettingsPage() {
 
         <SettingsSection
           id="your-data"
-          intro="Goldroad stores remarkably little for your account: drafts, your import history, your daily follower count, and your sign-in session — that's it. What you've published lives in your own data repo, not here, so nothing below touches it."
+          intro="Goldroad stores remarkably little for your account: drafts, your import history, your daily follower count, and your sign-in session. That's everything keyed to your account. What you've published lives in your own data repo, not here, so nothing below touches it."
           title="Your data"
         >
           <p className="font-display text-ink-soft text-sm">
@@ -473,6 +473,23 @@ function SettingsPage() {
           <div className="mt-4">
             <ExportDataButton />
           </div>
+          {/* The one thing this page's export and the delete below genuinely
+              can't reach. Said here and not only on /privacy, because this is
+              the page where someone forms the belief that they've taken
+              everything with them. */}
+          <p className="mt-4 max-w-prose font-display text-ink-soft text-xs leading-relaxed">
+            An email you gave our waitlist form, or left on an abuse report, is
+            stored with no link to your account — we identify you by DID and
+            never receive your email — so it's not in the export and account
+            deletion doesn't remove it.{" "}
+            <a
+              className="underline underline-offset-2 transition-colors hover:text-ink"
+              href="/privacy"
+            >
+              Privacy
+            </a>{" "}
+            says how to have it deleted by hand.
+          </p>
         </SettingsSection>
 
         <SettingsSection

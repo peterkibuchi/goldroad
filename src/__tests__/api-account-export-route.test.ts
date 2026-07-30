@@ -251,4 +251,21 @@ describe("response shape", () => {
     const body = (await res.json()) as { manifest: string };
     expect(body.manifest).toMatch(/your own atproto data repo/i);
   });
+
+  /**
+   * The export can only ever reach rows keyed by the caller's DID. A waitlist
+   * signup and an abuse report are keyed by an email and carry no DID (see
+   * ~/lib/rights-store's note on why no link exists), so the manifest has to
+   * say so rather than let "that's everything" stand — the same disclosure
+   * /privacy makes.
+   */
+  it("admits what it cannot reach: an email with no DID beside it", async () => {
+    const res = await call();
+    const { manifest } = (await res.json()) as { manifest: string };
+    expect(manifest).toMatch(/waitlist/i);
+    expect(manifest).toMatch(/report/i);
+    expect(manifest).toMatch(/privacy@trygoldroad\.com/);
+    // And it must not claim completeness in the same breath.
+    expect(manifest).not.toMatch(/that's it/i);
+  });
 });

@@ -130,7 +130,12 @@ export const Route = createFileRoute("/api/account/export")({
           manifest:
             "Goldroad stores remarkably little for your account: your drafts, " +
             "import history and daily follower counts below, plus a record of " +
-            "your sign-in session — that's it. `followerHistory` is your own " +
+            "your sign-in session. That is everything we hold keyed to your " +
+            "DID. It does NOT include an email address you may have given our " +
+            "waitlist form or left on an abuse report: those rows are keyed by " +
+            "the email alone, with no DID, so nothing here can prove they are " +
+            "yours — mail privacy@trygoldroad.com to have one deleted by hand. " +
+            "`followerHistory` is your own " +
             "public follower count, read once a day and kept because Bluesky " +
             "only ever reports today's number — nobody can reconstruct the past " +
             "from it, so we write it down while it's true. Your published posts " +
