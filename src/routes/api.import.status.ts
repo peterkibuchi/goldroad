@@ -12,8 +12,9 @@
  *
  * Trust posture (same order as /api/import): session cookie → DID;
  * same-origin check; byte cap before parsing; zod. No rate limit beyond the
- * session gate — this endpoint fetches nothing and writes nothing; it is a
- * pair of indexed reads over the caller's own rows.
+ * session gate — this endpoint fetches nothing and writes nothing, and its
+ * cost is bounded by construction: indexed reads over the caller's own rows,
+ * batched into three D1 calls however many hashes arrive (~/lib/import-flags).
  */
 import { createFileRoute } from "@tanstack/react-router";
 import { drizzle } from "drizzle-orm/d1";
@@ -72,12 +73,13 @@ export const Route = createFileRoute("/api/import/status")({
         if (!parsed.success) return json({ ok: false, error: "invalid" }, 400);
 
         const db = drizzle(env.DB);
-        const imported = await computeImportedSet(
-          db,
-          did,
-          parsed.data.guidHashes,
-        );
-        const [{ n: draftCount }] = await countDrafts(db, did);
+        // Concurrent, not sequential: the headroom count doesn't depend on the
+        // flags. With the batched lookups in ~/lib/import-flags that puts a
+        // full 1000-post archive at three D1 calls in two waves, flat.
+        const [imported, [{ n: draftCount }]] = await Promise.all([
+          computeImportedSet(db, did, parsed.data.guidHashes),
+          countDrafts(db, did),
+        ]);
         return json({
           ok: true,
           draftSlotsRemaining: Math.max(0, MAX_DRAFTS_PER_USER - draftCount),

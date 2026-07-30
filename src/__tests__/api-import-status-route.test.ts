@@ -19,7 +19,14 @@ const draftsStore = vi.hoisted(() => ({
 }));
 vi.mock("~/lib/drafts", () => draftsStore);
 
-vi.mock("drizzle-orm/d1", () => ({ drizzle: () => ({}) }));
+// `batch()` resolves its statements in order, like the real one does with a
+// list of selects, so the store mocks' rows come back through the batch
+// response and the REAL ~/lib/import-flags logic runs over them. Counting
+// calls on it is how the round-trip budget below is measured.
+const fakeDb = vi.hoisted(() => ({
+  batch: vi.fn(async (queries: unknown[]) => Promise.all(queries)),
+}));
+vi.mock("drizzle-orm/d1", () => ({ drizzle: () => fakeDb }));
 
 import { LEDGER_QUERY_CHUNK } from "../lib/import-flags";
 import { signSession } from "../lib/session";
@@ -75,6 +82,7 @@ beforeEach(() => {
   store.selectImportItems.mockReset().mockResolvedValue([]);
   store.selectLiveDraftIds.mockReset().mockResolvedValue([]);
   draftsStore.countDrafts.mockReset().mockResolvedValue([{ n: 3 }]);
+  fakeDb.batch.mockClear();
 });
 
 describe("/api/import/status — gates", () => {
@@ -136,5 +144,91 @@ describe("/api/import/status — flags + headroom", () => {
       (args) => (args[2] as string[]).length,
     );
     expect(sizes).toEqual([LEDGER_QUERY_CHUNK, LEDGER_QUERY_CHUNK, 7]);
+    // ...and all three chunks left in ONE round trip, not three.
+    expect(fakeDb.batch).toHaveBeenCalledTimes(1);
+    expect((fakeDb.batch.mock.calls[0][0] as unknown[]).length).toBe(3);
+  });
+});
+
+/**
+ * The round-trip budget. Chunking is forced by D1's bound-parameter ceiling;
+ * SEQUENCING the chunks is not, and on a 10ms-CPU free-tier worker (50
+ * subrequests per request) it was the difference between a working endpoint
+ * and a broken one for a genuinely large archive.
+ */
+describe("/api/import/status — D1 round trips at archive scale", () => {
+  const FULL_ARCHIVE = 1000; // MAX_EXPORT_POSTS, the payload ceiling
+
+  it(`costs 3 D1 calls for ${FULL_ARCHIVE} hashes, not one per chunk`, async () => {
+    const hashes = Array.from({ length: FULL_ARCHIVE }, (_, i) =>
+      i.toString(16).padStart(64, "0"),
+    );
+    // Worst case for the second phase too: every row is an unpublished import
+    // pointing at a distinct draft, so the live-draft lookup also chunks.
+    store.selectImportItems.mockImplementation(
+      async (_db: unknown, _did: string, keys: string[]) =>
+        keys.map((k) => ({
+          guidHash: k,
+          draftId: `draft-${k}`,
+          publishedRkey: null,
+        })),
+    );
+    store.selectLiveDraftIds.mockImplementation(
+      async (_db: unknown, _did: string, ids: string[]) =>
+        ids.map((id) => ({ id })),
+    );
+
+    const res = await call({ guidHashes: hashes });
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { alreadyImported: string[] };
+    expect(data.alreadyImported).toHaveLength(FULL_ARCHIVE);
+
+    const perChunk = FULL_ARCHIVE / LEDGER_QUERY_CHUNK; // 20 statements a phase
+    expect(store.selectImportItems).toHaveBeenCalledTimes(perChunk);
+    expect(store.selectLiveDraftIds).toHaveBeenCalledTimes(perChunk);
+    // But only two round trips carry all 40 of those statements — one batch per
+    // phase (the second phase depends on the first) — plus the draft count.
+    expect(fakeDb.batch).toHaveBeenCalledTimes(2);
+    expect((fakeDb.batch.mock.calls[0][0] as unknown[]).length).toBe(perChunk);
+    expect((fakeDb.batch.mock.calls[1][0] as unknown[]).length).toBe(perChunk);
+    expect(draftsStore.countDrafts).toHaveBeenCalledTimes(1);
+  });
+
+  it("dedupes draft ids across chunks before spending parameters on them", async () => {
+    const hashes = Array.from({ length: LEDGER_QUERY_CHUNK * 3 }, (_, i) =>
+      i.toString(16).padStart(64, "0"),
+    );
+    // Every ledger row in every chunk points at the SAME draft.
+    store.selectImportItems.mockImplementation(
+      async (_db: unknown, _did: string, keys: string[]) =>
+        keys.map((k) => ({
+          guidHash: k,
+          draftId: "one-shared-draft",
+          publishedRkey: null,
+        })),
+    );
+    store.selectLiveDraftIds.mockResolvedValue([{ id: "one-shared-draft" }]);
+
+    const res = await call({ guidHashes: hashes });
+    expect(res.status).toBe(200);
+    // One id, asked for once — not 150 times, and not three times.
+    expect(store.selectLiveDraftIds).toHaveBeenCalledTimes(1);
+    expect(store.selectLiveDraftIds.mock.calls[0][2]).toEqual([
+      "one-shared-draft",
+    ]);
+    const data = (await res.json()) as { alreadyImported: string[] };
+    expect(data.alreadyImported).toHaveLength(hashes.length);
+  });
+
+  it("asks D1 nothing extra when no row has an unpublished draft", async () => {
+    store.selectImportItems.mockResolvedValue([
+      { guidHash: hashA, draftId: null, publishedRkey: "3lzabc" },
+    ]);
+    const res = await call({ guidHashes: [hashA] });
+    expect(res.status).toBe(200);
+    // Second phase skipped entirely — no batch with an empty statement list,
+    // which the real db.batch() rejects.
+    expect(fakeDb.batch).toHaveBeenCalledTimes(1);
+    expect(store.selectLiveDraftIds).not.toHaveBeenCalled();
   });
 });

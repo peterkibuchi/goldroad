@@ -30,8 +30,11 @@ const draftsStore = vi.hoisted(() => ({
 }));
 vi.mock("~/lib/drafts", () => draftsStore);
 
+// `batch()` resolves its statements in order, which is what the real one does
+// with a list of selects — so the store mocks' resolved rows arrive back in the
+// batch response and ~/lib/import-flags' real logic runs over them.
 const fakeDb = vi.hoisted(() => ({
-  batch: vi.fn(async () => []),
+  batch: vi.fn(async (queries: unknown[]) => Promise.all(queries)),
 }));
 vi.mock("drizzle-orm/d1", () => ({ drizzle: () => fakeDb }));
 
