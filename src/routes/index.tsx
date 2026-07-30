@@ -512,7 +512,7 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
         </MarketingSection>
       </main>
 
-      <SiteFooter />
+      <SiteFooter variant="marketing" />
     </div>
   );
 }

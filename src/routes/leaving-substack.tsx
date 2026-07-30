@@ -270,7 +270,7 @@ export function LeavingSubstack() {
         </MarketingSection>
       </main>
 
-      <SiteFooter />
+      <SiteFooter variant="marketing" />
     </div>
   );
 }

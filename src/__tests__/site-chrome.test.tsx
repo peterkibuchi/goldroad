@@ -38,6 +38,92 @@ describe("SiteFooter", () => {
     render(<SiteFooter />);
     expect(screen.getByText(/leave anytime\. lose nothing\./i)).toBeDefined();
   });
+
+  /**
+   * The reason-to-believe. Goldroad's central claim is that it can't be taken
+   * away; a visitor who can't reach the source, the licence, or the
+   * self-hosting path has only our word for it. These assertions exist so that
+   * discoverability can't quietly regress again.
+   */
+  describe("open-source discoverability", () => {
+    const REPO = "https://github.com/peterkibuchi/goldroad";
+
+    it("marketing: gives the source, licence, self-hosting and protocol their own column", () => {
+      render(<SiteFooter variant="marketing" />);
+      const open = screen.getByRole("navigation", { name: "Open" });
+      const hrefOf = (name: RegExp) =>
+        within(open).getByRole("link", { name }).getAttribute("href");
+
+      expect(hrefOf(/^what's open/i)).toBe("/open");
+      expect(hrefOf(/^source on github/i)).toBe(REPO);
+      expect(hrefOf(/^license: agpl-3\.0/i)).toBe(`${REPO}/blob/main/LICENSE`);
+      expect(hrefOf(/^run your own copy/i)).toBe(
+        `${REPO}/blob/main/SELF_HOSTING.md`,
+      );
+      expect(hrefOf(/^built on the at protocol/i)).toBe("https://atproto.com");
+    });
+
+    it("marketing: keeps the product and legal columns, and both decks", () => {
+      render(<SiteFooter variant="marketing" />);
+      const product = screen.getByRole("navigation", { name: "Product" });
+      expect(
+        within(product)
+          .getByRole("link", { name: /leaving substack/i })
+          .getAttribute("href"),
+      ).toBe("/leaving-substack");
+      const legal = screen.getByRole("navigation", { name: "Legal" });
+      for (const [name, href] of [
+        [/privacy/i, "/privacy"],
+        [/terms/i, "/terms"],
+        [/policies/i, "/policies"],
+      ] as const) {
+        expect(
+          within(legal).getByRole("link", { name }).getAttribute("href"),
+        ).toBe(href);
+      }
+      // Deck two survives the columns.
+      expect(screen.getByText(/leave anytime\. lose nothing\./i)).toBeDefined();
+    });
+
+    it("app: carries the licence and the source inline, one click from every screen", () => {
+      render(<SiteFooter />);
+      const nav = screen.getByRole("navigation", { name: "Footer" });
+      expect(
+        within(nav)
+          .getByRole("link", { name: /open source \(agpl\)/i })
+          .getAttribute("href"),
+      ).toBe("/open");
+      expect(
+        within(nav)
+          .getByRole("link", { name: /github/i })
+          .getAttribute("href"),
+      ).toBe(REPO);
+      // Legal stays where writers already look for it.
+      expect(
+        within(nav)
+          .getByRole("link", { name: /privacy/i })
+          .getAttribute("href"),
+      ).toBe("/privacy");
+    });
+
+    it("spends no spot color on either footer (chrome is not the accent moment)", () => {
+      const { container } = render(<SiteFooter variant="marketing" />);
+      expect(container.innerHTML).not.toContain("spot");
+    });
+
+    it("sends off-site footer links to a new tab, safely", () => {
+      render(<SiteFooter variant="marketing" />);
+      const github = screen.getByRole("link", { name: /^source on github/i });
+      expect(github.getAttribute("target")).toBe("_blank");
+      expect(github.getAttribute("rel")).toBe("noopener noreferrer");
+      // Internal destinations never leave the tab.
+      expect(
+        screen
+          .getByRole("link", { name: /^what's open/i })
+          .getAttribute("target"),
+      ).toBeNull();
+    });
+  });
 });
 
 describe("AppShell — marketing/signed-out", () => {
@@ -50,6 +136,24 @@ describe("AppShell — marketing/signed-out", () => {
     expect(screen.getByText("page content")).toBeDefined();
     expect(screen.getByRole("banner")).toBeDefined();
     expect(screen.getByRole("contentinfo")).toBeDefined();
+  });
+
+  it("gives signed-out surfaces the compact footer, marketing the full one", () => {
+    render(
+      <AppShell header={{ variant: "signed-out" }}>
+        <p>page content</p>
+      </AppShell>,
+    );
+    expect(screen.getByRole("navigation", { name: "Footer" })).toBeDefined();
+    expect(screen.queryByRole("navigation", { name: "Open" })).toBeNull();
+
+    cleanup();
+    render(
+      <AppShell header={{ variant: "marketing" }}>
+        <p>page content</p>
+      </AppShell>,
+    );
+    expect(screen.getByRole("navigation", { name: "Open" })).toBeDefined();
   });
 });
 
