@@ -12,9 +12,10 @@
  *    full width writing surfaces want. Below ~760px the rail can't survive —
  *    it collapses to a slim top strip (wordmark + public-page/sign-out) plus
  *    a bottom tab bar (icons only, real destinations only — the mobile-native
- *    pattern for this exact job). Two quiet "Soon" rows (Stats, Newsletter)
- *    are folded in as non-interactive promises, so shipping those surfaces
- *    later never forces another chrome rework. Both frames read the same
+ *    pattern for this exact job). A quiet "Soon" row (Newsletter) is folded in
+ *    as a non-interactive promise, so shipping that surface later never forces
+ *    another chrome rework — the same slot Stats graduated out of when it
+ *    became a real destination. Both frames read the same
  *    design tokens; reading surfaces (see ~/components/document-article)
  *    never render either one.
  *
@@ -40,7 +41,7 @@ import type { ComponentType } from "react";
 
 import { cn } from "~/lib/utils";
 
-export type WriterNavItem = "write" | "import" | "posts" | "settings";
+export type WriterNavItem = "write" | "import" | "posts" | "stats" | "settings";
 
 type MarketingHeaderProps =
   /** Marketing surfaces — wordmark home, waitlist-era status, sign-in path. */
@@ -134,6 +135,7 @@ const WRITER_NAV: ReadonlyArray<{
   { item: "write", href: "/write", label: "Write", Icon: IconPencil },
   { item: "import", href: "/import", label: "Import", Icon: IconFileImport },
   { item: "posts", href: "/dashboard", label: "Posts", Icon: IconList },
+  { item: "stats", href: "/stats", label: "Stats", Icon: IconChartBar },
   {
     item: "settings",
     href: "/settings",
@@ -142,12 +144,11 @@ const WRITER_NAV: ReadonlyArray<{
   },
 ];
 
-/** Visible growth promises, not live routes, so shipping Stats/Newsletter
- * later never forces another chrome redesign. Rendered as inert `<span>` rows,
- * never `<a>` — there is nowhere for them to go yet, and a fake `href="#"`
- * would be dishonest to assistive tech and keyboard users. */
+/** Visible growth promises, not live routes, so shipping a new destination
+ * never forces another chrome redesign. Rendered as inert `<span>` rows, never
+ * `<a>` — there is nowhere for them to go yet, and a fake `href="#"` would be
+ * dishonest to assistive tech and keyboard users. */
 const SOON_NAV: ReadonlyArray<{ label: string; Icon: NavIcon }> = [
-  { label: "Stats", Icon: IconChartBar },
   { label: "Newsletter", Icon: IconMail },
 ];
 
