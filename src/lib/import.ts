@@ -86,14 +86,24 @@ export class ImportError extends Error {
   }
 }
 
-const OWN_HOSTNAMES = new Set(
-  [CANONICAL_ORIGIN, ...LEGACY_ORIGINS].map((o) => new URL(o).hostname),
+const OWN_HOSTNAMES = [CANONICAL_ORIGIN, ...LEGACY_ORIGINS].map((o) =>
+  new URL(o).hostname.toLowerCase(),
 );
+
+/** Our own zone: the apex AND anything under it. Subdomain-inclusive on
+ * purpose — a same-zone fetch target is the thing being refused, and our zone
+ * has more names in it than the apex (previews, future subdomains, anything a
+ * CNAME picks up). `endsWith("." + own)` only ever matches a true label
+ * boundary, so `nottrygoldroad.com` is still someone else's host. */
+function isOwnHostname(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return OWN_HOSTNAMES.some((own) => host === own || host.endsWith(`.${own}`));
+}
 
 /**
  * SSRF guard for writer-supplied feed URLs: everything assertPublicHttpsUrl
  * enforces (https-only, no ports/userinfo/IP-literals/single-label hosts),
- * plus a refusal of our own hostnames — importing Goldroad into Goldroad is
+ * plus a refusal of our own zone — importing Goldroad into Goldroad is
  * never meant, and a same-zone fetch is exactly the request-loop/front-door
  * class the `global_fetch_strictly_public` compatibility flag also closes at
  * the platform level (defense in depth: both layers refuse it).
@@ -107,8 +117,8 @@ export function assertImportableUrl(urlString: string): URL {
   } catch {
     throw new ImportError("invalid_url", `not a public https URL`);
   }
-  const host = url.hostname;
-  if (host.endsWith(".workers.dev") || OWN_HOSTNAMES.has(host))
+  const host = url.hostname.toLowerCase();
+  if (host.endsWith(".workers.dev") || isOwnHostname(host))
     throw new ImportError("own_host", "refusing to import from this app");
   return url;
 }
