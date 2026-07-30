@@ -145,7 +145,10 @@ describe("parseWxrExport — defensive paths", () => {
     const parsed = parseWxrExport(wxr(items));
     expect(parsed.posts).toHaveLength(MAX_EXPORT_POSTS);
     expect(parsed.truncated).toBe(4);
-  });
+    // Building and XML-parsing 1004 full items is inherent to the cap being
+    // tested, not overhead to optimise away. It costs ~1.3s idle and several
+    // times that on a busy box, so the 5s default leaves too little headroom.
+  }, 30_000);
 });
 
 describe("identity helper", () => {
