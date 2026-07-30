@@ -15,8 +15,9 @@
  * degrades to `null` rather than a failed response.
  *
  * Session-authed POST (not a plain download link, so a signed-out tab can't
- * trigger it) with the same Origin defense-in-depth as ~/routes/api.drafts —
- * this is a JS `fetch()` call from /settings, not a page navigation.
+ * trigger it) with the shared Origin defense-in-depth (isCrossSite,
+ * ~/lib/origin) — this is a JS `fetch()` call from /settings, not a page
+ * navigation.
  */
 import { createFileRoute } from "@tanstack/react-router";
 import { drizzle } from "drizzle-orm/d1";
@@ -29,20 +30,13 @@ import {
   type StandardDocument,
 } from "~/lib/atproto";
 import { readLiveSessionDid } from "~/lib/live-session";
-import { canonicalOrigin } from "~/lib/origin";
+import { canonicalOrigin, isCrossSite } from "~/lib/origin";
 import {
   selectDraftsForExport,
   selectFollowerSnapshotsForExport,
   selectImportItemsForExport,
 } from "~/lib/rights-store";
 import { env } from "cloudflare:workers";
-
-/** Same check as ~/routes/api.drafts: SameSite=Lax already keeps the session
- * cookie off cross-site fetches, this is one more header comparison. */
-function isCrossSite(request: Request): boolean {
-  const origin = request.headers.get("origin");
-  return origin !== null && origin !== new URL(request.url).origin;
-}
 
 function json(data: unknown, status = 200): Response {
   return Response.json(data, {

@@ -123,15 +123,6 @@ export function assertImportableUrl(urlString: string): URL {
   return url;
 }
 
-/** Same CSRF defense-in-depth as /api/drafts: SameSite=Lax already keeps the
- * session cookie off cross-site POSTs; this one header comparison covers
- * legacy browsers. Absent Origin = non-browser client, which the cookie
- * requirement already gates. */
-export function isCrossSite(request: Request): boolean {
-  const origin = request.headers.get("origin");
-  return origin !== null && origin !== new URL(request.url).origin;
-}
-
 export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 
 /**

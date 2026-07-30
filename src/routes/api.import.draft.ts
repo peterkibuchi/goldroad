@@ -27,7 +27,6 @@ import { MAX_DRAFT_BODY_BYTES, MAX_DRAFTS_PER_USER } from "~/lib/drafts-schema";
 import {
   clampOriginalDate,
   guidHash,
-  isCrossSite,
   MAX_IMPORT_URL_LENGTH,
 } from "~/lib/import";
 import {
@@ -37,6 +36,7 @@ import {
   selectLiveDraftIds,
 } from "~/lib/import-store";
 import { readLiveSessionDid } from "~/lib/live-session";
+import { isCrossSite } from "~/lib/origin";
 import { MAX_TITLE_LENGTH } from "~/lib/publish";
 import { env } from "cloudflare:workers";
 

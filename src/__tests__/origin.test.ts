@@ -5,6 +5,7 @@ import {
   CANONICAL_ORIGIN,
   canonicalOrigin,
   canonicalRedirect,
+  isCrossSite,
   isLoopbackOrigin,
   LEGACY_ORIGINS,
   ownOrigins,
@@ -23,6 +24,45 @@ describe("constants", () => {
 
   it("keeps the retired workers.dev origin in the legacy list (records referencing it exist)", () => {
     expect(LEGACY_ORIGINS).toContain("https://goldroad.kibuchi.workers.dev");
+  });
+});
+
+/**
+ * The CSRF check every mutating handler shares. It compares against the
+ * REQUEST's origin, not CANONICAL_ORIGIN — the worker legitimately answers on
+ * preview and loopback hostnames, and a form posted from the page that served
+ * it is same-origin on all of them.
+ */
+describe("isCrossSite", () => {
+  const post = (url: string, origin?: string) =>
+    new Request(url, {
+      method: "POST",
+      ...(origin ? { headers: { origin } } : {}),
+    });
+
+  it("same-origin and absent Origin pass; foreign Origin fails", () => {
+    const url = "https://app.example/api/import";
+    expect(isCrossSite(post(url, "https://app.example"))).toBe(false);
+    expect(isCrossSite(post(url))).toBe(false);
+    expect(isCrossSite(post(url, "https://evil.example"))).toBe(true);
+  });
+
+  it("passes on every hostname the worker legitimately answers on", () => {
+    for (const origin of [
+      "https://trygoldroad.com",
+      "https://abc12345-goldroad.kibuchi.workers.dev",
+      "http://127.0.0.1:3000",
+    ]) {
+      expect(isCrossSite(post(`${origin}/api/publish`, origin))).toBe(false);
+    }
+  });
+
+  it("refuses a sibling hostname of our own zone (Origin is exact, not suffixed)", () => {
+    expect(
+      isCrossSite(
+        post("https://trygoldroad.com/api/publish", "https://evil.example"),
+      ),
+    ).toBe(true);
   });
 });
 

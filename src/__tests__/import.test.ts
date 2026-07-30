@@ -12,7 +12,6 @@ import {
   fetchImportable,
   guidHash,
   ImportError,
-  isCrossSite,
   looksLikeHtml,
   MAX_FEED_BYTES,
   MAX_ITEM_CONTENT_CHARS,
@@ -524,25 +523,5 @@ describe("fetchCoverCandidate", () => {
   });
 });
 
-describe("isCrossSite", () => {
-  it("same-origin and absent Origin pass; foreign Origin fails", () => {
-    const url = "https://app.example/api/import";
-    expect(
-      isCrossSite(
-        new Request(url, {
-          method: "POST",
-          headers: { origin: "https://app.example" },
-        }),
-      ),
-    ).toBe(false);
-    expect(isCrossSite(new Request(url, { method: "POST" }))).toBe(false);
-    expect(
-      isCrossSite(
-        new Request(url, {
-          method: "POST",
-          headers: { origin: "https://evil.example" },
-        }),
-      ),
-    ).toBe(true);
-  });
-});
+// isCrossSite moved to ~/lib/origin (shared by every mutating handler); its
+// unit tests moved with it, to origin.test.ts.

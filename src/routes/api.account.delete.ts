@@ -21,8 +21,8 @@
  * CSRF: a real <form method="post"> navigation (like ~/routes/logout and
  * ~/routes/api.publish), so SameSite=Lax already keeps the session cookie off
  * cross-site submissions. The Origin check below is the same one-header
- * defense-in-depth ~/routes/api.drafts applies to its mutations — added here
- * too because this action is irreversible.
+ * defense-in-depth (isCrossSite, ~/lib/origin) every mutating handler
+ * applies — and this action is irreversible.
  */
 import { createFileRoute } from "@tanstack/react-router";
 import { drizzle } from "drizzle-orm/d1";
@@ -30,6 +30,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { isDid } from "~/lib/atproto";
 import { readLiveSessionDid } from "~/lib/live-session";
 import { createOAuthClient } from "~/lib/oauth";
+import { isCrossSite } from "~/lib/origin";
 import {
   deleteDraftsForDid,
   deleteFollowerSnapshotsForDid,
@@ -39,11 +40,6 @@ import {
 } from "~/lib/rights-store";
 import { sessionClearCookie } from "~/lib/session";
 import { env } from "cloudflare:workers";
-
-function isCrossSite(request: Request): boolean {
-  const origin = request.headers.get("origin");
-  return origin !== null && origin !== new URL(request.url).origin;
-}
 
 /** Failures redirect back to /settings with the existing error-message
  * system (same pattern as ~/routes/api.publish's backToSettings), rather
