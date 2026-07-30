@@ -158,6 +158,46 @@ export const importFetches = sqliteTable(
   ],
 );
 
+/**
+ * Daily follower-count samples, one row per writer per UTC day.
+ *
+ * Bluesky's AppView answers "how many followers does this account have RIGHT
+ * NOW" (app.bsky.actor.getProfile → followersCount) and nothing else: there is
+ * no history endpoint, so a follower chart cannot be reconstructed after the
+ * fact. History that wasn't sampled is simply gone. That's why this table is
+ * filled by the hourly cron from the day it ships, ahead of anything that
+ * renders it.
+ *
+ * `day` is a UTC calendar day as 'YYYY-MM-DD' text rather than a timestamp,
+ * because a day is both what a chart plots and the idempotency key: paired
+ * with `did` in a unique index, it makes the sampling pass safely re-runnable
+ * — an hourly pass with `onConflictDoNothing` self-heals a missed 00:00 run
+ * without ever producing two rows for one day.
+ *
+ * These rows are the writer's own history: they go out with the account data
+ * export and are deleted with the account (see ~/lib/rights-store).
+ */
+export const followerSnapshots = sqliteTable(
+  "follower_snapshots",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    did: text("did").notNull(),
+    day: text("day").notNull(),
+    followers: integer("followers").notNull(),
+    /** Free in the same getProfile response, so it's recorded while we're
+     * there; null when the response didn't carry a usable number. */
+    posts: integer("posts"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  // Idempotency AND the exact index every read wants
+  // (did = ? AND day BETWEEN ? AND ? ORDER BY day).
+  (table) => [
+    uniqueIndex("follower_snapshots_did_day_idx").on(table.did, table.day),
+  ],
+);
+
 export const reports = sqliteTable("reports", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   url: text("url").notNull(),
