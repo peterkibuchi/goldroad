@@ -77,12 +77,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y age
 
+      # --env production is load-bearing. The top-level wrangler config carries a
+      # PLACEHOLDER database_id (it exists so a self-hoster can point the repo at
+      # their own D1); the real production id lives in the env.production block.
+      # Without the flag wrangler resolves the placeholder and the API answers
+      # "database not found [code: 7404]".
       - name: Export the database
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          pnpm wrangler d1 export "$DATABASE_NAME" --remote --output "$DUMP" -y
+          pnpm wrangler d1 export "$DATABASE_NAME" --env production --remote --output "$DUMP" -y
 
       # A dump that exists is not a dump that is usable. An export can report
       # success and leave a truncated or schema-only file, which is exactly the
@@ -140,5 +145,5 @@ jobs:
         run: |
           set -euo pipefail
           AT=$(date +%s%3N)
-          pnpm wrangler d1 execute "$DATABASE_NAME" --remote -y \
+          pnpm wrangler d1 execute "$DATABASE_NAME" --env production --remote -y \
             --command "INSERT INTO backup_runs (at, bytes) VALUES (${AT}, ${BACKUP_BYTES});"
