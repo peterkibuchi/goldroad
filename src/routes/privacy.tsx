@@ -31,12 +31,15 @@ const privacy = (
   </ExternalLink>
 );
 
-function PrivacyPage() {
+/** Exported for tests (account-rights-copy.test.tsx), which pin this page's
+ * promises against what the export and deletion paths actually reach — not a
+ * route. */
+export function PrivacyPage() {
   return (
     <LegalLayout
       kicker="Goldroad · Privacy"
       title="Privacy policy"
-      updated="27 July 2026"
+      updated="30 July 2026"
       draft
     >
       <LegalSection heading="The short version">
@@ -53,6 +56,7 @@ function PrivacyPage() {
         <LegalList
           items={[
             "Waitlist email — only if you enter it. It's stored in our database to tell you when Goldroad opens, and nowhere else.",
+            "Abuse reports — if you use the report form we store the URL you reported and the note you wrote, plus your email if you chose to leave one, so a human can triage it and follow up with you.",
             "Product analytics via PostHog, running cookieless (in-memory): no cookies, no localStorage, no cross-site tracking, and no consent banner needed. Events carry which environment they came from, never your email or personal details.",
             "Sign-in details: when you connect a Bluesky / atproto account, we act on your decentralized identifier (DID). Access tokens stay on our server; we never see or store your password.",
             "Standard server logs (via Cloudflare) — request metadata like IP and user agent, kept briefly for security and debugging.",
@@ -82,23 +86,35 @@ function PrivacyPage() {
       <LegalSection heading="Your rights">
         <p>
           If you've connected a Bluesky account, Settings → Your data lets you
-          download everything we hold for your account and delete it yourself,
-          immediately — no waiting on us. (Deleting your account never touches
-          what you've published: those posts live in your own data repo, not
-          ours.)
+          download everything we hold under that account — your drafts, import
+          history, follower history and sign-in session — and delete all of it
+          yourself, immediately, no waiting on us. (Deleting your account never
+          touches what you've published: those posts live in your own data repo,
+          not ours.)
         </p>
         <p className="mt-3">
-          If you're only on the waitlist — no account connected — email{" "}
-          {privacy} to be removed; we act on it by hand. Wherever you live —
-          including under the EU/UK GDPR — you can also ask to access, correct,
-          or delete your data, or object to processing, the same way.
+          One thing those buttons can't reach: an email you typed into the
+          waitlist form or left on an abuse report. Those are stored on their
+          own, keyed by the address and nothing else. We identify accounts by
+          DID and never ask for or receive your email address, so there is
+          genuinely nothing in our database that could tell us a given account
+          and a given email are the same person — which also means an export
+          can't include it and account deletion can't remove it. Email {privacy}{" "}
+          from or naming that address and we'll delete it by hand, whether or
+          not you also have an account here.
+        </p>
+        <p className="mt-3">
+          Wherever you live — including under the EU/UK GDPR — you can ask to
+          access, correct, or delete your data, or object to processing, the
+          same way.
         </p>
       </LegalSection>
 
       <LegalSection heading="Retention">
         <LegalList
           items={[
-            "Waitlist email: kept until you ask us to remove it, or until the waitlist is retired.",
+            "Waitlist email: kept until you ask us to remove it, or until the waitlist is retired. Deleting a Goldroad account does not remove it — see Your rights above.",
+            "Abuse reports: the report, and any email left with it, kept while we may still need it for moderation and appeals, then discarded — or sooner if you ask.",
             "Analytics: aggregated, not tied to your identity.",
             "Drafts and import history: kept until you delete them (Settings → Your data) or delete your account, which removes both immediately.",
             "Follower counts: while you have an account we record your public Bluesky follower count once a day, so you can see your own growth over time — Bluesky only reports today's number, and the past can't be recovered later. It's in your data export, and deleting your account deletes it.",

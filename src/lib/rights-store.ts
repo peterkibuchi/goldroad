@@ -15,6 +15,20 @@
  * Anything new that stores a DID belongs in both halves of this file, in the
  * same change that creates it. A table that ships without its export and
  * delete wiring is how an instance ends up holding rows nobody can reach.
+ *
+ * DELIBERATELY UNREACHABLE FROM HERE: `waitlist` and `reports` also hold an
+ * email a writer may have typed, and neither can ever be covered by these
+ * functions. Both are written by UNAUTHENTICATED public endpoints
+ * (~/routes/api.waitlist, ~/routes/api.report) and both are keyed by the email
+ * alone — no DID column, and no DID available to put in one. We never learn a
+ * writer's email either: identity is the DID, and the OAuth scopes we request
+ * (~/lib/oauth-scopes) carry no way to read the PDS account email. So there is
+ * no link to key these queries on, and accepting a client-supplied email
+ * instead would let any signed-in caller export or delete a stranger's abuse
+ * report on an unverified claim — a worse leak than the gap it closes. The
+ * privacy policy and /settings say this in as many words, and by-hand removal
+ * on request is the honest remedy; if a verified-email link ever exists, this
+ * is the note to come back to.
  */
 import { asc, desc, eq } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/d1";
