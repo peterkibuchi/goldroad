@@ -9,7 +9,6 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as ZzPreviewRouteImport } from './routes/zz-preview'
 import { Route as WriteRouteImport } from './routes/write'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as StatsRouteImport } from './routes/stats'
@@ -44,11 +43,6 @@ import { Route as ApiImportDraftRouteImport } from './routes/api.import.draft'
 import { Route as ApiAccountExportRouteImport } from './routes/api.account.export'
 import { Route as ApiAccountDeleteRouteImport } from './routes/api.account.delete'
 
-const ZzPreviewRoute = ZzPreviewRouteImport.update({
-  id: '/zz-preview',
-  path: '/zz-preview',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const WriteRoute = WriteRouteImport.update({
   id: '/write',
   path: '/write',
@@ -235,7 +229,6 @@ export interface FileRoutesByFullPath {
   '/stats': typeof StatsRoute
   '/terms': typeof TermsRoute
   '/write': typeof WriteRoute
-  '/zz-preview': typeof ZzPreviewRoute
   '/@{$handle}/$rkey': typeof AtChar123handleChar125RkeyRoute
   '/@{$handle}/rss.xml': typeof AtChar123handleChar125RssDotxmlRoute
   '/api/drafts': typeof ApiDraftsRoute
@@ -271,7 +264,6 @@ export interface FileRoutesByTo {
   '/stats': typeof StatsRoute
   '/terms': typeof TermsRoute
   '/write': typeof WriteRoute
-  '/zz-preview': typeof ZzPreviewRoute
   '/@{$handle}/$rkey': typeof AtChar123handleChar125RkeyRoute
   '/@{$handle}/rss.xml': typeof AtChar123handleChar125RssDotxmlRoute
   '/api/drafts': typeof ApiDraftsRoute
@@ -308,7 +300,6 @@ export interface FileRoutesById {
   '/stats': typeof StatsRoute
   '/terms': typeof TermsRoute
   '/write': typeof WriteRoute
-  '/zz-preview': typeof ZzPreviewRoute
   '/@{$handle}/$rkey': typeof AtChar123handleChar125RkeyRoute
   '/@{$handle}/rss.xml': typeof AtChar123handleChar125RssDotxmlRoute
   '/api/drafts': typeof ApiDraftsRoute
@@ -346,7 +337,6 @@ export interface FileRouteTypes {
     | '/stats'
     | '/terms'
     | '/write'
-    | '/zz-preview'
     | '/@{$handle}/$rkey'
     | '/@{$handle}/rss.xml'
     | '/api/drafts'
@@ -382,7 +372,6 @@ export interface FileRouteTypes {
     | '/stats'
     | '/terms'
     | '/write'
-    | '/zz-preview'
     | '/@{$handle}/$rkey'
     | '/@{$handle}/rss.xml'
     | '/api/drafts'
@@ -418,7 +407,6 @@ export interface FileRouteTypes {
     | '/stats'
     | '/terms'
     | '/write'
-    | '/zz-preview'
     | '/@{$handle}/$rkey'
     | '/@{$handle}/rss.xml'
     | '/api/drafts'
@@ -455,7 +443,6 @@ export interface RootRouteChildren {
   StatsRoute: typeof StatsRoute
   TermsRoute: typeof TermsRoute
   WriteRoute: typeof WriteRoute
-  ZzPreviewRoute: typeof ZzPreviewRoute
   AtChar123handleChar125RkeyRoute: typeof AtChar123handleChar125RkeyRoute
   AtChar123handleChar125RssDotxmlRoute: typeof AtChar123handleChar125RssDotxmlRoute
   ApiDraftsRoute: typeof ApiDraftsRoute
@@ -476,13 +463,6 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/zz-preview': {
-      id: '/zz-preview'
-      path: '/zz-preview'
-      fullPath: '/zz-preview'
-      preLoaderRoute: typeof ZzPreviewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/write': {
       id: '/write'
       path: '/write'
@@ -747,7 +727,6 @@ const rootRouteChildren: RootRouteChildren = {
   StatsRoute: StatsRoute,
   TermsRoute: TermsRoute,
   WriteRoute: WriteRoute,
-  ZzPreviewRoute: ZzPreviewRoute,
   AtChar123handleChar125RkeyRoute: AtChar123handleChar125RkeyRoute,
   AtChar123handleChar125RssDotxmlRoute: AtChar123handleChar125RssDotxmlRoute,
   ApiDraftsRoute: ApiDraftsRoute,
