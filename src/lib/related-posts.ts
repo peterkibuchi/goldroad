@@ -1,6 +1,6 @@
 /**
  * Same-writer "More from <publication>" selection (owner decision #3,
- * substack-patterns dossier: same-writer only — no cross-writer discovery
+ * Same-writer only — no cross-writer discovery
  * surface exists yet, and ranking one writer's work over another's is a
  * values question the platform hasn't answered). Pure record → view-model
  * transform, mirrors ~/lib/dashboard's mapDashboardRows shape.

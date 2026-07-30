@@ -6,7 +6,7 @@
  * the one thing a reading surface talks to public.api.bsky.app for directly
  * rather than the writer's own repo.
  *
- * Scope (owner decision #2, substack-patterns dossier): counts exist ONLY for
+ * Scope: counts exist ONLY for
  * announced posts. An unannounced post gets silence on the public page, never
  * a zero — "null ≠ zero" is already this codebase's discipline (dashboard
  * load failures, ~/lib/stats's absent-path rows). Every failure mode here
@@ -149,7 +149,7 @@ function engagementCacheUrl(uri: string): string {
 export type DocumentEngagement = {
   counts: EngagementCounts;
   /** bsky.app thread — the reply count's link target (owner decision #2:
-   * "the network is the comment section", DECISIONS #61). */
+   * "the network is the comment section". */
   threadUrl: string;
 };
 
