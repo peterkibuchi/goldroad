@@ -6,6 +6,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 // `cloudflare:workers` alias in vitest.config.ts stubs them for this import.
 import type { DashboardRow, DraftRow } from "../lib/dashboard";
 import { Overview, requireOverview } from "../routes/home";
+import {
+  VIEWS_OFF,
+  VIEWS_UNAVAILABLE,
+  viewsReady,
+} from "./support/views-envelope";
 
 afterEach(() => {
   cleanup();
@@ -14,7 +19,7 @@ afterEach(() => {
 
 const IDENT = "writer.example";
 
-function stubStats(body: unknown = { enabled: false }) {
+function stubStats(body: unknown = VIEWS_OFF) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async () => new Response(JSON.stringify(body), { status: 200 })),
@@ -164,7 +169,7 @@ describe("overview — the adaptive primary action", () => {
  */
 describe("overview — headline numbers", () => {
   it("omits the whole block when the seam isn't configured — no teaser", async () => {
-    stubStats({ enabled: false });
+    stubStats(VIEWS_OFF);
     renderOverview();
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
     expect(screen.queryByLabelText("Your numbers")).toBeNull();
@@ -172,14 +177,14 @@ describe("overview — headline numbers", () => {
   });
 
   it("omits it when the seam is configured but couldn't answer", async () => {
-    stubStats({ enabled: true, error: "unavailable" });
+    stubStats(VIEWS_UNAVAILABLE);
     renderOverview();
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
     expect(screen.queryByLabelText("Your numbers")).toBeNull();
   });
 
   it("shows views, posts and drafts once the seam answers", async () => {
-    stubStats({ enabled: true, total: 120, paths: [] });
+    stubStats(viewsReady(120));
     renderOverview({ drafts: [draft("d1", "One draft")] });
     await screen.findByLabelText("Your numbers");
     screen.getByText(/all-time views/i);
@@ -190,7 +195,7 @@ describe("overview — headline numbers", () => {
   });
 
   it("marks the post count as a floor when more pages exist behind it", async () => {
-    stubStats({ enabled: true, total: 120, paths: [] });
+    stubStats(viewsReady(120));
     renderOverview({
       published: { count: 50, countComplete: false, latest: LATEST },
     });
@@ -200,14 +205,14 @@ describe("overview — headline numbers", () => {
   });
 
   it("drops the post count entirely — not to zero — when the read flaked", async () => {
-    stubStats({ enabled: true, total: 120, paths: [] });
+    stubStats(viewsReady(120));
     renderOverview({ published: null });
     await screen.findByLabelText("Your numbers");
     expect(screen.queryByText(/posts published/i)).toBeNull();
   });
 
   it("drops the draft count entirely when the drafts read flaked", async () => {
-    stubStats({ enabled: true, total: 120, paths: [] });
+    stubStats(viewsReady(120));
     renderOverview({ drafts: null });
     await screen.findByLabelText("Your numbers");
     expect(screen.queryByText(/drafts in progress/i)).toBeNull();
@@ -225,21 +230,17 @@ describe("overview — the most recent post", () => {
   });
 
   it("carries a view count only when the seam recorded that exact post", async () => {
-    stubStats({
-      enabled: true,
-      total: 90,
-      paths: [{ path: `/@${IDENT}/3ccc2ccc2ccc2`, views: 90 }],
-    });
+    stubStats(
+      viewsReady(90, [{ path: `/@${IDENT}/3ccc2ccc2ccc2`, views: 90 }]),
+    );
     renderOverview();
     await screen.findByText("90 views");
   });
 
   it("shows no view count for a post the seam never recorded", async () => {
-    stubStats({
-      enabled: true,
-      total: 90,
-      paths: [{ path: `/@${IDENT}/some-other-post`, views: 90 }],
-    });
+    stubStats(
+      viewsReady(90, [{ path: `/@${IDENT}/some-other-post`, views: 90 }]),
+    );
     renderOverview();
     await screen.findByLabelText("Your numbers");
     // The block's own "All-time views" label is not a per-post count.

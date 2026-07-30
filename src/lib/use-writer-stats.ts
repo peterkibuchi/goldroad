@@ -21,7 +21,7 @@
  */
 import { useEffect, useState } from "react";
 
-import type { StatsResponse } from "~/lib/stats";
+import type { StatsEnvelope } from "~/lib/stats-sections";
 
 export type StatsState =
   | { status: "loading" }
@@ -40,17 +40,30 @@ export function useWriterStats(): StatsState {
     fetch("/api/stats")
       .then((res) =>
         res.ok
-          ? (res.json() as Promise<StatsResponse>)
+          ? (res.json() as Promise<StatsEnvelope>)
           : Promise.reject(new Error(String(res.status))),
       )
       .then((data) => {
         if (cancelled) return;
-        if (!data.enabled) {
+        // Only the views section answers "how many read this?" — the rest of
+        // the envelope belongs to the analytics page. A section carries its own
+        // status precisely so one failing upstream can't blank the others, so
+        // this reads that status and nothing else.
+        const views = data.views;
+        if (!views || views.status === "not_configured") {
           setState({ status: "off" });
-        } else if ("error" in data) {
+        } else if (views.status === "unavailable") {
           setState({ status: "unavailable" });
         } else {
-          setState({ status: "ready", total: data.total, paths: data.paths });
+          // "empty" and "insufficient_history" are successful reads that simply
+          // have nothing to show yet: real zeroes, not failures. Defaulting
+          // here keeps a writer with no views on the ready path, where rows
+          // render without numbers, rather than in an error state.
+          setState({
+            status: "ready",
+            total: views.total ?? 0,
+            paths: views.paths ?? [],
+          });
         }
       })
       .catch(() => {
