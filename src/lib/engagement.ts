@@ -87,6 +87,77 @@ function numOrUndefined(value: unknown): number | undefined {
     : undefined;
 }
 
+/** Split URIs into calls the lexicon will accept. */
+export function chunkUris(
+  uris: readonly string[],
+  size: number = MAX_GET_POSTS_BATCH,
+): string[][] {
+  const step = Math.max(1, Math.min(size, MAX_GET_POSTS_BATCH));
+  const chunks: string[][] = [];
+  for (let i = 0; i < uris.length; i += step)
+    chunks.push(uris.slice(i, i + step));
+  return chunks;
+}
+
+/**
+ * One getPosts response, joined to the URIs it was asked about — BY URI, never
+ * by index.
+ *
+ * This is the single most dangerous join in the codebase. getPosts returns
+ * fewer posts than requested, in any order, whenever a post has been deleted,
+ * blocked, or taken down; an index-based join would then silently attribute one
+ * post's likes to a different post and there would be nothing in the UI to
+ * suggest it. So the mapper takes the requested list, keys everything by URI,
+ * and marks the URIs that didn't come back as `"gone"` — an explicit fact the
+ * surface can state rather than a hole it has to guess at. URIs in the response
+ * that nobody asked about are ignored.
+ */
+export function mapGetPostsResponse(
+  data: unknown,
+  requested: readonly string[],
+): Map<string, EngagementCounts | "gone"> {
+  const wanted = new Set(requested);
+  const byUri = new Map<string, EngagementCounts | "gone">();
+  const posts = (data as { posts?: unknown } | null)?.posts;
+  if (Array.isArray(posts)) {
+    for (const post of posts) {
+      const p = post as Record<string, unknown> | null;
+      if (typeof p?.uri !== "string" || !wanted.has(p.uri)) continue;
+      byUri.set(p.uri, {
+        likeCount: numOrUndefined(p.likeCount),
+        replyCount: numOrUndefined(p.replyCount),
+        repostCount: numOrUndefined(p.repostCount),
+        quoteCount: numOrUndefined(p.quoteCount),
+      });
+    }
+  }
+  for (const uri of wanted) if (!byUri.has(uri)) byUri.set(uri, "gone");
+  return byUri;
+}
+
+/** One getPosts call. Returns the parsed body, or null when the call failed in
+ * any way at all (non-2xx, network error, timeout, oversized or unparseable
+ * body) — a failed batch is a fact the caller reports, not an exception. */
+async function fetchPostsBatch(
+  batch: readonly string[],
+  fetcher: typeof fetch,
+): Promise<unknown | null> {
+  const params = new URLSearchParams();
+  for (const uri of batch) params.append("uris", uri);
+  const url = `https://${APPVIEW_HOST}/xrpc/app.bsky.feed.getPosts?${params}`;
+  try {
+    const res = await fetcher(url, {
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+    if (!res.ok) return null;
+    const bytes = await readBodyCapped(res, MAX_RESPONSE_BYTES);
+    if (!bytes) return null;
+    return JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Batched app.bsky.feed.getPosts — chunks into groups of
  * MAX_GET_POSTS_BATCH, public + unauthenticated. Every failure mode
@@ -100,37 +171,77 @@ export async function fetchPostsEngagement(
 ): Promise<Map<string, EngagementCounts>> {
   const result = new Map<string, EngagementCounts>();
   const validUris = uris.filter((u) => u.startsWith("at://"));
-  for (let i = 0; i < validUris.length; i += MAX_GET_POSTS_BATCH) {
-    const batch = validUris.slice(i, i + MAX_GET_POSTS_BATCH);
-    if (batch.length === 0) continue;
-    const params = new URLSearchParams();
-    for (const uri of batch) params.append("uris", uri);
-    const url = `https://${APPVIEW_HOST}/xrpc/app.bsky.feed.getPosts?${params}`;
-    try {
-      const res = await fetcher(url, {
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      });
-      if (!res.ok) continue;
-      const bytes = await readBodyCapped(res, MAX_RESPONSE_BYTES);
-      if (!bytes) continue;
-      const body: unknown = JSON.parse(new TextDecoder().decode(bytes));
-      const posts = (body as { posts?: unknown } | null)?.posts;
-      if (!Array.isArray(posts)) continue;
-      for (const post of posts) {
-        const p = post as Record<string, unknown> | null;
-        if (typeof p?.uri !== "string") continue;
-        result.set(p.uri, {
-          likeCount: numOrUndefined(p.likeCount),
-          replyCount: numOrUndefined(p.replyCount),
-          repostCount: numOrUndefined(p.repostCount),
-          quoteCount: numOrUndefined(p.quoteCount),
-        });
-      }
-    } catch {
-      // Degrade silently — one bad chunk never blocks the rest, or the page.
+  for (const batch of chunkUris(validUris)) {
+    const body = await fetchPostsBatch(batch, fetcher);
+    if (body === null) continue;
+    for (const [uri, counts] of mapGetPostsResponse(body, batch)) {
+      // The reading surfaces only care about posts that answered; a missing
+      // post gets silence there, exactly as an unannounced one does.
+      if (counts !== "gone") result.set(uri, counts);
     }
   }
   return result;
+}
+
+/** How many batches one analytics read is allowed — the 100 most recent
+ * announced posts. A bound on politeness as much as on latency: this is a
+ * public good with no published rate limit, so we cache our own reads instead
+ * of leaning on their tolerance. */
+export const MAX_ENGAGEMENT_BATCHES = 4;
+
+/** Parallel getPosts calls. Two, not four: bounded wall-clock time without
+ * turning a public API into a thundering herd. */
+const BATCH_CONCURRENCY = 2;
+
+export type BatchedEngagement = {
+  byUri: Map<string, EngagementCounts | "gone">;
+  /** URIs we asked about, after chunk capping. */
+  requested: number;
+  /** URIs that came back from a batch that answered — the denominator the
+   * surface reports its aggregate over. */
+  answered: number;
+};
+
+/**
+ * The analytics-facing read: every announced post's counts in as few calls as
+ * the lexicon allows, with partial failure reported rather than hidden.
+ *
+ * `answered` counts only URIs from batches that came back, so a surface can say
+ * "counted across 18 of your 25 shared posts" instead of presenting a partial
+ * sum as a total. A batch that fails leaves its URIs absent from the map, which
+ * is distinct from present-but-`"gone"`: one means we couldn't look, the other
+ * means we looked and the post isn't there.
+ */
+export async function fetchEngagementBatches(opts: {
+  uris: readonly string[];
+  fetcher?: typeof fetch;
+  maxBatches?: number;
+}): Promise<BatchedEngagement> {
+  const { uris, fetcher = fetch, maxBatches = MAX_ENGAGEMENT_BATCHES } = opts;
+  const valid = uris.filter((u) => u.startsWith("at://"));
+  const batches = chunkUris(valid).slice(0, Math.max(0, maxBatches));
+  const byUri = new Map<string, EngagementCounts | "gone">();
+  const requested = batches.reduce((n, batch) => n + batch.length, 0);
+  let answered = 0;
+
+  let next = 0;
+  const worker = async () => {
+    for (;;) {
+      const index = next++;
+      if (index >= batches.length) return;
+      const batch = batches[index];
+      const body = await fetchPostsBatch(batch, fetcher);
+      if (body === null) continue; // this batch's URIs stay absent
+      answered += batch.length;
+      for (const [uri, counts] of mapGetPostsResponse(body, batch))
+        byUri.set(uri, counts);
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(BATCH_CONCURRENCY, batches.length) }, worker),
+  );
+
+  return { byUri, requested, answered };
 }
 
 /** Feature-detected Workers Cache API access — absent under plain vitest/
