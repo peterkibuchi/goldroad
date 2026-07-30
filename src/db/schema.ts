@@ -64,6 +64,11 @@ export const hiddenContent = sqliteTable("hidden_content", {
  * query pairs it with `did` so a draft is only ever reachable by its owner.
  * Timestamps are millisecond-precision so "newest first" stays stable across
  * rapid autosaves.
+ *
+ * The subtitle lives in its own column rather than inside `content`: block
+ * JSON is the editor's private format, and nothing outside the editor may
+ * reach into it. Empty string is the honest default — a draft with no
+ * subtitle, not a missing one.
  */
 export const drafts = sqliteTable(
   "drafts",
@@ -71,6 +76,7 @@ export const drafts = sqliteTable(
     id: text("id").primaryKey(),
     did: text("did").notNull(),
     title: text("title").notNull().default(""),
+    dek: text("dek").notNull().default(""),
     content: text("content").notNull(),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .notNull()

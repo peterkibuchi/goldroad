@@ -66,11 +66,15 @@ describe("selectDraft / updateDraft / deleteDraft — ownership in the WHERE", (
   it("updateDraft binds id AND did, touches updated_at, and RETURNs the row", () => {
     const { sql, params } = updateDraft(db, DID, ID, {
       title: "t",
+      dek: "a subtitle",
       content: "[]",
     }).toSQL();
     expectOwnershipBound(sql, params);
     expect(sql.toLowerCase()).toContain('update "drafts"');
     expect(sql).toContain('"updated_at"');
+    // The subtitle is written on every save, so clearing it clears the column.
+    expect(sql).toContain('"dek"');
+    expect(params).toContain("a subtitle");
     expect(sql.toLowerCase()).toContain("returning");
   });
 
@@ -95,12 +99,14 @@ describe("countDrafts / insertDraft — the create path", () => {
       id: ID,
       did: DID,
       title: "Hello",
+      dek: "A subtitle",
       content: '[{"type":"paragraph"}]',
     }).toSQL();
     expect(sql.toLowerCase()).toContain('insert into "drafts"');
     expect(params).toContain(ID);
     expect(params).toContain(DID);
     expect(params).toContain("Hello");
+    expect(params).toContain("A subtitle");
     expect(params).toContain('[{"type":"paragraph"}]');
   });
 });

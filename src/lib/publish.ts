@@ -36,6 +36,20 @@ export const MAX_TITLE_LENGTH = 1000; // lexicon: 5000 bytes / 500 graphemes; be
 export const MAX_BODY_LENGTH = 100_000; // stay well under PDS record-size limits
 const DESCRIPTION_EXCERPT_LENGTH = 300; // lexicon allows 3000 graphemes; keep it brief
 
+/**
+ * Hard cap on a writer-written subtitle — the lexicon's own limit for
+ * `document.description` (3000 graphemes; the byte limit is 30000, and a
+ * grapheme is never fewer than one byte, so this is the binding one).
+ */
+export const MAX_DEK_LENGTH = 3000;
+
+/**
+ * Where a subtitle stops reading like a subtitle. Not enforced: the editor
+ * uses it to say honestly that longer lines get trimmed in shared cards and
+ * archive rows, and then lets the writer decide.
+ */
+export const RECOMMENDED_DEK_LENGTH = 200;
+
 /** The lexicon's own blob type for site.standard.document#coverImage
  * (image/*, maxSize 1,000,000) — callers pass the uploadBlob response blob. */
 export type CoverImageBlob = NonNullable<
@@ -46,6 +60,9 @@ export type DocumentInput = {
   title: string;
   /** Markdown body (BlockNote's lossy markdown export; plain prose is valid markdown). */
   body: string;
+  /** The writer's subtitle line. Wins over the generated body excerpt as the
+   * record's `description` — blank falls back to the excerpt, as before. */
+  dek?: string;
   /** Publication record AT-URI (at://), or a publication URL (https://) for loose documents. */
   site: string;
   /** Canonical path under the publication URL, with leading slash (e.g. /3lz…rkey). */
@@ -82,6 +99,42 @@ function validateTitleAndBody(rawTitle: string, rawBody: string) {
 }
 
 /**
+ * The record's `description`: the writer's subtitle when they wrote one, else
+ * the generated body excerpt (the long-standing behaviour), else nothing.
+ * One rule, shared by create and edit, so the two can't drift apart.
+ */
+function resolveDescription(
+  rawDek: string | undefined,
+  body: string,
+): string | undefined {
+  const dek = rawDek?.trim() ?? "";
+  if (dek.length > MAX_DEK_LENGTH)
+    throw new Error(`subtitle exceeds ${MAX_DEK_LENGTH} characters`);
+  if (dek) return dek;
+  return body ? excerpt(body) : undefined;
+}
+
+/**
+ * The writer-written subtitle on an existing record, or "" when its
+ * `description` is just the generated body excerpt.
+ *
+ * Editing must not hand a writer machine-written text in a field labelled as
+ * theirs: they would be correcting prose they never wrote, and saving would
+ * freeze a stale excerpt in place of one that tracks the body. Posts published
+ * before the subtitle field existed therefore open with it empty, and keep
+ * regenerating their excerpt exactly as they do today.
+ */
+export function writerDek(doc: {
+  description?: string;
+  textContent?: string;
+}): string {
+  const description = doc.description?.trim() ?? "";
+  if (!description) return "";
+  const body = (doc.textContent ?? "").replace(/\r\n/g, "\n").trim();
+  return description === excerpt(body) ? "" : description;
+}
+
+/**
  * Builds a site.standard.document record. The markdown body goes in
  * `textContent` (interop-readable; plain prose round-trips cleanly); the
  * rich `content` union waits for our own lexicon, post-domain.
@@ -99,10 +152,9 @@ export function buildDocumentRecord(
     path: input.path,
     publishedAt: (input.publishedAt ?? new Date()).toISOString(),
   };
-  if (body) {
-    record.textContent = body;
-    record.description = excerpt(body);
-  }
+  if (body) record.textContent = body;
+  const description = resolveDescription(input.dek, body);
+  if (description) record.description = description;
   if (input.coverImage) record.coverImage = input.coverImage;
   return record;
 }
@@ -124,6 +176,9 @@ export function updateDocumentRecord(
   changes: {
     title: string;
     body: string;
+    /** Blank means "no subtitle": the description falls back to the body
+     * excerpt, exactly as it did before the field existed. */
+    dek?: string;
     coverImage?: CoverImageBlob | null;
     updatedAt?: Date;
   },
@@ -141,13 +196,8 @@ export function updateDocumentRecord(
     publishedAt: existing.publishedAt ?? new Date().toISOString(),
     updatedAt: (changes.updatedAt ?? new Date()).toISOString(),
   } as SiteStandardDocument.Main;
-  if (body) {
-    record.textContent = body;
-    record.description = excerpt(body);
-  } else {
-    record.textContent = undefined;
-    record.description = undefined;
-  }
+  record.textContent = body || undefined;
+  record.description = resolveDescription(changes.dek, body);
   if (changes.coverImage) record.coverImage = changes.coverImage;
   else if (changes.coverImage === null) record.coverImage = undefined;
   return record;
@@ -156,17 +206,25 @@ export function updateDocumentRecord(
 export const MAX_NAME_LENGTH = 200; // lexicon: 5000 bytes / 500 graphemes; be conservative
 export const MAX_PUBLICATION_DESCRIPTION_LENGTH = 1000; // lexicon: 30000 / 3000 graphemes
 
+/** The lexicon's own blob type for site.standard.publication#icon (image/*,
+ * maxSize 1,000,000, square, ideally ≥256×256). */
+export type IconBlob = NonNullable<SiteStandardPublication.Main["icon"]>;
+
 export type PublicationInput = {
   name: string;
   description?: string;
   /** Base publication URL, no trailing slash — canonical document URL = url + document.path. */
   url: string;
+  /** Publication icon: a blob replaces it, null removes it (the PDS then
+   * garbage-collects the unreferenced blob), undefined keeps what's there. */
+  icon?: IconBlob | null;
 };
 
 /**
  * Builds a site.standard.publication record. When `existing` is given, its
- * fields are preserved (basicTheme, icon, preferences, … from other apps) and
- * only name/description/url are replaced.
+ * fields are preserved (basicTheme, preferences, … from other apps) and only
+ * name/description/url — plus the icon, when the caller passes one — are
+ * replaced.
  */
 export function buildPublicationRecord(
   input: PublicationInput,
@@ -193,6 +251,8 @@ export function buildPublicationRecord(
   } as SiteStandardPublication.Main;
   if (description) record.description = description;
   else record.description = undefined;
+  if (input.icon) record.icon = input.icon;
+  else if (input.icon === null) record.icon = undefined;
   return record;
 }
 

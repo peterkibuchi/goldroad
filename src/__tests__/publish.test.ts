@@ -9,9 +9,11 @@ import {
   generateTid,
   isOwnPublicationUrl,
   MAX_BODY_LENGTH,
+  MAX_DEK_LENGTH,
   MAX_TITLE_LENGTH,
   TID_RE,
   updateDocumentRecord,
+  writerDek,
 } from "../lib/publish";
 
 describe("generateTid", () => {
@@ -475,5 +477,107 @@ describe("isOwnPublicationUrl", () => {
         origins,
       ),
     ).toBe(false);
+  });
+});
+
+describe("the subtitle (document.description) — write, round-trip, absence", () => {
+  const input = {
+    title: "Hello Atmosphere",
+    body: "First paragraph.\n\nSecond paragraph.",
+    site: "https://goldroad.example",
+    path: "/3abc2345678df",
+  };
+
+  it("writes the writer's subtitle as the description, over the body excerpt", () => {
+    const record = buildDocumentRecord({
+      ...input,
+      dek: "  What the piece is really about  ",
+    });
+    expect(record.description).toBe("What the piece is really about");
+    // The body itself is untouched by the subtitle.
+    expect(record.textContent).toBe("First paragraph.\n\nSecond paragraph.");
+  });
+
+  it("falls back to the generated excerpt when no subtitle is given", () => {
+    expect(buildDocumentRecord({ ...input, dek: "   " }).description).toBe(
+      "First paragraph. Second paragraph.",
+    );
+    expect(buildDocumentRecord(input).description).toBe(
+      "First paragraph. Second paragraph.",
+    );
+  });
+
+  it("keeps a subtitle on a body-less document (nothing to excerpt from)", () => {
+    const record = buildDocumentRecord({
+      ...input,
+      body: "  ",
+      dek: "Just a subtitle",
+    });
+    expect(record.description).toBe("Just a subtitle");
+    expect(record.textContent).toBeUndefined();
+  });
+
+  it("refuses a subtitle past the lexicon's own limit", () => {
+    expect(() =>
+      buildDocumentRecord({ ...input, dek: "x".repeat(MAX_DEK_LENGTH + 1) }),
+    ).toThrow("subtitle exceeds");
+  });
+
+  it("round-trips: publish → edit shows the same subtitle → saving keeps it", () => {
+    const dek = "A subtitle a writer typed";
+    const published = buildDocumentRecord({ ...input, dek });
+    // What /write prefills the field with when the writer reopens the post.
+    expect(writerDek(published)).toBe(dek);
+
+    const edited = updateDocumentRecord(published, {
+      title: "Hello Atmosphere",
+      body: "A rewritten body.",
+      dek: writerDek(published),
+    });
+    expect(edited.description).toBe(dek);
+    expect(writerDek(edited)).toBe(dek);
+  });
+
+  it("never presents a generated excerpt as the writer's own subtitle", () => {
+    const published = buildDocumentRecord(input);
+    expect(published.description).toBe("First paragraph. Second paragraph.");
+    // Posts from before the field existed open with an empty subtitle...
+    expect(writerDek(published)).toBe("");
+    // ...and saving them regenerates the excerpt, exactly as before.
+    const edited = updateDocumentRecord(published, {
+      title: "Hello Atmosphere",
+      body: "A rewritten body.",
+      dek: "",
+    });
+    expect(edited.description).toBe("A rewritten body.");
+  });
+
+  it("treats a description that is not the body excerpt as a real subtitle", () => {
+    // e.g. a document written in another app that fills description by hand.
+    expect(
+      writerDek({
+        description: "Hand-written summary",
+        textContent: "A body.",
+      }),
+    ).toBe("Hand-written summary");
+    expect(writerDek({ textContent: "A body." })).toBe("");
+    expect(writerDek({})).toBe("");
+  });
+
+  it("clearing the subtitle on an edit hands the description back to the body", () => {
+    const withDek = buildDocumentRecord({ ...input, dek: "Going away" });
+    const cleared = updateDocumentRecord(withDek, {
+      title: "Hello Atmosphere",
+      body: "Still here.",
+      dek: "",
+    });
+    expect(cleared.description).toBe("Still here.");
+    const emptied = updateDocumentRecord(withDek, {
+      title: "Hello Atmosphere",
+      body: "  ",
+      dek: "",
+    });
+    expect(emptied.description).toBeUndefined();
+    expect(emptied.textContent).toBeUndefined();
   });
 });

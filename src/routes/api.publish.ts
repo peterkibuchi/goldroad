@@ -51,6 +51,7 @@ import {
   generateTid,
   isOwnPublicationUrl,
   MAX_BODY_LENGTH,
+  MAX_DEK_LENGTH,
   MAX_NAME_LENGTH,
   MAX_PUBLICATION_DESCRIPTION_LENGTH,
   MAX_TITLE_LENGTH,
@@ -208,9 +209,16 @@ async function publishDocument({
 }: WriteContext): Promise<Response> {
   const title = String(form.get("title") ?? "").trim();
   const body = String(form.get("body") ?? "");
+  // The subtitle line. Blank (the common case) leaves description generation
+  // exactly as it was: the first ~300 characters of the body.
+  const dek = String(form.get("dek") ?? "").trim();
   const editRkey = String(form.get("rkey") ?? "");
   if (!title) return backToWrite("missing_title", editRkey || undefined);
-  if (title.length > MAX_TITLE_LENGTH || body.length > MAX_BODY_LENGTH)
+  if (
+    title.length > MAX_TITLE_LENGTH ||
+    body.length > MAX_BODY_LENGTH ||
+    dek.length > MAX_DEK_LENGTH
+  )
     return backToWrite("too_long", editRkey || undefined);
 
   // ---- Cover image: optional multipart file → com.atproto.repo.uploadBlob.
@@ -264,6 +272,7 @@ async function publishDocument({
       record = updateDocumentRecord(existing.value, {
         title,
         body,
+        dek,
         // blob = replace, null = remove, undefined = keep the existing cover.
         coverImage: coverBlob ?? (removeCover ? null : undefined),
       });
@@ -377,6 +386,7 @@ async function publishDocument({
   const record = buildDocumentRecord({
     title,
     body,
+    dek,
     site,
     path: `/${rkey}`,
     coverImage: coverBlob,

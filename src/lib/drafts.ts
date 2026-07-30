@@ -53,7 +53,13 @@ export function countDrafts(db: DrizzleD1, did: string) {
  * created_at/updated_at come from the schema defaults. */
 export function insertDraft(
   db: DrizzleD1,
-  row: { id: string; did: string; title: string; content: string },
+  row: {
+    id: string;
+    did: string;
+    title: string;
+    dek: string;
+    content: string;
+  },
 ) {
   return db
     .insert(drafts)
@@ -61,12 +67,14 @@ export function insertDraft(
     .returning({ id: drafts.id, updatedAt: drafts.updatedAt });
 }
 
-/** Updates a draft the writer owns; empty result = missing or not theirs. */
+/** Updates a draft the writer owns; empty result = missing or not theirs.
+ * Every writable field is passed on every save (the editor always knows all of
+ * them), so a cleared subtitle clears the column. */
 export function updateDraft(
   db: DrizzleD1,
   did: string,
   id: string,
-  fields: { title: string; content: string },
+  fields: { title: string; dek: string; content: string },
 ) {
   return db
     .update(drafts)

@@ -1,0 +1,1 @@
+ALTER TABLE `drafts` ADD `dek` text DEFAULT '' NOT NULL;

@@ -22,7 +22,8 @@ describe("SaveIndicator — the autosave status line", () => {
     cleanup();
 
     render(<SaveIndicator state="saved" />);
-    expect(screen.getByRole("status").textContent).toBe("Saved");
+    // "Draft saved", not "Saved": an autosave is never a publish.
+    expect(screen.getByRole("status").textContent).toBe("Draft saved");
     cleanup();
 
     render(<SaveIndicator state="error" />);
