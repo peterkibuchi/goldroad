@@ -39,6 +39,7 @@ import {
 } from "@tabler/icons-react";
 import type { ComponentType } from "react";
 
+import { ExternalLink } from "~/components/external-link";
 import { cn } from "~/lib/utils";
 
 export type WriterNavItem = "write" | "import" | "posts" | "stats" | "settings";
@@ -102,23 +103,164 @@ export function SiteHeader(props: MarketingHeaderProps) {
   );
 }
 
-export function SiteFooter() {
+/**
+ * The source, the licence, the self-hosting path, and the network Goldroad
+ * publishes into — one list, so the marketing footer, the app footer and
+ * /open can never drift into disagreeing about where any of it lives.
+ *
+ * These are the claim the whole product rests on ("it cannot be taken away")
+ * made checkable. Absent from the site, every other promise is just a
+ * sentence.
+ */
+export const OPEN_LINKS = {
+  repo: "https://github.com/peterkibuchi/goldroad",
+  license: "https://github.com/peterkibuchi/goldroad/blob/main/LICENSE",
+  selfHosting:
+    "https://github.com/peterkibuchi/goldroad/blob/main/SELF_HOSTING.md",
+  contributing:
+    "https://github.com/peterkibuchi/goldroad/blob/main/CONTRIBUTING.md",
+  atproto: "https://atproto.com",
+} as const;
+
+type FooterLink = { label: string; href: string; external?: boolean };
+
+/** Marketing deck one. Three short columns, no logo wall — the "Open" column
+ * is the reason-to-believe for everything the other two claim. */
+const FOOTER_COLUMNS: ReadonlyArray<{
+  heading: string;
+  links: ReadonlyArray<FooterLink>;
+}> = [
+  {
+    heading: "Product",
+    links: [
+      { href: "/leaving-substack", label: "Leaving Substack?" },
+      { href: "/#join", label: "Founding writers" },
+    ],
+  },
+  {
+    heading: "Open",
+    links: [
+      { href: "/open", label: "What's open" },
+      { external: true, href: OPEN_LINKS.repo, label: "Source on GitHub" },
+      { external: true, href: OPEN_LINKS.license, label: "License: AGPL-3.0" },
+      {
+        external: true,
+        href: OPEN_LINKS.selfHosting,
+        label: "Run your own copy",
+      },
+      {
+        external: true,
+        href: OPEN_LINKS.atproto,
+        label: "Built on the AT Protocol",
+      },
+    ],
+  },
+  {
+    heading: "Legal",
+    links: [
+      { href: "/privacy", label: "Privacy" },
+      { href: "/terms", label: "Terms" },
+      { href: "/policies", label: "Policies" },
+    ],
+  },
+];
+
+/** App-surface band. Writers are the readers most likely to check the licence
+ * claim, so it stays one click from every screen they work in. */
+const COMPACT_LINKS: ReadonlyArray<FooterLink> = [
+  { href: "/open", label: "Open source (AGPL)" },
+  { external: true, href: OPEN_LINKS.repo, label: "GitHub" },
+  { href: "/privacy", label: "Privacy" },
+  { href: "/terms", label: "Terms" },
+  { href: "/policies", label: "Policies" },
+];
+
+const FOOTER_LINK_CLASS = "transition-colors hover:text-ink";
+
+function FooterLink({ label, href, external }: FooterLink) {
+  if (external) {
+    return (
+      <ExternalLink className={FOOTER_LINK_CLASS} href={href}>
+        {label}
+      </ExternalLink>
+    );
+  }
   return (
-    <footer className="border-rule border-t">
-      <div className="mx-auto flex w-full max-w-5xl flex-wrap items-baseline justify-between gap-x-6 gap-y-2 px-6 py-5 font-display text-ink-soft text-xs md:px-16">
-        <span>Goldroad — writer-owned publishing on the open network</span>
-        <nav aria-label="Legal" className="flex flex-wrap gap-x-4 gap-y-1">
-          <a className="transition-colors hover:text-ink" href="/privacy">
-            Privacy
-          </a>
-          <a className="transition-colors hover:text-ink" href="/terms">
-            Terms
-          </a>
-          <a className="transition-colors hover:text-ink" href="/policies">
-            Policies
-          </a>
+    <a className={FOOTER_LINK_CLASS} href={href}>
+      {label}
+    </a>
+  );
+}
+
+/** Deck two on marketing, and the whole footer everywhere else: the tagline,
+ * the links, and the promise the product is named for. */
+function FooterBand({ links }: { links?: ReadonlyArray<FooterLink> }) {
+  return (
+    <div className="mx-auto flex w-full max-w-5xl flex-wrap items-baseline justify-between gap-x-6 gap-y-2 px-6 py-5 font-display text-ink-soft text-xs md:px-16">
+      <span>Goldroad — writer-owned publishing on the open network</span>
+      {links && (
+        <nav aria-label="Footer" className="flex flex-wrap gap-x-4 gap-y-1">
+          {links.map((link) => (
+            <FooterLink key={link.href} {...link} />
+          ))}
         </nav>
-        <span>Leave anytime. Lose nothing.</span>
+      )}
+      <span>Leave anytime. Lose nothing.</span>
+    </div>
+  );
+}
+
+/**
+ * Pressroom footer, two shapes.
+ *
+ * `marketing` (/, /leaving-substack, /open) gets both decks: three labelled
+ * columns over the closing band. Every other chrome-bearing surface gets the
+ * single band with the same open-source items inline — enough to be one click
+ * from the source and the licence on every screen, without turning app chrome
+ * into a sitemap. Reading surfaces render neither (two-surface rule); their
+ * printer's mark lives in `document-article.tsx`.
+ */
+export function SiteFooter({
+  variant = "app",
+}: {
+  variant?: "marketing" | "app";
+} = {}) {
+  if (variant === "app") {
+    return (
+      <footer className="border-rule border-t">
+        <FooterBand links={COMPACT_LINKS} />
+      </footer>
+    );
+  }
+  return (
+    <footer className="border-ink border-t-3 border-double">
+      <div className="mx-auto w-full max-w-5xl px-6 pt-10 pb-2 md:px-16">
+        <div className="grid grid-cols-2 gap-x-8 gap-y-8 sm:grid-cols-3">
+          {FOOTER_COLUMNS.map(({ heading, links }) => (
+            <div key={heading}>
+              {/* A label, not a heading: the nav landmark below already
+                  carries the group name for assistive tech, and three <h2>s
+                  in the footer would sit as peers of the page's own sections
+                  in the heading outline. */}
+              <p className="font-bold font-display text-ink text-xs uppercase tracking-[0.14em]">
+                {heading}
+              </p>
+              <nav
+                aria-label={heading}
+                className="mt-3 flex flex-col items-start gap-y-2 font-display text-ink-soft text-sm"
+              >
+                {links.map((link) => (
+                  <FooterLink key={link.href} {...link} />
+                ))}
+              </nav>
+            </div>
+          ))}
+        </div>
+      </div>
+      {/* Hairline between the decks: the columns are structure, the closing
+          line is a signature — they shouldn't read as one block. */}
+      <div className="mt-8 border-rule border-t">
+        <FooterBand />
       </div>
     </footer>
   );
@@ -409,7 +551,9 @@ export function AppShell({
     <div className="flex min-h-screen flex-col bg-paper font-body text-ink">
       <SiteHeader {...header} />
       <div className="flex-1">{children}</div>
-      <SiteFooter />
+      <SiteFooter
+        variant={header.variant === "marketing" ? "marketing" : "app"}
+      />
     </div>
   );
 }

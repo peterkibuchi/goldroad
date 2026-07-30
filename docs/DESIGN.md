@@ -17,6 +17,21 @@ Goldroad has exactly two registers, and they never mix on one screen.
 When in doubt: if the user is consuming or creating words, calm; if we are talking about
 ourselves, Pressroom.
 
+### The printer's mark
+
+The one place the two surfaces genuinely pull against each other is the footer. The rule
+says the platform disappears on a reading page; the project's central claim — that it
+can't be taken away — is worthless if a reader can't check it. A printed book settled
+this centuries ago, and so do we:
+
+- **Marketing surfaces** (`/`, `/leaving-substack`, `/open`) get the full two-deck
+  footer: Product / Open / Legal columns over the closing band.
+- **App chrome** gets the single band with the open-source items inline, so the licence
+  and the source are one click from every screen a writer works in.
+- **Reading surfaces** get neither. The writer's items lead, and Goldroad appears once,
+  last, at whisper weight — one clause pointing at `/open`. Never a band, never a badge,
+  never above the writer's own words.
+
 Note that the Pressroom *visual* system stayed while the press *metaphor* was retired from
 the words. An earlier version of the site leaned on printing-trade language ("the presses
 are warming", "set in type") and read as machine-written. The typography survived that
