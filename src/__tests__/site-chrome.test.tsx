@@ -134,10 +134,10 @@ describe("AppShell — signed-in (command rail)", () => {
     ).toBe("page");
   });
 
-  it("wordmark goes home-for-writers (the dashboard)", () => {
+  it("wordmark goes home-for-writers (the overview)", () => {
     renderShell();
     for (const mark of screen.getAllByRole("link", { name: /goldroad/i })) {
-      expect(mark.getAttribute("href")).toBe("/dashboard");
+      expect(mark.getAttribute("href")).toBe("/home");
     }
   });
 

@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as ZzPreviewRouteImport } from './routes/zz-preview'
 import { Route as WriteRouteImport } from './routes/write'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
@@ -20,6 +21,7 @@ import { Route as LogoutRouteImport } from './routes/logout'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LeavingSubstackRouteImport } from './routes/leaving-substack'
 import { Route as ImportRouteImport } from './routes/import'
+import { Route as HomeRouteImport } from './routes/home'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AtChar123handleChar125IndexRouteImport } from './routes/@{$handle}.index'
@@ -41,6 +43,11 @@ import { Route as ApiImportDraftRouteImport } from './routes/api.import.draft'
 import { Route as ApiAccountExportRouteImport } from './routes/api.account.export'
 import { Route as ApiAccountDeleteRouteImport } from './routes/api.account.delete'
 
+const ZzPreviewRoute = ZzPreviewRouteImport.update({
+  id: '/zz-preview',
+  path: '/zz-preview',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const WriteRoute = WriteRouteImport.update({
   id: '/write',
   path: '/write',
@@ -94,6 +101,11 @@ const LeavingSubstackRoute = LeavingSubstackRouteImport.update({
 const ImportRoute = ImportRouteImport.update({
   id: '/import',
   path: '/import',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HomeRoute = HomeRouteImport.update({
+  id: '/home',
+  path: '/home',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DashboardRoute = DashboardRouteImport.update({
@@ -204,6 +216,7 @@ const ApiAccountDeleteRoute = ApiAccountDeleteRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
+  '/home': typeof HomeRoute
   '/import': typeof ImportRoute
   '/leaving-substack': typeof LeavingSubstackRoute
   '/login': typeof LoginRoute
@@ -215,6 +228,7 @@ export interface FileRoutesByFullPath {
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
   '/write': typeof WriteRoute
+  '/zz-preview': typeof ZzPreviewRoute
   '/@{$handle}/$rkey': typeof AtChar123handleChar125RkeyRoute
   '/@{$handle}/rss.xml': typeof AtChar123handleChar125RssDotxmlRoute
   '/api/drafts': typeof ApiDraftsRoute
@@ -237,6 +251,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
+  '/home': typeof HomeRoute
   '/import': typeof ImportRoute
   '/leaving-substack': typeof LeavingSubstackRoute
   '/login': typeof LoginRoute
@@ -248,6 +263,7 @@ export interface FileRoutesByTo {
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
   '/write': typeof WriteRoute
+  '/zz-preview': typeof ZzPreviewRoute
   '/@{$handle}/$rkey': typeof AtChar123handleChar125RkeyRoute
   '/@{$handle}/rss.xml': typeof AtChar123handleChar125RssDotxmlRoute
   '/api/drafts': typeof ApiDraftsRoute
@@ -271,6 +287,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/dashboard': typeof DashboardRoute
+  '/home': typeof HomeRoute
   '/import': typeof ImportRoute
   '/leaving-substack': typeof LeavingSubstackRoute
   '/login': typeof LoginRoute
@@ -282,6 +299,7 @@ export interface FileRoutesById {
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/terms': typeof TermsRoute
   '/write': typeof WriteRoute
+  '/zz-preview': typeof ZzPreviewRoute
   '/@{$handle}/$rkey': typeof AtChar123handleChar125RkeyRoute
   '/@{$handle}/rss.xml': typeof AtChar123handleChar125RssDotxmlRoute
   '/api/drafts': typeof ApiDraftsRoute
@@ -306,6 +324,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/dashboard'
+    | '/home'
     | '/import'
     | '/leaving-substack'
     | '/login'
@@ -317,6 +336,7 @@ export interface FileRouteTypes {
     | '/sitemap.xml'
     | '/terms'
     | '/write'
+    | '/zz-preview'
     | '/@{$handle}/$rkey'
     | '/@{$handle}/rss.xml'
     | '/api/drafts'
@@ -339,6 +359,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/dashboard'
+    | '/home'
     | '/import'
     | '/leaving-substack'
     | '/login'
@@ -350,6 +371,7 @@ export interface FileRouteTypes {
     | '/sitemap.xml'
     | '/terms'
     | '/write'
+    | '/zz-preview'
     | '/@{$handle}/$rkey'
     | '/@{$handle}/rss.xml'
     | '/api/drafts'
@@ -372,6 +394,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/dashboard'
+    | '/home'
     | '/import'
     | '/leaving-substack'
     | '/login'
@@ -383,6 +406,7 @@ export interface FileRouteTypes {
     | '/sitemap.xml'
     | '/terms'
     | '/write'
+    | '/zz-preview'
     | '/@{$handle}/$rkey'
     | '/@{$handle}/rss.xml'
     | '/api/drafts'
@@ -406,6 +430,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   DashboardRoute: typeof DashboardRoute
+  HomeRoute: typeof HomeRoute
   ImportRoute: typeof ImportRoute
   LeavingSubstackRoute: typeof LeavingSubstackRoute
   LoginRoute: typeof LoginRoute
@@ -417,6 +442,7 @@ export interface RootRouteChildren {
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   TermsRoute: typeof TermsRoute
   WriteRoute: typeof WriteRoute
+  ZzPreviewRoute: typeof ZzPreviewRoute
   AtChar123handleChar125RkeyRoute: typeof AtChar123handleChar125RkeyRoute
   AtChar123handleChar125RssDotxmlRoute: typeof AtChar123handleChar125RssDotxmlRoute
   ApiDraftsRoute: typeof ApiDraftsRoute
@@ -437,6 +463,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/zz-preview': {
+      id: '/zz-preview'
+      path: '/zz-preview'
+      fullPath: '/zz-preview'
+      preLoaderRoute: typeof ZzPreviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/write': {
       id: '/write'
       path: '/write'
@@ -512,6 +545,13 @@ declare module '@tanstack/react-router' {
       path: '/import'
       fullPath: '/import'
       preLoaderRoute: typeof ImportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/home': {
+      id: '/home'
+      path: '/home'
+      fullPath: '/home'
+      preLoaderRoute: typeof HomeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dashboard': {
@@ -674,6 +714,7 @@ const ApiImportRouteWithChildren = ApiImportRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DashboardRoute: DashboardRoute,
+  HomeRoute: HomeRoute,
   ImportRoute: ImportRoute,
   LeavingSubstackRoute: LeavingSubstackRoute,
   LoginRoute: LoginRoute,
@@ -685,6 +726,7 @@ const rootRouteChildren: RootRouteChildren = {
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   TermsRoute: TermsRoute,
   WriteRoute: WriteRoute,
+  ZzPreviewRoute: ZzPreviewRoute,
   AtChar123handleChar125RkeyRoute: AtChar123handleChar125RkeyRoute,
   AtChar123handleChar125RssDotxmlRoute: AtChar123handleChar125RssDotxmlRoute,
   ApiDraftsRoute: ApiDraftsRoute,
