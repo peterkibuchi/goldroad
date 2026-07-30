@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DashboardRow, DraftRow, PostsTab } from "../lib/dashboard";
 import type { DocumentEngagement } from "../lib/engagement";
 import { PostsManager } from "../routes/dashboard";
+import { VIEWS_OFF, viewsReady } from "./support/views-envelope";
 
 // No vitest globals in this repo — RTL auto-cleanup doesn't run; do it by hand.
 afterEach(() => {
@@ -23,7 +24,7 @@ const IDENT = "writer.example";
 
 /** The manager reads /api/stats on mount; every test here is about the table,
  * so the seam stays off unless a test says otherwise. */
-function stubStats(body: unknown = { enabled: false }) {
+function stubStats(body: unknown = VIEWS_OFF) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async () => new Response(JSON.stringify(body), { status: 200 })),
@@ -253,14 +254,12 @@ describe("posts manager — sort", () => {
   });
 
   it("parks posts with no recorded views at the end of a most-read sort, not at zero", async () => {
-    stubStats({
-      enabled: true,
-      total: 40,
-      paths: [
+    stubStats(
+      viewsReady(40, [
         { path: `/@${IDENT}/3aaa2aaa2aaa2`, views: 40 },
         { path: `/@${IDENT}/3bbb2bbb2bbb2`, views: 2 },
-      ],
-    });
+      ]),
+    );
     renderManager();
     await screen.findByRole("option", { name: /most read/i });
     fireEvent.change(screen.getByRole("combobox"), {

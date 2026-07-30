@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DashboardRow } from "../lib/dashboard";
 import type { DocumentEngagement } from "../lib/engagement";
 import { PostsManager } from "../routes/dashboard";
+import { VIEWS_OFF, viewsEnvelope } from "./support/views-envelope";
 
 afterEach(() => {
   cleanup();
@@ -60,7 +61,7 @@ function renderManager(
  */
 describe("posts manager metrics — stats seam not configured", () => {
   it("renders the row but no view count at all", async () => {
-    stubStatsFetch({ enabled: false });
+    stubStatsFetch(VIEWS_OFF);
     renderManager([row("3aaa2aaa2aaa2", "a post")]);
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
     screen.getByText("a post");
@@ -68,7 +69,7 @@ describe("posts manager metrics — stats seam not configured", () => {
   });
 
   it("offers no most-read sort when there is nothing to sort by", async () => {
-    stubStatsFetch({ enabled: false });
+    stubStatsFetch(VIEWS_OFF);
     renderManager([row("3aaa2aaa2aaa2", "a post")]);
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole("option", { name: /most read/i })).toBeNull();
@@ -77,14 +78,16 @@ describe("posts manager metrics — stats seam not configured", () => {
 
 describe("posts manager metrics — stats seam answering", () => {
   it("shows a view count only on the rows the provider actually recorded", async () => {
-    stubStatsFetch({
-      enabled: true,
-      total: 35,
-      paths: [
-        { path: `/@${IDENT}/3aaa2aaa2aaa2`, views: 30 },
-        { path: `/@${IDENT}`, views: 5 },
-      ],
-    });
+    stubStatsFetch(
+      viewsEnvelope({
+        status: "ok",
+        total: 35,
+        paths: [
+          { path: `/@${IDENT}/3aaa2aaa2aaa2`, views: 30 },
+          { path: `/@${IDENT}`, views: 5 },
+        ],
+      }),
+    );
     renderManager([
       row("3aaa2aaa2aaa2", "the recorded post"),
       row("3bbb2bbb2bbb2", "the unrecorded post"),
@@ -98,21 +101,25 @@ describe("posts manager metrics — stats seam answering", () => {
   });
 
   it("uses the singular for a single view", async () => {
-    stubStatsFetch({
-      enabled: true,
-      total: 1,
-      paths: [{ path: `/@${IDENT}/3aaa2aaa2aaa2`, views: 1 }],
-    });
+    stubStatsFetch(
+      viewsEnvelope({
+        status: "ok",
+        total: 1,
+        paths: [{ path: `/@${IDENT}/3aaa2aaa2aaa2`, views: 1 }],
+      }),
+    );
     renderManager([row("3aaa2aaa2aaa2", "a post")]);
     await screen.findByText("1 view");
   });
 
   it("offers the most-read sort once counts exist", async () => {
-    stubStatsFetch({
-      enabled: true,
-      total: 30,
-      paths: [{ path: `/@${IDENT}/3aaa2aaa2aaa2`, views: 30 }],
-    });
+    stubStatsFetch(
+      viewsEnvelope({
+        status: "ok",
+        total: 30,
+        paths: [{ path: `/@${IDENT}/3aaa2aaa2aaa2`, views: 30 }],
+      }),
+    );
     renderManager([row("3aaa2aaa2aaa2", "a post")]);
     await screen.findByRole("option", { name: /most read/i });
   });
@@ -120,7 +127,7 @@ describe("posts manager metrics — stats seam answering", () => {
 
 describe("posts manager metrics — stats seam unavailable", () => {
   it("renders no numbers, and the list still works", async () => {
-    stubStatsFetch({ enabled: true, error: "unavailable" });
+    stubStatsFetch(viewsEnvelope({ status: "unavailable" }));
     renderManager([row("3aaa2aaa2aaa2", "a post")]);
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
     screen.getByText("a post");
@@ -149,7 +156,7 @@ describe("posts manager metrics — cross-network counts", () => {
   const threadUrl = "https://bsky.app/profile/writer.example/post/abc123";
 
   it("renders the counted metrics and links the reply count to the thread", async () => {
-    stubStatsFetch({ enabled: false });
+    stubStatsFetch(VIEWS_OFF);
     renderManager(
       [row("3aaa2aaa2aaa2", "an announced post")],
       new Map([
@@ -170,7 +177,7 @@ describe("posts manager metrics — cross-network counts", () => {
   });
 
   it("skips a metric the AppView left uncounted rather than showing zero", async () => {
-    stubStatsFetch({ enabled: false });
+    stubStatsFetch(VIEWS_OFF);
     renderManager(
       [row("3aaa2aaa2aaa2", "an announced post")],
       new Map([["3aaa2aaa2aaa2", { counts: { likeCount: 7 }, threadUrl }]]),
@@ -182,7 +189,7 @@ describe("posts manager metrics — cross-network counts", () => {
   });
 
   it("renders nothing for an announced post whose every count came back uncounted", async () => {
-    stubStatsFetch({ enabled: false });
+    stubStatsFetch(VIEWS_OFF);
     renderManager(
       [row("3aaa2aaa2aaa2", "an announced post")],
       new Map([["3aaa2aaa2aaa2", { counts: {}, threadUrl }]]),
