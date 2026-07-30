@@ -50,7 +50,7 @@ const components: Components = {
   li: (p) => <li className="pl-1" {...strip(p)} />,
   blockquote: (p) => (
     <blockquote
-      className="mt-6 border-rule border-l-2 pl-6 text-ink-soft text-xl italic leading-snug"
+      className="mt-6 border-ink border-l-2 pl-6 text-[1.3125rem] text-ink-soft leading-relaxed"
       {...strip(p)}
     />
   ),
@@ -87,7 +87,7 @@ const components: Components = {
 
 export function Prose({ markdown }: { markdown: string }) {
   return (
-    <div className="text-lg leading-relaxed">
+    <div className="text-[1.25rem] leading-[1.7]">
       <Markdown components={components} remarkPlugins={[remarkGfm]}>
         {markdown}
       </Markdown>
