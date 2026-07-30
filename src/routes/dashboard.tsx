@@ -73,11 +73,11 @@ import {
   type DocumentEngagement,
   getPostsEngagement,
 } from "~/lib/engagement";
+import { readLiveSessionDid } from "~/lib/live-session";
 import { LEGACY_ORIGINS, ownOrigins } from "~/lib/origin";
 import { capture } from "~/lib/posthog";
 import { isOwnPublicationUrl, TID_RE } from "~/lib/publish";
 import { formatReadingTime } from "~/lib/reading-time";
-import { readSessionDid } from "~/lib/session";
 import { useWriterStats } from "~/lib/use-writer-stats";
 import { cn } from "~/lib/utils";
 import { env } from "cloudflare:workers";
@@ -117,7 +117,11 @@ const getDashboard = createServerFn({ method: "GET" })
   }))
   .handler(async ({ data }) => {
     const request = getRequest();
-    const did = await readSessionDid(request, env.COOKIE_SECRET);
+    const did = await readLiveSessionDid(
+      request,
+      env.COOKIE_SECRET,
+      drizzle(env.DB),
+    );
     if (!did) return null;
     const origin = new URL(request.url).origin;
     const handle = await resolveDidToHandle(did).catch(() => null);

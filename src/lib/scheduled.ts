@@ -31,6 +31,7 @@ import { d1BackupStore, runBackupCheck } from "~/lib/backup";
 import {
   d1SnapshotStore,
   runFollowerSnapshotPass,
+  type SnapshotPassResult,
 } from "~/lib/follower-snapshots";
 import { CANONICAL_ORIGIN } from "~/lib/origin";
 
@@ -103,6 +104,30 @@ export async function reportFailures(
  * satisfies this intersection because the property is optional. */
 type CronEnv = Env & { WEBHOOK_URL?: string };
 
+/**
+ * Follower sampling is the one job in this pass whose failure is IRREVERSIBLE.
+ * Upstream reports a follower count for today only, so a day nobody sampled is
+ * a permanent hole in every writer's growth chart — and the chart renders that
+ * hole honestly, which means the first person to notice is a writer looking at
+ * their own missing history weeks later.
+ *
+ * Everything else on the alert path is either self-healing or already reported
+ * by CI. This was the only irreversible job with no alarm on it, which is
+ * exactly backwards, so it now rides the same channel.
+ *
+ * A pass that attempted nobody is not a failure — it means every writer already
+ * had today's reading, which is the steady state on an hourly cron.
+ */
+function snapshotFailures(result: SnapshotPassResult): string[] {
+  const failures: string[] = [];
+  if (result.attempted > 0 && result.sampled === 0)
+    failures.push(
+      `follower sampling took 0 of ${result.attempted} readings for ${result.day}`,
+    );
+  if (!result.pruned) failures.push("follower snapshot prune failed");
+  return failures;
+}
+
 /** The cron handler body: purge, sample follower counts, check the backup
  * heartbeat, self-check, alert. Never throws (a cron that throws just retries;
  * we'd rather log and move on), and each job is independent — a failure in one
@@ -127,7 +152,11 @@ export async function runScheduled(env: CronEnv): Promise<void> {
   console.log("backup check", backup);
   // A stale backup is a real invariant failure, so it rides the self-check's
   // alert path rather than getting a second, parallel one.
-  const failures = [...(await selfCheck()), ...backup.failures];
+  const failures = [
+    ...(await selfCheck()),
+    ...backup.failures,
+    ...snapshotFailures(snapshots),
+  ];
   if (failures.length > 0) console.error("cron self-check failures", failures);
   await reportFailures(env.WEBHOOK_URL, failures);
 }

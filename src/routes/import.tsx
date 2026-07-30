@@ -31,6 +31,7 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
+import { drizzle } from "drizzle-orm/d1";
 import { useState } from "react";
 
 import { formatDate } from "~/components/document-article";
@@ -43,12 +44,16 @@ import {
   MAX_EXPORT_TEXT_BYTES,
   MAX_EXPORT_ZIP_BYTES,
 } from "~/lib/import-formats";
+import { readLiveSessionDid } from "~/lib/live-session";
 import { capture } from "~/lib/posthog";
-import { readSessionDid } from "~/lib/session";
 import { env } from "cloudflare:workers";
 
 const getImportViewer = createServerFn({ method: "GET" }).handler(async () => {
-  const did = await readSessionDid(getRequest(), env.COOKIE_SECRET);
+  const did = await readLiveSessionDid(
+    getRequest(),
+    env.COOKIE_SECRET,
+    drizzle(env.DB),
+  );
   if (!did) return null;
   const handle = await resolveDidToHandle(did).catch(() => null);
   return { ident: handle ?? did };

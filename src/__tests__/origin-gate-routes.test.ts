@@ -17,6 +17,20 @@ vi.mock("~/lib/oauth", async (importOriginal) => {
   return { ...actual, createOAuthClient: () => ({ restore, revoke }) };
 });
 
+// The liveness half of the session read needs a real database, which this
+// suite deliberately doesn't have — it exists to prove the Origin gate runs
+// BEFORE any session work. Mocked to defer to the signature-only read so the
+// gate is what's under test; revocation is covered in live-session.test.ts.
+vi.mock("~/lib/live-session", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/live-session")>();
+  const { readSessionDid } = await import("../lib/session");
+  return {
+    ...actual,
+    readLiveSessionDid: (request: Request, secret: string) =>
+      readSessionDid(request, secret),
+  };
+});
+
 import { signSession } from "../lib/session";
 import { Route as PublishRoute } from "../routes/api.publish";
 import { Route as LogoutRoute } from "../routes/logout";

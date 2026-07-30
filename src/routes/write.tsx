@@ -19,13 +19,13 @@ import { selectDraft } from "~/lib/drafts";
 import { isDraftId, MAX_DRAFTS_PER_USER } from "~/lib/drafts-schema";
 import { downscaleImage } from "~/lib/image";
 import { selectMirror } from "~/lib/import-store";
+import { readLiveSessionDid } from "~/lib/live-session";
 import {
   MAX_DEK_LENGTH,
   RECOMMENDED_DEK_LENGTH,
   TID_RE,
   writerDek,
 } from "~/lib/publish";
-import { readSessionDid } from "~/lib/session";
 import { env } from "cloudflare:workers";
 
 // BlockNote is client-only (ProseMirror needs a real DOM): lazy + ClientOnly
@@ -102,7 +102,11 @@ const getWriteContext = createServerFn({ method: "GET" })
         : undefined,
   }))
   .handler(async ({ data }) => {
-    const did = await readSessionDid(getRequest(), env.COOKIE_SECRET);
+    const did = await readLiveSessionDid(
+      getRequest(),
+      env.COOKIE_SECRET,
+      drizzle(env.DB),
+    );
     if (!did)
       return {
         viewer: null,

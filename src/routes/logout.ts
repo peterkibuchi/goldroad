@@ -30,6 +30,12 @@ export const Route = createFileRoute("/logout")({
           });
         if (isCrossSite(request)) return home();
 
+        // Deliberately the signature-only read, not the liveness one: signing
+        // out must work even when the session row is already gone. Requiring a
+        // live row here would make a half-revoked session impossible to clear,
+        // which is the opposite of what someone clicking "sign out" wants. This
+        // handler only revokes upstream and clears a cookie — there is nothing
+        // to protect behind a liveness check.
         const did = await readSessionDid(request, env.COOKIE_SECRET);
         if (did && isDid(did)) {
           // Best-effort: revoke tokens upstream and drop the D1 session.

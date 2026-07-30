@@ -16,6 +16,7 @@ import {
 } from "~/lib/atproto";
 import { blobImagePath, coverImageCid } from "~/lib/blob";
 import { squareIconImage } from "~/lib/image";
+import { readLiveSessionDid } from "~/lib/live-session";
 import { canonicalOrigin, LEGACY_ORIGINS, ownOrigins } from "~/lib/origin";
 import {
   isOwnPublicationUrl,
@@ -23,7 +24,6 @@ import {
   MAX_PUBLICATION_DESCRIPTION_LENGTH,
 } from "~/lib/publish";
 import { countDraftsForDid, countImportItemsForDid } from "~/lib/rights-store";
-import { readSessionDid } from "~/lib/session";
 import { env } from "cloudflare:workers";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -51,7 +51,11 @@ function errorMessage(code: string | undefined): string | null {
 
 const getSettings = createServerFn({ method: "GET" }).handler(async () => {
   const request = getRequest();
-  const did = await readSessionDid(request, env.COOKIE_SECRET);
+  const did = await readLiveSessionDid(
+    request,
+    env.COOKIE_SECRET,
+    drizzle(env.DB),
+  );
   if (!did) return null;
   const origin = new URL(request.url).origin;
   const handle = await resolveDidToHandle(did).catch(() => null);

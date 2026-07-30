@@ -44,8 +44,8 @@ import {
   type DocumentEngagement,
   getDocumentEngagement,
 } from "~/lib/engagement";
+import { readLiveSessionDid } from "~/lib/live-session";
 import { formatReadingTime } from "~/lib/reading-time";
-import { readSessionDid } from "~/lib/session";
 import { type StatsState, useWriterStats } from "~/lib/use-writer-stats";
 import { env } from "cloudflare:workers";
 
@@ -66,7 +66,11 @@ type PublishedSummary = {
 
 const getOverview = createServerFn({ method: "GET" }).handler(async () => {
   const request = getRequest();
-  const did = await readSessionDid(request, env.COOKIE_SECRET);
+  const did = await readLiveSessionDid(
+    request,
+    env.COOKIE_SECRET,
+    drizzle(env.DB),
+  );
   if (!did) return null;
   const handle = await resolveDidToHandle(did).catch(() => null);
   const pds = await resolveDidToPds(did).catch(() => null);
