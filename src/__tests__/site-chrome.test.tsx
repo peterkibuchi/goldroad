@@ -54,9 +54,9 @@ describe("AppShell — marketing/signed-out", () => {
 });
 
 /**
- * The command rail (chrome direction 02, with direction 03's dimmed-"Soon"
- * tabs folded in — DECISIONS #62). Desktop rail and mobile tab bar both
- * render in the DOM at once (CSS media queries pick which is visible), so
+ * The command rail, with its inert "Soon" rows folded in. Desktop rail and
+ * mobile tab bar both render in the DOM at once (CSS media queries pick which
+ * is visible), so
  * every query below scopes to one landmark via `within` rather than the
  * page-wide `screen` — the rail and tab bar both expose an
  * aria-label="Writer" navigation region and repeat the same link labels.
@@ -141,7 +141,41 @@ describe("AppShell — signed-in (command rail)", () => {
     }
   });
 
-  it("shows Stats and Newsletter as dimmed, non-interactive 'Soon' rows", () => {
+  it("anchors the rail to the viewport, not the document", () => {
+    renderShell("settings");
+    // Regression: the rail used to stretch to the document's height, which
+    // scrolled its nav off the top and stranded the identity cluster far below
+    // the fold on any long page. It must be exactly one viewport tall and
+    // pinned to the top of the scrollport.
+    const rail = screen.getByRole("complementary");
+    for (const cls of ["sticky", "top-0", "h-dvh"]) {
+      expect(rail.className.split(" ")).toContain(cls);
+    }
+    // The shell itself never scrolls; only the nav region may, and only if the
+    // rows outgrow the viewport. Anything else means a second scrollbar.
+    expect(rail.className).not.toContain("overflow");
+    const nav = railNav();
+    expect(nav.className.split(" ")).toContain("overflow-y-auto");
+    // Identity sits at the bottom of the rail's full-height column.
+    const identity = screen
+      .getAllByText("writer.bsky.social")[0]
+      .closest("div")?.parentElement;
+    expect(identity?.className.split(" ")).toContain("mt-auto");
+  });
+
+  it("spends no spot color on the active-section marker", () => {
+    renderShell("posts");
+    // The vermillion accent is scarce — one moment per view — and it belongs to
+    // the page's primary action, not to persistent chrome.
+    const navs = screen.getAllByRole("navigation", { name: "Writer" });
+    for (const nav of navs) {
+      const active = within(nav).getByRole("link", { name: "Posts" });
+      expect(active.className).toContain("border-ink");
+      expect(active.className).not.toContain("spot");
+    }
+  });
+
+  it("shows Stats and Newsletter as legible, non-interactive 'Soon' rows", () => {
     renderShell("posts");
     const nav = railNav();
     // "Soon" rows are inert — never real links (nowhere to go yet), so they
@@ -152,6 +186,12 @@ describe("AppShell — signed-in (command rail)", () => {
     expect(within(nav).getByText("Stats")).toBeDefined();
     expect(within(nav).getByText("Newsletter")).toBeDefined();
     expect(within(nav).getAllByText("Soon")).toHaveLength(2);
+    // Unavailable must not mean unreadable: the rows carry no opacity dimming
+    // (which dropped them under the 4.5:1 contrast floor) — the chip and the
+    // absent hover response say "not yet" instead.
+    const soonRow = within(nav).getByText("Stats");
+    expect(soonRow.className).not.toContain("opacity");
+    expect(soonRow.className).toContain("text-ink-soft");
   });
 
   it("the mobile tab bar exposes only real destinations, not the Soon rows", () => {
