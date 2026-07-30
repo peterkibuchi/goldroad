@@ -17,6 +17,7 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ReportRouteImport } from './routes/report'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as PoliciesRouteImport } from './routes/policies'
+import { Route as OpenRouteImport } from './routes/open'
 import { Route as LogoutRouteImport } from './routes/logout'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LeavingSubstackRouteImport } from './routes/leaving-substack'
@@ -81,6 +82,11 @@ const PrivacyRoute = PrivacyRouteImport.update({
 const PoliciesRoute = PoliciesRouteImport.update({
   id: '/policies',
   path: '/policies',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OpenRoute = OpenRouteImport.update({
+  id: '/open',
+  path: '/open',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LogoutRoute = LogoutRouteImport.update({
@@ -221,6 +227,7 @@ export interface FileRoutesByFullPath {
   '/leaving-substack': typeof LeavingSubstackRoute
   '/login': typeof LoginRoute
   '/logout': typeof LogoutRoute
+  '/open': typeof OpenRoute
   '/policies': typeof PoliciesRoute
   '/privacy': typeof PrivacyRoute
   '/report': typeof ReportRoute
@@ -256,6 +263,7 @@ export interface FileRoutesByTo {
   '/leaving-substack': typeof LeavingSubstackRoute
   '/login': typeof LoginRoute
   '/logout': typeof LogoutRoute
+  '/open': typeof OpenRoute
   '/policies': typeof PoliciesRoute
   '/privacy': typeof PrivacyRoute
   '/report': typeof ReportRoute
@@ -292,6 +300,7 @@ export interface FileRoutesById {
   '/leaving-substack': typeof LeavingSubstackRoute
   '/login': typeof LoginRoute
   '/logout': typeof LogoutRoute
+  '/open': typeof OpenRoute
   '/policies': typeof PoliciesRoute
   '/privacy': typeof PrivacyRoute
   '/report': typeof ReportRoute
@@ -329,6 +338,7 @@ export interface FileRouteTypes {
     | '/leaving-substack'
     | '/login'
     | '/logout'
+    | '/open'
     | '/policies'
     | '/privacy'
     | '/report'
@@ -364,6 +374,7 @@ export interface FileRouteTypes {
     | '/leaving-substack'
     | '/login'
     | '/logout'
+    | '/open'
     | '/policies'
     | '/privacy'
     | '/report'
@@ -399,6 +410,7 @@ export interface FileRouteTypes {
     | '/leaving-substack'
     | '/login'
     | '/logout'
+    | '/open'
     | '/policies'
     | '/privacy'
     | '/report'
@@ -435,6 +447,7 @@ export interface RootRouteChildren {
   LeavingSubstackRoute: typeof LeavingSubstackRoute
   LoginRoute: typeof LoginRoute
   LogoutRoute: typeof LogoutRoute
+  OpenRoute: typeof OpenRoute
   PoliciesRoute: typeof PoliciesRoute
   PrivacyRoute: typeof PrivacyRoute
   ReportRoute: typeof ReportRoute
@@ -517,6 +530,13 @@ declare module '@tanstack/react-router' {
       path: '/policies'
       fullPath: '/policies'
       preLoaderRoute: typeof PoliciesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/open': {
+      id: '/open'
+      path: '/open'
+      fullPath: '/open'
+      preLoaderRoute: typeof OpenRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/logout': {
@@ -719,6 +739,7 @@ const rootRouteChildren: RootRouteChildren = {
   LeavingSubstackRoute: LeavingSubstackRoute,
   LoginRoute: LoginRoute,
   LogoutRoute: LogoutRoute,
+  OpenRoute: OpenRoute,
   PoliciesRoute: PoliciesRoute,
   PrivacyRoute: PrivacyRoute,
   ReportRoute: ReportRoute,
