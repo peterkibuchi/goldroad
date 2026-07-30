@@ -70,6 +70,25 @@ import { env } from "cloudflare:workers";
  * writer-private even where the underlying Bluesky counts are public, because
  * the SET of posts is not.
  */
+/**
+ * The minimum a cached section must look like to be trusted: an object whose
+ * `status` is one of the statuses this endpoint actually emits. Deliberately
+ * shallow — it catches the realistic failure (a stale blob from a previous
+ * deploy's shape) without re-validating every field on every cache hit, which
+ * would cost more than recomputing.
+ */
+function isCachedSection(value: unknown): value is { status: SectionStatus } {
+  if (typeof value !== "object" || value === null) return false;
+  const status = (value as { status?: unknown }).status;
+  return (
+    status === "ok" ||
+    status === "unavailable" ||
+    status === "not_configured" ||
+    status === "insufficient_history" ||
+    status === "empty"
+  );
+}
+
 export const Route = createFileRoute("/api/stats")({
   server: {
     handlers: {
@@ -105,11 +124,21 @@ export const Route = createFileRoute("/api/stats")({
           if (cache) {
             const hit = await cache.match(key).catch(() => undefined);
             if (hit) {
-              const cached = (await hit.json().catch(() => null)) as T | null;
-              if (cached) {
+              const cached: unknown = await hit.json().catch(() => null);
+              // Validate rather than cast. A cached blob is the one input here
+              // the compiler cannot check: `as T` type-checks whatever JSON is
+              // at that key, so renaming a field on a section would keep
+              // serving the OLD shape — typed as the new one — for up to an
+              // hour, and a caller reading `views.total ?? 0` off a field that
+              // no longer exists renders a zero. That is precisely the false
+              // zero the rest of this file works to prevent, arriving through
+              // the one door nothing was guarding.
+              if (isCachedSection(cached)) {
                 cacheStatus[name] = "HIT";
-                return cached;
+                return cached as T;
               }
+              // A shape we don't recognise is treated as a miss, which is an
+              // already-handled state — no new failure path.
             }
           }
           cacheStatus[name] = "MISS";
