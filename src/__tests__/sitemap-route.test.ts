@@ -48,6 +48,7 @@ describe("/sitemap.xml", () => {
     expect(locs).toEqual([
       "https://trygoldroad.com/",
       "https://trygoldroad.com/leaving-substack",
+      "https://trygoldroad.com/open",
       "https://trygoldroad.com/privacy",
       "https://trygoldroad.com/terms",
       "https://trygoldroad.com/policies",

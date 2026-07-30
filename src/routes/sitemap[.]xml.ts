@@ -22,6 +22,7 @@ import { CANONICAL_ORIGIN } from "~/lib/origin";
 const FIRST_PARTY_PATHS = [
   "/",
   "/leaving-substack",
+  "/open",
   "/privacy",
   "/terms",
   "/policies",
