@@ -438,7 +438,8 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
           </h2>
           <p className="mt-4 max-w-[56ch] text-pretty text-ink-soft text-lg leading-relaxed">
             Plenty of platforms say you own your audience. Here's what the word
-            actually covers at Goldroad — none of it resting on our goodwill.
+            actually covers at Goldroad — each part guaranteed by how it's
+            built, rather than by our promises.
           </p>
           <dl className="mt-10 grid grid-cols-1 gap-x-12 gap-y-8 md:grid-cols-2">
             <div>

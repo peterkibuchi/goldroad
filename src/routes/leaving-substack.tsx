@@ -115,7 +115,7 @@ function ComparisonTable() {
         <thead>
           <tr>
             <th className={`${head} text-ink-soft`} scope="col">
-              Line item
+              What matters
             </th>
             <th className={`${head} text-spot`} scope="col">
               Goldroad
@@ -197,8 +197,8 @@ export function LeavingSubstack() {
             Goldroad and Substack, line by line.
           </h2>
           <p className="mt-4 max-w-[58ch] text-pretty text-ink-soft text-lg leading-relaxed">
-            Nothing we haven't shipped is written in the present tense. Where
-            something is still on the roadmap, the table says so — no vaporware.
+            Some of this is built and working today. Some of it isn't yet, and
+            those rows say so — they're the ones worth reading closely.
           </p>
           <ComparisonTable />
           <figure className="mt-12 border-ink border-l-2 pl-5">
@@ -221,11 +221,10 @@ export function LeavingSubstack() {
             Keep publishing on Substack, too.
           </h2>
           <p className="mt-4 max-w-[60ch] text-pretty text-ink-soft text-lg leading-relaxed">
-            Moving shouldn't mean burning the boat, and you don't have to
-            migrate day one — import mirrors your posts: the originals stay
-            untouched on Substack, and readers are pointed to the original until
-            you say otherwise. Bring readers over at your own pace instead of
-            all at once.
+            Import brings your archive here as drafts while the originals stay
+            exactly where they are. Readers keep landing on your Substack until
+            you decide otherwise, so you can move at whatever pace suits you —
+            one post, or all of them.
           </p>
         </MarketingSection>
 
