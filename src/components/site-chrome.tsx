@@ -60,7 +60,7 @@ function Wordmark({
 }: {
   href: string;
   /** The mobile top strip drops the chip first when space is tight —
-   * deliberately (chrome direction 02's honest mobile-story constraint). */
+   * deliberately — on a narrow strip the wordmark itself has to win. */
   showBeta?: boolean;
 }) {
   return (
@@ -90,8 +90,8 @@ export function SiteHeader(props: MarketingHeaderProps) {
       <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-x-6 px-6 py-2 md:px-16">
         <Wordmark href="/" />
         {props.variant === "marketing" && (
-          // Marketing header carries no sign-in link for now (pre-launch —
-          // see DESIGN.md's founding-writers stance).
+          // Marketing header carries no sign-in link while the product is
+          // still opening to its first writers by invitation.
           <span className="ml-auto font-display font-semibold text-ink-soft text-sm">
             Opening soon
           </span>
