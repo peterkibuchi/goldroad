@@ -7,16 +7,25 @@
  *    `SiteFooter`) — unauthenticated surfaces stay exactly as they were.
  *  - signed-in: the command rail (`WriterChrome`) — chosen over a fourth
  *    top-bar iteration because it scales past four destinations without a
- *    redesign (DECISIONS #62). A slim left rail carries icon+label nav with
- *    identity pinned at the bottom (the native-app account-switcher spot);
- *    content gets the full width writing surfaces want. Below ~760px the
- *    rail can't survive — it collapses to a slim top strip (wordmark +
- *    public-page/sign-out) plus a bottom tab bar (icons only, real
- *    destinations only — the mobile-native pattern for this exact job).
- *    Two dimmed "Soon" rows (Stats, Newsletter) are folded in from chrome
- *    direction 03 — non-interactive, so future surfaces don't force another
- *    chrome rework later. Both frames read the same design tokens; reading
- *    surfaces (see ~/components/document-article) never render either one.
+ *    redesign. A slim left rail carries icon+label nav with identity pinned
+ *    at the bottom (the native-app account-switcher spot); content gets the
+ *    full width writing surfaces want. Below ~760px the rail can't survive —
+ *    it collapses to a slim top strip (wordmark + public-page/sign-out) plus
+ *    a bottom tab bar (icons only, real destinations only — the mobile-native
+ *    pattern for this exact job). Two quiet "Soon" rows (Stats, Newsletter)
+ *    are folded in as non-interactive promises, so shipping those surfaces
+ *    later never forces another chrome rework. Both frames read the same
+ *    design tokens; reading surfaces (see ~/components/document-article)
+ *    never render either one.
+ *
+ * The rail is viewport-anchored, not document-anchored: `sticky top-0 h-dvh`
+ * so navigation and identity stay put while the page scrolls beneath them.
+ * The document keeps the only scrollbar — the rail's nav region is the single
+ * place allowed to scroll, and only if its own rows ever outgrow the viewport.
+ *
+ * Chrome deliberately spends no spot color: the vermillion accent is scarce
+ * (one moment per view) and belongs to the page's primary action, so the
+ * active-section marker is a solid ink rule instead.
  */
 import {
   IconChartBar,
@@ -133,11 +142,10 @@ const WRITER_NAV: ReadonlyArray<{
   },
 ];
 
-/** Visible growth promises, not live routes — chrome direction 03's
- * dimmed-"Soon" pattern folded into the rail (DECISIONS #62) so shipping
- * Stats/Newsletter later never forces another chrome redesign. Rendered as
- * inert `<span>` rows, never `<a>` — there is nowhere for them to go yet, and
- * a fake `href="#"` would be dishonest to assistive tech and keyboard users. */
+/** Visible growth promises, not live routes, so shipping Stats/Newsletter
+ * later never forces another chrome redesign. Rendered as inert `<span>` rows,
+ * never `<a>` — there is nowhere for them to go yet, and a fake `href="#"`
+ * would be dishonest to assistive tech and keyboard users. */
 const SOON_NAV: ReadonlyArray<{ label: string; Icon: NavIcon }> = [
   { label: "Stats", Icon: IconChartBar },
   { label: "Newsletter", Icon: IconMail },
@@ -158,9 +166,11 @@ function RailLink({
     <a
       aria-current={isActive ? "page" : undefined}
       className={cn(
-        "flex min-h-11 items-center gap-3 border-transparent border-l-3 px-4 py-2 font-display text-sm transition-colors",
+        // Rows are full-bleed inside a scrollable nav, so the focus ring is
+        // inset — an outset one would be clipped by the scroll container.
+        "flex min-h-11 items-center gap-3 border-transparent border-l-2 px-4 py-2 font-display text-sm transition-colors focus-visible:-outline-offset-2",
         isActive
-          ? "border-spot bg-ink/5 font-bold text-ink"
+          ? "border-ink bg-ink/5 font-bold text-ink"
           : "text-ink-soft hover:bg-ink/5 hover:text-ink",
       )}
       href={href}
@@ -171,12 +181,18 @@ function RailLink({
   );
 }
 
+/** An unavailable destination has to read as *not yet*, never as broken: full
+ * ink-soft (dimming it below that failed contrast), matched to the rail's live
+ * rows, with the chip and the absence of any hover response carrying the
+ * "unavailable" message instead. */
 function SoonRow({ label, Icon }: { label: string; Icon: NavIcon }) {
   return (
-    <span className="flex min-h-11 items-center gap-3 border-transparent border-l-3 px-4 py-2 font-display text-ink-soft text-sm opacity-60">
+    <span className="flex min-h-11 items-center gap-3 border-transparent border-l-2 px-4 py-2 font-display text-ink-soft text-sm">
       <Icon aria-hidden="true" className="shrink-0" size={19} stroke={1.75} />
       {label}
-      <span className="ml-auto border border-ink-soft border-dashed px-1.5 py-0.5 font-semibold text-[0.6rem] uppercase tracking-[0.1em]">
+      {/* Same hairline chip as the wordmark's phase label — one chip
+          convention in this chrome, not two. */}
+      <span className="ml-auto border border-ink-soft px-1.5 py-0.5 font-semibold text-[0.6rem] uppercase tracking-[0.12em]">
         Soon
       </span>
     </span>
@@ -188,41 +204,46 @@ function initialOf(ident: string): string {
 }
 
 /** Bottom-of-rail identity cluster — where every native app puts account
- * switching. Carries the two links the mobile frame moves into the top
- * strip: the writer's public page and sign out. */
+ * switching. `mt-auto` inside the rail's full-height column pins it to the
+ * bottom of the *viewport*, not the bottom of the document. Carries the two
+ * links the mobile frame moves into the top strip: the writer's public page
+ * and sign out. */
 function RailIdentity({ ident }: { ident: string }) {
   return (
-    <div className="mt-auto flex items-center gap-2.5 border-rule border-t px-4 py-3">
+    <div className="mt-auto flex shrink-0 items-center gap-2.5 border-rule border-t px-4 py-3">
+      {/* Square, not a circle: this register carries no rounded corners. */}
       <span
         aria-hidden="true"
-        className="flex size-7 shrink-0 items-center justify-center rounded-full bg-ink font-bold font-display text-paper text-xs"
+        className="flex size-7 shrink-0 items-center justify-center bg-ink font-bold font-display text-paper text-xs"
       >
         {initialOf(ident)}
       </span>
-      <span className="min-w-0">
+      <div className="min-w-0 flex-1">
+        {/* Long handles truncate; the title carries the full one, since a
+            clipped handle is the one thing a writer needs to read in full. */}
         <span
           className="block truncate font-display font-semibold text-ink text-sm"
-          title="Signed in with your own atproto identity"
+          title={ident}
         >
           {ident}
         </span>
-        <span className="flex gap-3">
+        <div className="flex gap-3">
           <a
-            className="font-display text-ink-soft text-xs underline underline-offset-2 transition-colors hover:text-ink"
+            className="inline-flex min-h-6 items-center font-display text-ink-soft text-xs underline underline-offset-2 transition-colors hover:text-ink"
             href={`/@${encodeURIComponent(ident)}`}
           >
             Public page
           </a>
           <form action="/logout" method="post">
             <button
-              className="cursor-pointer font-display text-ink-soft text-xs underline underline-offset-2 transition-colors hover:text-ink"
+              className="inline-flex min-h-6 cursor-pointer items-center font-display text-ink-soft text-xs underline underline-offset-2 transition-colors hover:text-ink"
               type="submit"
             >
               Sign out
             </button>
           </form>
-        </span>
-      </span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -235,11 +256,21 @@ function WriterRail({
   active?: WriterNavItem;
 }) {
   return (
-    <aside className="hidden w-56 shrink-0 flex-col border-ink border-r-3 border-double md:flex">
-      <div className="px-4 pt-4 pb-2">
+    // Viewport-anchored: sticky at the top of the scrollport and exactly one
+    // viewport tall, so the rail holds still while the page scrolls past it.
+    // `dvh` keeps the identity cluster on the visible edge on mobile browsers
+    // whose toolbars make `vh` lie.
+    <aside className="sticky top-0 hidden h-dvh w-56 shrink-0 flex-col border-ink border-r-3 border-double md:flex">
+      <div className="shrink-0 px-4 pt-4 pb-2">
         <Wordmark href="/dashboard" />
       </div>
-      <nav aria-label="Writer" className="mt-2 flex flex-col">
+      {/* The one region permitted to scroll, and only when the rows genuinely
+          outgrow the viewport — at these counts they never do, but a writer on
+          a short window still reaches every destination. */}
+      <nav
+        aria-label="Writer"
+        className="mt-2 flex min-h-0 flex-1 flex-col overflow-y-auto"
+      >
         {WRITER_NAV.map(({ item, href, label, Icon }) => (
           <RailLink
             Icon={Icon}
@@ -249,9 +280,13 @@ function WriterRail({
             label={label}
           />
         ))}
-        {SOON_NAV.map(({ label, Icon }) => (
-          <SoonRow Icon={Icon} key={label} label={label} />
-        ))}
+        {/* A hairline separates what a writer can do now from what's coming,
+            so the inert rows never read as live destinations that failed. */}
+        <div className="mt-2 border-rule border-t pt-2">
+          {SOON_NAV.map(({ label, Icon }) => (
+            <SoonRow Icon={Icon} key={label} label={label} />
+          ))}
+        </div>
       </nav>
       <RailIdentity ident={ident} />
     </aside>
@@ -265,22 +300,24 @@ function WriterTopStrip({ ident }: { ident: string }) {
   return (
     <div className="flex items-center justify-between border-ink border-b-3 border-double px-4 py-2 md:hidden">
       <Wordmark href="/dashboard" showBeta={false} />
-      <span className="flex items-center gap-3 font-display text-ink-soft text-xs">
+      {/* Touch surface: these two get full-height hit areas, even though the
+          text stays small. */}
+      <div className="flex items-center gap-3 font-display text-ink-soft text-xs">
         <a
-          className="underline underline-offset-2 transition-colors hover:text-ink"
+          className="inline-flex min-h-11 items-center underline underline-offset-2 transition-colors hover:text-ink"
           href={`/@${encodeURIComponent(ident)}`}
         >
           Public page
         </a>
         <form action="/logout" method="post">
           <button
-            className="cursor-pointer underline underline-offset-2 transition-colors hover:text-ink"
+            className="inline-flex min-h-11 cursor-pointer items-center underline underline-offset-2 transition-colors hover:text-ink"
             type="submit"
           >
             Sign out
           </button>
         </form>
-      </span>
+      </div>
     </div>
   );
 }
@@ -292,7 +329,8 @@ function WriterTabBar({ active }: { active?: WriterNavItem }) {
   return (
     <nav
       aria-label="Writer"
-      className="fixed inset-x-0 bottom-0 z-10 flex border-ink border-t-3 border-double bg-paper md:hidden"
+      // Safe-area padding keeps the tabs clear of a phone's home indicator.
+      className="fixed inset-x-0 bottom-0 z-10 flex border-ink border-t-3 border-double bg-paper pb-[env(safe-area-inset-bottom)] md:hidden"
     >
       {WRITER_NAV.map(({ item, href, label, Icon }) => {
         const isActive = active === item;
@@ -300,8 +338,10 @@ function WriterTabBar({ active }: { active?: WriterNavItem }) {
           <a
             aria-current={isActive ? "page" : undefined}
             className={cn(
-              "flex min-h-11 flex-1 flex-col items-center gap-0.5 border-transparent border-t-2 px-1 py-2 font-display font-semibold text-[0.68rem]",
-              isActive ? "border-spot text-ink" : "text-ink-soft",
+              // Same active vocabulary as the rail: a solid ink rule on the
+              // leading edge, no spot color spent on chrome.
+              "flex min-h-11 flex-1 flex-col items-center gap-0.5 border-transparent border-t-2 px-1 py-2 font-display font-semibold text-[0.68rem] focus-visible:-outline-offset-2",
+              isActive ? "border-ink font-bold text-ink" : "text-ink-soft",
             )}
             href={href}
             key={item}
@@ -331,9 +371,12 @@ function WriterChrome({
       <WriterRail active={active} ident={ident} />
       <div className="flex min-w-0 flex-1 flex-col">
         <WriterTopStrip ident={ident} />
-        {/* Bottom padding on mobile clears the fixed tab bar; the rail
-            layout needs none — it isn't fixed/floating. */}
-        <div className="flex-1 pb-16 md:pb-0">{children}</div>
+        {/* Bottom padding on mobile clears the fixed tab bar and the phone's
+            home indicator below it; the rail needs none — it's sticky inside
+            the flow, so it steals no space from the content column. */}
+        <div className="flex-1 pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">
+          {children}
+        </div>
         <SiteFooter />
       </div>
       <WriterTabBar active={active} />
