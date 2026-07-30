@@ -270,6 +270,33 @@ export type DocumentEngagement = {
  * nothing at all, exactly like a post that was never announced — a rendered
  * "0" would be a claim the data doesn't support.
  */
+/**
+ * Whether a count is worth putting on the page — present AND at least one.
+ *
+ * Distinct from "do we have data", deliberately. The AppView answers a freshly
+ * announced post with literal zeros rather than absent fields, so a
+ * defined-ness test put `0 0 0` under every new post: the exact moment a writer
+ * is most likely to look at their own page, and the thing they'd screenshot.
+ * Nothing true is lost by staying quiet. A reader learns nothing from three
+ * zeros they don't learn from silence, and the writer is spared a scoreboard of
+ * their post's first hour.
+ */
+export function isWorthShowing(count: number | undefined): boolean {
+  return count !== undefined && count > 0;
+}
+
+/** Whether any count is worth rendering — the display gate for an engagement
+ * row. `hasCountedEngagement` answers the different question of whether the
+ * AppView told us anything at all, which the caches and tests still need. */
+export function hasVisibleEngagement(counts: EngagementCounts): boolean {
+  return (
+    isWorthShowing(counts.likeCount) ||
+    isWorthShowing(counts.replyCount) ||
+    isWorthShowing(counts.repostCount) ||
+    isWorthShowing(counts.quoteCount)
+  );
+}
+
 export function hasCountedEngagement(counts: EngagementCounts): boolean {
   return (
     counts.likeCount !== undefined ||

@@ -11,7 +11,7 @@ import { HeartIcon, ReplyIcon, RepostIcon } from "~/components/icons";
 import { monogram } from "~/lib/archive";
 import {
   type DocumentEngagement,
-  hasCountedEngagement,
+  hasVisibleEngagement,
 } from "~/lib/engagement";
 import { cn } from "~/lib/utils";
 
@@ -81,7 +81,7 @@ export function PostMetrics({
   engagement?: DocumentEngagement | null;
 }) {
   const counts = engagement?.counts;
-  const showEngagement = counts !== undefined && hasCountedEngagement(counts);
+  const showEngagement = counts !== undefined && hasVisibleEngagement(counts);
   if (views === undefined && !showEngagement) return null;
 
   const reposts = (counts?.repostCount ?? 0) + (counts?.quoteCount ?? 0);

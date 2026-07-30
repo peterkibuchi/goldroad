@@ -10,6 +10,7 @@ import {
   getDocumentEngagement,
   getPostsEngagement,
   hasCountedEngagement,
+  hasVisibleEngagement,
   MAX_GET_POSTS_BATCH,
 } from "../lib/engagement";
 
@@ -319,6 +320,34 @@ describe("getDocumentEngagement — the document-page entry point", () => {
 
   it("exposes the cache TTL constant used to build the stored Cache-Control", () => {
     expect(ENGAGEMENT_CACHE_TTL_SECONDS).toBe(300);
+  });
+});
+
+describe("hasVisibleEngagement — the display gate", () => {
+  it("stays quiet for a post whose counts are all real zeros", () => {
+    // The AppView answers a freshly announced post with literal zeros, not
+    // absent fields. Rendering them put "0 0 0" under every new post.
+    expect(
+      hasVisibleEngagement({ likeCount: 0, replyCount: 0, repostCount: 0 }),
+    ).toBe(false);
+  });
+
+  it("shows as soon as any single count reaches one", () => {
+    expect(hasVisibleEngagement({ likeCount: 1, replyCount: 0 })).toBe(true);
+    expect(hasVisibleEngagement({ replyCount: 2 })).toBe(true);
+    expect(hasVisibleEngagement({ quoteCount: 3 })).toBe(true);
+  });
+
+  it("stays quiet when the AppView said nothing at all", () => {
+    expect(hasVisibleEngagement({})).toBe(false);
+  });
+
+  it("is a DIFFERENT question from whether we have data", () => {
+    // A counted zero is data — the caches and the honesty rules still care.
+    // It is simply not worth a row on the page.
+    const allZero = { likeCount: 0 };
+    expect(hasCountedEngagement(allZero)).toBe(true);
+    expect(hasVisibleEngagement(allZero)).toBe(false);
   });
 });
 
