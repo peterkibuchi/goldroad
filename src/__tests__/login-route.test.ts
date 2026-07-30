@@ -177,6 +177,23 @@ describe("safeReturnTo — the real open-redirect guard", () => {
     expect(safeReturnTo("javascript:alert(1)")).toBe("/write");
   });
 
+  it("falls back on a backslash authority, which browsers treat as a slash", () => {
+    // Under the WHATWG URL Standard a backslash is equivalent to a slash in the
+    // authority position, so this resolves cross-origin exactly like
+    // "//evil.example" while reading as a path.
+    expect(
+      new URL("/\\evil.example", "https://trygoldroad.com/oauth/callback").href,
+    ).toBe("https://evil.example/");
+    expect(safeReturnTo("/\\evil.example")).toBe("/write");
+    expect(safeReturnTo("/\\\\evil.example")).toBe("/write");
+  });
+
+  it("still allows a path whose later segments contain a backslash", () => {
+    // Only the authority position is dangerous; a backslash deeper in the path
+    // is just a character, and refusing it would be superstition.
+    expect(safeReturnTo("/write/a\\b")).toBe("/write/a\\b");
+  });
+
   it("falls back on non-strings, honoring the given fallback", () => {
     expect(safeReturnTo(null)).toBe("/write");
     expect(safeReturnTo(undefined, "/dashboard")).toBe("/dashboard");

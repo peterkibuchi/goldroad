@@ -166,9 +166,21 @@ export function createOAuthClient(requestOrigin: string): OAuthClient {
   });
 }
 
-/** Guard against open redirects: only allow same-site absolute paths. */
+/**
+ * Guard against open redirects: only allow same-site absolute paths.
+ *
+ * The second character matters as much as the first. Browsers follow the WHATWG
+ * URL Standard, where a backslash is equivalent to a slash in the authority
+ * position — so `/\evil.example` resolves to `https://evil.example/`, exactly
+ * like `//evil.example`, while looking like a path. Requiring a leading slash
+ * followed by neither is the whole check.
+ *
+ * This lands on the auth path: `returnTo` rides the OAuth `state` and becomes a
+ * `Location` after a writer authenticates. Someone arriving at an attacker's
+ * page from us, mid-sign-in, is in the ideal frame of mind to retype a password.
+ */
 export function safeReturnTo(value: unknown, fallback = "/write"): string {
   if (typeof value !== "string") return fallback;
-  if (!value.startsWith("/") || value.startsWith("//")) return fallback;
+  if (!/^\/[^/\\]/.test(value)) return fallback;
   return value;
 }

@@ -2,9 +2,14 @@ import { createFileRoute } from "@tanstack/react-router";
 import { drizzle } from "drizzle-orm/d1";
 
 import { waitlist } from "~/db/schema";
+import { readBodyCapped } from "~/lib/blob";
 import { checkTurnstile, tokenFromBody } from "~/lib/turnstile";
 import { waitlistPayload } from "~/lib/waitlist-schema";
 import { env } from "cloudflare:workers";
+
+/** Hard cap on the request body — an email plus a Turnstile token is tiny.
+ * Matches the treatment /api/report already gives an equally small payload. */
+const MAX_WAITLIST_BYTES = 8 * 1024;
 
 export const Route = createFileRoute("/api/waitlist")({
   server: {
@@ -12,9 +17,15 @@ export const Route = createFileRoute("/api/waitlist")({
       POST: async ({ request }) => {
         const bad = () =>
           Response.json({ ok: false, error: "invalid" }, { status: 400 });
+        // Bound the body before buffering it. This is the one write endpoint an
+        // anonymous visitor is *meant* to reach, and Turnstile is checked below
+        // — after the parse — so nothing else stands between the internet and
+        // an unbounded read. An email and a token need very little room.
+        const bytes = await readBodyCapped(request, MAX_WAITLIST_BYTES);
+        if (!bytes) return bad();
         let body: unknown;
         try {
-          body = await request.json();
+          body = JSON.parse(new TextDecoder().decode(bytes));
         } catch {
           return bad();
         }
