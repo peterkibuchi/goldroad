@@ -148,19 +148,64 @@ function engagementCacheUrl(uri: string): string {
 
 export type DocumentEngagement = {
   counts: EngagementCounts;
-  /** bsky.app thread — the reply count's link target (owner decision #2:
-   * "the network is the comment section". */
+  /** bsky.app thread — the reply count's link target, because the reply
+   * conversation lives on the network, not here. */
   threadUrl: string;
 };
+
+/**
+ * True when at least one metric is actually counted. An announced post whose
+ * AppView entry carries no counted field (every one `undefined`) renders
+ * nothing at all, exactly like a post that was never announced — a rendered
+ * "0" would be a claim the data doesn't support.
+ */
+export function hasCountedEngagement(counts: EngagementCounts): boolean {
+  return (
+    counts.likeCount !== undefined ||
+    counts.replyCount !== undefined ||
+    counts.repostCount !== undefined ||
+    counts.quoteCount !== undefined
+  );
+}
+
+/** Cache read for one post's counts — a miss, a malformed entry, and a cache
+ * that isn't available at all are all the same answer: null. */
+async function readCachedCounts(
+  cache: Cache,
+  uri: string,
+): Promise<EngagementCounts | null> {
+  const hit = await cache.match(engagementCacheUrl(uri)).catch(() => undefined);
+  if (!hit) return null;
+  const cached = (await hit.json().catch(() => null)) as {
+    counts?: EngagementCounts;
+  } | null;
+  return cached?.counts ?? null;
+}
+
+/** Cache write for one post's counts. Best-effort — a failed put costs the
+ * next reader an upstream call and nothing else. */
+async function writeCachedCounts(
+  cache: Cache,
+  uri: string,
+  counts: EngagementCounts,
+): Promise<void> {
+  const response = new Response(JSON.stringify({ counts }), {
+    headers: {
+      "content-type": "application/json",
+      "cache-control": `public, s-maxage=${ENGAGEMENT_CACHE_TTL_SECONDS}`,
+    },
+  });
+  await cache.put(engagementCacheUrl(uri), response).catch(() => {});
+}
 
 /**
  * The document-page-facing entry point: given a document's raw bskyPostRef,
  * returns its engagement counts + the bsky.app thread URL, or null when the
  * post was never announced, the ref is malformed, or every upstream attempt
- * failed — the caller renders nothing in all three cases (owner decision #2:
- * honest silence, never a zero). Cached at the edge for
- * ENGAGEMENT_CACHE_TTL_SECONDS so a burst of reads on one popular post makes
- * at most one upstream AppView call per cache window.
+ * failed — the caller renders nothing in all three cases (honest silence,
+ * never a zero). Cached at the edge for ENGAGEMENT_CACHE_TTL_SECONDS so a
+ * burst of reads on one popular post makes at most one upstream AppView call
+ * per cache window.
  */
 export async function getDocumentEngagement(
   ref: { uri?: unknown } | undefined,
@@ -168,22 +213,12 @@ export async function getDocumentEngagement(
 ): Promise<DocumentEngagement | null> {
   const announced = announcedPostUri(ref);
   if (!announced) return null;
+  const threadUrl = bskyPostUrl(announced.did, announced.rkey);
 
   const cache = options.cache ?? defaultCache();
-  const cacheUrl = engagementCacheUrl(announced.uri);
   if (cache) {
-    const hit = await cache.match(cacheUrl).catch(() => undefined);
-    if (hit) {
-      const cached = (await hit.json().catch(() => null)) as {
-        counts?: EngagementCounts;
-      } | null;
-      if (cached?.counts) {
-        return {
-          counts: cached.counts,
-          threadUrl: bskyPostUrl(announced.did, announced.rkey),
-        };
-      }
-    }
+    const cached = await readCachedCounts(cache, announced.uri);
+    if (cached) return { counts: cached, threadUrl };
   }
 
   const fetcher = options.fetcher ?? fetch;
@@ -191,15 +226,72 @@ export async function getDocumentEngagement(
   const counts = byUri.get(announced.uri);
   if (!counts) return null;
 
-  if (cache) {
-    const response = new Response(JSON.stringify({ counts }), {
-      headers: {
-        "content-type": "application/json",
-        "cache-control": `public, s-maxage=${ENGAGEMENT_CACHE_TTL_SECONDS}`,
-      },
-    });
-    await cache.put(cacheUrl, response).catch(() => {});
+  if (cache) await writeCachedCounts(cache, announced.uri, counts);
+
+  return { counts, threadUrl };
+}
+
+/**
+ * List-facing entry point — one call for a whole page of posts, keyed by
+ * whatever id the caller already uses for a row (an rkey, typically).
+ *
+ * Shares the per-post edge cache with getDocumentEngagement above, so a
+ * writer's list view and their readers' document pages warm the same
+ * entries. Only the cache misses reach the AppView, in batches of
+ * MAX_GET_POSTS_BATCH.
+ *
+ * A key is ABSENT from the returned map whenever there's nothing honest to
+ * say about it: never announced, malformed ref, or every upstream attempt for
+ * its batch failed. Callers render nothing for absent keys.
+ */
+export async function getPostsEngagement(
+  refs: ReadonlyArray<{ key: string; ref: { uri?: unknown } | undefined }>,
+  options: { fetcher?: typeof fetch; cache?: Cache } = {},
+): Promise<Map<string, DocumentEngagement>> {
+  const result = new Map<string, DocumentEngagement>();
+  // De-duplicate by URI: two rows pointing at the same announcement (a
+  // re-announce that reused the ref) must not become two upstream lookups.
+  const wanted = new Map<string, { key: string; did: Did; rkey: string }[]>();
+  for (const { key, ref } of refs) {
+    const announced = announcedPostUri(ref);
+    if (!announced) continue;
+    const bucket = wanted.get(announced.uri);
+    const entry = { key, did: announced.did, rkey: announced.rkey };
+    if (bucket) bucket.push(entry);
+    else wanted.set(announced.uri, [entry]);
+  }
+  if (wanted.size === 0) return result;
+
+  function record(uri: string, counts: EngagementCounts) {
+    for (const { key, did, rkey } of wanted.get(uri) ?? []) {
+      result.set(key, { counts, threadUrl: bskyPostUrl(did, rkey) });
+    }
   }
 
-  return { counts, threadUrl: bskyPostUrl(announced.did, announced.rkey) };
+  const cache = options.cache ?? defaultCache();
+  const uris = [...wanted.keys()];
+  const misses: string[] = [];
+  if (cache) {
+    const cached = await Promise.all(
+      uris.map(
+        async (uri) => [uri, await readCachedCounts(cache, uri)] as const,
+      ),
+    );
+    for (const [uri, counts] of cached) {
+      if (counts) record(uri, counts);
+      else misses.push(uri);
+    }
+  } else {
+    misses.push(...uris);
+  }
+  if (misses.length === 0) return result;
+
+  const fetched = await fetchPostsEngagement(misses, options.fetcher ?? fetch);
+  for (const [uri, counts] of fetched) {
+    // Guard against an upstream echoing a URI we never asked for.
+    if (!wanted.has(uri)) continue;
+    record(uri, counts);
+    if (cache) await writeCachedCounts(cache, uri, counts);
+  }
+  return result;
 }

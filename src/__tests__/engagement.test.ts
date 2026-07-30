@@ -8,6 +8,8 @@ import {
   ENGAGEMENT_CACHE_TTL_SECONDS,
   fetchPostsEngagement,
   getDocumentEngagement,
+  getPostsEngagement,
+  hasCountedEngagement,
   MAX_GET_POSTS_BATCH,
 } from "../lib/engagement";
 
@@ -317,5 +319,140 @@ describe("getDocumentEngagement — the document-page entry point", () => {
 
   it("exposes the cache TTL constant used to build the stored Cache-Control", () => {
     expect(ENGAGEMENT_CACHE_TTL_SECONDS).toBe(300);
+  });
+});
+
+describe("hasCountedEngagement", () => {
+  it("is false when the AppView counted nothing at all", () => {
+    expect(hasCountedEngagement({})).toBe(false);
+  });
+
+  it("is true for a genuine zero — a counted zero is data, absence isn't", () => {
+    expect(hasCountedEngagement({ likeCount: 0 })).toBe(true);
+  });
+});
+
+describe("getPostsEngagement — the list entry point", () => {
+  const DID = "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa";
+  const uriFor = (rkey: string) => `at://${DID}/app.bsky.feed.post/${rkey}`;
+
+  function jsonResponse(posts: unknown[]) {
+    return new Response(JSON.stringify({ posts }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
+  it("keys results by the caller's own row id and carries a thread URL", async () => {
+    const fetcher = vi.fn(async () =>
+      jsonResponse([{ uri: uriFor("aaa"), likeCount: 3, replyCount: 1 }]),
+    );
+    const result = await getPostsEngagement(
+      [{ key: "row-aaa", ref: { uri: uriFor("aaa") } }],
+      { fetcher: fetcher as unknown as typeof fetch },
+    );
+    expect(result.get("row-aaa")?.counts.likeCount).toBe(3);
+    expect(result.get("row-aaa")?.threadUrl).toBe(
+      `https://bsky.app/profile/${DID}/post/aaa`,
+    );
+  });
+
+  it("omits rows that were never announced, and makes no call for them", async () => {
+    const fetcher = vi.fn(async () => jsonResponse([]));
+    const result = await getPostsEngagement(
+      [
+        { key: "never-announced", ref: undefined },
+        {
+          key: "bad-collection",
+          ref: { uri: `at://${DID}/app.bsky.feed.like/x` },
+        },
+      ],
+      { fetcher: fetcher as unknown as typeof fetch },
+    );
+    expect(result.size).toBe(0);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("omits a row whose post the AppView didn't return, rather than zeroing it", async () => {
+    const fetcher = vi.fn(async () => jsonResponse([]));
+    const result = await getPostsEngagement(
+      [{ key: "row-aaa", ref: { uri: uriFor("aaa") } }],
+      { fetcher: fetcher as unknown as typeof fetch },
+    );
+    expect(result.has("row-aaa")).toBe(false);
+  });
+
+  it("asks for one URI once, even when two rows point at the same announcement", async () => {
+    const urls: string[] = [];
+    const fetcher = vi.fn(async (url: string) => {
+      urls.push(url);
+      return jsonResponse([{ uri: uriFor("aaa"), likeCount: 5 }]);
+    });
+    const result = await getPostsEngagement(
+      [
+        { key: "row-1", ref: { uri: uriFor("aaa") } },
+        { key: "row-2", ref: { uri: uriFor("aaa") } },
+      ],
+      { fetcher: fetcher as unknown as typeof fetch },
+    );
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    const params = urls[0].split("?")[1];
+    expect(new URLSearchParams(params).getAll("uris")).toHaveLength(1);
+    // Both rows still get the answer.
+    expect(result.get("row-1")?.counts.likeCount).toBe(5);
+    expect(result.get("row-2")?.counts.likeCount).toBe(5);
+  });
+
+  it("ignores a URI the upstream echoed but nobody asked for", async () => {
+    const fetcher = vi.fn(async () =>
+      jsonResponse([
+        { uri: uriFor("aaa"), likeCount: 1 },
+        { uri: uriFor("unrequested"), likeCount: 999 },
+      ]),
+    );
+    const result = await getPostsEngagement(
+      [{ key: "row-aaa", ref: { uri: uriFor("aaa") } }],
+      { fetcher: fetcher as unknown as typeof fetch },
+    );
+    expect(result.size).toBe(1);
+    expect(result.get("row-aaa")?.counts.likeCount).toBe(1);
+  });
+
+  it("serves the second page of rows from the shared per-post cache", async () => {
+    const fetcher = vi.fn(async () =>
+      jsonResponse([{ uri: uriFor("aaa"), likeCount: 8 }]),
+    );
+    const store = new Map<string, Response>();
+    const fakeCache = {
+      match: vi.fn(async (key: string) => store.get(key)?.clone()),
+      put: vi.fn(async (key: string, res: Response) => {
+        store.set(key, res.clone());
+      }),
+    } as unknown as Cache;
+    const refs = [{ key: "row-aaa", ref: { uri: uriFor("aaa") } }];
+
+    const first = await getPostsEngagement(refs, {
+      fetcher: fetcher as unknown as typeof fetch,
+      cache: fakeCache,
+    });
+    const second = await getPostsEngagement(refs, {
+      fetcher: fetcher as unknown as typeof fetch,
+      cache: fakeCache,
+    });
+    expect(first.get("row-aaa")?.counts.likeCount).toBe(8);
+    expect(second.get("row-aaa")?.counts.likeCount).toBe(8);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a whole page of rows to a single batched call", async () => {
+    const rows = Array.from({ length: MAX_GET_POSTS_BATCH }, (_, i) => ({
+      key: `row-${i}`,
+      ref: { uri: uriFor(`k${i}`) },
+    }));
+    const fetcher = vi.fn(async () => jsonResponse([]));
+    await getPostsEngagement(rows, {
+      fetcher: fetcher as unknown as typeof fetch,
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 });

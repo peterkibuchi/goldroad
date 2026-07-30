@@ -15,7 +15,7 @@ function record(
   };
 }
 
-describe("selectRelatedPosts — same-writer only (owner decision #3)", () => {
+describe("selectRelatedPosts — same-writer only", () => {
   it("excludes the current document by rkey", () => {
     const records = [
       record("current", {
