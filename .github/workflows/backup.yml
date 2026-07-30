@@ -1,0 +1,144 @@
+# Nightly off-platform D1 backup.
+#
+# D1's Time Travel already gives us 30-day point-in-time restore for free, and
+# it handles the failure modes that actually happen — a bad migration, a DELETE
+# without a WHERE. What it cannot do is survive the database being deleted, or
+# get a copy of the data off Cloudflare. This job is only about that gap.
+#
+# It runs here rather than in the Worker cron because D1's export is an
+# account-scoped REST operation: it needs an account API token (which already
+# exists here for deploys, and has no business being in a Worker) and it is
+# polled to completion, which no cron invocation's CPU budget allows.
+#
+# THE DUMP IS ENCRYPTED BEFORE IT IS UPLOADED, AND THAT IS NOT OPTIONAL.
+# Workflow artifacts on a public repository are downloadable by anyone. This
+# dump contains OAuth refresh tokens, private drafts, and the email list, so
+# uploading it in the clear would be a far worse breach than the data loss the
+# backup exists to prevent. Encryption is to a public key (`BACKUP_AGE_RECIPIENT`),
+# so this job can write backups it cannot itself read — only the holder of the
+# matching secret key can decrypt. If the recipient is missing, the job fails
+# rather than falling back to a plaintext upload.
+#
+# Restore instructions, key generation, and the required secrets are in
+# docs/BACKUPS.md.
+name: Backup
+
+on:
+  schedule:
+    # 03:20 UTC daily — a low-traffic hour, and deliberately off the hour so it
+    # never coincides with the Worker cron. Exporting makes the database briefly
+    # unavailable to queries, so this stays once a day, not hourly.
+    - cron: "20 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# An export makes the database unavailable while it runs; never overlap two.
+concurrency:
+  group: d1-backup
+  cancel-in-progress: false
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_NAME: goldroad-db
+      DUMP: d1-dump.sql
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6.0.9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24.18.0
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install
+
+      # Fail before touching the database rather than after producing a dump we
+      # would have no safe place to put.
+      - name: Require an encryption recipient
+        env:
+          RECIPIENT: ${{ vars.BACKUP_AGE_RECIPIENT }}
+        run: |
+          if [ -z "$RECIPIENT" ]; then
+            echo "::error::BACKUP_AGE_RECIPIENT is not set. A backup artifact on a public repo is world-readable, so this job refuses to run without a public key to encrypt to. See docs/BACKUPS.md."
+            exit 1
+          fi
+
+      - name: Install age
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y age
+
+      - name: Export the database
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          pnpm wrangler d1 export "$DATABASE_NAME" --remote --output "$DUMP" -y
+
+      # A dump that exists is not a dump that is usable. An export can report
+      # success and leave a truncated or schema-only file, which is exactly the
+      # failure a naive "the job went green" signal would hide.
+      - name: Verify the dump
+        run: |
+          set -euo pipefail
+          test -s "$DUMP" || { echo "::error::dump is empty"; exit 1; }
+          BYTES=$(stat -c%s "$DUMP")
+          if [ "$BYTES" -lt 1024 ]; then
+            echo "::error::dump is only ${BYTES} bytes — too small to be real"
+            exit 1
+          fi
+          # Tables that have existed since early migrations, so this check does
+          # not need updating every time the schema grows.
+          for table in waitlist drafts oauth_kv; do
+            grep -q "CREATE TABLE \`\?${table}\`\?" "$DUMP" || {
+              echo "::error::dump is missing table ${table}"; exit 1; }
+          done
+          # INSERTs, not just schema — a data-less export is not a backup.
+          grep -q "INSERT INTO" "$DUMP" || {
+            echo "::error::dump contains no rows"; exit 1; }
+          echo "BACKUP_BYTES=${BYTES}" >> "$GITHUB_ENV"
+          echo "Verified ${BYTES} bytes."
+
+      - name: Encrypt the dump
+        env:
+          RECIPIENT: ${{ vars.BACKUP_AGE_RECIPIENT }}
+        run: |
+          set -euo pipefail
+          age --recipient "$RECIPIENT" --output "${DUMP}.age" "$DUMP"
+          # The plaintext must not survive into any later step or artifact.
+          shred -u "$DUMP" 2>/dev/null || rm -f "$DUMP"
+          test -s "${DUMP}.age"
+
+      - name: Upload the encrypted backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: d1-backup-${{ github.run_id }}
+          path: d1-dump.sql.age
+          # 90 days is the ceiling this plan allows. It is longer than D1's
+          # 30-day Time Travel window, which is the point — but it is still a
+          # rolling window, not an archive. Pulling a copy down periodically is
+          # an owner step, documented in docs/BACKUPS.md.
+          retention-days: 90
+          if-no-files-found: error
+
+      # Last, and only on success: the heartbeat means "a verified, encrypted,
+      # uploaded backup exists", not "this job started". The hourly Worker cron
+      # reads this row and alerts when it goes stale (see src/lib/backup.ts).
+      - name: Record the backup
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -euo pipefail
+          AT=$(date +%s%3N)
+          pnpm wrangler d1 execute "$DATABASE_NAME" --remote -y \
+            --command "INSERT INTO backup_runs (at, bytes) VALUES (${AT}, ${BACKUP_BYTES});"

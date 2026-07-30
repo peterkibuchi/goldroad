@@ -1,5 +1,5 @@
 /**
- * Workers Cron body (free tier: up to 5 triggers/account). Three jobs, run
+ * Workers Cron body (free tier: up to 5 triggers/account). Four jobs, run
  * hourly from ONE trigger:
  *
  * 1. Purge expired oauth_kv rows (audit #7). `D1Store.get` only deletes an
@@ -12,7 +12,13 @@
  *    daily on purpose: the pass is idempotent per day, so running it 24 times
  *    self-heals a missed midnight run, a platform blip, or a writer who first
  *    signs in at 14:00.
- * 3. A self-check of core invariants (audit #6). Logs are on but nobody is
+ * 3. A backup-freshness check (~/lib/backup). The nightly off-platform export
+ *    runs in CI, not here — D1's export is an account-scoped REST operation, not
+ *    something the `DB` binding can do. What this adds is the part CI cannot
+ *    self-report: a backup job that has silently stopped looks exactly like one
+ *    that is working, so the cron watches the heartbeat CI stamps and folds any
+ *    complaint into the same alert path as the self-check below.
+ * 4. A self-check of core invariants (audit #6). Logs are on but nobody is
  *    paged; this POSTs failures to WEBHOOK_URL if that secret is set, and is a
  *    silent no-op otherwise. The GitHub-Action canary remains the primary
  *    alerting path — this is a cheap always-on backstop.
@@ -21,6 +27,7 @@ import { and, isNotNull, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 
 import { oauthKv } from "~/db/schema";
+import { d1BackupStore, runBackupCheck } from "~/lib/backup";
 import {
   d1SnapshotStore,
   runFollowerSnapshotPass,
@@ -96,9 +103,10 @@ export async function reportFailures(
  * satisfies this intersection because the property is optional. */
 type CronEnv = Env & { WEBHOOK_URL?: string };
 
-/** The cron handler body: purge, sample follower counts, self-check, alert.
- * Never throws (a cron that throws just retries; we'd rather log and move on),
- * and each job is independent — a failure in one still leaves the others run. */
+/** The cron handler body: purge, sample follower counts, check the backup
+ * heartbeat, self-check, alert. Never throws (a cron that throws just retries;
+ * we'd rather log and move on), and each job is independent — a failure in one
+ * still leaves the others run. */
 export async function runScheduled(env: CronEnv): Promise<void> {
   const db = drizzle(env.DB);
   try {
@@ -113,7 +121,13 @@ export async function runScheduled(env: CronEnv): Promise<void> {
     store: d1SnapshotStore(db),
   });
   console.log("follower snapshot pass", snapshots);
-  const failures = await selfCheck();
+  // One indexed row read — ahead of the self-check's network calls, so a slow
+  // site can't crowd out the cheapest job in the pass.
+  const backup = await runBackupCheck({ store: d1BackupStore(db) });
+  console.log("backup check", backup);
+  // A stale backup is a real invariant failure, so it rides the self-check's
+  // alert path rather than getting a second, parallel one.
+  const failures = [...(await selfCheck()), ...backup.failures];
   if (failures.length > 0) console.error("cron self-check failures", failures);
   await reportFailures(env.WEBHOOK_URL, failures);
 }

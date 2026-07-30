@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { drizzle } from "drizzle-orm/d1";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const snapshots = vi.hoisted(() => ({
   d1SnapshotStore: vi.fn(() => ({ store: true })),
@@ -14,12 +14,37 @@ const snapshots = vi.hoisted(() => ({
 }));
 vi.mock("~/lib/follower-snapshots", () => snapshots);
 
+const backup = vi.hoisted(() => ({
+  d1BackupStore: vi.fn(() => ({ backupStore: true })),
+  runBackupCheck: vi.fn(async () => ({
+    failures: [] as string[],
+    pruned: true,
+  })),
+}));
+vi.mock("~/lib/backup", () => backup);
+
 import {
   purgeExpiredOauthKv,
   reportFailures,
   runScheduled,
   selfCheck,
 } from "../lib/scheduled";
+
+// Both module mocks get their default behaviour re-established per test, so no
+// test inherits another's call counts or a restored-away implementation.
+beforeEach(() => {
+  vi.clearAllMocks();
+  snapshots.d1SnapshotStore.mockReturnValue({ store: true });
+  snapshots.runFollowerSnapshotPass.mockResolvedValue({
+    day: "2026-07-29",
+    attempted: 0,
+    sampled: 0,
+    failed: 0,
+    pruned: true,
+  });
+  backup.d1BackupStore.mockReturnValue({ backupStore: true });
+  backup.runBackupCheck.mockResolvedValue({ failures: [], pruned: true });
+});
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -82,7 +107,7 @@ describe("selfCheck — core invariants (audit #6)", () => {
   });
 });
 
-describe("runScheduled — three jobs, one hourly trigger, none able to sink another", () => {
+describe("runScheduled — four jobs, one hourly trigger, none able to sink another", () => {
   function healthyOrigin() {
     vi.stubGlobal(
       "fetch",
@@ -101,10 +126,20 @@ describe("runScheduled — three jobs, one hourly trigger, none able to sink ano
     return { DB: {} } as unknown as Env;
   }
 
-  it("samples follower counts even when the oauth_kv purge blows up", async () => {
-    healthyOrigin();
+  function quiet() {
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "log").mockImplementation(() => {});
+  }
+
+  /** An Env carrying the optional alert webhook. */
+  function envWithHook() {
+    const env = { DB: {}, WEBHOOK_URL: "https://hook.example" };
+    return env as unknown as Env & { WEBHOOK_URL: string };
+  }
+
+  it("samples follower counts even when the oauth_kv purge blows up", async () => {
+    healthyOrigin();
+    quiet();
 
     await runScheduled(brokenDb());
 
@@ -115,6 +150,55 @@ describe("runScheduled — three jobs, one hourly trigger, none able to sink ano
     expect(snapshots.runFollowerSnapshotPass).toHaveBeenCalledWith({
       store: { store: true },
     });
+  });
+
+  it("sends a stale backup down the SAME alert path as a self-check failure", async () => {
+    // The whole point of folding the backup check into this cron: a backup that
+    // silently stopped has to reach a human, and this is the path that already
+    // does that.
+    const posts: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes("hook.example")) {
+          posts.push(String(init?.body));
+          return new Response(null);
+        }
+        return url.includes("client-metadata")
+          ? Response.json({
+              client_id: "https://trygoldroad.com/oauth/client-metadata.json",
+            })
+          : new Response("<html>Goldroad</html>");
+      }),
+    );
+    quiet();
+    backup.runBackupCheck.mockResolvedValue({
+      failures: ["newest backup is 73h old (max 48h)"],
+      pruned: true,
+    });
+
+    await runScheduled(envWithHook());
+
+    expect(posts).toHaveLength(1);
+    expect(posts[0]).toContain("73h old");
+  });
+
+  it("does not alert when the backup is healthy and the site is up", async () => {
+    const spy = vi.fn(async (input: URL | RequestInfo) =>
+      String(input).includes("client-metadata")
+        ? Response.json({
+            client_id: "https://trygoldroad.com/oauth/client-metadata.json",
+          })
+        : new Response("<html>Goldroad</html>"),
+    );
+    vi.stubGlobal("fetch", spy);
+    quiet();
+
+    await runScheduled(envWithHook());
+
+    const urls = spy.mock.calls.map((call) => String(call[0]));
+    expect(urls.some((u) => u.includes("hook.example"))).toBe(false);
   });
 });
 
