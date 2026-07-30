@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as ZzPreviewRouteImport } from './routes/zz-preview'
 import { Route as WriteRouteImport } from './routes/write'
 import { Route as TermsRouteImport } from './routes/terms'
+import { Route as StatsRouteImport } from './routes/stats'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ReportRouteImport } from './routes/report'
@@ -56,6 +57,11 @@ const WriteRoute = WriteRouteImport.update({
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
   path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StatsRoute = StatsRouteImport.update({
+  id: '/stats',
+  path: '/stats',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
@@ -226,6 +232,7 @@ export interface FileRoutesByFullPath {
   '/report': typeof ReportRoute
   '/settings': typeof SettingsRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/stats': typeof StatsRoute
   '/terms': typeof TermsRoute
   '/write': typeof WriteRoute
   '/zz-preview': typeof ZzPreviewRoute
@@ -261,6 +268,7 @@ export interface FileRoutesByTo {
   '/report': typeof ReportRoute
   '/settings': typeof SettingsRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/stats': typeof StatsRoute
   '/terms': typeof TermsRoute
   '/write': typeof WriteRoute
   '/zz-preview': typeof ZzPreviewRoute
@@ -297,6 +305,7 @@ export interface FileRoutesById {
   '/report': typeof ReportRoute
   '/settings': typeof SettingsRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/stats': typeof StatsRoute
   '/terms': typeof TermsRoute
   '/write': typeof WriteRoute
   '/zz-preview': typeof ZzPreviewRoute
@@ -334,6 +343,7 @@ export interface FileRouteTypes {
     | '/report'
     | '/settings'
     | '/sitemap.xml'
+    | '/stats'
     | '/terms'
     | '/write'
     | '/zz-preview'
@@ -369,6 +379,7 @@ export interface FileRouteTypes {
     | '/report'
     | '/settings'
     | '/sitemap.xml'
+    | '/stats'
     | '/terms'
     | '/write'
     | '/zz-preview'
@@ -404,6 +415,7 @@ export interface FileRouteTypes {
     | '/report'
     | '/settings'
     | '/sitemap.xml'
+    | '/stats'
     | '/terms'
     | '/write'
     | '/zz-preview'
@@ -440,6 +452,7 @@ export interface RootRouteChildren {
   ReportRoute: typeof ReportRoute
   SettingsRoute: typeof SettingsRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
+  StatsRoute: typeof StatsRoute
   TermsRoute: typeof TermsRoute
   WriteRoute: typeof WriteRoute
   ZzPreviewRoute: typeof ZzPreviewRoute
@@ -482,6 +495,13 @@ declare module '@tanstack/react-router' {
       path: '/terms'
       fullPath: '/terms'
       preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/stats': {
+      id: '/stats'
+      path: '/stats'
+      fullPath: '/stats'
+      preLoaderRoute: typeof StatsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/sitemap.xml': {
@@ -724,6 +744,7 @@ const rootRouteChildren: RootRouteChildren = {
   ReportRoute: ReportRoute,
   SettingsRoute: SettingsRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
+  StatsRoute: StatsRoute,
   TermsRoute: TermsRoute,
   WriteRoute: WriteRoute,
   ZzPreviewRoute: ZzPreviewRoute,
