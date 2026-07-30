@@ -20,14 +20,10 @@ export const Route = createFileRoute("/@{$handle}/$rkey")({
 });
 
 function DocumentPage() {
-  const { doc, ident, publicationName, cover, mirror } = Route.useLoaderData();
-  return (
-    <DocumentArticle
-      cover={cover}
-      doc={doc}
-      ident={ident}
-      mirror={mirror}
-      publicationName={publicationName}
-    />
-  );
+  // Spread, not a hand-picked list: loadDocument returns exactly the facts the
+  // article renders, and enumerating them here let four of them (engagement,
+  // related posts, the publication icon and description) go quietly missing —
+  // loaded on every request, never rendered. The extra keys the article
+  // doesn't take (atUri, canonicalUrl — the head's business) are ignored.
+  return <DocumentArticle {...Route.useLoaderData()} />;
 }
