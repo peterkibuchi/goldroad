@@ -28,6 +28,7 @@ import {
 import { hasForeignContent } from "~/lib/document-content";
 import { deleteDraft, selectDraft } from "~/lib/drafts";
 import { isDraftId } from "~/lib/drafts-schema";
+import { captureHandledFailure } from "~/lib/error-tracking";
 import { clampOriginalDate, rehostBodyImages } from "~/lib/import";
 import {
   adoptMirror,
@@ -273,6 +274,11 @@ export const Route = createFileRoute("/api/publish")({
           session = await client.restore(did);
         } catch (err) {
           console.warn("session restore failed", err);
+          // A revoked or expired session lands here routinely, so this is
+          // reported as handled rather than escalated — but it is also how a
+          // broken OAuth client presents (every publish bouncing to sign-in),
+          // and that is only distinguishable from a series.
+          captureHandledFailure(err, request);
           // Sign-in lives on /write for both intents.
           const expired = new Headers({
             location: "/write?error=session_expired",

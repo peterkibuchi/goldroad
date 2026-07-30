@@ -14,7 +14,10 @@ declare const __BUILD_SHA__: string;
 
 import handler, { createServerEntry } from "@tanstack/react-start/server-entry";
 
-import { withExceptionCapture } from "~/lib/error-tracking";
+import {
+  BUILD_TIME_CAPTURE_CONFIG,
+  withExceptionCapture,
+} from "~/lib/error-tracking";
 import { canonicalRedirect } from "~/lib/origin";
 import { serveWithReadCache } from "~/lib/read-cache";
 import { runScheduled } from "~/lib/scheduled";
@@ -50,11 +53,12 @@ const entry = createServerEntry({
 // Error tracking around the whole entry (same key gate as client analytics):
 // an unhandled exception is reported to PostHog on ctx.waitUntil — never
 // blocking the response — then rethrown, so the platform's 500 handling is
-// unchanged. Build-time vars, matching how the CSP reads the PostHog host.
-const handleFetch = withExceptionCapture((request) => entry.fetch(request), {
-  apiKey: import.meta.env.VITE_PUBLIC_POSTHOG_KEY || undefined,
-  host: import.meta.env.VITE_PUBLIC_POSTHOG_HOST || undefined,
-});
+// unchanged. Handled degradations report themselves at their catch sites
+// through the same config (see ~/lib/error-tracking).
+const handleFetch = withExceptionCapture(
+  (request) => entry.fetch(request),
+  BUILD_TIME_CAPTURE_CONFIG,
+);
 
 // Default export carries BOTH fetch and the Workers Cron handler;
 // createServerEntry only builds `fetch`, so scheduled is attached here.

@@ -11,3 +11,10 @@ export const env: Record<string, unknown> = {
   COOKIE_SECRET: "vitest-fake-cookie-secret",
   DB: {},
 };
+
+/** Module-scope import in ~/lib/error-tracking. A swallowing no-op: nothing
+ * here has a request context to extend, and a test that cares about what was
+ * scheduled passes its own `schedule` in (see error-tracking.test.ts). */
+export function waitUntil(promise: Promise<unknown>): void {
+  void promise.catch(() => {});
+}
