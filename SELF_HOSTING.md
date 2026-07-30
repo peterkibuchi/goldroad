@@ -83,6 +83,18 @@ before OAuth works.
   environments (custom domain route, specific databases). You do **not** need them;
   deploy the top level.
 
+## Backups
+
+Your D1 database already has 30-day point-in-time restore (Time Travel) with no
+setup, which covers a bad migration or a bad delete. It does **not** survive the
+database being deleted, and it cannot get a copy of your data off Cloudflare.
+
+[`docs/BACKUPS.md`](docs/BACKUPS.md) covers both: the Time Travel commands, and
+the optional nightly encrypted export that closes the rest. The export needs a
+keypair and two repository secrets, so it stays off until you set it up — the
+hourly cron will tell you it has no backup until then, which is the honest
+answer.
+
 ## Analytics (optional)
 
 Analytics are off unless you set `VITE_PUBLIC_POSTHOG_KEY` (PostHog). Leaving it empty

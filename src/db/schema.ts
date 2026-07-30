@@ -204,6 +204,34 @@ export const followerSnapshots = sqliteTable(
   ],
 );
 
+/**
+ * One row per completed off-platform backup — the heartbeat the hourly cron
+ * watches (see ~/lib/backup).
+ *
+ * D1's Time Travel covers restoring THIS database; it cannot get bytes off the
+ * platform, and it dies with the database it lives in. The export that closes
+ * that gap runs in CI, not here, because D1's export is an account-level REST
+ * operation rather than something the `DB` binding can do. That split leaves
+ * one thing unaccounted for: a backup job that quietly stops running looks
+ * exactly like a backup job that is working. So the CI job stamps a row here
+ * only after a verified, encrypted, uploaded export, and the cron alerts when
+ * the newest row goes stale.
+ *
+ * `bytes` is the size of the PLAINTEXT dump, not the encrypted artifact: it is
+ * recorded so the freshness check can also catch the export that "succeeded"
+ * and produced a near-empty file. `at` is when the export completed.
+ */
+export const backupRuns = sqliteTable(
+  "backup_runs",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    at: integer("at", { mode: "timestamp_ms" }).notNull(),
+    bytes: integer("bytes").notNull(),
+  },
+  // The only read is "newest first, limit 1".
+  (table) => [index("backup_runs_at_idx").on(table.at)],
+);
+
 export const reports = sqliteTable("reports", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   url: text("url").notNull(),
