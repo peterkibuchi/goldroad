@@ -20,14 +20,6 @@ export const Route = createFileRoute("/p/$handle/$rkey")({
 });
 
 function DocumentPage() {
-  const { doc, ident, publicationName, cover, mirror } = Route.useLoaderData();
-  return (
-    <DocumentArticle
-      cover={cover}
-      doc={doc}
-      ident={ident}
-      mirror={mirror}
-      publicationName={publicationName}
-    />
-  );
+  // Spread for the same reason as the canonical route — see the note there.
+  return <DocumentArticle {...Route.useLoaderData()} />;
 }
