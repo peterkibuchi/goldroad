@@ -272,11 +272,25 @@ export type DocumentEngagement = {
  */
 export function hasCountedEngagement(counts: EngagementCounts): boolean {
   return (
-    counts.likeCount !== undefined ||
-    counts.replyCount !== undefined ||
-    counts.repostCount !== undefined ||
-    counts.quoteCount !== undefined
+    isWorthShowing(counts.likeCount) ||
+    isWorthShowing(counts.replyCount) ||
+    isWorthShowing(counts.repostCount) ||
+    isWorthShowing(counts.quoteCount)
   );
+}
+
+/**
+ * A count earns its place on the page only once it is at least one.
+ *
+ * The AppView answers a freshly announced post with literal zeros, not absent
+ * fields, so "defined" was never the right test — it put a row of `0 0 0` under
+ * every new post, which is the moment a writer is most likely to look at it and
+ * screenshot it. Nothing true is lost by staying quiet: a reader learns nothing
+ * from three zeros that they don't learn from silence, and the writer is spared
+ * a scoreboard of their own post's first hour.
+ */
+export function isWorthShowing(count: number | undefined): boolean {
+  return count !== undefined && count > 0;
 }
 
 /** Cache read for one post's counts — a miss, a malformed entry, and a cache

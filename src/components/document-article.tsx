@@ -24,6 +24,7 @@ import {
   type DocumentEngagement,
   getDocumentEngagement,
   hasCountedEngagement,
+  isWorthShowing,
 } from "~/lib/engagement";
 import { buildArticleJsonLd, jsonLdScriptContent } from "~/lib/json-ld";
 import { checkMirror, type MirrorInfo } from "~/lib/mirror";
@@ -320,11 +321,10 @@ function provenanceHost(url: string | null): string | null {
 function EngagementRow({ engagement }: { engagement: DocumentEngagement }) {
   const { counts, threadUrl } = engagement;
   const reposts = (counts.repostCount ?? 0) + (counts.quoteCount ?? 0);
-  const showReposts =
-    counts.repostCount !== undefined || counts.quoteCount !== undefined;
+  const showReposts = isWorthShowing(reposts);
   return (
     <div className="mb-10 flex items-center gap-6 border-rule border-b pb-6 font-display text-ink-soft text-sm">
-      {counts.likeCount !== undefined && (
+      {isWorthShowing(counts.likeCount) && (
         <span
           className="inline-flex items-center gap-1.5"
           title={`${counts.likeCount} likes on Bluesky`}
@@ -333,7 +333,7 @@ function EngagementRow({ engagement }: { engagement: DocumentEngagement }) {
           {counts.likeCount}
         </span>
       )}
-      {counts.replyCount !== undefined && (
+      {isWorthShowing(counts.replyCount) && (
         <ExternalLink
           className="inline-flex items-center gap-1.5 transition-colors hover:text-ink"
           href={threadUrl}
