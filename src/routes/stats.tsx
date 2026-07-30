@@ -331,7 +331,14 @@ function StatsPage() {
         </div>
 
         {rows === null && (
-          <Notice tone="alert">
+          // Ink, not the alert tone the Posts page uses for the same read. Two
+          // reasons: the page's single accent moment belongs to the chart, and a
+          // spot-coloured notice can appear right alongside it (the metrics
+          // arrive on their own call, so a failed document read doesn't stop the
+          // chart from rendering). And nothing here is destructive or urgent —
+          // it's a fact about our plumbing that a refresh fixes, in the same
+          // quiet voice every other "couldn't load" line on this surface uses.
+          <Notice tone="info">
             Your posts couldn't be loaded right now — your data server may be
             briefly unreachable. They're safe in your repo; refresh to try
             again.
