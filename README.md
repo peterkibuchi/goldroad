@@ -1,9 +1,12 @@
 # Goldroad
 
-**Writer-owned publishing on the AT Protocol.** Your posts, your audience, your name —
-portable forever, with 0% of reader revenue ever taken.
+**Writer-owned publishing on the AT Protocol.** Your posts, your audience and your name
+live in an account you control, so leaving costs you nothing. When reader payments ship,
+our cut of them is 0% — permanently.
 
-Live at **[trygoldroad.com](https://trygoldroad.com)** · early and building in public.
+Live at **[trygoldroad.com](https://trygoldroad.com)** · early and building in public ·
+**AGPL-3.0-only**, DCO and no CLA, so the core can never be relicensed away from the
+commons. What that means in practice: [trygoldroad.com/open](https://trygoldroad.com/open).
 
 ## Why
 
@@ -12,8 +15,10 @@ revenue, hold follower graphs hostage, and can deplatform at will. Open alternat
 restore control but have no native network. Goldroad resolves the tradeoff by building
 on the [AT Protocol](https://atproto.com): posts and publications live as
 [standard.site](https://standard.site) records in a repository controlled by the
-writer's own decentralized identifier — Bluesky renders them natively in the timeline —
-so leaving Goldroad never means losing your work, your readers, or your byline.
+writer's own decentralized identifier. Announcing one puts an enriched card in the
+Bluesky timeline, rendered from the record itself rather than scraped from a link — so
+the reach is real, and leaving Goldroad still costs you no work, no readers, and no
+byline.
 
 The economics follow the same principle: **we charge for writer costs (hosting, email,
 domains), never writer revenue.** Reader payments — when they ship — flow through the
@@ -34,11 +39,21 @@ permanently.
   landing as private drafts
 - Read the conversation: replies to a post's Bluesky announcement render under the post
   itself, so the network is the comment section
+- Writer stats (followers over time, per-post engagement), honest about being approximate
 - Export everything, or delete your account outright
 - A 27-check production canary, 1,087 tests, and an adversarially-reviewed pipeline
 
-Newsletters, reader payments, custom domains and continuous mirroring are **not** built
-yet — [`docs/PRODUCT.md`](docs/PRODUCT.md) lists exactly what's shipped and what isn't.
+Newsletters, reader payments, custom domains, writer theming, our own extension lexicon
+and continuous mirroring are **not** built yet — [`docs/PRODUCT.md`](docs/PRODUCT.md)
+lists exactly what's shipped and what isn't. Self-hosting is documented
+([`SELF_HOSTING.md`](SELF_HOSTING.md)) but community-supported, not a product yet.
+
+## How it's checked
+
+1,107 tests across 90 files (`pnpm test`), run alongside lint and typecheck on every
+pull request. An hourly Workers cron re-checks core invariants against the live origin
+and the freshness of the nightly off-platform database export, alerting to a webhook
+when either slips (`src/lib/scheduled.ts`).
 
 ## Stack
 
@@ -66,12 +81,17 @@ pnpm check && pnpm typecheck && pnpm test                # the gate; keep it gre
 
 ## Licensing
 
-- Server/core: **AGPL-3.0-only** ([LICENSE](LICENSE))
-- Lexicons (when published): **CC0**
-- Client SDK (future): **MIT**
+- Server/core: **AGPL-3.0-only** ([LICENSE](LICENSE)). Anyone running Goldroad as a
+  service for other people — this project included — owes those people the source of
+  the exact version they're using.
+- Lexicons, if we ever need one of our own: **CC0**. Today we publish into the shared
+  `site.standard.*` vocabulary and haven't minted any.
+- Client SDK, when one exists: **MIT**, so native clients can build on it without the
+  copyleft. There isn't one yet.
 
-Contributions via **DCO** (sign-off), no CLA — the core can never be relicensed away
-from the commons.
+Contributions are accepted under the **DCO** (`git commit -s`), with **no CLA**. That is
+the mechanism, not just the intent: without a CLA no single party holds enough copyright
+to relicense the core away from the commons.
 
 ## Acknowledgments
 
