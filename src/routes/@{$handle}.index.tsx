@@ -72,7 +72,7 @@ export const Route = createFileRoute("/@{$handle}/")({
       const publication = pubs[0]?.value ?? null;
       // The record's AT-URI backs the standard.site publication link tag.
       const publicationAtUri = pubs[0]?.uri ?? null;
-      // Publication identity image (gap #8, substack-patterns dossier: the
+      // Publication identity image (the
       // lexicon field already existed, nothing ever rendered it). Served
       // through the same /img proxy as document covers.
       const iconCid = coverImageCid(publication?.icon);
@@ -187,7 +187,7 @@ type ArchivePost = {
 /** Fixed-size thumbnail slot for an archive row — a cover if the post has
  * one, else the publication's own icon, else a quiet monogram. Always
  * renders the same h-20 w-20 box so cover-less rows never leave an
- * inconsistent gap in the list's rhythm (substack-patterns dossier §1). */
+ * inconsistent gap in the list's rhythm. */
 function PostThumb({
   coverPath,
   iconPath,
@@ -307,7 +307,7 @@ function PublicationPage() {
           // Sort/search row: "Latest" is the only real sort today (no view
           // or reply-count signal yet to back Top/Discussions) — the row is
           // laid out so those can join later, but a tab that doesn't work
-          // yet is never rendered (substack-patterns dossier §1).
+          // yet is never rendered.
           <div className="mb-8 flex flex-wrap items-center justify-between gap-4 border-rule border-b pb-3">
             <nav aria-label="Sort posts">
               <span className="font-display font-semibold text-ink text-sm uppercase tracking-wide">

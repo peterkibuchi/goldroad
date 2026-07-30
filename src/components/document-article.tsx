@@ -314,7 +314,7 @@ function hasCountedEngagement(counts: DocumentEngagement["counts"]): boolean {
 
 /** Quiet like/reply/repost+quote row (owner decision #2) — only the reply
  * count is a link, to the bsky.app thread ("the network is the comment
- * section", DECISIONS #61). Plain ink-soft icon+number pairs, never a
+ * section"). Plain ink-soft icon+number pairs, never a
  * colored badge — this must not read as generic social-media chrome. */
 function EngagementRow({ engagement }: { engagement: DocumentEngagement }) {
   const { counts, threadUrl } = engagement;
@@ -495,7 +495,7 @@ export function DocumentArticle({
         )}
         <aside className="mt-16 border-rule border-t pt-10">
           {/* End-of-post follow-card — the honest stand-in for a subscribe
-              card until newsletters ship (dossier §1: "inline subscribe
+              card until newsletters ship (the "inline subscribe
               card", adapt-lite verdict). Frictionless and native: it links
               straight to the writer's own Bluesky profile. */}
           <div className="border border-rule p-6">
