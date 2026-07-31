@@ -257,34 +257,40 @@ describe("DocumentArticle — the header descends", () => {
       />,
     );
 
-  it("sets the dek in the writer's voice, not the interface's", () => {
+  it("sets the header in the display face and leaves the prose in serif", () => {
+    // Two faces, and the line between them is the point: furniture is display,
+    // reading matter is serif. One face doing both is why the header used to
+    // read as a greyed-out first paragraph.
     const { container } = withDek();
     const dek = screen.getByText("A one-sentence hook.");
-    // No display face: the surface's own font-body applies, so the dek reads
-    // as prose. The signal comes from the face, which frees the size from
-    // having to carry it.
-    expect(dek.className).not.toContain("font-display");
-    expect(dek.className).not.toContain("tracking-");
-    expect(container.querySelector("h1")?.className).toContain("font-semibold");
+    expect(dek.className).toContain("font-display");
+    const h1 = container.querySelector("h1");
+    expect(h1?.className).toContain("font-display");
+    expect(h1?.className).toContain("font-bold");
+    // The body keeps the serif: Prose sets no face, inheriting font-body.
+    expect(container.querySelector(".gr-prose")?.className).not.toContain(
+      "font-display",
+    );
   });
 
-  it("keeps the dek between the title and the byline", () => {
+  it("scales the header proportionally to the body, descending", () => {
     const { container } = withDek();
     const dek = screen.getByText("A one-sentence hook.");
-    // 16px — under the 17px body so it introduces rather than competes, and
-    // above the 14px byline so the order down the page never inverts.
-    expect(dek.className).toContain("text-base");
-    expect(dek.className).not.toContain("text-xs");
+    // Against a 17px (1.0625rem) body: title 2rem ~1.88x, dek 1.1875rem
+    // ~1.12x — just above the body so it leads in — byline 0.875rem ~0.82x.
+    expect(container.querySelector("h1")?.className).toContain("text-[2rem]");
+    expect(dek.className).toContain("text-[1.1875rem]");
     // Scoped to the header: the handle also appears in the colophon.
-    const header = container.querySelector("header");
-    const byline = header?.querySelector('a[href="/@writer.example"]');
+    const byline = container
+      .querySelector("header")
+      ?.querySelector('a[href="/@writer.example"]');
     expect(byline?.closest("div")?.className).toContain("text-sm");
   });
 
   it("holds the dek to a readable measure", () => {
     withDek();
     expect(screen.getByText("A one-sentence hook.").className).toContain(
-      "max-w-[62ch]",
+      "max-w-[52ch]",
     );
   });
 });
