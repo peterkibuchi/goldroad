@@ -454,13 +454,24 @@ export function DocumentArticle({
           </div>
         )}
         <header className="mb-10 border-rule border-b pb-8">
-          <h1 className="text-balance font-semibold text-4xl text-ink leading-[1.1] md:text-5xl">
+          {/* 32px flat, no responsive step. A headline set at display size
+              spent three lines on a long title and pushed the first sentence
+              off the screen; the piece should start above the fold. Leading
+              tightens as the size drops — 1.1 was set for a much larger face
+              and reads loose at this one. */}
+          <h1 className="text-balance font-semibold text-[2rem] text-ink leading-[1.15]">
             {doc.title ?? "Untitled"}
           </h1>
           {/* Roman, not italic. Italic had become a default soft voice across
-              the product rather than an emphasis, which costs it all meaning. */}
+              the product rather than an emphasis, which costs it all meaning.
+              At 12px the dek sits BELOW body size, so it reads as a standfirst
+              in small type rather than as a large lead-in — display face and
+              a little letter-spacing keep it deliberate at that size instead
+              of looking like shrunken body copy. */}
           {dek && (
-            <p className="mt-4 text-ink-soft text-xl leading-relaxed">{dek}</p>
+            <p className="mt-3 max-w-[62ch] font-display text-ink-soft text-xs leading-[1.5] tracking-[0.01em]">
+              {dek}
+            </p>
           )}
           {/* The byline, split in two. Five facts used to share one whisper —
               the person's name deserves its own line at ink weight; the
