@@ -28,6 +28,33 @@
 }
 
 /*
+ * NATIVE CONTROLS FOLLOW THE EDITION TOO.
+ *
+ * `color-scheme` is the only way to tell the browser which palette to paint
+ * the parts of the page it owns and CSS cannot reach: the popup list a
+ * <select> opens, scrollbars, autofill, focus rings on native widgets, date
+ * pickers. Without it those stay in the UA's light default, so the sort menu
+ * on the dashboard opened as a white panel with an almost invisible grey
+ * option on a black page — a control we style everywhere except the one layer
+ * that is not ours to style.
+ *
+ * On the root rather than on the surface classes, because a <select>'s popup
+ * is rendered outside our DOM entirely and only inherits from the document.
+ *
+ * Known and accepted: a reader whose system says dark, reading a page whose
+ * WRITER chose a light theme, gets dark native controls on a light page. There
+ * are essentially no native controls on a reading page, and the alternative —
+ * driving color-scheme from a writer's four colours — would mean guessing
+ * whether their background counts as dark.
+ */
+:root {
+  color-scheme: light;
+}
+[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+/*
  * THE BLACK-STOCK EDITION — the dark register.
  *
  * Not an inversion. Pressroom is literally ink on paper, and mechanically

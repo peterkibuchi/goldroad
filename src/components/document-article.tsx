@@ -462,14 +462,21 @@ export function DocumentArticle({
           <h1 className="text-balance font-semibold text-[2rem] text-ink leading-[1.15]">
             {doc.title ?? "Untitled"}
           </h1>
-          {/* Roman, not italic. Italic had become a default soft voice across
+          {/* The dek is the WRITER'S sentence, so it is set in the body serif.
+              A previous pass put it in the display face to make a small size
+              look deliberate, which quietly moved the writer's own words into
+              Goldroad's interface voice — the one thing a reading page is not
+              supposed to do. The face carries the "this is prose, not chrome"
+              signal, which frees the size from having to.
+
+              16px: under the 17px body so it reads as an introduction rather
+              than competing with it, and clearly above the 14px byline beneath
+              it, so the header descends 32 → 16 → 14 instead of inverting.
+              Roman, not italic — italic had become a default soft voice across
               the product rather than an emphasis, which costs it all meaning.
-              At 12px the dek sits BELOW body size, so it reads as a standfirst
-              in small type rather than as a large lead-in — display face and
-              a little letter-spacing keep it deliberate at that size instead
-              of looking like shrunken body copy. */}
+              Softer ink and a shorter measure do the rest. */}
           {dek && (
-            <p className="mt-3 max-w-[62ch] font-display text-ink-soft text-xs leading-[1.5] tracking-[0.01em]">
+            <p className="mt-4 max-w-[62ch] text-ink-soft text-base leading-[1.6]">
               {dek}
             </p>
           )}
