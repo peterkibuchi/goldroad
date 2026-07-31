@@ -36,6 +36,7 @@ import {
   selectDraftsForExport,
   selectFollowerSnapshotsForExport,
   selectImportItemsForExport,
+  selectScheduledPostsForExport,
 } from "~/lib/rights-store";
 import { env } from "cloudflare:workers";
 
@@ -68,11 +69,12 @@ export const Route = createFileRoute("/api/account/export")({
         const origin = canonicalOrigin(url.origin);
         const db = drizzle(env.DB);
 
-        const [draftRows, ledgerRows, followerRows, handle, pds] =
+        const [draftRows, ledgerRows, followerRows, scheduleRows, handle, pds] =
           await Promise.all([
             selectDraftsForExport(db, did),
             selectImportItemsForExport(db, did),
             selectFollowerSnapshotsForExport(db, did),
+            selectScheduledPostsForExport(db, did),
             resolveDidToHandle(did).catch(() => null),
             resolveDidToPds(did).catch(() => null),
           ]);
@@ -117,8 +119,8 @@ export const Route = createFileRoute("/api/account/export")({
           account: { did, handle: handle ?? null },
           manifest:
             "Goldroad stores remarkably little for your account: your drafts, " +
-            "import history and daily follower counts below, plus a record of " +
-            "your sign-in session. That is everything we hold keyed to your " +
+            "import history, scheduled posts and daily follower counts below, " +
+            "plus a record of your sign-in session. That is everything we hold keyed to your " +
             "DID. It does NOT include an email address you may have given our " +
             "waitlist form or left on an abuse report: those rows are keyed by " +
             "the email alone, with no DID, so nothing here can prove they are " +
@@ -146,6 +148,17 @@ export const Route = createFileRoute("/api/account/export")({
             draftId: row.draftId,
             publishedRkey: row.publishedRkey,
             adoptedAt: row.adoptedAt?.toISOString() ?? null,
+            createdAt: row.createdAt.toISOString(),
+          })),
+          scheduledPosts: scheduleRows.map((row) => ({
+            draftId: row.draftId,
+            dueAt: row.dueAt.toISOString(),
+            status: row.status,
+            attempts: row.attempts,
+            // Our own account of why a post of theirs did not go out — theirs
+            // to read in full, verbatim, not summarised.
+            lastError: row.lastError,
+            publishedRkey: row.publishedRkey,
             createdAt: row.createdAt.toISOString(),
           })),
           followerHistory: followerRows.map((row) => ({

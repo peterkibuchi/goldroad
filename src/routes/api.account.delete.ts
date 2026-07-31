@@ -1,8 +1,9 @@
 /**
  * Account deletion — the destructive action beneath "Your data" on /settings.
  * Purges OUR copies only: drafts, import ledger + rate-limit rows, the daily
- * follower snapshots, and the D1-side OAuth session, then clears the session
- * cookie. Session-authed POST, re-verified here (never trust a
+ * follower snapshots, any scheduled posts (a pending one is an instruction to
+ * publish, and must not outlive the account), and the D1-side OAuth session,
+ * then clears the session cookie. Session-authed POST, re-verified here (never trust a
  * client-supplied identity for a delete).
  *
  * ARCHITECTURAL NOTE, worth restating at the one place that could get it
@@ -37,6 +38,7 @@ import {
   deleteImportFetchesForDid,
   deleteImportItemsForDid,
   deleteOAuthSessionForDid,
+  deleteScheduledPostsForDid,
 } from "~/lib/rights-store";
 import { clearSessionCookies } from "~/lib/session";
 import { env } from "cloudflare:workers";
@@ -79,6 +81,7 @@ export const Route = createFileRoute("/api/account/delete")({
           deleteImportItemsForDid(db, did),
           deleteImportFetchesForDid(db, did),
           deleteFollowerSnapshotsForDid(db, did),
+          deleteScheduledPostsForDid(db, did),
         ]);
 
         // Upstream token revocation is best-effort (same posture as

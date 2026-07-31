@@ -7,10 +7,10 @@
  * (awaitable), unit-testable via .toSQL() without a live D1.
  *
  * Scope, deliberately narrow (see AGENTS.md architectural note): these are
- * the ONLY five places a writer's DID appears in our D1 — drafts,
- * import_items, import_fetches, follower_snapshots, and the oauth_kv session
- * row. Published posts live in the writer's own atproto repo and are never
- * touched here; deleting an account purges our copies only.
+ * the ONLY six places a writer's DID appears in our D1 — drafts,
+ * import_items, import_fetches, follower_snapshots, scheduled_posts, and the
+ * oauth_kv session row. Published posts live in the writer's own atproto repo
+ * and are never touched here; deleting an account purges our copies only.
  *
  * Anything new that stores a DID belongs in both halves of this file, in the
  * same change that creates it. A table that ships without its export and
@@ -39,9 +39,11 @@ import {
   importFetches,
   importItems,
   oauthKv,
+  scheduledPosts,
 } from "~/db/schema";
 import { MAX_DRAFTS_PER_USER } from "~/lib/drafts-schema";
 import { SNAPSHOT_RETENTION_DAYS } from "~/lib/follower-snapshots";
+import { MAX_SCHEDULES_PER_WRITER } from "~/lib/scheduled-posts";
 
 type DrizzleD1 = ReturnType<typeof drizzle>;
 
@@ -112,6 +114,47 @@ export function selectFollowerSnapshotsForExport(db: DrizzleD1, did: string) {
     .where(eq(followerSnapshots.did, did))
     .orderBy(asc(followerSnapshots.day))
     .limit(MAX_SNAPSHOT_ROWS_PER_EXPORT);
+}
+
+/**
+ * A writer's scheduled posts — pending, failed and recently published alike.
+ *
+ * Included in the export because it is a record of the writer's own intent
+ * ("this piece was to go out on Tuesday") that exists nowhere else, and because
+ * `last_error` is our account of why something of theirs did not happen. If we
+ * hold a reason a writer's post failed, they get to read it in full.
+ */
+export function selectScheduledPostsForExport(db: DrizzleD1, did: string) {
+  return db
+    .select({
+      draftId: scheduledPosts.draftId,
+      dueAt: scheduledPosts.dueAt,
+      status: scheduledPosts.status,
+      attempts: scheduledPosts.attempts,
+      lastError: scheduledPosts.lastError,
+      publishedRkey: scheduledPosts.publishedRkey,
+      createdAt: scheduledPosts.createdAt,
+    })
+    .from(scheduledPosts)
+    .where(eq(scheduledPosts.did, did))
+    .orderBy(asc(scheduledPosts.dueAt))
+    .limit(MAX_SCHEDULES_PER_WRITER);
+}
+
+/**
+ * Deletes every scheduled post a writer owns (account deletion).
+ *
+ * This one is not merely housekeeping: a pending row is an INSTRUCTION TO
+ * PUBLISH that a cron would otherwise pick up an hour after the account was
+ * deleted. Its draft is gone by then and its session is revoked, so it could
+ * only ever fail — but a deleted account must not leave work queued in our
+ * scheduler at all.
+ */
+export function deleteScheduledPostsForDid(db: DrizzleD1, did: string) {
+  return db
+    .delete(scheduledPosts)
+    .where(eq(scheduledPosts.did, did))
+    .returning({ id: scheduledPosts.id });
 }
 
 /** Deletes every draft a writer owns (account deletion, not the single-draft

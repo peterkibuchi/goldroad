@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   index,
   integer,
@@ -69,6 +70,15 @@ export const hiddenContent = sqliteTable("hidden_content", {
  * JSON is the editor's private format, and nothing outside the editor may
  * reach into it. Empty string is the honest default — a draft with no
  * subtitle, not a missing one.
+ *
+ * `markdown` is the SAME projection publishing sends to the record's
+ * `textContent`, saved next to the blocks it came from. It exists because that
+ * projection can only be produced by the editor: `blocksToMarkdownLossy` needs
+ * a live BlockNote instance (ProseMirror, a real DOM), which a Workers cron
+ * does not have and never will. Storing it makes the draft — not a copy of it
+ * — the thing scheduled publishing publishes. Written on every save, so it can
+ * never drift from `content`; "" for drafts last saved before the column
+ * existed, which is why scheduling writes it before it schedules anything.
  */
 export const drafts = sqliteTable(
   "drafts",
@@ -78,6 +88,7 @@ export const drafts = sqliteTable(
     title: text("title").notNull().default(""),
     dek: text("dek").notNull().default(""),
     content: text("content").notNull(),
+    markdown: text("markdown").notNull().default(""),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .notNull()
       .$defaultFn(() => new Date()),
@@ -139,6 +150,88 @@ export const importItems = sqliteTable(
     index("import_items_did_draft_idx").on(table.did, table.draftId),
     // Reader-page mirror lookup (by the published record's rkey).
     index("import_items_did_rkey_idx").on(table.did, table.publishedRkey),
+  ],
+);
+
+/**
+ * Scheduled publishing — one row per draft a writer has told us to publish at
+ * a given moment. The hourly cron (~/lib/scheduled-posts) does the publishing.
+ *
+ * IT REFERENCES A DRAFT, IT DOES NOT COPY ONE. `draft_id` + `did` is the whole
+ * payload: title, subtitle and the markdown projection are read from the draft
+ * row at publish time, so editing a scheduled draft changes what goes out —
+ * which is what a writer means by "this piece publishes on Tuesday". A
+ * snapshot taken at schedule time would quietly publish the older words.
+ *
+ * `due_at` is UTC (unix ms), always. The writer's local time is a rendering
+ * concern — a zone offset resolved in the browser at submit time, converted
+ * once at the write door (~/lib/schedule-time) and never stored. A stored
+ * offset is a stored guess about a future DST rule.
+ *
+ * `status` is 'pending' | 'published' | 'failed'. Cancelling DELETES the row
+ * (nothing due, nothing shown, nothing to garbage-collect), so there is no
+ * fourth state. A 'published' row is kept as the double-publish guard — the
+ * claim below plus a terminal status is what makes a retried or overlapping
+ * tick unable to publish the same draft twice — and pruned once it is old
+ * enough to be past the reach of any retry.
+ *
+ * `attempts` and `last_error` are the honesty columns. A cron firing hours
+ * after the writer walked away can fail for reasons they must be able to read
+ * (a revoked OAuth grant, a PDS that answered 400), so every failure is
+ * written down in words the posts manager shows them. A scheduled post that
+ * silently never went out is the worst outcome this feature has, and these two
+ * columns are what make it impossible.
+ *
+ * `claimed_at` is the cron's lease on a row: it is set by a conditional UPDATE
+ * that only one tick can win (see `claimDuePost`), and cleared when the row
+ * reaches a terminal state or is released for retry. A lease older than
+ * STALE_CLAIM_MS means the tick holding it died mid-flight, and the row is
+ * released rather than stranded — a stranded row is the silent failure again.
+ */
+export const scheduledPosts = sqliteTable(
+  "scheduled_posts",
+  {
+    id: text("id").primaryKey(),
+    did: text("did").notNull(),
+    draftId: text("draft_id").notNull(),
+    dueAt: integer("due_at", { mode: "timestamp_ms" }).notNull(),
+    status: text("status", {
+      enum: ["pending", "published", "failed"],
+    })
+      .notNull()
+      .default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    /** A sentence the WRITER reads, not a stack trace (see `failureReason`). */
+    lastError: text("last_error"),
+    claimedAt: integer("claimed_at", { mode: "timestamp_ms" }),
+    /** The rkey the post published under — set with status = 'published'. */
+    publishedRkey: text("published_rkey"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => [
+    // The due lookup, and the ONE query here that is not per-writer: the cron
+    // publishes for everybody, so it leads on (status, due_at). Covering both
+    // columns keeps a tick from scanning rows that are published or not yet
+    // due — the table's steady state is mostly published rows awaiting prune.
+    index("scheduled_posts_due_idx").on(table.status, table.dueAt),
+    // Every writer-facing read (the manager's Scheduled tab, the editor's
+    // "already scheduled" lookup, the export) pairs did with status.
+    index("scheduled_posts_did_status_idx").on(
+      table.did,
+      table.status,
+      table.dueAt,
+    ),
+    // At most one live schedule per draft: re-scheduling updates that row
+    // instead of stacking a second publish behind the first. Partial, so a
+    // finished row never blocks the writer scheduling that draft again.
+    uniqueIndex("scheduled_posts_did_draft_pending_idx")
+      .on(table.did, table.draftId)
+      .where(sql`${table.status} = 'pending'`),
   ],
 );
 
