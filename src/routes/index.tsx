@@ -69,7 +69,7 @@ const STEPS = [
   },
   {
     title: "Write the long one",
-    body: "A calm, focused editor for the piece that never fit in a post. Headings, quotes, links, images.",
+    body: "A calm, focused editor for the piece that never fit in a post. Headings, quotes, footnotes, images — and a schedule, if you write to a weekly slot.",
   },
   {
     title: "Publish to a page you own",
@@ -77,7 +77,7 @@ const STEPS = [
   },
   {
     title: "Send it to the timeline",
-    body: "One tap posts it to Bluesky as a rich card linking back to your page. Your reach, no middleman.",
+    body: "One tap posts it to Bluesky as a rich card linking back to your page. Readers reply there, and the conversation shows up under your post.",
   },
 ];
 
@@ -91,8 +91,8 @@ const REASONS = [
     body: "Your posts land as first-class cards — cover, title, summary — because Goldroad publishes in the network's own format.",
   },
   {
-    title: "One name, one byline",
-    body: 'The handle they follow is the name on the piece. No second profile, no "find me over there too." Same you, more room.',
+    title: "Yours on every app",
+    body: "Your page's look travels with your account. Apps nobody at Goldroad wrote will honour it, because it's stored in a format we share rather than a database we keep.",
   },
 ];
 
@@ -229,8 +229,8 @@ function FoundingWritersForm() {
   if (state === "done") {
     return (
       <p className="border-2 border-ink p-6 font-display font-semibold text-ink text-lg">
-        You're in. We'll email only when there's a real Goldroad update to
-        share.
+        You're in. The next email you get from us is either your invite, or
+        something we shipped that's worth your time.
       </p>
     );
   }
@@ -277,8 +277,8 @@ function FoundingWritersForm() {
       {/* Anti-bot challenge — renders only when the sitekey env var is set. */}
       <TurnstileWidget />
       <p className="basis-full font-display text-ink-soft text-xs leading-normal">
-        Just the occasional update as we build — and yours to leave anytime with
-        one click.
+        One email when your invite is ready, occasional build notes in between —
+        and yours to leave anytime with one click.
       </p>
       {state === "error" && (
         <p className="basis-full font-display text-sm text-spot" role="alert">
@@ -353,18 +353,18 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
                   <span className="spot-highlight">already are</span>.
                 </h1>
                 <p className="mt-6 max-w-[46ch] text-pretty font-body text-ink-soft text-lg italic md:text-xl">
-                  You've built the audience. Give your writing a home you own:
-                  Goldroad publishes your long-form to its own page, then sends
-                  it into the Bluesky timeline as a card your followers can
-                  open, like, and repost.
+                  You've built the audience. Write the long one here —
+                  footnotes, images, a scheduled send — and it goes up on a page
+                  you own, then lands in your followers' timeline as a card:
+                  title, cover, one tap to read.
                 </p>
                 <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3">
                   <CtaLink href="#join">Join the founding writers</CtaLink>
                   <QuietLink href="#how">See how it works</QuietLink>
                 </div>
                 <p className="mt-8 max-w-[52ch] border-rule border-t pt-4 font-display text-ink-soft text-sm leading-normal">
-                  Free while we build · your followers stay yours · we take 0%
-                  of what readers pay you.
+                  Free while we build · your followers stay yours · publishing
+                  and Bluesky distribution stay free for good.
                 </p>
               </div>
               <TimelineCard />
@@ -434,12 +434,13 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
         <MarketingSection divider>
           <Kicker>What you own</Kicker>
           <h2 className="mt-4 max-w-[22ch] text-balance font-black font-display text-3xl text-ink leading-tight tracking-tight md:text-4xl">
-            Ownership, itemized.
+            Leaving is the guarantee.
           </h2>
           <p className="mt-4 max-w-[56ch] text-pretty text-ink-soft text-lg leading-relaxed">
-            Plenty of platforms say you own your audience. Here's what the word
-            actually covers at Goldroad — each part guaranteed by how it's
-            built, rather than by our promises.
+            Anyone can promise you own your work. Goldroad is built so the
+            promise doesn't depend on us keeping it. If Goldroad vanished
+            tonight, your publication wouldn't — here is exactly what stays
+            yours, and why we couldn't hold it if we wanted to.
           </p>
           <dl className="mt-10 grid grid-cols-1 gap-x-12 gap-y-8 md:grid-cols-2">
             <div>
@@ -454,12 +455,13 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
             </div>
             <div>
               <dt className="font-bold font-display text-ink text-lg">
-                Your list and your readers
+                Your readers
               </dt>
               <dd className="mt-2 text-ink-soft text-sm leading-relaxed">
-                Followers stay tied to your handle, not our app. Your archive
-                exports any day, and every post already lives in a repository
-                you control. Leaving Goldroad takes all of it with you.
+                They follow your handle, not our app, so they stay yours on
+                every app that speaks the same network. When the email list
+                ships it starts portable: import it, export it, every address
+                visibly yours.
               </dd>
             </div>
             <div>
@@ -482,8 +484,17 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
               </dd>
             </div>
           </dl>
+          {/* The guarantee's proof. A claim about architecture is only worth
+              what the reader can check, and the code is the check. */}
           <p className="mt-10 border-rule border-t pt-4 text-ink-soft text-sm">
-            Coming from Substack?{" "}
+            The code that keeps these promises is public —{" "}
+            <a
+              className="font-display font-semibold text-ink underline decoration-2 underline-offset-4 transition-colors hover:text-spot"
+              href="/open"
+            >
+              read it
+            </a>
+            . Coming from Substack?{" "}
             <a
               className="font-display font-semibold text-ink underline decoration-2 underline-offset-4 transition-colors hover:text-spot"
               href="/leaving-substack"
@@ -500,12 +511,60 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
             Be one of the founding writers.
           </h2>
           <p className="mt-4 max-w-[58ch] text-pretty text-ink-soft text-lg leading-relaxed">
-            The core already works: publishing to your own repo, native on
-            Bluesky, your archive imported from Substack, Ghost, Medium or
-            WordPress, scheduled posts, and your own colours on your pages.
-            We're opening to founding writers before newsletters and reader
-            payments land. Join and you'll get in early, a say in what we build,
-            and founding perks when paid plans arrive.
+            The core is live: drafts, images, footnotes, scheduling, your own
+            colours, and your archive imported from Substack, Ghost, Medium or
+            WordPress — every post published to an account you own and announced
+            natively on Bluesky. Newsletters and reader payments are still being
+            built.
+          </p>
+          {/* The offer, in nameable goods rather than abstractions. Each line is
+              claimable today or is a promise we can keep forever; the cap is a
+              deliverability fact, not scarcity theatre, which is why we say why.
+              Deliberately NOT a held price — our costs scale with a writer's
+              list, so a frozen rate would be a cheque against an unknown. */}
+          <ul className="mt-6 max-w-[58ch] space-y-2.5 text-base text-ink-soft leading-relaxed">
+            <li className="flex gap-3">
+              <span aria-hidden="true" className="text-ink">
+                ·
+              </span>
+              <span>
+                <strong className="font-display font-semibold text-ink">
+                  A founding mark on your publication
+                </strong>{" "}
+                — yours to keep, whatever we become.
+              </span>
+            </li>
+            <li className="flex gap-3">
+              <span aria-hidden="true" className="text-ink">
+                ·
+              </span>
+              <span>
+                <strong className="font-display font-semibold text-ink">
+                  Newsletters and payments first
+                </strong>{" "}
+                — and a direct line while the group is small enough for one.
+              </span>
+            </li>
+            <li className="flex gap-3">
+              <span aria-hidden="true" className="text-ink">
+                ·
+              </span>
+              <span>
+                <strong className="font-display font-semibold text-ink">
+                  What works for you today stays free for you
+                </strong>{" "}
+                — permanently. You'll never be moved onto a paid plan to keep
+                what you already have.
+              </span>
+            </li>
+          </ul>
+          <p className="mt-6 max-w-[58ch] text-pretty text-base text-ink-soft leading-relaxed">
+            We're taking <strong className="text-ink">25 writers</strong> to
+            start, and the reason is email: a new sending domain has to earn its
+            reputation slowly, so small groups are what keep your newsletter out
+            of spam later. Publishing stays free for good — paid plans will sell
+            the things that cost us money, like domains, email delivery and
+            deeper analytics, never a share of what your readers pay you.
           </p>
           <div className="mt-8 max-w-xl">
             <FoundingWritersForm />
