@@ -66,7 +66,30 @@ export function clearEdition(): void {
   }
   const root = document.documentElement;
   delete root.dataset.readerEdition;
-  if (window.matchMedia("(prefers-color-scheme: dark)").matches)
-    root.dataset.theme = "dark";
+  if (prefersDark()) root.dataset.theme = "dark";
   else delete root.dataset.theme;
+}
+
+/**
+ * Does the system ask for dark?
+ *
+ * Guarded, because `matchMedia` is not guaranteed: it is absent in a plain
+ * jsdom and in some embedded webviews, and an unguarded call turns "hand this
+ * page back to its author" into a thrown exception. The pre-paint bootstrap
+ * already wraps its own call in a try/catch for the same reason; this is that
+ * caution applied to the path that runs after mount.
+ *
+ * False on absence, which lands on the light edition — the same answer a
+ * browser that has never heard of `prefers-color-scheme` gives.
+ */
+function prefersDark(): boolean {
+  try {
+    return (
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches
+    );
+  } catch {
+    return false;
+  }
 }
