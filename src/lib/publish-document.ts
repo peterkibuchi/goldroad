@@ -28,6 +28,7 @@ import {
   parseInlineImagesField,
   toRecordInput,
 } from "~/lib/publish";
+import { deleteSchedulesForDraft } from "~/lib/scheduled-posts";
 
 type DrizzleD1 = ReturnType<typeof drizzle>;
 
@@ -223,10 +224,19 @@ export async function publishStoredDraft(input: {
   await setPublishedRkey(db, did, draft.id, rkey).catch((err) => {
     console.warn("import ledger write-back failed", err);
   });
-  // The publish completes the draft.
-  await deleteDraft(db, did, draft.id).catch((err) => {
-    console.warn("draft cleanup after publish failed", err);
-  });
+  // The publish completes the draft — and with it any schedule pointing at it.
+  // A row that outlives its own published post is not harmless: the next tick
+  // finds the draft gone and writes DRAFT_GONE_REASON, so the posts manager
+  // reports a failure for a post that is live. Best-effort, like every other
+  // write-back here, and safe to call when there is no schedule (zero rows).
+  await Promise.all([
+    deleteDraft(db, did, draft.id).catch((err) => {
+      console.warn("draft cleanup after publish failed", err);
+    }),
+    deleteSchedulesForDraft(db, did, draft.id).catch((err) => {
+      console.warn("schedule cleanup after publish failed", err);
+    }),
+  ]);
 
   return { ok: true, rkey };
 }

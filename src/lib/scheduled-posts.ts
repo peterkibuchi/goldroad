@@ -518,6 +518,9 @@ export type SchedulePassResult = {
   retrying: number;
   /** Lost the claim race to another tick (cron-vs-cron, working as designed). */
   contended: number;
+  /** Rows whose own bookkeeping threw. They keep their lease until the
+   * stale-claim release, and they cost nobody else their tick. */
+  errored: number;
   /** Abandoned leases handed back at the top of the tick. */
   releasedStale: number;
   /** True when there were more due posts than the cap allowed. Reported, never
@@ -563,6 +566,7 @@ export async function runScheduledPublishPass(opts: {
     failed: 0,
     retrying: 0,
     contended: 0,
+    errored: 0,
     releasedStale: 0,
     capped: false,
     pruned: false,
@@ -591,42 +595,53 @@ export async function runScheduledPublishPass(opts: {
     const due = await store.due(now, cap + 1);
     result.capped = due.length > cap;
     for (const post of due.slice(0, cap)) {
-      const attempts = await store.claim(post.id, now);
-      // Another tick got there first. Not an error — this is the claim doing
-      // exactly what it exists for.
-      if (attempts === null) {
-        result.contended++;
-        continue;
-      }
-      result.attempted++;
-      let attempt: PublishAttempt;
+      // Per row, not per tick: the claim and the terminal writes are D1 calls
+      // that can reject, and a rejection inside the loop would skip every
+      // remaining due post for an hour. One broken row must cost one row.
       try {
-        attempt = await publish(post);
+        const attempts = await store.claim(post.id, now);
+        // Another tick got there first. Not an error — this is the claim doing
+        // exactly what it exists for.
+        if (attempts === null) {
+          result.contended++;
+          continue;
+        }
+        result.attempted++;
+        let attempt: PublishAttempt;
+        try {
+          attempt = await publish(post);
+        } catch (err) {
+          console.error("scheduled publish threw", post.id, err);
+          attempt = { ok: false, retry: true, reason: THREW_REASON };
+        }
+        if (attempt.ok) {
+          await store.published(post.id, attempt.rkey, now);
+          result.published++;
+          continue;
+        }
+        // The ceiling is checked against the count the claim just returned, so
+        // it is the same number in every isolate that could be looking at it.
+        const exhausted = attempts >= MAX_PUBLISH_ATTEMPTS;
+        if (attempt.retry && !exhausted) {
+          await store.retry(post.id, attempt.reason, now);
+          result.retrying++;
+          continue;
+        }
+        await store.failed(
+          post.id,
+          exhausted && attempt.retry
+            ? `${attempt.reason} Goldroad stopped trying after ${MAX_PUBLISH_ATTEMPTS} attempts.`
+            : attempt.reason,
+          now,
+        );
+        result.failed++;
       } catch (err) {
-        console.error("scheduled publish threw", post.id, err);
-        attempt = { ok: false, retry: true, reason: THREW_REASON };
+        // A row whose bookkeeping failed keeps its lease until the stale-claim
+        // release hands it back — late, but never lost, and never at the cost of
+        // the writers behind it in the queue.
+        console.error("scheduled publish row failed", post.id, err);
+        result.errored++;
       }
-      if (attempt.ok) {
-        await store.published(post.id, attempt.rkey, now);
-        result.published++;
-        continue;
-      }
-      // The ceiling is checked against the count the claim just returned, so
-      // it is the same number in every isolate that could be looking at it.
-      const exhausted = attempts >= MAX_PUBLISH_ATTEMPTS;
-      if (attempt.retry && !exhausted) {
-        await store.retry(post.id, attempt.reason, now);
-        result.retrying++;
-        continue;
-      }
-      await store.failed(
-        post.id,
-        exhausted && attempt.retry
-          ? `${attempt.reason} Goldroad stopped trying after ${MAX_PUBLISH_ATTEMPTS} attempts.`
-          : attempt.reason,
-        now,
-      );
-      result.failed++;
     }
     if (result.capped)
       console.log(

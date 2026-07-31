@@ -716,11 +716,18 @@ export function PostsManager({
           {/* The Scheduled tab is only furniture when nothing is queued — but
               it appears the moment something is, and it appears FIRST among the
               unpublished states, because a post about to go out is more urgent
-              than a draft that isn't. */}
-          {scheduled !== null && scheduled.length > 0 && (
+              than a draft that isn't.
+              It also appears whenever this tab is the SELECTED one, even with an
+              empty or unreadable queue: `tab=scheduled` is validated URL state
+              that both scheduling and cancelling redirect to, and a selected tab
+              with no button leaves the panel's aria-labelledby pointing at
+              nothing and no visible mark of where the writer is. */}
+          {(tab === "scheduled" ||
+            scheduled === null ||
+            scheduled.length > 0) && (
             <TabButton
               active={tab === "scheduled"}
-              count={scheduled.length}
+              count={scheduled?.length}
               label={failedCount > 0 ? "Scheduled ·" : "Scheduled"}
               onSelect={() => onTabChange("scheduled")}
               panelId="panel-scheduled"

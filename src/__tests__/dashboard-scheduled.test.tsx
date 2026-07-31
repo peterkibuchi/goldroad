@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ScheduledPostRow } from "../lib/dashboard";
+import type { PostsTab, ScheduledPostRow } from "../lib/dashboard";
 import { PostsManager, ScheduledListRow } from "../routes/dashboard";
 import { VIEWS_OFF } from "./support/views-envelope";
 
@@ -43,7 +43,10 @@ function scheduledRow(extra: Partial<ScheduledPostRow> = {}): ScheduledPostRow {
   };
 }
 
-function renderManager(scheduled: ScheduledPostRow[] | null) {
+function renderManager(
+  scheduled: ScheduledPostRow[] | null,
+  tab: PostsTab = "scheduled",
+) {
   stubStats();
   return render(
     <PostsManager
@@ -54,7 +57,7 @@ function renderManager(scheduled: ScheduledPostRow[] | null) {
       onTabChange={() => {}}
       rows={[]}
       scheduled={scheduled}
-      tab="scheduled"
+      tab={tab}
     />,
   );
 }
@@ -185,9 +188,24 @@ describe("the tab and its empty states", () => {
     );
   });
 
-  it("shows no tab at all when there is nothing queued", () => {
-    renderManager([]);
+  it("shows no tab at all when there is nothing queued and it isn't selected", () => {
+    renderManager([], "published");
     expect(screen.queryByRole("tab", { name: /scheduled/i })).toBeNull();
+  });
+
+  it("keeps the tab while it IS the selected one, empty queue or not", () => {
+    // `tab=scheduled` is validated URL state, and cancelling the last schedule
+    // redirects straight to it. A selected tab with no button leaves the panel's
+    // aria-labelledby pointing at nothing and no visible mark of where you are.
+    renderManager([]);
+    const tab = screen.getByRole("tab", { name: /scheduled/i });
+    expect(tab.getAttribute("aria-selected")).toBe("true");
+    expect(document.getElementById("tab-scheduled")).not.toBeNull();
+  });
+
+  it("keeps the tab when the queue couldn't be read", () => {
+    renderManager(null, "published");
+    expect(screen.getByRole("tab", { name: /scheduled/i })).toBeTruthy();
   });
 
   it("shows the tab, with its count, the moment something is queued", () => {

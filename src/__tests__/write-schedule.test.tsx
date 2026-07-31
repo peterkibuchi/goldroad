@@ -115,6 +115,21 @@ describe("SchedulePanel — its own form, and what it refuses to do", () => {
     expect(screen.getByRole("alert").textContent).toMatch(/couldn't be saved/i);
   });
 
+  it("recovers when the save THROWS, instead of locking the button", async () => {
+    // Exporting the markdown is the editor's work and can throw as well as
+    // fail; a stuck disabled button with no message is the worst of both.
+    const quiet = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { time, button } = panel(async () => {
+      throw new Error("markdown export failed");
+    });
+    fireEvent.change(time, { target: { value: "2027-08-04T09:00" } });
+    fireEvent.click(button);
+    await screen.findByRole("alert");
+    expect(requestSubmit).not.toHaveBeenCalled();
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+    quiet.mockRestore();
+  });
+
   it("asks for a time instead of submitting an empty one", async () => {
     const prepare = vi.fn(async () => DRAFT_ID);
     const { button } = panel(prepare);

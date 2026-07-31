@@ -43,7 +43,6 @@ import {
 } from "~/db/schema";
 import { MAX_DRAFTS_PER_USER } from "~/lib/drafts-schema";
 import { SNAPSHOT_RETENTION_DAYS } from "~/lib/follower-snapshots";
-import { MAX_SCHEDULES_PER_WRITER } from "~/lib/scheduled-posts";
 
 type DrizzleD1 = ReturnType<typeof drizzle>;
 
@@ -123,6 +122,11 @@ export function selectFollowerSnapshotsForExport(db: DrizzleD1, did: string) {
  * ("this piece was to go out on Tuesday") that exists nowhere else, and because
  * `last_error` is our account of why something of theirs did not happen. If we
  * hold a reason a writer's post failed, they get to read it in full.
+ *
+ * Capped by the same defensive bound as the import ledger, NOT by the
+ * hundred-row bound the posts manager's live queue uses: this reads finished
+ * rows too, so a busy month could exceed that and quietly drop the newest —
+ * including a pending post — from a writer's own copy of their data.
  */
 export function selectScheduledPostsForExport(db: DrizzleD1, did: string) {
   return db
@@ -138,7 +142,7 @@ export function selectScheduledPostsForExport(db: DrizzleD1, did: string) {
     .from(scheduledPosts)
     .where(eq(scheduledPosts.did, did))
     .orderBy(asc(scheduledPosts.dueAt))
-    .limit(MAX_SCHEDULES_PER_WRITER);
+    .limit(MAX_LEDGER_ROWS_PER_EXPORT);
 }
 
 /**

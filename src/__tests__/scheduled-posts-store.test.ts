@@ -6,6 +6,7 @@ import {
   cancelSchedule,
   claimDuePost,
   deleteSchedulesForDraft,
+  deleteUnclaimedSchedulesForDraft,
   MAX_PUBLISHES_PER_TICK,
   markFailed,
   markPublished,
@@ -14,6 +15,7 @@ import {
   releaseStaleClaims,
   selectDuePosts,
   selectPendingScheduleForDraft,
+  selectScheduleForDraft,
   selectWriterSchedule,
   upsertSchedule,
 } from "../lib/scheduled-posts";
@@ -145,6 +147,31 @@ describe("the writer-facing queries are bound to the writer", () => {
     expect(params).toContain(ROW_ID);
     // Empty result must be distinguishable from "it worked".
     expect(sql.toLowerCase()).toContain("returning");
+  });
+
+  it("deleteUnclaimedSchedulesForDraft refuses a row a tick already holds", () => {
+    // The request-side half of the double-publish guard: "publish now" may only
+    // take a row out of the queue if no tick is working on it.
+    const { sql, params } = deleteUnclaimedSchedulesForDraft(
+      db,
+      DID,
+      DRAFT_ID,
+    ).toSQL();
+    expect(sql.toLowerCase()).toContain('delete from "scheduled_posts"');
+    expectDidBound(sql, params);
+    expect(params).toContain(DRAFT_ID);
+    expect(sql.toLowerCase()).toContain('"claimed_at" is null');
+    // The returned row IS the caller's proof it owns the publish.
+    expect(sql.toLowerCase()).toContain("returning");
+  });
+
+  it("selectScheduleForDraft answers 'is one in flight' for this writer only", () => {
+    const { sql, params } = selectScheduleForDraft(db, DID, DRAFT_ID).toSQL();
+    expectDidBound(sql, params);
+    expect(params).toContain(DRAFT_ID);
+    expect(sql).toContain('"claimed_at"');
+    // Any status: a failed row is the one "publish now" is usually pressed on.
+    expect(params).not.toContain("pending");
   });
 
   it("deleteSchedulesForDraft deletes by draft AND DID", () => {

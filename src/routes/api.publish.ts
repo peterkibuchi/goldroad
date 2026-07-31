@@ -333,7 +333,10 @@ async function unscheduleDraft(form: FormData, did: string): Promise<Response> {
   // A cancel that matched nothing reports success: the row is gone either way,
   // which is the state the writer asked for (same reasoning as the idempotent
   // account deletion).
-  return backToEditor
+  // The editor is only a destination when there is a draft to return TO: a
+  // cancel from the posts manager sends `id` alone, and /write?draft= would
+  // strand the writer on a blank page after an action that worked.
+  return backToEditor && isDraftId(draftId)
     ? redirectTo(`/write?draft=${encodeURIComponent(draftId)}&unscheduled=1`)
     : backToDashboard({ tab: "scheduled", unscheduled: "1" });
 }
@@ -577,13 +580,21 @@ async function publishDocument({
   }
 
   // A publish that started from an autosaved draft completes it: remove the
-  // draft row (ownership enforced in the delete's WHERE). Best-effort — the
-  // post is already live; a leftover draft costs one manual delete, never a
-  // failed publish.
+  // draft row (ownership enforced in the delete's WHERE) AND any schedule
+  // pointing at it — pressing Publish on a post you had scheduled is a decision
+  // to publish it, and a surviving row would have the next cron tick report a
+  // failure for a post that is already live. Best-effort — the post is already
+  // live; a leftover row costs one manual tidy, never a failed publish.
   if (isDraftId(draftId)) {
-    await deleteDraft(drizzle(env.DB), did, draftId).catch((err) => {
-      console.warn("draft cleanup after publish failed", err);
-    });
+    const db = drizzle(env.DB);
+    await Promise.all([
+      deleteDraft(db, did, draftId).catch((err) => {
+        console.warn("draft cleanup after publish failed", err);
+      }),
+      deleteSchedulesForDraft(db, did, draftId).catch((err) => {
+        console.warn("schedule cleanup after publish failed", err);
+      }),
+    ]);
   }
 
   // Success lands on the dashboard: the new post on top, a "view it live"
