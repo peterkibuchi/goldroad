@@ -163,6 +163,24 @@ export function isSubstackHost(raw: string): boolean {
   }
 }
 
+/**
+ * Does this post carry an embed that conversion will drop?
+ *
+ * Conversion is the sanitizer: BlockNote's parser structurally drops iframes,
+ * script and unknown nodes, which is exactly right and is not changing. But
+ * the writer was never told WHICH posts lost their YouTube video, and a
+ * silently-shorter post discovered weeks later is worse than a labelled one
+ * discovered now — a labelled one can be fixed while the original is still up.
+ *
+ * A tag-name scan rather than a parse: this runs over every previewed item at
+ * render, the answer only decides whether to show a badge, and an over-report
+ * (the string "<iframe" inside a code sample) costs a writer one glance at a
+ * post they wrote. A parse here would be precision nobody can spend.
+ */
+export function hasEmbed(html: string): boolean {
+  return /<\s*(iframe|embed|object|video|audio)\b/i.test(html);
+}
+
 export type SourceError = { code: string; url?: string };
 
 /** The one error the retry-shaped copy would misdescribe: the host is
@@ -1065,6 +1083,9 @@ function PickList({
                   <Badge>
                     {isFile ? "Might be incomplete" : "Preview only"}
                   </Badge>
+                )}
+                {!item.alreadyImported && hasEmbed(item.contentHtml) && (
+                  <Badge>Embed won't come across</Badge>
                 )}
                 {item.alreadyImported && <Badge>Already imported</Badge>}
               </span>
