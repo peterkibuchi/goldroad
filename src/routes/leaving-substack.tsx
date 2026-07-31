@@ -195,7 +195,8 @@ export function LeavingSubstack() {
               writing on a page you own, and your archive here today. Once the
               list and reader payments ship, the readers already paying you keep
               paying — through the same Stripe account they use today. Substack
-              takes 10% of what readers pay you; we take 0%.
+              takes 10% of what readers pay you. Our cut will be 0% —
+              permanently, not a launch promotion.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3">
               <CtaLink href="/#join">Join the founding writers</CtaLink>
