@@ -291,22 +291,29 @@ function HeadlineNumbers({
   );
 }
 
-/** The adaptive next action: resume the piece in progress, or start one.
- * Exactly one primary button per view, and it's this one. */
+/**
+ * The adaptive next action: resume the piece in progress, or start one.
+ *
+ * Ink, not spot — deliberately. The rail's "New post" now carries the one
+ * vermillion moment on every writer surface (see `RailPrimaryAction` in
+ * `~/components/site-chrome`), so this button takes the ink vocabulary rather
+ * than competing with it two inches away. It is still the page's own primary
+ * button; it just isn't the page's accent.
+ */
 function NextAction({ drafts }: { drafts: DraftRow[] | null }) {
   const resume = drafts?.[0] ?? null;
   return (
     <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2">
       {resume ? (
         <a
-          className="inline-flex min-h-11 max-w-full items-center bg-spot px-5 font-bold font-display text-base text-paper transition-colors hover:bg-ink"
+          className="inline-flex min-h-11 max-w-full items-center bg-ink px-5 font-bold font-display text-base text-paper transition-colors hover:bg-spot"
           href={`/write?draft=${encodeURIComponent(resume.id)}`}
         >
           <span className="truncate">Resume "{draftName(resume)}"</span>
         </a>
       ) : (
         <a
-          className="inline-flex min-h-11 items-center bg-spot px-5 font-bold font-display text-base text-paper transition-colors hover:bg-ink"
+          className="inline-flex min-h-11 items-center bg-ink px-5 font-bold font-display text-base text-paper transition-colors hover:bg-spot"
           href="/write"
         >
           Start writing
@@ -583,7 +590,9 @@ export function Overview({
 function HomePage() {
   const data = Route.useLoaderData();
   return (
-    <AppShell header={{ variant: "signed-in", ident: data.ident }}>
+    <AppShell
+      header={{ variant: "signed-in", ident: data.ident, active: "home" }}
+    >
       <main className="mx-auto w-full max-w-3xl px-6 py-10">
         <Overview {...data} />
       </main>

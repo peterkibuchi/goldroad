@@ -705,7 +705,9 @@ function ImportPage() {
   }
 
   return (
-    <AppShell header={{ variant: "signed-in", ident, active: "import" }}>
+    // No active row: importing is a task you perform on your archive, reached
+    // from the posts manager's toolbar — not one of the rail's places.
+    <AppShell header={{ variant: "signed-in", ident }}>
       <main className="mx-auto w-full max-w-2xl px-6 py-10">
         <h1 className="font-black font-display text-3xl text-ink tracking-tight">
           Import your writing

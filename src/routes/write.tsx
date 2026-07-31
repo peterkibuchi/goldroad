@@ -190,6 +190,7 @@ export const Route = createFileRoute("/write")({
       edit?: string;
       draft?: string;
       handle?: string;
+      returnTo?: string;
     } = {};
     if (typeof search.error === "string") out.error = search.error;
     if (typeof search.edit === "string") out.edit = search.edit;
@@ -197,6 +198,14 @@ export const Route = createFileRoute("/write")({
       out.draft = search.draft;
     // /login sends the entered handle back so the sign-in form can prefill it.
     if (typeof search.handle === "string") out.handle = search.handle;
+    // Signed-in surfaces bounce anonymous arrivals to this page — the app's one
+    // sign-in form — and name where the writer was actually headed. Taken
+    // verbatim on purpose: `safeReturnTo` in `~/lib/oauth` is the single
+    // open-redirect guard and it runs on the POST to /login, the only place
+    // this value can ever become a `Location`. A second copy of that check
+    // here would be a security rule with two homes, free to drift, in a module
+    // whose transitive imports have no business in the client bundle.
+    if (typeof search.returnTo === "string") out.returnTo = search.returnTo;
     return out;
   },
   loaderDeps: ({ search }) => ({ edit: search.edit, draft: search.draft }),
@@ -228,10 +237,18 @@ function ErrorNotice({ code }: { code: string | undefined }) {
 export function SignIn({
   error,
   handle,
+  returnTo = "/write",
 }: {
   error: string | undefined;
   /** What the writer entered on a failed attempt — prefilled for correction. */
   handle: string | undefined;
+  /**
+   * Where the writer was headed. Defaults to the editor, because a writer who
+   * came to /write on purpose asked to write; the surfaces that bounce their
+   * anonymous visitors here pass their own path instead, so signing in returns
+   * them to what they clicked rather than to whichever page hosts the form.
+   */
+  returnTo?: string;
 }) {
   const message = errorMessage(error);
   return (
@@ -265,7 +282,7 @@ export function SignIn({
           required
           type="text"
         />
-        <input name="returnTo" type="hidden" value="/write" />
+        <input name="returnTo" type="hidden" value={returnTo} />
         <button
           className="min-h-11 cursor-pointer bg-spot px-6 py-2.5 font-bold font-display text-base text-paper transition-colors hover:bg-ink"
           type="submit"
@@ -919,20 +936,22 @@ export function Compose({
 
 function WritePage() {
   const { viewer, draft, resumed, draftError } = Route.useLoaderData();
-  const { error, handle } = Route.useSearch();
+  const { error, handle, returnTo } = Route.useSearch();
   if (!viewer) {
     return (
       <AppShell header={{ variant: "signed-out" }}>
-        <SignIn error={error} handle={handle} />
+        <SignIn error={error} handle={handle} returnTo={returnTo} />
       </AppShell>
     );
   }
   return (
     <AppShell
       header={{
+        // No active row: the editor is an act, not a place. Writers navigate
+        // away mid-draft (autosave makes that safe), so the rail stays — it
+        // just doesn't pretend the writer is "at" a destination.
         variant: "signed-in",
         ident: viewer.handle ?? viewer.did,
-        active: "write",
       }}
     >
       {/* Keyed by the edit/resume target: switching between editing, resuming

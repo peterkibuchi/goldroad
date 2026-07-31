@@ -386,3 +386,53 @@ describe("posts manager — row actions survive the rebuild", () => {
     expect(resume.getAttribute("href")).toBe("/write?draft=d1");
   });
 });
+
+/**
+ * Import used to be a row in the command rail, as a peer of Posts and Stats.
+ * It isn't a place: it's a task you perform on your archive, roughly once, from
+ * the surface your archive lives on. These pin it to the toolbar so it can't
+ * drift back into navigation — and pin the fallbacks that make demoting it safe
+ * for a writer whose account is still empty.
+ */
+describe("posts manager — the import entry point", () => {
+  it("offers Import in the toolbar, at secondary weight", () => {
+    stubStats();
+    renderManager();
+    const link = screen.getByRole("link", { name: "Import…" });
+    expect(link.getAttribute("href")).toBe("/import");
+    // Secondary: an underlined ink-soft link, never a filled button, and never
+    // the view's accent — that belongs to the rail's New post.
+    expect(link.className).toContain("underline");
+    expect(link.className).toContain("text-ink-soft");
+    expect(link.className).not.toContain("bg-spot");
+    // Touch target, in a row of otherwise dense controls.
+    expect(link.className).toContain("min-h-11");
+  });
+
+  it("keeps it beside the list's own controls, not above the page", () => {
+    stubStats();
+    renderManager();
+    const link = screen.getByRole("link", { name: "Import…" });
+    // The same toolbar row as search and sort — a control over the list
+    // beneath it, not a page-header action.
+    const toolbar = screen
+      .getByLabelText("Search your posts by title")
+      .closest("div");
+    expect(toolbar?.contains(link)).toBe(true);
+    expect(toolbar?.contains(screen.getByLabelText("Sort"))).toBe(true);
+  });
+
+  it("hands off to the first-run panel on a genuinely empty account", () => {
+    // The toolbar is hidden when there is nothing to search or sort, so the
+    // empty state carries its own import link rather than leaving a writer
+    // who arrived with an archive no way to bring it over.
+    stubStats();
+    renderManager({ rows: [], drafts: [] });
+    expect(screen.queryByRole("link", { name: "Import…" })).toBeNull();
+    expect(
+      screen
+        .getByRole("link", { name: /import your writing/i })
+        .getAttribute("href"),
+    ).toBe("/import");
+  });
+});

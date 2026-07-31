@@ -44,3 +44,44 @@ describe("/write sign-in panel — designed login errors", () => {
     expect(link.getAttribute("rel")).toBe("noopener noreferrer");
   });
 });
+
+/**
+ * Where sign-in sends the writer afterwards.
+ *
+ * This panel is the app's only sign-in form, and every signed-in surface bounces
+ * its anonymous visitors here. It used to post a hardcoded `returnTo=/write`, so
+ * a writer who clicked Stats and signed in arrived in a blank editor. The form
+ * now carries the destination it was given, and defaults to the editor only for
+ * someone who actually came to /write.
+ */
+describe("/write sign-in panel — where it sends the writer", () => {
+  function returnToField(): HTMLInputElement | null {
+    return document.querySelector<HTMLInputElement>('input[name="returnTo"]');
+  }
+
+  it("defaults to the editor for a writer who came here to write", () => {
+    render(<SignIn error={undefined} handle={undefined} />);
+    expect(returnToField()?.value).toBe("/write");
+  });
+
+  it("carries the destination a bounced writer was actually headed for", () => {
+    render(<SignIn error={undefined} handle={undefined} returnTo="/home" />);
+    expect(returnToField()?.value).toBe("/home");
+    cleanup();
+    render(<SignIn error={undefined} handle={undefined} returnTo="/stats" />);
+    expect(returnToField()?.value).toBe("/stats");
+  });
+
+  it("keeps the destination through a failed attempt", () => {
+    // The error round-trip goes back through /login's redirect, so losing
+    // returnTo here would silently reroute a writer who mistyped their handle.
+    render(
+      <SignIn error="invalid_handle" handle="not_a_handle" returnTo="/home" />,
+    );
+    expect(returnToField()?.value).toBe("/home");
+    // It posts to /login, which is where the open-redirect guard runs.
+    expect(returnToField()?.closest("form")?.getAttribute("action")).toBe(
+      "/login",
+    );
+  });
+});
