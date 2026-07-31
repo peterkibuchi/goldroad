@@ -38,7 +38,7 @@ import {
   deleteImportItemsForDid,
   deleteOAuthSessionForDid,
 } from "~/lib/rights-store";
-import { sessionClearCookie } from "~/lib/session";
+import { clearSessionCookies } from "~/lib/session";
 import { env } from "cloudflare:workers";
 
 /** Failures redirect back to /settings with the existing error-message
@@ -56,7 +56,7 @@ export const Route = createFileRoute("/api/account/delete")({
     handlers: {
       POST: async ({ request }) => {
         const url = new URL(request.url);
-        const clearCookie = sessionClearCookie(url.protocol === "https:");
+        const clearCookies = clearSessionCookies(url.protocol === "https:");
 
         if (isCrossSite(request)) {
           return backToSettings("delete_account_failed");
@@ -93,13 +93,9 @@ export const Route = createFileRoute("/api/account/delete")({
         }
         await deleteOAuthSessionForDid(db, did);
 
-        return new Response(null, {
-          status: 303,
-          headers: {
-            location: "/?notice=goodbye",
-            "set-cookie": clearCookie,
-          },
-        });
+        const headers = new Headers({ location: "/?notice=goodbye" });
+        for (const cookie of clearCookies) headers.append("set-cookie", cookie);
+        return new Response(null, { status: 303, headers });
       },
     },
   },

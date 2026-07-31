@@ -61,7 +61,7 @@ import {
   TID_RE,
   updateDocumentRecord,
 } from "~/lib/publish";
-import { sessionClearCookie } from "~/lib/session";
+import { clearSessionCookies } from "~/lib/session";
 import { env } from "cloudflare:workers";
 
 function redirectTo(location: string, extra?: HeadersInit): Response {
@@ -166,9 +166,12 @@ export const Route = createFileRoute("/api/publish")({
         } catch (err) {
           console.warn("session restore failed", err);
           // Sign-in lives on /write for both intents.
-          return redirectTo("/write?error=session_expired", {
-            "set-cookie": sessionClearCookie(url.protocol === "https:"),
+          const expired = new Headers({
+            location: "/write?error=session_expired",
           });
+          for (const cookie of clearSessionCookies(url.protocol === "https:"))
+            expired.append("set-cookie", cookie);
+          return new Response(null, { status: 303, headers: expired });
         }
 
         const rpc = new Client({ handler: session });

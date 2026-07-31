@@ -145,6 +145,33 @@ export function sessionSetCookie(token: string, secure: boolean): string {
   return `${COOKIE_NAME}=${token}; HttpOnly;${secure ? " Secure;" : ""} SameSite=Lax; Path=/; Max-Age=${MAX_AGE_SECONDS}`;
 }
 
+/**
+ * A NON-sensitive companion cookie that only says "someone is signed in here".
+ *
+ * It carries no identity and grants nothing — the real session cookie stays
+ * HttpOnly and is the only thing any endpoint trusts. This exists because
+ * marketing pages are edge-cached and deliberately cookie-independent: the HTML
+ * cannot vary per visitor, so a signed-in writer would be shown "Sign in". A
+ * readable presence flag lets the client correct the label without fragmenting
+ * the cache or exposing anything.
+ */
+export const SESSION_HINT_COOKIE = "gr_signed_in";
+
+export function sessionHintSetCookie(secure: boolean): string {
+  return `${SESSION_HINT_COOKIE}=1;${secure ? " Secure;" : ""} SameSite=Lax; Path=/; Max-Age=${MAX_AGE_SECONDS}`;
+}
+
+export function sessionHintClearCookie(secure: boolean): string {
+  return `${SESSION_HINT_COOKIE}=;${secure ? " Secure;" : ""} SameSite=Lax; Path=/; Max-Age=0`;
+}
+
+/** Every cookie a sign-out must drop, as Set-Cookie values. Returned together
+ * so a new sign-out path cannot clear the session and leave the presence flag
+ * behind, which would show a signed-out visitor a signed-in label. */
+export function clearSessionCookies(secure: boolean): string[] {
+  return [sessionClearCookie(secure), sessionHintClearCookie(secure)];
+}
+
 /** Set-Cookie value clearing the session. */
 export function sessionClearCookie(secure: boolean): string {
   return `${COOKIE_NAME}=; HttpOnly;${secure ? " Secure;" : ""} SameSite=Lax; Path=/; Max-Age=0`;
