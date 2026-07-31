@@ -504,6 +504,62 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
           </p>
         </MarketingSection>
 
+        {/* Objection handling, immediately before the ask — the four questions a
+            writer actually stops on. Answers are one sentence each and every one
+            is checkable; a question we cannot answer honestly does not appear.
+            Deliberately NOT a concession section: "is Bluesky big enough" is
+            answered by reframing whose audience this is for, not by conceding a
+            comparison we were not asked to make.
+
+            A definition list rather than accordions: four short answers are
+            faster to read than to click, and a disclosure widget on a landing
+            page hides the reassurance it was added to provide. */}
+        <MarketingSection divider>
+          <Kicker>Before you ask</Kicker>
+          <h2 className="mt-4 max-w-[22ch] text-balance font-black font-display text-3xl text-ink leading-tight tracking-tight md:text-4xl">
+            The four questions we get.
+          </h2>
+          <dl className="mt-10 grid max-w-[70ch] grid-cols-1 gap-x-12 gap-y-8 sm:grid-cols-2">
+            {[
+              {
+                q: "What does it cost?",
+                a: "Publishing, your page and Bluesky distribution are free, and stay free. Paid plans will sell the things that cost us money — never a share of what your readers pay you.",
+              },
+              {
+                q: "Is Bluesky big enough?",
+                a: "Your followers are already there, and that is the point: this is built for the audience you have rather than one an algorithm might grant you.",
+              },
+              {
+                q: "Can I use my own domain?",
+                a: "Not yet — that one is genuinely on the roadmap. Every link we mint today keeps working when it lands, because your posts are addressed by your account rather than by our hostname.",
+              },
+              {
+                q: "What if Goldroad disappears?",
+                a: "Your posts are already in an account you control, and the code that runs this is public — so someone else can run it, including you.",
+              },
+            ].map(({ q, a }) => (
+              <div key={q}>
+                <dt className="font-bold font-display text-base text-ink">
+                  {q}
+                </dt>
+                <dd className="mt-2 text-ink-soft text-base leading-relaxed">
+                  {a}
+                </dd>
+              </div>
+            ))}
+          </dl>
+          <p className="mt-10 max-w-[56ch] border-rule border-t pt-4 font-display text-ink-soft text-sm leading-normal">
+            Something else?{" "}
+            <a
+              className="font-semibold text-ink underline decoration-2 underline-offset-4 transition-colors hover:text-spot"
+              href="/open"
+            >
+              Read what's open
+            </a>{" "}
+            — the licence, the source, and how to run it yourself.
+          </p>
+        </MarketingSection>
+
         {/* Founding-writers signup — the page's conversion moment, so the
             structure carries the priority: three parallel goods, then the one
             number that makes the offer concrete, then the form. Ruled columns
