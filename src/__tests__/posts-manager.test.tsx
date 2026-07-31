@@ -79,6 +79,7 @@ function renderManager(
     rows: POSTS,
     engagement: new Map<string, DocumentEngagement>(),
     drafts: DRAFTS,
+    scheduled: [],
     nextCursor: null,
     tab: "published",
     onTabChange: () => {},
@@ -133,6 +134,7 @@ describe("posts manager — tabs", () => {
           tab = next;
         }}
         rows={POSTS}
+        scheduled={[]}
         tab={tab}
       />,
     );
@@ -146,6 +148,7 @@ describe("posts manager — tabs", () => {
         ident={IDENT}
         nextCursor={null}
         onTabChange={() => {}}
+        scheduled={[]}
         rows={POSTS}
         tab={tab}
       />,
@@ -221,6 +224,7 @@ describe("posts manager — search", () => {
         ident={IDENT}
         nextCursor={null}
         onTabChange={() => {}}
+        scheduled={[]}
         rows={POSTS}
         tab="drafts"
       />,

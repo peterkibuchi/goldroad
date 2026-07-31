@@ -147,9 +147,8 @@ export function viewsByRkey(
   );
 }
 
-/** The posts manager's two work states. Scheduled publishing doesn't exist,
- * so there is no third tab to render. */
-export type PostsTab = "published" | "drafts";
+/** The posts manager's three work states: out, queued, and in progress. */
+export type PostsTab = "published" | "drafts" | "scheduled";
 
 /** Column ids the manager sorts by. Kept as constants because they're the
  * contract between the column definitions and the sort control. */
@@ -171,6 +170,32 @@ export function sortingStateFor(
   if (sort === "most-read") return [{ id: VIEWS_COLUMN, desc: true }];
   return [{ id: DATE_COLUMN, desc: sort === "newest" }];
 }
+
+/**
+ * One row in the manager's Scheduled tab — a post that hasn't gone out yet,
+ * either because its time hasn't come or because something went wrong.
+ *
+ * `lastError` is the sentence the cron wrote when it couldn't publish
+ * (~/lib/scheduled-publish), rendered verbatim: it was written for this writer
+ * to read, and paraphrasing it here would be a second copy of the same message
+ * free to drift from the one in the database.
+ *
+ * `description: null` is carried for the same reason DraftRow carries it — so a
+ * scheduled post flows through the one title/dek search filter the published
+ * list and the public archive already use.
+ */
+export type ScheduledPostRow = {
+  id: string;
+  draftId: string;
+  /** ISO UTC. The writer's own zone is applied in the browser — see
+   * ~/components/scheduled-time. */
+  dueAt: string;
+  status: "pending" | "failed";
+  attempts: number;
+  lastError: string | null;
+  title: string;
+  description: null;
+};
 
 /** One draft row in the manager's Drafts tab. `description: null` is carried
  * deliberately: it lets drafts flow through the same title/dek search filter
