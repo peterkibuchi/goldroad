@@ -9,6 +9,7 @@ import { type AssociatedRef, buildAnnouncePost } from "~/lib/announce";
 import {
   getRecordEntry,
   isDid,
+  listRecordPages,
   parseAtUri,
   RKEY_RE,
   resolveDidToHandle,
@@ -77,6 +78,12 @@ import {
   upsertSchedule,
 } from "~/lib/scheduled-posts";
 import { clearSessionCookies } from "~/lib/session";
+import {
+  findSubscription,
+  isAtUri,
+  SUBSCRIPTION_COLLECTION,
+  subscriptionRecord,
+} from "~/lib/subscription";
 import { parseThemeForm } from "~/lib/theme";
 import { env } from "cloudflare:workers";
 
@@ -127,9 +134,10 @@ function isInsufficientScope(res: { ok: boolean; status: number }): boolean {
 }
 
 /**
- * The single write path to the user's PDS. ALL record writes (documents and
- * publications, discriminated by the `intent` form field) go through this one
- * handler so token refreshes are not raced across isolates.
+ * The single write path to the user's PDS. ALL record writes (documents,
+ * publications, and a reader's own subscriptions, discriminated by the `intent`
+ * form field) go through this one handler so token refreshes are not raced
+ * across isolates.
  *
  * CSRF: the same one-header defense-in-depth every other mutating handler
  * runs (isCrossSite, ~/lib/origin), and the most consequential place to run
@@ -168,9 +176,21 @@ export const Route = createFileRoute("/api/publish")({
           intentField === "uploadImage" ||
           intentField === "schedule" ||
           intentField === "unschedule" ||
+          intentField === "subscribe" ||
+          intentField === "unsubscribe" ||
           intentField === "publish-now"
             ? intentField
             : "document";
+        // Intents whose caller is a fetch rather than a form post, so a 303 to
+        // an HTML page would reach them as an unreadable body. The two reader
+        // intents are here for a second reason: a reading page cannot carry a
+        // result in its query string at all, because the read cache strips
+        // every param but `cursor` (see ~/lib/read-cache) and would serve a
+        // cached page with no notice on it.
+        const answersJson =
+          intent === "uploadImage" ||
+          intent === "subscribe" ||
+          intent === "unsubscribe";
 
         // Scheduling touches OUR database and nothing else — no record is
         // written, so these two run before the session is restored. That isn't
@@ -192,9 +212,7 @@ export const Route = createFileRoute("/api/publish")({
           });
           for (const cookie of clearSessionCookies(url.protocol === "https:"))
             expired.append("set-cookie", cookie);
-          // The image upload is a fetch, not a form post: a 303 to an HTML
-          // page would reach it as an unreadable body. Say what happened.
-          if (intent === "uploadImage") {
+          if (answersJson) {
             expired.delete("location");
             expired.set("content-type", "application/json");
             expired.set("cache-control", "private, no-store");
@@ -235,6 +253,10 @@ export const Route = createFileRoute("/api/publish")({
             return migratePublication(ctx);
           case "uploadImage":
             return uploadInlineImage(ctx);
+          case "subscribe":
+            return subscribeToPublication(ctx);
+          case "unsubscribe":
+            return unsubscribeFromPublication(ctx);
           case "publish-now":
             return publishNow(ctx);
           default:
@@ -660,6 +682,135 @@ async function uploadInlineImage({
     return privateJson({ ok: false, error: "upload_failed" }, 502);
   }
   return privateJson({ ok: true, url: blobImagePath(did, cid), blob }, 201);
+}
+
+/**
+ * The reader's existing subscription to this publication — its rkey, or null
+ * when they have none.
+ *
+ * Public unauthenticated listRecords against the reader's OWN PDS: these are
+ * their public records, and the session's XRPC client would spend a
+ * DPoP-bound token on a read that needs no token at all.
+ *
+ * BOUNDED, and the bound is the same limit the whole feature carries: four
+ * pages of fifty. "The record pointing at this publication" is not a query the
+ * protocol offers (see ~/lib/subscription), so finding it means reading the
+ * collection — and a reader holding more than 200 subscriptions could therefore
+ * subscribe to the same publication twice. The cost of that is a stray record
+ * in their own repo; the cost of the alternative is turning one button press
+ * into an unbounded crawl of their PDS.
+ */
+async function findReaderSubscription(
+  pds: string,
+  did: string,
+  publicationAtUri: string,
+): Promise<string | null> {
+  const { records } = await listRecordPages<unknown>(
+    pds,
+    did,
+    SUBSCRIPTION_COLLECTION,
+  );
+  return findSubscription(records, publicationAtUri, rkeyFromUri);
+}
+
+/**
+ * `intent=subscribe` — a reader subscribes to a publication.
+ *
+ * THE FIRST INTENT WHERE THE ACTING USER DOES NOT OWN THE SUBJECT. Every write
+ * above puts a record about the writer's own work into the writer's own repo.
+ * This puts a record about SOMEBODY ELSE'S publication into the reader's repo —
+ * `repo` is still the session DID, which is what keeps it safe, but the
+ * publication URI arrives from the page the reader was on and is untrusted.
+ * `isAtUri` is the guard, and it runs before the value can reach a record.
+ *
+ * JSON, not a redirect: see `answersJson` in the handler above.
+ */
+async function subscribeToPublication({
+  rpc,
+  form,
+  did,
+  pds,
+}: WriteContext): Promise<Response> {
+  const publication = form.get("publication");
+  if (!isAtUri(publication))
+    return privateJson({ ok: false, error: "invalid_publication" }, 400);
+  if (!pds) return privateJson({ ok: false, error: "unavailable" }, 502);
+
+  // Pressing an already-on button must not write a second record — the control
+  // can be a minute stale, and two subscriptions would mean one "Unsubscribe"
+  // leaving the reader subscribed. A flaked read still subscribes: a reader
+  // whose PDS hiccuped on an unrelated list must not be told they can't.
+  const existing = await findReaderSubscription(pds, did, publication).catch(
+    (err) => {
+      console.warn("subscription lookup failed", err);
+      return null;
+    },
+  );
+  if (existing) return privateJson({ ok: true, subscribed: true });
+
+  const res = await rpc.post("com.atproto.repo.createRecord", {
+    input: {
+      repo: did,
+      collection: SUBSCRIPTION_COLLECTION,
+      // No rkey: the PDS mints the TID, as it does for the announce post.
+      record: subscriptionRecord(publication, new Date().toISOString()),
+    },
+  });
+  if (!res.ok) {
+    // Sessions predating the subscription scope (added 2026-07-31 — see
+    // ~/lib/oauth-scopes) land here, and the control turns this into a
+    // sign-in-again prompt rather than a button that silently does nothing.
+    if (isInsufficientScope(res))
+      return privateJson({ ok: false, error: "subscription_scope" }, 403);
+    console.error("subscribe createRecord failed", res.status, res.data);
+    return privateJson({ ok: false, error: "subscribe_failed" }, 502);
+  }
+  return privateJson({ ok: true, subscribed: true }, 201);
+}
+
+/**
+ * `intent=unsubscribe` — the reader takes their subscription back.
+ *
+ * Deletes by the rkey WE look up, not one the form supplied: the form carries
+ * the publication and nothing else, so there is one untrusted field and one
+ * guard on this path, and the record we remove is provably the one pointing at
+ * that publication.
+ *
+ * Nothing to delete reports success — the state the reader asked for is the
+ * state they are in, the same idempotence the schedule cancel and the account
+ * deletion follow. A lookup that FAILED is different and says so: reporting
+ * "unsubscribed" for a record we never managed to look at would be a lie.
+ */
+async function unsubscribeFromPublication({
+  rpc,
+  form,
+  did,
+  pds,
+}: WriteContext): Promise<Response> {
+  const publication = form.get("publication");
+  if (!isAtUri(publication))
+    return privateJson({ ok: false, error: "invalid_publication" }, 400);
+  if (!pds) return privateJson({ ok: false, error: "unavailable" }, 502);
+
+  let rkey: string | null;
+  try {
+    rkey = await findReaderSubscription(pds, did, publication);
+  } catch (err) {
+    console.warn("subscription lookup failed", err);
+    return privateJson({ ok: false, error: "unavailable" }, 502);
+  }
+  if (!rkey) return privateJson({ ok: true, subscribed: false });
+
+  const res = await rpc.post("com.atproto.repo.deleteRecord", {
+    input: { repo: did, collection: SUBSCRIPTION_COLLECTION, rkey },
+  });
+  if (!res.ok) {
+    if (isInsufficientScope(res))
+      return privateJson({ ok: false, error: "subscription_scope" }, 403);
+    console.error("unsubscribe deleteRecord failed", res.status, res.data);
+    return privateJson({ ok: false, error: "unsubscribe_failed" }, 502);
+  }
+  return privateJson({ ok: true, subscribed: false });
 }
 
 /**
