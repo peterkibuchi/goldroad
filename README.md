@@ -41,9 +41,9 @@ permanently.
   itself, so the network is the comment section
 - Writer stats (followers over time, per-post engagement), honest about being approximate
 - Export everything, or delete your account outright
-- A 27-check production canary, 1,087 tests, and an adversarially-reviewed pipeline
+- A 27-check production canary, 1,274 tests, and an adversarially-reviewed pipeline
 
-Newsletters, reader payments, custom domains, writer theming, our own extension lexicon
+Newsletters, reader payments, custom domains, our own extension lexicon
 and continuous mirroring are **not** built yet — [`docs/PRODUCT.md`](docs/PRODUCT.md)
 lists exactly what's shipped and what isn't. Self-hosting is documented
 ([`SELF_HOSTING.md`](SELF_HOSTING.md)) but community-supported, not a product yet.

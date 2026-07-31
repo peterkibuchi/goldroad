@@ -66,6 +66,10 @@ not around it.
   landing as private drafts.
 - Export everything, or delete the account outright.
 - Writer stats, honest about being approximate.
+- Writer theming: four colours set in Settings, stored in the writer's own publication
+  record via the shared `site.standard.theme.basic` lexicon — so a theme travels with them,
+  and any author's theme is honoured on their pages here, including one set in another app.
+- A dark register on every surface, and a reader's own edition switch on reading pages.
 
 ## What is not built yet
 
@@ -74,7 +78,7 @@ labelled as such on marketing surfaces, never written in the present tense.
 
 Newsletters (email delivery) · reader payments through the writer's own processor · custom
 domains and subdomains · our own extension lexicon · continuous mirroring from an
-existing publication · writer theming · a supported self-hosting path.
+existing publication · a supported self-hosting path.
 
 ## Sequence
 
