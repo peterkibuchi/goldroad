@@ -494,8 +494,13 @@ function SettingsPage() {
               />
             </div>
             <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+              {/* Ink, not spot. The rail's "New post" spends this surface's one
+                  accent moment, and /settings is where that mattered most: it
+                  showed four spot elements at once. The destructive band's
+                  "Delete account" keeps the accent — a warning is the accent's
+                  other meaning — so a save button can't also have it. */}
               <button
-                className="min-h-11 cursor-pointer bg-spot px-8 py-2.5 font-bold font-display text-base text-paper transition-colors hover:bg-ink disabled:cursor-default disabled:opacity-40"
+                className="min-h-11 cursor-pointer bg-ink px-8 py-2.5 font-bold font-display text-base text-paper transition-colors hover:bg-spot disabled:cursor-default disabled:opacity-40"
                 disabled={iconBusy || unreadable}
                 type="submit"
               >

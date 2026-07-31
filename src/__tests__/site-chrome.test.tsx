@@ -382,6 +382,11 @@ describe("AppShell — signed-in (command rail)", () => {
       // One spot element per frame: the rail's action, and the mobile tab
       // bar's center slot (only one frame is ever visible at a time). Resting
       // state only — a hover that reaches for spot spends nothing until then.
+      //
+      // CHROME ONLY. This counts AppShell's own markup, and the budget is
+      // spent jointly with whatever page renders inside it — three surfaces
+      // drifted for want of the other half. That half is
+      // page-accent-budget.test.tsx; neither file is sufficient alone.
       const spot = [...document.querySelectorAll("[class]")].filter((el) =>
         el.classList.contains("bg-spot"),
       );

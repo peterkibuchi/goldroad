@@ -62,6 +62,14 @@ manager has no "New post" of its own because the rail carries it. The reasoning,
 ink fallback if the rail button proves too loud in practice, are written down at
 `RailPrimaryAction` in `src/components/site-chrome.tsx`.
 
+The budget is enforced in two halves, because it is spent in two places: the chrome's
+accent by `site-chrome.test.tsx`, and every page rendered inside the chrome by
+`page-accent-budget.test.tsx`. The second exists because the first was mistaken for the
+whole rule — /write, /settings and /import kept spot primaries through a green suite, and
+/settings showed four accents at once. Destructive actions are the one page-level
+exception (see the interaction vocabulary below), and they are named in that test's
+allowlist rather than assumed.
+
 Borders are 1–2px solid ink, or 3px double for Pressroom structure; hairline `--color-rule`
 for calm separations. No shadows as decoration. Radius is 0 on Pressroom surfaces — print
 doesn't round corners — while editor and shadcn internals keep their own small radius.

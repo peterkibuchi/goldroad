@@ -831,8 +831,10 @@ export function SourcePicker({
             type="text"
             value={url}
           />
+          {/* Ink, not spot: the rail's "New post" carries this surface's one
+              accent moment (docs/DESIGN.md). */}
           <button
-            className="min-h-11 cursor-pointer bg-spot px-6 py-2.5 font-bold font-display text-base text-paper transition-colors hover:bg-ink disabled:cursor-default disabled:opacity-40"
+            className="min-h-11 cursor-pointer bg-ink px-6 py-2.5 font-bold font-display text-base text-paper transition-colors hover:bg-spot disabled:cursor-default disabled:opacity-40"
             disabled={busy !== null}
             type="submit"
           >
@@ -1094,8 +1096,9 @@ function PickList({
         })}
       </ul>
       <div className="mt-6 flex flex-wrap items-center gap-4">
+        {/* Ink, not spot — same rule, same reason as the step before it. */}
         <button
-          className="min-h-11 cursor-pointer bg-spot px-6 py-2.5 font-bold font-display text-base text-paper transition-colors hover:bg-ink disabled:cursor-default disabled:opacity-40"
+          className="min-h-11 cursor-pointer bg-ink px-6 py-2.5 font-bold font-display text-base text-paper transition-colors hover:bg-spot disabled:cursor-default disabled:opacity-40"
           disabled={count === 0}
           onClick={onImport}
           type="button"

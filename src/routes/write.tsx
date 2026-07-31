@@ -1275,10 +1275,15 @@ export function Compose({
           </p>
         )}
         {/* The consequence of the button is stated beside the button, where the
-            decision is actually made. */}
+            decision is actually made.
+
+            Ink, not spot: the rail's "New post" carries the one vermillion
+            moment on every signed-in surface (docs/DESIGN.md, and
+            `RailPrimaryAction` in ~/components/site-chrome), so this is the
+            page's primary button without being the page's accent. */}
         <div className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-3 border-rule border-t pt-6">
           <button
-            className="min-h-11 cursor-pointer bg-spot px-8 py-2.5 font-bold font-display text-base text-paper transition-colors hover:bg-ink disabled:cursor-default disabled:opacity-40"
+            className="min-h-11 cursor-pointer bg-ink px-8 py-2.5 font-bold font-display text-base text-paper transition-colors hover:bg-spot disabled:cursor-default disabled:opacity-40"
             disabled={!editor || coverBusy}
             form="publish-form"
             type="submit"
