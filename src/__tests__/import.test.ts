@@ -8,9 +8,10 @@ import {
   detectPreview,
   discoverFeedUrls,
   extractFirstImageUrl,
+  extractImageUrls,
   type FetchLike,
-  fetchCoverCandidate,
   fetchImportable,
+  fetchImportableImage,
   guidHash,
   ImportError,
   looksLikeHtml,
@@ -18,8 +19,10 @@ import {
   MAX_ITEM_CONTENT_CHARS,
   MAX_ITEMS_PER_RUN,
   MAX_REDIRECT_HOPS,
+  MAX_REHOSTED_IMAGES,
   parseFeedDocument,
   readFeedBody,
+  rehostBodyImages,
 } from "../lib/import";
 
 // ---------------------------------------------------------------- SSRF guard
@@ -501,7 +504,7 @@ describe("clampOriginalDate", () => {
   });
 });
 
-describe("fetchCoverCandidate", () => {
+describe("fetchImportableImage", () => {
   const allow = (m: string | null) => m === "image/jpeg";
 
   it("returns bytes+mime for an allowed raster under the cap", async () => {
@@ -511,7 +514,7 @@ describe("fetchCoverCandidate", () => {
           headers: { "content-type": "image/jpeg" },
         }),
     });
-    const got = await fetchCoverCandidate(
+    const got = await fetchImportableImage(
       "https://cdn.example/a.jpg",
       100,
       allow,
@@ -532,10 +535,10 @@ describe("fetchCoverCandidate", () => {
       "https://cdn.example/404.jpg": () => new Response(null, { status: 404 }),
     });
     expect(
-      await fetchCoverCandidate("https://cdn.example/a.svg", 100, allow, impl),
+      await fetchImportableImage("https://cdn.example/a.svg", 100, allow, impl),
     ).toBeNull();
     expect(
-      await fetchCoverCandidate(
+      await fetchImportableImage(
         "https://cdn.example/big.jpg",
         100,
         allow,
@@ -543,7 +546,7 @@ describe("fetchCoverCandidate", () => {
       ),
     ).toBeNull();
     expect(
-      await fetchCoverCandidate(
+      await fetchImportableImage(
         "https://cdn.example/404.jpg",
         100,
         allow,
@@ -551,10 +554,235 @@ describe("fetchCoverCandidate", () => {
       ),
     ).toBeNull();
     expect(
-      await fetchCoverCandidate("https://127.0.0.1/a.jpg", 100, allow, impl),
+      await fetchImportableImage("https://127.0.0.1/a.jpg", 100, allow, impl),
     ).toBeNull();
   });
 });
 
 // isCrossSite moved to ~/lib/origin (shared by every mutating handler); its
 // unit tests moved with it, to origin.test.ts.
+
+/**
+ * Rehosting an imported post's body images into the writer's own repo, at
+ * publish time. What these pin: the SSRF regime governs every fetch (an
+ * import does not make a writer-supplied URL trusted), the rewritten body
+ * points at the proxy path, the blobs come back so the record can reference
+ * them, and a miss degrades to "still remote" rather than a failed publish.
+ */
+const jpegBytes = (n: number) =>
+  new Response(new Uint8Array(n), {
+    headers: { "content-type": "image/jpeg" },
+  });
+
+const isJpeg = (m: string | null) => m === "image/jpeg";
+
+const blobFor = (cid: string) => ({
+  $type: "blob",
+  ref: { $link: cid },
+  mimeType: "image/jpeg",
+  size: 10,
+});
+
+const imagePath = (did: string, cid: string) =>
+  `/img/${encodeURIComponent(did)}/${cid}`;
+
+const DID = "did:plc:fake2222222222writer2222";
+const CID_1 = "bafkreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const CID_2 = "bafkreibbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+describe("extractImageUrls", () => {
+  it("returns distinct public-https image URLs in first-appearance order", () => {
+    expect(
+      extractImageUrls(
+        "![a](https://cdn.example/1.jpg) words ![b](https://cdn.example/2.jpg) ![a again](https://cdn.example/1.jpg)",
+      ),
+    ).toEqual(["https://cdn.example/1.jpg", "https://cdn.example/2.jpg"]);
+  });
+
+  it("refuses everything the SSRF guard refuses, and our own proxy paths", () => {
+    expect(
+      extractImageUrls(
+        [
+          "![a](http://cdn.example/1.jpg)", // not https
+          "![b](https://127.0.0.1/2.jpg)", // IP literal
+          "![c](https://localhost/3.jpg)", // single-label host
+          `![d](/img/${DID}/${CID_1})`, // already rehosted
+          "![e](./relative.png)",
+        ].join("\n"),
+      ),
+    ).toEqual([]);
+  });
+
+  it("ignores links that are not images", () => {
+    expect(extractImageUrls("[a link](https://cdn.example/1.jpg)")).toEqual([]);
+  });
+});
+
+describe("rehostBodyImages", () => {
+  const run = (
+    body: string,
+    routes: Record<string, () => Response>,
+    over: Partial<Parameters<typeof rehostBodyImages>[0]> = {},
+  ) => {
+    const uploaded: string[] = [];
+    const cids = [CID_1, CID_2];
+    return {
+      uploaded,
+      result: rehostBodyImages({
+        body,
+        did: DID,
+        maxBytes: 100,
+        isAllowedMime: isJpeg,
+        imagePath,
+        fetchImpl: fakeFetch(routes),
+        upload: async (_bytes, mime) => {
+          uploaded.push(mime);
+          return blobFor(cids[uploaded.length - 1] ?? CID_2);
+        },
+        ...over,
+      }),
+    };
+  };
+
+  it("repoints the body at the proxy path and returns the blobs to reference", async () => {
+    const { result } = run(
+      "Intro\n\n![A cat](https://cdn.example/1.jpg)\n\n![A dog](https://cdn.example/2.jpg)",
+      {
+        "https://cdn.example/1.jpg": () => jpegBytes(10),
+        "https://cdn.example/2.jpg": () => jpegBytes(10),
+      },
+    );
+    const { body, blobs, skipped } = await result;
+
+    expect(body).toBe(
+      `Intro\n\n![A cat](${imagePath(DID, CID_1)})\n\n![A dog](${imagePath(DID, CID_2)})`,
+    );
+    // Real blob refs, not bare CIDs — the PDS finds references by walking the
+    // record, so only this shape keeps the blob alive.
+    expect(blobs).toEqual([blobFor(CID_1), blobFor(CID_2)]);
+    expect(skipped).toBe(0);
+  });
+
+  it("never fetches a URL the SSRF guard refuses", async () => {
+    const impl = fakeFetch({}); // any fetch at all throws "unexpected fetch"
+    const { body, blobs } = await rehostBodyImages({
+      body: "![a](https://127.0.0.1/1.jpg) ![b](http://cdn.example/2.jpg)",
+      did: DID,
+      maxBytes: 100,
+      isAllowedMime: isJpeg,
+      imagePath,
+      fetchImpl: impl,
+      upload: async () => blobFor(CID_1),
+    });
+    expect(impl.calls).toEqual([]);
+    expect(blobs).toEqual([]);
+    expect(body).toBe(
+      "![a](https://127.0.0.1/1.jpg) ![b](http://cdn.example/2.jpg)",
+    );
+  });
+
+  it("re-validates a redirect hop, so a redirect to a private host is refused", async () => {
+    const { result, uploaded } = run("![a](https://cdn.example/1.jpg)", {
+      "https://cdn.example/1.jpg": () =>
+        new Response(null, {
+          status: 301,
+          headers: { location: "http://169.254.169.254/latest/meta-data" },
+        }),
+    });
+    const { body, blobs, skipped } = await result;
+    expect(uploaded).toEqual([]);
+    expect(blobs).toEqual([]);
+    expect(skipped).toBe(1);
+    expect(body).toBe("![a](https://cdn.example/1.jpg)"); // untouched
+  });
+
+  it("leaves an over-cap image where it is — no blob, no rewrite", async () => {
+    const { result, uploaded } = run("![a](https://cdn.example/big.jpg)", {
+      "https://cdn.example/big.jpg": () => jpegBytes(500), // cap is 100
+    });
+    const { body, blobs, skipped } = await result;
+    expect(uploaded).toEqual([]);
+    expect(blobs).toEqual([]);
+    expect(skipped).toBe(1);
+    expect(body).toBe("![a](https://cdn.example/big.jpg)");
+  });
+
+  it("skips a non-raster type — SVG never becomes a blob", async () => {
+    const { result } = run("![a](https://cdn.example/a.svg)", {
+      "https://cdn.example/a.svg": () =>
+        new Response("<svg/>", {
+          headers: { "content-type": "image/svg+xml" },
+        }),
+    });
+    expect((await result).blobs).toEqual([]);
+  });
+
+  it("rehosts what it can when one image fails — the publish still carries the rest", async () => {
+    const { result } = run(
+      "![a](https://cdn.example/gone.jpg)\n\n![b](https://cdn.example/2.jpg)",
+      {
+        "https://cdn.example/gone.jpg": () =>
+          new Response(null, { status: 404 }),
+        "https://cdn.example/2.jpg": () => jpegBytes(10),
+      },
+    );
+    const { body, blobs, skipped } = await result;
+    expect(blobs).toEqual([blobFor(CID_1)]);
+    expect(skipped).toBe(1);
+    expect(body).toContain("![a](https://cdn.example/gone.jpg)"); // left alone
+    expect(body).toContain(`![b](${imagePath(DID, CID_1)})`);
+  });
+
+  it("keeps the original URL when the upload answers an unusable blob", async () => {
+    const { result } = run(
+      "![a](https://cdn.example/1.jpg)",
+      { "https://cdn.example/1.jpg": () => jpegBytes(10) },
+      { upload: async () => null },
+    );
+    const { body, blobs, skipped } = await result;
+    expect(blobs).toEqual([]);
+    expect(skipped).toBe(1);
+    // Better a picture that still loads from the source than a proxy path
+    // pointing at a blob that was never written.
+    expect(body).toBe("![a](https://cdn.example/1.jpg)");
+  });
+
+  it("stops at MAX_REHOSTED_IMAGES and counts the rest as skipped", async () => {
+    const urls = Array.from(
+      { length: MAX_REHOSTED_IMAGES + 3 },
+      (_, i) => `https://cdn.example/${i}.jpg`,
+    );
+    const routes = Object.fromEntries(
+      urls.map((u) => [u, () => jpegBytes(10)]),
+    );
+    const impl = fakeFetch(routes);
+    const { blobs, skipped } = await rehostBodyImages({
+      body: urls.map((u) => `![x](${u})`).join("\n\n"),
+      did: DID,
+      maxBytes: 100,
+      isAllowedMime: isJpeg,
+      imagePath,
+      fetchImpl: impl,
+      upload: async () => blobFor(CID_1),
+    });
+    expect(blobs).toHaveLength(MAX_REHOSTED_IMAGES);
+    expect(impl.calls).toHaveLength(MAX_REHOSTED_IMAGES);
+    expect(skipped).toBe(3);
+  });
+
+  it("does nothing, and fetches nothing, for a body with no remote images", async () => {
+    const impl = fakeFetch({});
+    const body = `Just words and ![mine](${imagePath(DID, CID_1)}).`;
+    const result = await rehostBodyImages({
+      body,
+      did: DID,
+      maxBytes: 100,
+      isAllowedMime: isJpeg,
+      imagePath,
+      fetchImpl: impl,
+      upload: async () => blobFor(CID_1),
+    });
+    expect(result).toEqual({ body, blobs: [], skipped: 0 });
+    expect(impl.calls).toEqual([]);
+  });
+});

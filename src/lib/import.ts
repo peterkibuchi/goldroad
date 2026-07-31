@@ -452,25 +452,19 @@ export async function guidHash(guid: string): Promise<string> {
  * class, so bracket floods fail fast instead of scanning to the end.
  */
 export function extractFirstImageUrl(markdown: string): string | null {
-  for (const match of markdown.matchAll(
-    /!\[[^[\]]*\]\(\s*([^()\s]+)[^()]*\)/g,
-  )) {
-    const candidate = safeLink(match[1]);
-    if (candidate) return candidate;
-  }
-  return null;
+  return extractImageUrls(markdown)[0] ?? null;
 }
 
 /**
- * Publish-time cover fetch for imported posts: the first body image, pulled
- * server-side under the same SSRF regime as the feed itself (hop-validated,
- * stream-capped at the lexicon's 1 MB blob limit) and the raster-only MIME
- * allowlist. Returns null on ANY miss — an imported post without a cover is
- * fine; a failed publish over a cover is not. No downscaling here: workerd
- * has no canvas/image API on the free tier, so an over-1MB original is
- * skipped rather than shrunk (the writer can add a cover by editing).
+ * Publish-time image fetch for imported posts — used for the cover and for
+ * every rehosted body image. Pulled server-side under the same SSRF regime as
+ * the feed itself (hop-validated, stream-capped at the lexicon's 1 MB blob
+ * limit) and the raster-only MIME allowlist. Returns null on ANY miss — an
+ * imported post missing a picture is fine; a failed publish over one is not.
+ * No downscaling here: workerd has no canvas/image API on the free tier, so
+ * an over-1MB original is skipped rather than shrunk.
  */
-export async function fetchCoverCandidate(
+export async function fetchImportableImage(
   url: string,
   maxBytes: number,
   isAllowedMime: (mime: string | null) => boolean,
@@ -490,6 +484,130 @@ export async function fetchCoverCandidate(
   } catch {
     return null;
   }
+}
+
+/** Markdown images in a body. Shared by the extractors below so the cover
+ * candidate and the rehost list can never disagree about what an image is. */
+const MARKDOWN_IMAGE_RE = /!\[[^[\]]*\]\(\s*([^()\s]+)[^()]*\)/g;
+
+/**
+ * How many body images one publish will rehost. A bound on the fetches and
+ * blob writes a single publish can trigger; beyond it the remaining images
+ * keep pointing at the source, which is exactly what they did before.
+ */
+export const MAX_REHOSTED_IMAGES = 20;
+
+/**
+ * Distinct public-https image URLs in a body, in first-appearance order.
+ * Everything else — a relative path, an already-rehosted `/img/…` proxy path,
+ * an IP literal, a non-https scheme — is dropped by safeLink, which is
+ * assertImportableUrl: the SSRF regime, applied at extraction as well as at
+ * fetch.
+ */
+export function extractImageUrls(markdown: string): string[] {
+  const urls: string[] = [];
+  const seen = new Set<string>();
+  for (const match of markdown.matchAll(MARKDOWN_IMAGE_RE)) {
+    const url = safeLink(match[1]);
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    urls.push(url);
+  }
+  return urls;
+}
+
+/** Uploads fetched bytes as a blob in the writer's repo; null on any failure.
+ * Injected so the rehost is testable without a PDS. */
+export type BlobUpload = (
+  bytes: Uint8Array<ArrayBuffer>,
+  mime: string,
+) => Promise<unknown | null>;
+
+export type RehostResult = {
+  /** The body with every rehosted image repointed at the proxy path. */
+  body: string;
+  /** The blobs written, in body order — the record MUST reference these or
+   * the PDS never serves them (see DocumentRecord in ~/lib/publish). */
+  blobs: unknown[];
+  /** Images left pointing at the source (fetch refused, too big, wrong type,
+   * or past the cap). Not an error — just not rehosted. */
+  skipped: number;
+};
+
+/**
+ * Copies an imported post's body images into the writer's own repo, at
+ * publish time, for that one post.
+ *
+ * Why at publish and not at import: this spends the writer's repo quota, so
+ * it happens for a post they decided to keep, not for every item a feed
+ * scrape turned up. Why at all: an imported body points at the source's CDN,
+ * which is exactly the copy that disappears when the writer leaves the
+ * platform the post came from — rehosting is what makes the archive theirs.
+ *
+ * Every fetch goes through fetchImportableImage, so the feed's SSRF regime
+ * (public https only, every redirect hop re-validated, raster MIME
+ * allowlist, 1 MB stream cap) governs it — writer-supplied URLs are not
+ * trusted here just because they arrived through an import.
+ *
+ * Best-effort per image: one that can't be fetched keeps its original URL and
+ * the publish carries on. A post publishing with some images still remote
+ * beats a publish that fails over a picture.
+ */
+export async function rehostBodyImages(opts: {
+  body: string;
+  did: string;
+  upload: BlobUpload;
+  maxBytes: number;
+  isAllowedMime: (mime: string | null) => boolean;
+  /** The proxy path a rehosted blob is served from (~/lib/blob's
+   * blobImagePath) — injected to keep this module free of blob.ts's
+   * route-shape concerns. */
+  imagePath: (did: string, cid: string) => string;
+  fetchImpl?: FetchLike;
+}): Promise<RehostResult> {
+  const urls = extractImageUrls(opts.body);
+  if (urls.length === 0) return { body: opts.body, blobs: [], skipped: 0 };
+
+  const replacements = new Map<string, string>();
+  const blobs: unknown[] = [];
+  let skipped = Math.max(0, urls.length - MAX_REHOSTED_IMAGES);
+
+  for (const url of urls.slice(0, MAX_REHOSTED_IMAGES)) {
+    const candidate = await fetchImportableImage(
+      url,
+      opts.maxBytes,
+      opts.isAllowedMime,
+      opts.fetchImpl,
+    );
+    if (!candidate) {
+      skipped += 1;
+      continue;
+    }
+    const blob = await opts.upload(candidate.bytes, candidate.mime);
+    // A CID we can't build a servable path from is a skip, not a rewrite to
+    // a URL that would 404 — the original at least still renders.
+    const cid =
+      typeof blob === "object" &&
+      blob !== null &&
+      typeof (blob as { ref?: { $link?: unknown } }).ref?.$link === "string"
+        ? (blob as { ref: { $link: string } }).ref.$link
+        : null;
+    if (!cid) {
+      skipped += 1;
+      continue;
+    }
+    replacements.set(url, opts.imagePath(opts.did, cid));
+    blobs.push(blob);
+  }
+  if (replacements.size === 0) return { body: opts.body, blobs, skipped };
+
+  // Rewritten through the same image pattern that found them, so a bare URL
+  // appearing in prose or a link href is never touched.
+  const body = opts.body.replace(MARKDOWN_IMAGE_RE, (whole, raw: string) => {
+    const next = replacements.get(safeLink(raw) ?? "");
+    return next ? whole.replace(raw, next) : whole;
+  });
+  return { body, blobs, skipped };
 }
 
 /**

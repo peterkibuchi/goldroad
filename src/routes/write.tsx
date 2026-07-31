@@ -18,8 +18,9 @@ import { blobImagePath, coverImageCid } from "~/lib/blob";
 import { selectDraft } from "~/lib/drafts";
 import { isDraftId, MAX_DRAFTS_PER_USER } from "~/lib/drafts-schema";
 import { downscaleImage } from "~/lib/image";
-import { selectMirror } from "~/lib/import-store";
+import { selectImportItemByDraft, selectMirror } from "~/lib/import-store";
 import {
+  countRemoteImages,
   createInlineImageStore,
   hasProxiedImages,
   imagesMissingAltText,
@@ -93,6 +94,9 @@ type ResumedDraft = {
    * serializable); the client parses it and falls back to an empty editor
    * when it's unreadable. */
   blocksJson: string;
+  /** This draft came in through a feed/archive import, so publishing it will
+   * copy its remote body images into the writer's own repo. */
+  imported: boolean;
 };
 
 const getWriteContext = createServerFn({ method: "GET" })
@@ -134,11 +138,21 @@ const getWriteContext = createServerFn({ method: "GET" })
       try {
         const [row] = await selectDraft(drizzle(env.DB), did, data.draft);
         if (row) {
+          // Import provenance: the ledger row is what tells the writer,
+          // before they publish, that publishing spends their repo quota on
+          // the post's images. Best-effort — a flaked read costs the notice,
+          // never the draft.
+          const [importRow] = await selectImportItemByDraft(
+            drizzle(env.DB),
+            did,
+            row.id,
+          ).catch(() => []);
           resumed = {
             id: row.id,
             title: row.title,
             dek: row.dek,
             blocksJson: row.content,
+            imported: importRow !== undefined,
           };
         } else {
           draftError = "draft_not_found";
@@ -611,6 +625,9 @@ export function Compose({
   // Re-rendered only when the count actually changes, so counting on every
   // keystroke costs nothing (React bails out on an identical value).
   const [missingAlt, setMissingAlt] = useState(0);
+  // Images still on the source's servers — what an imported post's publish
+  // will copy into the writer's repo.
+  const [remoteImages, setRemoteImages] = useState(0);
   const [saveState, setSaveState] = useState<SaveState>(
     resumed ? "saved" : "idle",
   );
@@ -768,7 +785,10 @@ export function Compose({
     // text is unreadable to a screen reader, so the count has to track the
     // document even when the draft itself is never saved (an edit of a
     // published post).
-    if (editor) setMissingAlt(imagesMissingAltText(editor.document));
+    if (editor) {
+      setMissingAlt(imagesMissingAltText(editor.document));
+      setRemoteImages(countRemoteImages(editor.document));
+    }
     if (editing || publishingRef.current || !readyRef.current) return;
     dirtyRef.current = true;
     scheduleSave();
@@ -948,6 +968,16 @@ export function Compose({
             Images in this draft are already saved to your repo, but they stay
             blank here until you publish — that's when your server starts
             serving them.
+          </p>
+        )}
+        {/* An imported draft's images still live on the source's servers, and
+            publishing copies them into the writer's repo. That spends their
+            quota, so it is said BEFORE the button, not discovered after. */}
+        {!editing && resumed?.imported && remoteImages > 0 && (
+          <p className="mt-4 font-display text-ink-soft text-xs leading-relaxed">
+            {remoteImages === 1
+              ? "This post has one image still hosted by the site you imported from. Publishing saves a copy to your own repo — it counts against your storage there — so the post keeps working if the original disappears."
+              : `This post has ${remoteImages} images still hosted by the site you imported from. Publishing saves copies to your own repo — they count against your storage there — so the post keeps working if the originals disappear.`}
           </p>
         )}
         {/* Alt text is what a screen reader has to work with, and the only
