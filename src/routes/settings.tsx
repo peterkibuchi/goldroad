@@ -197,7 +197,7 @@ export function SettingsSection({
         {title}
       </h2>
       {intro && (
-        <p className="mt-2 max-w-[58ch] text-pretty text-ink-soft text-sm leading-relaxed">
+        <p className="mt-2 text-pretty text-ink-soft text-sm leading-relaxed">
           {intro}
         </p>
       )}

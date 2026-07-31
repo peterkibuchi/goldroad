@@ -1194,7 +1194,7 @@ function FirstRun() {
       <h2 className="font-black font-display text-ink text-xl tracking-tight">
         No posts yet.
       </h2>
-      <p className="mt-3 max-w-[52ch] text-ink-soft leading-relaxed">
+      <p className="mt-3 text-ink-soft leading-relaxed">
         Your first post publishes straight to your own data repo and goes live
         on your public page. Announce it and it reaches your Bluesky followers
         as a rich card linking back here.
@@ -1257,7 +1257,7 @@ function DashboardPage() {
           <h1 className="font-black font-display text-3xl text-ink tracking-tight">
             Your posts
           </h1>
-          <p className="mt-2 max-w-[52ch] text-ink-soft">
+          <p className="mt-2 text-ink-soft">
             Everything published from your own data repo — including posts
             written in other apps.
           </p>

@@ -77,6 +77,13 @@ doesn't round corners — while editor and shadcn internals keep their own small
   on a reading or writing surface.
 - Prose: measure at or under 70ch, leading 1.6+, headings shifted one level below the
   document title.
+- **Cap the measure only where the container is wider than the measure.** A `ch` cap
+  belongs on page-width prose — reading surfaces, marketing body. Inside an app panel
+  (`max-w-2xl`/`3xl`, so ~620–720px of usable width) the container ALREADY is the
+  measure, and a 52–58ch cap there cuts help text to roughly two-thirds of its column,
+  ragging it against the inputs and headings beside it. That read as a bug twice before
+  it was named: a cap that never engages is dead weight, and one that engages inside a
+  narrow panel is a misalignment.
 
 ## Voice
 
