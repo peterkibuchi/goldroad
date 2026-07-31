@@ -42,6 +42,32 @@ export type SectionStatus =
   | "insufficient_history"
   | "empty";
 
+/**
+ * Is this status a FAULT — something broken that somebody should know about —
+ * or simply an answer?
+ *
+ * Only `unavailable` is a fault. The distinction is the whole point and it is
+ * easy to get wrong in the direction of noise:
+ *
+ *   not_configured       — no PostHog key in this environment. Correct, and
+ *                          permanent until someone sets one. Reporting it
+ *                          would fire on every dev request forever.
+ *   insufficient_history — we have not been collecting long enough to compare
+ *                          two windows. Working exactly as designed; it fixes
+ *                          itself by the passage of time.
+ *   empty                — the upstream answered, and the answer is that
+ *                          nothing happened yet. A real reading, not a gap.
+ *                          Treating it as a fault is the same mistake as
+ *                          rendering it as a zero.
+ *
+ * Exported and pure so the rule lives in one testable place rather than in a
+ * condition inside a route handler, where the next section added would have to
+ * remember it.
+ */
+export function isDegraded(status: SectionStatus): boolean {
+  return status === "unavailable";
+}
+
 export type ViewsSection = {
   status: SectionStatus;
   total?: number;

@@ -39,6 +39,7 @@ import {
 import {
   engagementSection,
   followersSection,
+  isDegraded,
   queryFloorDay,
   rangeWindow,
   type SectionStatus,
@@ -112,6 +113,29 @@ export const Route = createFileRoute("/api/stats")({
         const cacheStatus: Partial<Record<StatsSection, "HIT" | "MISS">> = {};
 
         /**
+         * A section failed. One line, one shape, so it is greppable in Workers
+         * logs (observability is on) and countable per section.
+         *
+         * A log rather than an event, deliberately: reporting from inside a
+         * request would spend one of the 50 subrequests this handler shares
+         * with the upstreams it is trying to measure, and a degraded section is
+         * not an exception — routing it through error tracking would fill
+         * $exception with things that never threw. When WEBHOOK_URL exists,
+         * alerting belongs there, reading these lines.
+         */
+        const reportDegraded = (name: StatsSection, cause: unknown) => {
+          const detail =
+            cause instanceof Error
+              ? cause.message
+              : cause == null
+                ? "upstream answered with a body we could not map"
+                : String(cause);
+          console.warn(
+            `stats_section_degraded section=${name} range=${range} — ${detail}`,
+          );
+        };
+
+        /**
          * Read-through cache for one section. Only healthy sections are stored,
          * so an upstream blip can't pin a failure for the whole TTL, and a
          * section that throws degrades to `unavailable` on its own — never
@@ -147,9 +171,18 @@ export const Route = createFileRoute("/api/stats")({
           try {
             result = await compute();
           } catch (err) {
-            console.warn("stats section failed", name, err);
+            reportDegraded(name, err);
             return { status: "unavailable" };
           }
+          // The other way a section degrades, and the one that used to be
+          // silent: a compute path that RETURNS `unavailable` rather than
+          // throwing — an upstream that answered with a body we could not map.
+          // Two of those exist below and neither said anything, so a section
+          // could be dead for days while the page merely looked quiet.
+          // Reporting here rather than at each return is the fix that keeps
+          // working: this is the one place that sees every outcome, so a
+          // section added later is covered without anyone remembering to.
+          if (isDegraded(result.status)) reportDegraded(name, null);
           if (cache && result.status === "ok") {
             const stored = Response.json(result);
             stored.headers.set(

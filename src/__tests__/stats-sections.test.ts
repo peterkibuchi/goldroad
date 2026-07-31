@@ -6,9 +6,11 @@ import type { DayRow } from "../lib/stats";
 import {
   engagementSection,
   followersSection,
+  isDegraded,
   MIN_VIEWS_FOR_SOURCES,
   queryFloorDay,
   rangeWindow,
+  type SectionStatus,
   sourcesSection,
   viewsSection,
 } from "../lib/stats-sections";
@@ -363,5 +365,50 @@ describe("engagementSection", () => {
       "quiet",
       "unknown",
     ]);
+  });
+});
+
+/**
+ * Which statuses are worth waking someone for.
+ *
+ * The easy mistake here is noise, not silence: three of the five non-ok
+ * statuses are correct answers rather than faults, and reporting them would
+ * fire on every dev request forever — at which point nobody reads the signal
+ * and a genuinely dead upstream hides in it.
+ */
+describe("isDegraded — a fault, or just an answer", () => {
+  it("treats an unusable upstream as a fault", () => {
+    expect(isDegraded("unavailable")).toBe(true);
+  });
+
+  it("treats a working section as no fault", () => {
+    expect(isDegraded("ok")).toBe(false);
+  });
+
+  it("does not report the states that are working as designed", () => {
+    // not_configured: no key in this environment, permanent and correct.
+    // insufficient_history: not collecting long enough yet — fixes itself.
+    // empty: the upstream answered, and the answer is "nothing yet". Calling
+    // that a fault is the same error as rendering it as a zero.
+    for (const status of [
+      "not_configured",
+      "insufficient_history",
+      "empty",
+    ] as const) {
+      expect(isDegraded(status)).toBe(false);
+    }
+  });
+
+  it("covers every status the envelope can carry", () => {
+    // If a status is added, this fails until someone decides which side of the
+    // line it falls on — which is the decision that must not be made silently.
+    const all: SectionStatus[] = [
+      "ok",
+      "unavailable",
+      "not_configured",
+      "insufficient_history",
+      "empty",
+    ];
+    expect(all.filter(isDegraded)).toEqual(["unavailable"]);
   });
 });
