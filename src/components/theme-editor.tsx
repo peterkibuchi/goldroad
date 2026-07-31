@@ -345,8 +345,12 @@ export function ThemeEditor({
       </div>
 
       <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3">
+        {/* Ink, not spot — the rail's "New post" already spends /settings' one
+            accent moment. It reads doubly wrong here: inches away sits a
+            preview painted in the WRITER'S accent, and two unrelated reds side
+            by side look like a rendering fault. */}
         <button
-          className="min-h-11 cursor-pointer bg-spot px-8 py-2.5 font-bold font-display text-base text-paper transition-colors hover:bg-ink disabled:cursor-default disabled:opacity-40"
+          className="min-h-11 cursor-pointer bg-ink px-8 py-2.5 font-bold font-display text-base text-paper transition-colors hover:bg-spot disabled:cursor-default disabled:opacity-40"
           disabled={disabled}
           type="submit"
         >
