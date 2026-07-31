@@ -94,7 +94,7 @@ const ROWS: Row[] = [
   },
   {
     label: "Feeds",
-    goldroad: "Full-text RSS for every publication",
+    goldroad: "RSS for every publication, on by default",
     substack: "Excerpt, depending on your settings",
   },
   {
@@ -282,9 +282,9 @@ export function LeavingSubstack() {
                   "Pick the moment; it goes out without you. If anything stops it, the reason is written where you'll see it rather than swallowed.",
               },
               {
-                term: "Full-text feeds",
+                term: "A feed for every publication",
                 detail:
-                  "Every publication has an RSS twin carrying the whole post, not an excerpt — the machine-readable version of your archive.",
+                  "An RSS twin of your archive, on by default — for readers who'd rather follow you than be in anyone's inbox.",
               },
               {
                 term: "Your colours, everywhere",

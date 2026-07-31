@@ -20,7 +20,7 @@ import {
   rfc822Date,
   rssFeedXml,
 } from "~/lib/feed";
-import { markdownToHtml } from "~/lib/markdown-html";
+import { markdownBudget } from "~/lib/markdown-html";
 import { hiddenSubjects, recordAtUri } from "~/lib/moderation";
 import { CANONICAL_ORIGIN } from "~/lib/origin";
 import { composeDocumentUrl } from "~/lib/publish";
@@ -132,6 +132,9 @@ export const Route = createFileRoute("/@{$handle}/rss.xml")({
             : new Set<string>();
           if (hidden.has(did)) return NOT_FOUND();
 
+          // One budget for the whole render, not per item — fifty items that
+          // each pass a per-item cap still terminate the Worker.
+          const budget = markdownBudget();
           const items: FeedItem[] = entries
             .filter((e) => !hidden.has(e.atUri))
             .sort(
@@ -173,7 +176,15 @@ export const Route = createFileRoute("/@{$handle}/rss.xml")({
                 // excerpt-only feed was withholding something it had, and a
                 // reader in a feed reader got less of the piece than a reader
                 // on the page.
-                content: markdownToHtml(doc.textContent),
+                //
+                // Bounded, though, and that bound is load-bearing rather than
+                // defensive: this parse is the most expensive thing the Worker
+                // does, a 50-record page of it costs ~3 s of CPU against a
+                // 10 ms budget, and the path is unauthenticated. The budget is
+                // spent newest-first (the sort above), so the items a feed
+                // reader actually shows carry full text and the tail falls back
+                // to `description` — the excerpt built two lines up.
+                content: budget.render(doc.textContent),
               };
             });
 

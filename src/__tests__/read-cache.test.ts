@@ -96,6 +96,28 @@ describe("readCacheKey — normalization", () => {
       "https://trygoldroad.com/@h",
     );
   });
+
+  it("ignores the cursor on paths that don't paginate", () => {
+    // `isValidCursor` is shape-only, so keying on the param anywhere it appears
+    // lets a stranger mint unlimited distinct MISSes for identical bytes. The
+    // feed is the worst place for that — it is the most expensive handler here.
+    expect(readCacheKey(req("/@h/rss.xml?cursor=3lyk73wxnok2f"))).toBe(
+      "https://trygoldroad.com/@h/rss.xml",
+    );
+    expect(readCacheKey(req("/@h/3lyk73wxnok2f?cursor=3lyk73wxnok2f"))).toBe(
+      "https://trygoldroad.com/@h/3lyk73wxnok2f",
+    );
+    expect(readCacheKey(req("/p/abc?cursor=3lyk73wxnok2f"))).toBe(
+      "https://trygoldroad.com/p/abc",
+    );
+  });
+
+  it("still keys on the cursor for the page that paginates", () => {
+    // With or without the trailing slash — the "Older posts" link.
+    expect(readCacheKey(req("/@h/?cursor=3lyk73wxnok2f"))).toBe(
+      "https://trygoldroad.com/@h/?cursor=3lyk73wxnok2f",
+    );
+  });
 });
 
 describe("serveWithReadCache — HIT/MISS flow", () => {
