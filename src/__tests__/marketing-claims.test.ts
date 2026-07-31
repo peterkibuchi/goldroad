@@ -48,6 +48,10 @@ const FALSE_CLAIMS: ReadonlyArray<{ phrase: string; why: string }> = [
     why: "no subscriber list exists to export (corrected 2026-07-31)",
   },
   {
+    phrase: "is either your invite",
+    why: "there is no invite gate — the header's sign-in link opens the product to anyone with a Bluesky account, so this told writers to wait for a door that was already open (corrected 2026-08-01)",
+  },
+  {
     phrase: "Full-text RSS",
     why: "the feed renders markdown at request time, and a 10 ms CPU budget only covers short posts — full text needs HTML rendered once at publish, not per request (corrected 2026-08-01)",
   },

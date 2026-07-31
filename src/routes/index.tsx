@@ -228,9 +228,15 @@ function FoundingWritersForm() {
 
   if (state === "done") {
     return (
+      // NOT "your invite is coming". There is no invite gate — the header's
+      // sign-in link opens the product to anyone with a Bluesky account, and
+      // telling a writer to wait for a door that is already open is the kind of
+      // small dishonesty that costs more than the scarcity buys. What the list
+      // is actually for is the founding cohort and the direct line, neither of
+      // which needs access to be withheld to mean something.
       <p className="border-2 border-ink p-6 font-display font-semibold text-ink text-lg">
-        You're in. The next email you get from us is either your invite, or
-        something we shipped that's worth your time.
+        You're on the list. You don't have to wait for us, though — sign in with
+        Bluesky and start writing whenever you like.
       </p>
     );
   }
