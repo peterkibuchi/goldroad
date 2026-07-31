@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { Route } from "../routes/img.$did.$cid";
+import { handlerOf } from "./support/route-handler";
 
 /**
  * Integration tests for the /img/$did/$cid handler itself (the guards it
@@ -16,16 +17,10 @@ const CID = "bafkreicanarycanarycanarycanarycanarycanary";
 const PDS = "https://pds.example";
 const BYTES = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]); // jpeg-ish
 
-type Handler = (ctx: {
+const GET = handlerOf<{
   request: Request;
   params: { did: string; cid: string };
-}) => Promise<Response>;
-
-const GET = (
-  Route.options as unknown as {
-    server: { handlers: { GET: Handler } };
-  }
-).server.handlers.GET;
+}>(Route, "GET");
 
 function call(did: string, cid: string) {
   return GET({

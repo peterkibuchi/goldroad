@@ -20,6 +20,7 @@ import {
   utcDay,
 } from "~/lib/follower-snapshots";
 import { readLiveSessionDid } from "~/lib/live-session";
+import { privateJson } from "~/lib/private-json";
 import {
   buildDailyViewsQuery,
   buildReferrerQuery,
@@ -45,6 +46,7 @@ import {
   sourcesSection,
   viewsSection,
 } from "~/lib/stats-sections";
+import { defaultCache } from "~/lib/workers-cache";
 import { env } from "cloudflare:workers";
 
 /**
@@ -106,8 +108,7 @@ export const Route = createFileRoute("/api/stats")({
           new URL(request.url).searchParams.get("range"),
         );
         const today = utcDay();
-        const cache = (globalThis as { caches?: { default?: Cache } }).caches
-          ?.default;
+        const cache = defaultCache();
         const cacheStatus: Partial<Record<StatsSection, "HIT" | "MISS">> = {};
 
         /**
@@ -319,13 +320,3 @@ export const Route = createFileRoute("/api/stats")({
     },
   },
 });
-
-/** JSON response that no shared HTTP cache may store — these payloads are
- * writer-private. (The Workers-cache copies above are stored under per-DID,
- * per-section, per-range keys with their own explicit max-age instead.) */
-function privateJson(payload: unknown, status = 200): Response {
-  return Response.json(payload, {
-    status,
-    headers: { "cache-control": "private, no-store" },
-  });
-}

@@ -31,6 +31,7 @@ vi.mock("drizzle-orm/d1", () => ({ drizzle: () => fakeDb }));
 import { LEDGER_QUERY_CHUNK } from "../lib/import-flags";
 import { signSession } from "../lib/session";
 import { Route } from "../routes/api.import.status";
+import { handlerOf } from "./support/route-handler";
 
 // The liveness half of the session gate needs a real database, which these
 // route suites deliberately don't have — they stub the stores. So the D1 read
@@ -47,10 +48,7 @@ vi.mock("~/lib/live-session", async (importOriginal) => {
   };
 });
 
-type Handler = (ctx: { request: Request }) => Promise<Response> | Response;
-const post = (
-  Route.options as unknown as { server: { handlers: { POST: Handler } } }
-).server.handlers.POST;
+const post = handlerOf(Route, "POST");
 
 const DID = "did:plc:fake2222222222writer2222";
 const SECRET = "vitest-fake-cookie-secret"; // mirrors mocks/cloudflare-workers
@@ -120,7 +118,7 @@ describe("/api/import/status — flags + headroom", () => {
     store.selectLiveDraftIds.mockResolvedValue([{ id: "draft-live" }]);
     const res = await call({ guidHashes: [hashA, hashB, hashC] });
     expect(res.status).toBe(200);
-    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
     const data = (await res.json()) as {
       ok: boolean;
       draftSlotsRemaining: number;

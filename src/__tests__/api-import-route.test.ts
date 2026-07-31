@@ -42,6 +42,7 @@ import { MAX_IMPORTS_PER_HOUR } from "../lib/import";
 import { signSession } from "../lib/session";
 import { Route as ImportRoute } from "../routes/api.import";
 import { Route as DraftRoute } from "../routes/api.import.draft";
+import { handlerOf } from "./support/route-handler";
 
 // The liveness half of the session gate needs a real database, which these
 // route suites deliberately don't have — they stub the stores. So the D1 read
@@ -58,17 +59,8 @@ vi.mock("~/lib/live-session", async (importOriginal) => {
   };
 });
 
-type Handler = (ctx: { request: Request }) => Promise<Response> | Response;
-const importPost = (
-  ImportRoute.options as unknown as {
-    server: { handlers: { POST: Handler } };
-  }
-).server.handlers.POST;
-const draftPost = (
-  DraftRoute.options as unknown as {
-    server: { handlers: { POST: Handler } };
-  }
-).server.handlers.POST;
+const importPost = handlerOf(ImportRoute, "POST");
+const draftPost = handlerOf(DraftRoute, "POST");
 
 const DID = "did:plc:fake2222222222writer2222";
 const SECRET = "vitest-fake-cookie-secret"; // mirrors mocks/cloudflare-workers
@@ -214,7 +206,7 @@ describe("/api/import — feed resolution", () => {
     ]);
     const res = await callImport({ url: "https://w.example/feed" });
     expect(res.status).toBe(200);
-    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
     const data = (await res.json()) as {
       ok: boolean;
       feed: { title: string; url: string };

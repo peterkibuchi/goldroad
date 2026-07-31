@@ -24,6 +24,7 @@ vi.mock("~/lib/oauth", () => ({
 
 import { signSession } from "../lib/session";
 import { Route } from "../routes/api.account.delete";
+import { handlerOf } from "./support/route-handler";
 
 // The liveness half of the session gate needs a real database, which these
 // route suites deliberately don't have — they stub the stores. So the D1 read
@@ -40,12 +41,7 @@ vi.mock("~/lib/live-session", async (importOriginal) => {
   };
 });
 
-type Handler = (ctx: { request: Request }) => Promise<Response> | Response;
-const handler = (
-  Route.options as unknown as {
-    server: { handlers: { POST: Handler } };
-  }
-).server.handlers.POST;
+const handler = handlerOf(Route, "POST");
 
 const DID = "did:plc:fake2222222222writer2222";
 const SECRET = "vitest-fake-cookie-secret"; // mirrors mocks/cloudflare-workers

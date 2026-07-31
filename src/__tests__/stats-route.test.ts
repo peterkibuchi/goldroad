@@ -37,6 +37,7 @@ import { signSession } from "~/lib/session";
 import type { StatsEnvelope } from "~/lib/stats-sections";
 import { Route } from "../routes/api.stats";
 import { env } from "./mocks/cloudflare-workers";
+import { handlerOf } from "./support/route-handler";
 
 // The liveness half of the session gate needs a real database, which these
 // route suites deliberately don't have — they stub the stores. So the D1 read
@@ -53,10 +54,7 @@ vi.mock("~/lib/live-session", async (importOriginal) => {
   };
 });
 
-type Handler = (ctx: { request: Request }) => Promise<Response> | Response;
-const GET = (
-  Route.options as unknown as { server: { handlers: { GET: Handler } } }
-).server.handlers.GET;
+const GET = handlerOf(Route, "GET");
 
 const DID_A = "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa";
 const DID_B = "did:plc:bbbbbbbbbbbbbbbbbbbbbbbb";

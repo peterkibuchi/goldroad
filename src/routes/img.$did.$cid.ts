@@ -9,6 +9,7 @@ import {
   readBodyCapped,
 } from "~/lib/blob";
 import { anyHidden } from "~/lib/moderation";
+import { defaultCache } from "~/lib/workers-cache";
 import { env } from "cloudflare:workers";
 
 /**
@@ -79,13 +80,10 @@ export const Route = createFileRoute("/img/$did/$cid")({
         }
 
         // Blobs are CID-addressed (immutable), so cache on the normalized
-        // URL and serve forever. `caches.default` is the Workers Cache API
-        // (absent from the DOM CacheStorage type, hence the cast) —
-        // feature-detected so unit tests and node tooling can import this.
+        // URL and serve forever.
         const cacheUrl = new URL(request.url);
         cacheUrl.search = "";
-        const cache = (globalThis as { caches?: { default?: Cache } }).caches
-          ?.default;
+        const cache = defaultCache();
         const cached = await cache?.match(cacheUrl);
         if (cached) return cached;
 
