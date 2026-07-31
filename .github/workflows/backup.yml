@@ -124,7 +124,7 @@ jobs:
           test -s "${DUMP}.age"
 
       - name: Upload the encrypted backup
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: d1-backup-${{ github.run_id }}
           path: d1-dump.sql.age
