@@ -64,6 +64,7 @@ import {
   type DashboardRow,
   type DraftRow,
   mapDashboardRows,
+  nextPostsTab,
   type PostSort,
   type PostsTab,
   type ScheduledPostRow,
@@ -691,6 +692,39 @@ export function PostsManager({
     (row) => row.status === "failed",
   ).length;
 
+  // The Scheduled tab comes and goes with the queue (see the tablist below),
+  // so the strip's order is derived once here and used by both the buttons and
+  // the arrow keys — they can't disagree about what "the next tab" is.
+  const showScheduled =
+    tab === "scheduled" || scheduled === null || scheduled.length > 0;
+  const tabOrder: PostsTab[] = showScheduled
+    ? ["published", "scheduled", "drafts"]
+    : ["published", "drafts"];
+
+  /**
+   * The keyboard half of the tabs pattern. Without it the roving tabindex on
+   * TabButton is a trap rather than a convenience: only the selected tab is
+   * tabbable, so a keyboard-only writer could reach Published and nothing
+   * else — Scheduled, the tab that answers "did it go out?", would need a
+   * hand-typed `?tab=scheduled`.
+   *
+   * Automatic activation (focus moves AND selects) rather than the manual
+   * variant: every panel is already rendered and switching is a URL replace,
+   * so arriving costs nothing and a second keypress to confirm would be
+   * ceremony. Keys the tablist doesn't own are left to the browser.
+   */
+  function handleTabKeys(event: React.KeyboardEvent<HTMLDivElement>) {
+    const next = nextPostsTab(event.key, tabOrder, tab);
+    if (!next) return;
+    // Arrows would otherwise scroll the list behind the strip.
+    event.preventDefault();
+    const tablist = event.currentTarget;
+    onTabChange(next);
+    // The target button is already in the DOM — only its tabindex changes when
+    // the selection lands — so focus doesn't wait for the re-render.
+    tablist.querySelector<HTMLButtonElement>(`#tab-${next}`)?.focus();
+  }
+
   const isSearching = query.trim() !== "";
   const paginated = Boolean(cursor || nextCursor);
   const visiblePosts = postsTable.getRowModel().rows;
@@ -707,7 +741,12 @@ export function PostsManager({
       {/* Tabs are the manager's spine: one job per tab, and no tab for a
           feature that doesn't exist. */}
       <div className="mt-8 border-rule border-b">
-        <div aria-label="Post lists" className="flex gap-6" role="tablist">
+        <div
+          aria-label="Post lists"
+          className="flex gap-6"
+          onKeyDown={handleTabKeys}
+          role="tablist"
+        >
           <TabButton
             active={tab === "published"}
             // A page count dressed as a total would be a lie; a complete list
@@ -727,9 +766,7 @@ export function PostsManager({
               that both scheduling and cancelling redirect to, and a selected tab
               with no button leaves the panel's aria-labelledby pointing at
               nothing and no visible mark of where the writer is. */}
-          {(tab === "scheduled" ||
-            scheduled === null ||
-            scheduled.length > 0) && (
+          {showScheduled && (
             <TabButton
               active={tab === "scheduled"}
               count={scheduled?.length}
