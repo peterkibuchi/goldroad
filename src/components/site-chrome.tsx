@@ -41,6 +41,7 @@ import {
 import { type ComponentType, useEffect, useState } from "react";
 
 import { ExternalLink } from "~/components/external-link";
+import { currentEdition, setEdition } from "~/lib/appearance";
 import { SESSION_HINT_COOKIE } from "~/lib/session";
 import { cn } from "~/lib/utils";
 
@@ -173,18 +174,12 @@ function MarketingSignIn() {
 function AppearanceToggle() {
   const [dark, setDark] = useState(false);
   useEffect(() => {
-    setDark(document.documentElement.dataset.theme === "dark");
+    setDark(currentEdition() === "dark");
   }, []);
   function toggle() {
     const next = !dark;
     setDark(next);
-    try {
-      localStorage.setItem("gr-appearance", next ? "dark" : "light");
-    } catch {
-      // Private-mode refusal shouldn't break the control.
-    }
-    if (next) document.documentElement.dataset.theme = "dark";
-    else delete document.documentElement.dataset.theme;
+    setEdition(next ? "dark" : "light");
   }
   return (
     <button

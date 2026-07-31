@@ -5,6 +5,7 @@ import { useEffect } from "react";
 
 import { env } from "#/env";
 import { ErrorPage, NotFoundPage } from "~/components/system-pages";
+import { APPEARANCE_KEY } from "~/lib/appearance";
 import { initPostHog } from "~/lib/posthog";
 import appCss from "../styles.css?url";
 
@@ -43,7 +44,7 @@ export const Route = createRootRoute({
  * styles.css). Publication reading pages deliberately do not — a writer's page
  * follows the appearance they give it, not a reader's toggle.
  */
-const APPEARANCE_BOOTSTRAP = `(function(){try{var p=localStorage.getItem("gr-appearance");var d=p==="dark"||(p!=="light"&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(d)document.documentElement.dataset.theme="dark";}catch(e){}})();`;
+const APPEARANCE_BOOTSTRAP = `(function(){try{var p=localStorage.getItem("${APPEARANCE_KEY}");var d=p==="dark"||(p!=="light"&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(d)document.documentElement.dataset.theme="dark";}catch(e){}})();`;
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   // Cookieless analytics; a no-op unless VITE_PUBLIC_POSTHOG_KEY is set.
