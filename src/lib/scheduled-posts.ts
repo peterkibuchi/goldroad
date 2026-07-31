@@ -379,6 +379,56 @@ export function cancelSchedule(db: DrizzleD1, did: string, id: string) {
     .returning({ id: scheduledPosts.id, draftId: scheduledPosts.draftId });
 }
 
+/** This writer's schedule for one draft whatever its status — the question
+ * "is there one, and is a tick working on it right now?". */
+export function selectScheduleForDraft(
+  db: DrizzleD1,
+  did: string,
+  draftId: string,
+) {
+  return db
+    .select({
+      id: scheduledPosts.id,
+      status: scheduledPosts.status,
+      dueAt: scheduledPosts.dueAt,
+      claimedAt: scheduledPosts.claimedAt,
+    })
+    .from(scheduledPosts)
+    .where(
+      and(eq(scheduledPosts.did, did), eq(scheduledPosts.draftId, draftId)),
+    )
+    .limit(1);
+}
+
+/**
+ * Take a draft's schedule OUT of the queue, but only if no tick is working on
+ * it — the request-side counterpart of `claimDuePost`, and the reason "publish
+ * now" cannot publish a post the cron is publishing at that exact moment.
+ *
+ * A returned row means the caller owns the publish: a row that no longer exists
+ * cannot be claimed by any tick afterwards. No returned row means either there
+ * was no schedule (a plain draft — fine) or a tick holds the lease, and the
+ * caller must ask which before writing anything to the writer's repo. That is
+ * the whole double-publish guard on the interactive path, and it is one
+ * statement precisely so there is no window inside it.
+ */
+export function deleteUnclaimedSchedulesForDraft(
+  db: DrizzleD1,
+  did: string,
+  draftId: string,
+) {
+  return db
+    .delete(scheduledPosts)
+    .where(
+      and(
+        eq(scheduledPosts.did, did),
+        eq(scheduledPosts.draftId, draftId),
+        isNull(scheduledPosts.claimedAt),
+      ),
+    )
+    .returning({ id: scheduledPosts.id, status: scheduledPosts.status });
+}
+
 /**
  * Cancel by draft — what deleting a draft calls. A schedule whose draft is gone
  * has nothing to publish, and leaving it behind would fail loudly later for

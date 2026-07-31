@@ -104,6 +104,7 @@ describe("/write — the subtitle field", () => {
           dek: "Saved subtitle",
           blocksJson: "[]",
           imported: false,
+          schedule: null,
         }}
       />,
     );

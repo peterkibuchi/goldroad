@@ -7,6 +7,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import type { BlockNoteEditor } from "~/components/editor";
 import { ExternalLink } from "~/components/external-link";
 import { Notice } from "~/components/notice";
+import { ScheduledTime } from "~/components/scheduled-time";
 import { AppShell } from "~/components/site-chrome";
 import {
   getRecord,
@@ -32,6 +33,11 @@ import {
   TID_RE,
   writerDek,
 } from "~/lib/publish";
+import {
+  utcMsToLocalInput,
+  zoneOffsetForLocalInput,
+} from "~/lib/schedule-time";
+import { selectPendingScheduleForDraft } from "~/lib/scheduled-posts";
 import { env } from "cloudflare:workers";
 
 // BlockNote is client-only (ProseMirror needs a real DOM): lazy + ClientOnly
@@ -39,6 +45,19 @@ import { env } from "cloudflare:workers";
 const Editor = lazy(() => import("~/components/editor"));
 
 const ERROR_MESSAGES: Record<string, string> = {
+  schedule_no_draft:
+    "That draft couldn't be found, so nothing was scheduled — reload this page and try again.",
+  schedule_invalid: "Pick a date and time to schedule this post for.",
+  schedule_past:
+    "That time has already passed. Pick a time in the future — or just press Publish.",
+  schedule_too_far:
+    "Scheduling reaches about a year ahead. Pick a nearer date.",
+  schedule_failed:
+    "Scheduling didn't save just now. Your draft is safe — try again.",
+  schedule_save_failed:
+    "Your draft couldn't be saved, so it wasn't scheduled — a scheduled post publishes what was last saved, and that has to be what you see here. Try again.",
+  unschedule_failed:
+    "That schedule couldn't be cancelled just now. Try again from your posts page.",
   invalid_handle:
     "That doesn't look like a Bluesky handle — it's usually name.bsky.social, or your own domain. Check for typos and try again.",
   handle_not_found:
@@ -84,12 +103,19 @@ type Draft = {
   mirror: { sourceUrl: string | null } | null;
 };
 
+/** A pending schedule on the draft being resumed. `dueAt` is an ISO string —
+ * loader data must serialize identically on both sides — and it is UTC, like
+ * every stored schedule; the writer's own zone is applied in the browser. */
+type PendingSchedule = { id: string; dueAt: string };
+
 /** A saved (unpublished) draft being resumed from our D1 — distinct from
  * `Draft`, which is a published record being edited. */
 type ResumedDraft = {
   id: string;
   title: string;
   dek: string;
+  /** Set when this draft is already queued to publish. */
+  schedule: PendingSchedule | null;
   /** The stored BlockNote JSON, verbatim (loader data must be plainly
    * serializable); the client parses it and falls back to an empty editor
    * when it's unreadable. */
@@ -138,21 +164,32 @@ const getWriteContext = createServerFn({ method: "GET" })
       try {
         const [row] = await selectDraft(drizzle(env.DB), did, data.draft);
         if (row) {
-          // Import provenance: the ledger row is what tells the writer,
-          // before they publish, that publishing spends their repo quota on
-          // the post's images. Best-effort — a flaked read costs the notice,
-          // never the draft.
-          const [importRow] = await selectImportItemByDraft(
-            drizzle(env.DB),
-            did,
-            row.id,
-          ).catch(() => []);
+          // Two best-effort side reads, in one batch — neither blocks the
+          // other, and neither may cost the writer their draft:
+          //   • the import ledger row, which tells them BEFORE they publish
+          //     that publishing spends their repo quota on the post's images;
+          //   • the pending schedule, if this draft is already queued.
+          // A flaked read costs its own notice and nothing else. Ownership is
+          // in both queries.
+          const [[importRow], [pending]] = await Promise.all([
+            selectImportItemByDraft(drizzle(env.DB), did, row.id).catch(
+              () => [],
+            ),
+            selectPendingScheduleForDraft(
+              drizzle(env.DB),
+              did,
+              data.draft,
+            ).catch(() => []),
+          ]);
           resumed = {
             id: row.id,
             title: row.title,
             dek: row.dek,
             blocksJson: row.content,
             imported: importRow !== undefined,
+            schedule: pending
+              ? { id: pending.id, dueAt: pending.dueAt.toISOString() }
+              : null,
           };
         } else {
           draftError = "draft_not_found";
@@ -206,12 +243,17 @@ export const Route = createFileRoute("/write")({
   validateSearch: (search: Record<string, unknown>) => {
     const out: {
       error?: string;
+      unscheduled?: boolean;
       edit?: string;
       draft?: string;
       handle?: string;
       returnTo?: string;
     } = {};
     if (typeof search.error === "string") out.error = search.error;
+    // Set by a cancelled schedule (the unschedule intent redirects back here
+    // with the draft still loaded) so the editor can confirm it in words.
+    if (search.unscheduled === "1" || search.unscheduled === 1)
+      out.unscheduled = true;
     if (typeof search.edit === "string") out.edit = search.edit;
     if (typeof search.draft === "string" && isDraftId(search.draft))
       out.draft = search.draft;
@@ -557,6 +599,163 @@ function SubtitleField({
   );
 }
 
+/**
+ * Scheduling, on the publish flow — a time and two buttons, next to the button
+ * it is an alternative to.
+ *
+ * ITS OWN FORM, not a second submit button on the publish form. The publish form
+ * is multipart and carries the cover file and the whole body; scheduling needs
+ * neither (the draft is the payload — see the schedule intent in
+ * ~/routes/api.publish), and submitting it through that form would upload a
+ * megabyte of cover image to save a due date.
+ *
+ * `prepare` is what makes this safe: it flushes the draft — blocks AND the
+ * markdown projection — and hands back the draft id, so what publishes on
+ * Tuesday is what was on screen when the writer pressed Schedule. A save that
+ * fails schedules nothing and says so, because the alternative is a post
+ * quietly going out with older words in it.
+ *
+ * Exported for tests (write-schedule.test.tsx) — not a route.
+ */
+export function SchedulePanel({
+  existing,
+  prepare,
+  disabled,
+}: {
+  existing: PendingSchedule | null;
+  /** Flush the draft; resolves to its id, or null if the save failed. */
+  prepare: () => Promise<string | null>;
+  disabled?: boolean;
+}) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const draftIdRef = useRef<HTMLInputElement>(null);
+  const offsetRef = useRef<HTMLInputElement>(null);
+  const localRef = useRef<HTMLInputElement>(null);
+  const [localValue, setLocalValue] = useState("");
+  const [min, setMin] = useState<string | undefined>(undefined);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  // Both of these are the browser's knowledge, not the server's, so they arrive
+  // after mount rather than risking a hydration mismatch: the existing
+  // schedule read back into the writer's own clock, and "now" as the earliest
+  // selectable minute.
+  useEffect(() => {
+    const now = new Date();
+    setMin(
+      utcMsToLocalInput(now.getTime(), now.getTimezoneOffset()) ?? undefined,
+    );
+  }, []);
+  useEffect(() => {
+    if (!existing) return;
+    const ms = Date.parse(existing.dueAt);
+    if (Number.isNaN(ms)) return;
+    const value = utcMsToLocalInput(ms, new Date(ms).getTimezoneOffset());
+    if (value) setLocalValue(value);
+  }, [existing]);
+
+  async function handleSchedule() {
+    setError(null);
+    const local = localValue.trim();
+    const offset = local ? zoneOffsetForLocalInput(local) : null;
+    if (!local || offset === null) {
+      setError(ERROR_MESSAGES.schedule_invalid);
+      localRef.current?.focus();
+      return;
+    }
+    setBusy(true);
+    const draftId = await prepare();
+    setBusy(false);
+    if (!draftId) {
+      setError(ERROR_MESSAGES.schedule_save_failed);
+      return;
+    }
+    if (draftIdRef.current) draftIdRef.current.value = draftId;
+    if (offsetRef.current) offsetRef.current.value = String(offset);
+    formRef.current?.requestSubmit();
+  }
+
+  const zoneNote = existing
+    ? null
+    : "Publishes at the time you pick — Goldroad checks for due posts every hour, so it goes out within the hour after it. Times are in your own time zone.";
+
+  return (
+    <div className="mt-6 border-rule border-t pt-6">
+      {existing && (
+        <p className="font-display text-ink text-sm leading-relaxed">
+          <span className="font-bold">Scheduled</span> for{" "}
+          <ScheduledTime iso={existing.dueAt} />. You can keep editing — this
+          publishes whatever is saved when it goes out.
+        </p>
+      )}
+      <form action="/api/publish" className="mt-2" method="post" ref={formRef}>
+        <input name="intent" type="hidden" value="schedule" />
+        <input name="draftId" ref={draftIdRef} type="hidden" />
+        {/* Filled at submit time with the offset in effect AT THE CHOSEN
+            MOMENT, which is what makes a schedule across a DST change land on
+            the hour the writer meant (~/lib/schedule-time). */}
+        <input name="dueTzOffset" ref={offsetRef} type="hidden" />
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <label
+            className="font-display text-ink-soft text-sm"
+            htmlFor="dueAtLocal"
+          >
+            {existing ? "Change the time" : "Schedule for later"}
+          </label>
+          <input
+            className="min-h-11 border border-rule bg-paper px-3 font-display text-ink text-sm focus-visible:border-spot focus-visible:outline-none"
+            id="dueAtLocal"
+            min={min}
+            name="dueAtLocal"
+            onChange={(event) => setLocalValue(event.target.value)}
+            ref={localRef}
+            type="datetime-local"
+            value={localValue}
+          />
+          <button
+            className="min-h-11 cursor-pointer border-2 border-ink px-5 font-bold font-display text-ink text-sm transition-colors hover:bg-ink hover:text-paper disabled:cursor-default disabled:opacity-40"
+            disabled={disabled || busy}
+            onClick={() => void handleSchedule()}
+            type="button"
+          >
+            {existing ? "Reschedule" : "Schedule"}
+          </button>
+        </div>
+      </form>
+      {existing && (
+        <form action="/api/publish" className="mt-2" method="post">
+          <input name="intent" type="hidden" value="unschedule" />
+          <input name="id" type="hidden" value={existing.id} />
+          <input name="returnTo" type="hidden" value="write" />
+          <input name="draftId" type="hidden" value={existing.id} />
+          <button
+            className="-my-2 inline-flex min-h-9 cursor-pointer items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-spot"
+            type="submit"
+          >
+            Cancel the schedule
+          </button>
+        </form>
+      )}
+      <p
+        aria-live="polite"
+        className="mt-2 max-w-[52ch] font-display text-ink-soft text-xs leading-relaxed"
+      >
+        {busy ? "Saving your draft…" : zoneNote}
+      </p>
+      {/* Stated where the decision is made, not discovered afterwards. */}
+      <p className="mt-1 max-w-[52ch] font-display text-ink-soft text-xs leading-relaxed">
+        A scheduled post publishes its words, not a cover image — add a cover by
+        editing the post once it's out, or press Publish instead.
+      </p>
+      {error && (
+        <p className="mt-2 font-display text-sm text-spot" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /** A fresh editor is a single empty paragraph — never mint a draft row for
  * an untouched page. */
 function isBlankDocument(blocks: BlockNoteEditor["document"]): boolean {
@@ -613,11 +812,14 @@ export function Compose({
   draft,
   resumed,
   error,
+  unscheduled,
   reconnectHandle,
 }: {
   draft: Draft | null;
   resumed: ResumedDraft | null;
   error: string | undefined;
+  /** A schedule was just cancelled — confirmed in words, not by absence. */
+  unscheduled?: boolean;
   /** Handle for the one-click re-connect form on scope errors. */
   reconnectHandle: string | null;
 }) {
@@ -663,7 +865,7 @@ export function Compose({
   const draftIdRef = useRef<string | null>(resumed?.id ?? null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savingRef = useRef(false);
-  const saveInFlightRef = useRef<Promise<void> | null>(null);
+  const saveInFlightRef = useRef<Promise<string | null> | null>(null);
   const dirtyRef = useRef(false);
   const publishingRef = useRef(false);
   // Loading resumed blocks fires the editor's onChange before onReady —
@@ -698,9 +900,20 @@ export function Compose({
     }
   }
 
-  async function runSave(): Promise<void> {
-    if (editing || publishingRef.current || savingRef.current) return;
-    if (!editor || !dirtyRef.current) return;
+  /**
+   * Saves, and resolves to the draft's id — or null when nothing was saved.
+   *
+   * `force` ignores the dirty flag, which the scheduling flow needs: a writer
+   * can resume a draft, change nothing, and schedule it, and the stored row
+   * still has to match what is on screen (an older draft may predate the
+   * markdown projection entirely). Publishing does NOT force — there the
+   * publish itself carries the words.
+   */
+  async function runSave(force = false): Promise<string | null> {
+    if (editing || savingRef.current) return null;
+    if (publishingRef.current && !force) return null;
+    if (!editor) return null;
+    if (!dirtyRef.current && !force) return draftIdRef.current;
     const title = titleRef.current?.value ?? "";
     const dek = dekRef.current?.value ?? "";
     const blocks = editor.document;
@@ -712,7 +925,7 @@ export function Compose({
       dek.trim() === "" &&
       isBlankDocument(blocks)
     )
-      return;
+      return null;
     savingRef.current = true;
     dirtyRef.current = false;
     setSaveState("saving");
@@ -764,15 +977,32 @@ export function Compose({
       // tries again.
       if (next === "saved" && dirtyRef.current) scheduleSave();
     }
+    return next === "saved" ? draftIdRef.current : null;
   }
 
   /** Runs a save and tracks it, so publish can await an in-flight one. */
-  function saveDraft(): Promise<void> {
-    const run = runSave().finally(() => {
+  function saveDraft(force = false): Promise<string | null> {
+    const run = runSave(force).finally(() => {
       if (saveInFlightRef.current === run) saveInFlightRef.current = null;
     });
     saveInFlightRef.current = run;
     return run;
+  }
+
+  /**
+   * What the Schedule button waits for: the in-flight save, then a forced one,
+   * resolving to the draft id the schedule will point at.
+   *
+   * A scheduled post publishes WHAT IS STORED, hours later, with nobody
+   * watching — so the stored row has to be the screen before a due date is
+   * saved. A failed save therefore schedules nothing at all; SchedulePanel says
+   * so rather than queueing older words.
+   */
+  async function prepareForSchedule(): Promise<string | null> {
+    clearSaveTimer();
+    const pending = saveInFlightRef.current;
+    if (pending) await pending.catch(() => null);
+    return saveDraft(true);
   }
 
   function scheduleSave() {
@@ -851,6 +1081,12 @@ export function Compose({
   return (
     <main className="mx-auto w-full max-w-2xl px-6 py-10">
       <ErrorNotice code={error} />
+      {unscheduled && (
+        <Notice tone="info">
+          Schedule cancelled — this is a draft again, and nothing will publish
+          on its own.
+        </Notice>
+      )}
       {error === "cover_scope" && reconnectHandle && (
         <form action="/login" className="-mt-4 mb-6" method="post">
           <input name="handle" type="hidden" value={reconnectHandle} />
@@ -1014,6 +1250,16 @@ export function Compose({
               : "Goes live on your public page the moment you press it, and saves to your own data repo — the account behind your handle. It's yours; Goldroad just holds the pen."}
           </p>
         </div>
+        {/* Scheduling is only offered for a new composition. Editing changes a
+            record that is ALREADY public — there is nothing to queue, and a
+            date picker there would imply otherwise. */}
+        {!editing && (
+          <SchedulePanel
+            disabled={!editor || coverBusy}
+            existing={resumed?.schedule ?? null}
+            prepare={prepareForSchedule}
+          />
+        )}
       </div>
     </main>
   );
@@ -1021,7 +1267,7 @@ export function Compose({
 
 function WritePage() {
   const { viewer, draft, resumed, draftError } = Route.useLoaderData();
-  const { error, handle, returnTo } = Route.useSearch();
+  const { error, handle, returnTo, unscheduled } = Route.useSearch();
   if (!viewer) {
     return (
       <AppShell header={{ variant: "signed-out" }}>
@@ -1049,6 +1295,7 @@ function WritePage() {
         key={draft?.rkey ?? resumed?.id ?? "new"}
         reconnectHandle={viewer.handle}
         resumed={resumed}
+        unscheduled={unscheduled}
       />
     </AppShell>
   );

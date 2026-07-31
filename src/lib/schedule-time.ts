@@ -95,6 +95,34 @@ export function utcMsToLocalInput(
     .slice(0, 16);
 }
 
+/**
+ * The zone offset in effect at a local wall-clock moment, as the browser knows
+ * it — the one function here that depends on where it runs, which is exactly
+ * why it is the only thing the client contributes to the conversion.
+ *
+ * It constructs the LOCAL date from the parts rather than reading
+ * `new Date().getTimezoneOffset()`, so a time chosen on the far side of a DST
+ * change carries that side's offset. Reading today's offset instead is the
+ * classic way a 9:00 AM schedule goes out at 10:00.
+ *
+ * Returns null for anything that isn't a wall-clock string, so the caller sends
+ * no offset at all and the server refuses the submission — never a silent
+ * fallback to UTC.
+ */
+export function zoneOffsetForLocalInput(local: string): number | null {
+  const match = LOCAL_INPUT_RE.exec(local);
+  if (!match) return null;
+  const [year, month, day, hour, minute] = match.slice(1, 6).map(Number);
+  const offset = new Date(
+    year,
+    month - 1,
+    day,
+    hour,
+    minute,
+  ).getTimezoneOffset();
+  return isZoneOffset(offset) ? offset : null;
+}
+
 export type DueAtProblem = "invalid" | "past" | "too_far";
 
 /**

@@ -9,6 +9,7 @@ import {
   MAX_SCHEDULE_HORIZON_MS,
   MIN_SCHEDULE_LEAD_MS,
   utcMsToLocalInput,
+  zoneOffsetForLocalInput,
 } from "../lib/schedule-time";
 
 /**
@@ -118,6 +119,36 @@ describe("utcMsToLocalInput — reading a stored schedule back into the picker",
   it("returns null rather than a bogus field value", () => {
     expect(utcMsToLocalInput(Number.NaN, EAT)).toBeNull();
     expect(utcMsToLocalInput(Date.now(), 900)).toBeNull();
+  });
+});
+
+describe("zoneOffsetForLocalInput — the browser's half of the conversion", () => {
+  /**
+   * Asserted as a PROPERTY rather than a number, because the answer depends on
+   * the zone the test process happens to run in. The property is the whole
+   * point: local wall clock + this offset must be the same instant the runtime
+   * itself means by that wall clock.
+   */
+  it("round-trips any local wall clock to the runtime's own instant", () => {
+    for (const [local, parts] of [
+      ["2026-01-13T09:00", [2026, 0, 13, 9, 0]],
+      ["2026-07-13T09:00", [2026, 6, 13, 9, 0]],
+      ["2026-11-01T01:30", [2026, 10, 1, 1, 30]],
+      ["2027-03-14T02:30", [2027, 2, 14, 2, 30]],
+    ] as const) {
+      const offset = zoneOffsetForLocalInput(local);
+      expect(isZoneOffset(offset)).toBe(true);
+      const [y, mo, d, h, mi] = parts;
+      expect(localToUtcMs(local, offset)).toBe(
+        new Date(y, mo, d, h, mi).getTime(),
+      );
+    }
+  });
+
+  it("returns null for anything that isn't a wall clock, so no offset is sent", () => {
+    expect(zoneOffsetForLocalInput("")).toBeNull();
+    expect(zoneOffsetForLocalInput("2026-08-04")).toBeNull();
+    expect(zoneOffsetForLocalInput("soon")).toBeNull();
   });
 });
 
