@@ -476,7 +476,7 @@ export function DocumentArticle({
               the product rather than an emphasis, which costs it all meaning.
               Softer ink and a shorter measure do the rest. */}
           {dek && (
-            <p className="mt-4 max-w-[62ch] text-ink-soft text-base leading-[1.6]">
+            <p className="mt-4 max-w-[62ch] text-base text-ink-soft leading-[1.6]">
               {dek}
             </p>
           )}
