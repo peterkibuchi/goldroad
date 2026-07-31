@@ -14,6 +14,7 @@ describe("OAuth scopes", () => {
   it("pins the exact scope strings", () => {
     expect(SCOPES).toEqual([
       "repo?collection=site.standard.document&collection=site.standard.publication&action=create&action=update&action=delete",
+      "repo?collection=site.standard.graph.subscription&action=create&action=delete",
       "repo?collection=app.bsky.feed.post&action=create",
       "blob?accept=image/*",
     ]);
@@ -24,6 +25,17 @@ describe("OAuth scopes", () => {
     expect(bskyScope).toBeDefined();
     expect(bskyScope).not.toContain("delete");
     expect(bskyScope).not.toContain("update");
+  });
+
+  it("asks for subscriptions with create and delete, and no update", () => {
+    // A subscription is not edited — it exists or it does not — so `update`
+    // would be permission we never use, and unused permission on a consent
+    // screen is permission a reader is right to distrust.
+    const sub = SCOPES.find((s) => s.includes("graph.subscription"));
+    expect(sub).toBe(
+      "repo?collection=site.standard.graph.subscription&action=create&action=delete",
+    );
+    expect(sub).not.toContain("update");
   });
 
   it("never requests wildcard collections (prohibited by atproto authz servers)", () => {

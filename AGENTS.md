@@ -55,6 +55,7 @@ Package manager: **pnpm**. Path alias: `~/*` → `src/*` (see tsconfig).
 | Typecheck | `pnpm typecheck` |
 | Build | `pnpm build` |
 | Tests | `pnpm test` |
+| Cut a release | `pnpm release` (CalVer `vYYYY.MM.DD.NN`, zero-padded — GitHub sorts releases by tag *name*, so an unpadded counter puts `.9` above `.14`) |
 | DB migrations | `pnpm db:generate` → `pnpm db:migrate` (local) → `pnpm db:migrate:prod` |
 | CF types after wrangler.jsonc changes | `pnpm cf:types` |
 
