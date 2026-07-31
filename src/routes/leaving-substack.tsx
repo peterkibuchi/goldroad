@@ -17,7 +17,7 @@ export const Route = createFileRoute("/leaving-substack")({
       {
         name: "description",
         content:
-          "Bring your readers, your subscriber list, and — once reader payments ship — the Stripe account your paying subscribers already pay into. 0% taken where Substack takes 10%. An honest look at how Goldroad compares, roadmap and all.",
+          "Bring your archive today, and — once the list and reader payments ship — your subscribers and the Stripe account they already pay into. 0% taken where Substack takes 10%. An honest look at how Goldroad compares, roadmap and all.",
       },
       { property: "og:title", content: "Leaving Substack — Goldroad" },
       {
@@ -49,8 +49,9 @@ const ROWS: Row[] = [
   },
   {
     label: "Your subscriber list",
-    goldroad: "Yours; export any day",
+    goldroad: "Yours — import it, add to it, export it any day",
     substack: "Yours to export; Substack's by default",
+    roadmap: true,
   },
   {
     label: "Where readers find you",
@@ -174,8 +175,8 @@ export function LeavingSubstack() {
             </h1>
             <p className="mt-6 max-w-[54ch] text-pretty font-body text-ink-soft text-lg italic md:text-xl">
               Goldroad is writer-owned publishing on the open network: your
-              writing on a page you own, and your subscriber list in your hands.
-              Once reader payments ship, the readers already paying you keep
+              writing on a page you own, and your archive here today. Once the
+              list and reader payments ship, the readers already paying you keep
               paying — through the same Stripe account they use today. Substack
               takes 10% of what readers pay you; we take 0%.
             </p>

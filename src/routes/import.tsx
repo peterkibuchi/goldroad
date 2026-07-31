@@ -1015,6 +1015,18 @@ function PickList({
           to keep one.
         </p>
       )}
+      {/* The one thing an importer can't tell from the previews, and the one
+          that bites later: body images stay pointed at wherever they're
+          hosted now. Cover images are copied across; the pictures inside a
+          post are links. Said here, before the import, because the moment it
+          matters is months later when the writer deletes the old account and
+          wonders where the illustrations went. */}
+      <p className="mt-2 max-w-[54ch] font-display text-ink-soft text-sm">
+        Pictures inside your posts stay linked to where they're hosted today —
+        only cover images are copied across. If you later delete the account
+        you're importing from, those pictures stop loading. Keep it up, or
+        re-add the images you care about, before you close it.
+      </p>
       {overCap && (
         <Notice tone="alert">
           You have room for {data.draftSlotsRemaining}{" "}
