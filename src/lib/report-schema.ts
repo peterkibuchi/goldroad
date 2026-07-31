@@ -19,5 +19,3 @@ export const reportPayload = z.object({
     .or(z.literal("")),
   gr_extra: z.literal("").optional(),
 });
-
-export type ReportPayload = z.infer<typeof reportPayload>;

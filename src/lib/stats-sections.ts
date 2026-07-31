@@ -17,11 +17,7 @@
  * unit tests rather than in a route handler.
  */
 import type { EngagementCounts } from "~/lib/engagement";
-import {
-  dayDistance,
-  type SnapshotSeries,
-  shiftDay,
-} from "~/lib/follower-snapshots";
+import { type SnapshotSeries, shiftDay } from "~/lib/follower-snapshots";
 import {
   bucketReferrers,
   type ReferrerRow,
@@ -396,14 +392,4 @@ export function engagementSection(input: {
     posts,
     unannouncedCount,
   };
-}
-
-/** A section that couldn't be served. Carries no upstream detail. */
-export function unavailableSection(): { status: SectionStatus } {
-  return { status: "unavailable" };
-}
-
-/** Whole days covered by a window, for the copy that names the period. */
-export function windowDays(window: RangeWindow): number | null {
-  return window.from === null ? null : dayDistance(window.from, window.to) + 1;
 }

@@ -56,7 +56,7 @@ export const RANGE_PHRASE: Readonly<Record<StatsRange, string>> = {
 
 /** Where we have no number, we say so. A dash, never a zero: absence and zero
  * are different claims, and the legend under every table says which is which. */
-export function Dash() {
+function Dash() {
   return (
     <>
       <span aria-hidden="true" className="text-ink-soft">
