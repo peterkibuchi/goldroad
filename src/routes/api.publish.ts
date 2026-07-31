@@ -109,11 +109,16 @@ function backToDraft(draftId: string, error: string): Response {
   return redirectTo(`/write?${params}`);
 }
 
-function backToSettings(error?: string): Response {
+/**
+ * Back to Settings after a write. `kind` distinguishes WHICH save happened —
+ * profile and theme both land here and both show the same confirmation, so
+ * without it the two are indistinguishable to anything downstream (the page
+ * reads it to capture adoption of a specific feature, not to change the copy).
+ */
+function backToSettings(error?: string, kind?: "theme"): Response {
+  if (error) return redirectTo(`/settings?error=${encodeURIComponent(error)}`);
   return redirectTo(
-    error
-      ? `/settings?error=${encodeURIComponent(error)}`
-      : "/settings?saved=1",
+    kind ? `/settings?saved=1&kind=${kind}` : "/settings?saved=1",
   );
 }
 
@@ -1177,7 +1182,7 @@ async function saveTheme({
     console.error("theme save failed", res.status, res.data);
     return backToSettings(`save_failed:${res.data.error}`);
   }
-  return backToSettings();
+  return backToSettings(undefined, "theme");
 }
 
 /**

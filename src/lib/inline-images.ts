@@ -15,6 +15,7 @@
  */
 
 import { downscaleImage } from "~/lib/image";
+import { capture } from "~/lib/posthog";
 
 /** Bytes, at the precision a writer cares about ("4.2 MB", "780 KB"). */
 export function formatBytes(bytes: number): string {
@@ -108,6 +109,9 @@ export async function uploadInlineImage(
   if (!res.ok || !data?.ok || typeof data.url !== "string" || !data.url) {
     throw new Error(uploadErrorMessage(data?.error));
   }
+  // Inline-image adoption. Size only — no filename, which could carry anything
+  // a writer named their file, and no content.
+  capture("inline_image_uploaded", { bytes: file.size });
   return { url: data.url, blob: data.blob };
 }
 

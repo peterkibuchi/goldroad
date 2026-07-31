@@ -1231,7 +1231,15 @@ function DashboardPage() {
     scheduled,
   } = Route.useLoaderData();
   const search = Route.useSearch();
-  const { error, published, announced, deleted, moved, cursor } = search;
+  const {
+    error,
+    published,
+    announced,
+    deleted,
+    moved,
+    cursor,
+    scheduled: justScheduled,
+  } = search;
   const navigate = Route.useNavigate();
   const message = errorMessage(error);
   const tab: PostsTab = search.tab ?? "published";
@@ -1245,6 +1253,11 @@ function DashboardPage() {
   useEffect(() => {
     if (announced) capture("post_announced", { rkey: announced, ident });
   }, [announced, ident]);
+  // Scheduling adoption. No rkey to attach — a scheduled post has not been
+  // published yet, so there is no record to name.
+  useEffect(() => {
+    if (justScheduled) capture("post_scheduled", { ident });
+  }, [justScheduled, ident]);
 
   return (
     <AppShell header={{ variant: "signed-in", ident, active: "posts" }}>

@@ -127,7 +127,10 @@ describe("POST /api/publish — intent=theme", () => {
     expect(put?.options.input.collection).toBe("site.standard.publication");
     expect(put?.options.input.rkey).toBe("3lyk73wxnok2f");
     expect(res.status).toBe(303);
-    expect(res.headers.get("location")).toBe("/settings?saved=1");
+    // `kind=theme` is what lets the landing page tell a theme save from a
+    // profile save — both redirect here and both show the same confirmation, so
+    // without the marker the two are indistinguishable downstream.
+    expect(res.headers.get("location")).toBe("/settings?saved=1&kind=theme");
   });
 
   it("embeds it where the lexicon puts it, and it reads back as a theme", () => {
