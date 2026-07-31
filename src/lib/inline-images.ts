@@ -14,15 +14,32 @@
  * and a local object URL (what the editor actually displays until then).
  */
 
-/** Raster types the server will accept — mirrors IMAGE_MIME_ALLOWLIST in
- * ~/lib/blob. Checked here too so a wrong file says so instantly. */
-export const INLINE_IMAGE_ACCEPT: readonly string[] = [
-  "image/avif",
-  "image/gif",
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-];
+import { downscaleImage } from "~/lib/image";
+
+/** Bytes, at the precision a writer cares about ("4.2 MB", "780 KB"). */
+export function formatBytes(bytes: number): string {
+  return bytes >= 1_000_000
+    ? `${(bytes / 1_000_000).toFixed(1)} MB`
+    : `${Math.max(1, Math.round(bytes / 1000))} KB`;
+}
+
+/**
+ * What the writer is told about a shrink, or null when nothing happened.
+ *
+ * A 4 MB screenshot dragged into the editor is the ordinary case, not the
+ * edge case, and the lexicon caps a blob at 1 MB — so the image is resized
+ * rather than refused. Resizing someone's picture behind their back is not
+ * acceptable either, hence the notice: it says the image was changed, by how
+ * much, and why.
+ */
+export function downscaleNotice(before: number, after: number): string | null {
+  // Only a real reduction is worth a sentence; a re-encode that saved nothing
+  // (or the pass-through case, where the same File comes back) stays quiet.
+  if (after >= before) return null;
+  return `Shrank that image from ${formatBytes(before)} to ${formatBytes(
+    after,
+  )} so it fits the 1 MB limit.`;
+}
 
 /**
  * What the writer is told, per server error code. Every path says what
@@ -43,6 +60,11 @@ const UPLOAD_ERROR_MESSAGES: Record<string, string> = {
 
 const GENERIC_UPLOAD_ERROR =
   "That image couldn't be added right now. Check your connection and try again.";
+
+/** The browser couldn't decode or couldn't compress the file. Says which way
+ * out exists rather than leaving an empty block behind. */
+const DOWNSCALE_ERROR =
+  "That image couldn't be read or shrunk under 1 MB — try saving it as a JPEG or PNG first.";
 
 export function uploadErrorMessage(code: unknown): string {
   return typeof code === "string" && code in UPLOAD_ERROR_MESSAGES
@@ -136,6 +158,10 @@ export type UploaderOptions = {
   onStatus: (status: UploadStatus) => void;
   /** Injectable for tests. */
   upload?: (file: File) => Promise<UploadedInlineImage>;
+  /** Shrinks an oversized image to the blob cap before it is sent. Defaults
+   * to the same downscale the cover picker uses — identical output contract
+   * (≤1600px longest side, ≤1MB, raster), so there is no second copy of it. */
+  prepare?: (file: File) => Promise<File>;
   previewUrl?: (file: File) => string | undefined;
 };
 
@@ -150,6 +176,7 @@ export type UploaderOptions = {
  */
 export function createInlineImageUploader(options: UploaderOptions) {
   const upload = options.upload ?? ((file: File) => uploadInlineImage(file));
+  const prepare = options.prepare ?? downscaleImage;
   const previewUrl = options.previewUrl ?? safeObjectUrl;
 
   return async function uploadFile(
@@ -163,24 +190,40 @@ export function createInlineImageUploader(options: UploaderOptions) {
       });
       return {};
     }
-    if (!INLINE_IMAGE_ACCEPT.includes(file.type)) {
+    // Broad on purpose, matching the cover picker: the downscale below
+    // re-encodes anything the browser can decode but the server won't take
+    // (HEIC off a phone, BMP, TIFF) to JPEG, so gating on the strict raster
+    // allowlist here would refuse files that would have worked.
+    if (!file.type.startsWith("image/")) {
       options.onStatus({
         tone: "error",
         message: UPLOAD_ERROR_MESSAGES.image_type,
       });
       return {};
     }
+
     options.onStatus({ tone: "info", message: "Adding the image…" });
+
+    // workerd has no canvas, so an over-cap image can only be shrunk here.
+    // A file that cannot be decoded says so — it never vanishes quietly.
+    let sending: File;
     try {
-      const uploaded = await upload(file);
+      sending = await prepare(file);
+    } catch {
+      options.onStatus({ tone: "error", message: DOWNSCALE_ERROR });
+      return {};
+    }
+    const shrunk = downscaleNotice(file.size, sending.size);
+
+    try {
+      const uploaded = await upload(sending);
       // The proxy path is what gets stored and published; the local bytes are
       // what the editor can actually show, because the PDS will not serve the
       // blob until the record referencing it exists.
-      store.remember(uploaded, previewUrl(file));
+      store.remember(uploaded, previewUrl(sending));
       options.onStatus({
         tone: "info",
-        message:
-          "Image added to your repo. Give it alt text so screen readers can describe it.",
+        message: `${shrunk ? `${shrunk} ` : ""}Image added to your repo. Give it alt text so screen readers can describe it.`,
       });
       return { props: { url: uploaded.url } };
     } catch (err) {
