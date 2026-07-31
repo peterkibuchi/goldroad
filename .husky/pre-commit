@@ -1,2 +1,18 @@
 #!/usr/bin/env sh
+
+# Refuse to commit on main. Feature work goes on a branch and arrives by PR —
+# but that rule lived only in prose, and a rule that only exists in prose gets
+# broken by whoever has just finished a merge, landed back on main, and started
+# the next piece of work without re-branching. It happened twice in one day
+# before this hook existed, and both times the fix was rewriting history.
+#
+# Deliberate exception: GOLDROAD_ALLOW_MAIN=1 git commit ...
+branch="$(git rev-parse --abbrev-ref HEAD)"
+if [ "$branch" = "main" ] && [ "$GOLDROAD_ALLOW_MAIN" != "1" ]; then
+  echo "refusing to commit on main — branch first, then open a PR." >&2
+  echo "  git checkout -b <type>/<slug>" >&2
+  echo "  (deliberate exception: GOLDROAD_ALLOW_MAIN=1 git commit ...)" >&2
+  exit 1
+fi
+
 pnpm exec lint-staged
