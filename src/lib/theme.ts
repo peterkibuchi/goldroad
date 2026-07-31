@@ -73,6 +73,144 @@ export const DEFAULT_THEME_HEX: Record<ThemeField, string> = {
   accentForeground: "#ffffff",
 };
 
+/** One ready-made palette a writer can start from. */
+export type StarterPalette = {
+  /** Stable id — the radio's value and what tests key on. Not stored anywhere
+   * and never written to a record, so it is safe to rename an id; the colours
+   * are the payload. */
+  id: string;
+  /** What a writer reads. Short enough to sit under a swatch. */
+  name: string;
+  /** The four fields, as the hexes the colour inputs take. */
+  hex: Record<ThemeField, string>;
+};
+
+/**
+ * Starter palettes — the answer to "make it yours" for a writer who has no
+ * brand and does not want to acquire one this afternoon.
+ *
+ * WHY THESE EXIST. Four colour pickers opening on Goldroad's palette is a
+ * design project with no starting point, and most writers will bounce off it
+ * and keep our colours — which is the opposite of the point. A row of complete
+ * palettes turns four decisions into one, and the four inputs below stay live
+ * afterwards, so this is a starting point rather than a mode.
+ *
+ * TWO RULES HOLD FOR EVERY ENTRY HERE, and a test enforces both.
+ *
+ * 1. EVERY PALETTE PASSES WCAG AA ON BOTH PAIRS — body text on background, and
+ *    button text on accent. We warn writers about unreadable colour; shipping a
+ *    one-click palette that trips our own warning would be indefensible. The
+ *    margins below are deliberately generous rather than sitting on 4.5:1, so a
+ *    writer nudging one colour afterwards does not immediately fall through the
+ *    floor. Ratios are stated per palette; they were measured with
+ *    `contrastRatio`, not estimated.
+ * 2. NONE OF THEM IS GOLDROAD'S OWN PALETTE. `DEFAULT_THEME_HEX` is what the
+ *    page already looks like — offering it back as a choice would be offering a
+ *    writer the thing they came here to change. "Use the defaults" is the way
+ *    back, and it removes the theme rather than storing ours.
+ *
+ * The range matters as much as the count. Eight variations of grey is not a
+ * choice a writer can see, so the set spans warm and cool paper, two dark
+ * editions, an earth tone, a maximum-contrast mono, and two that commit to a
+ * colour — which is the whole spread a writer is likely to recognise
+ * themselves in.
+ */
+export const STARTER_PALETTES: readonly StarterPalette[] = [
+  {
+    id: "warm-cream",
+    name: "Warm cream",
+    // Editorial cream with a chestnut accent. Body 15.1:1, button 7.4:1.
+    hex: {
+      background: "#fbf6ec",
+      foreground: "#23201b",
+      accent: "#7a4419",
+      accentForeground: "#fdf7ef",
+    },
+  },
+  {
+    id: "cool-paper",
+    name: "Cool paper",
+    // Grey-blue stock, deep teal accent. Body 14.6:1, button 7.3:1.
+    hex: {
+      background: "#eef2f6",
+      foreground: "#16202b",
+      accent: "#0f5f70",
+      accentForeground: "#ffffff",
+    },
+  },
+  {
+    id: "ink-on-white",
+    name: "Ink on white",
+    // The classic: near-black on white, links in a plain blue that reads as a
+    // link to everyone who has ever used the web. Body 17.4:1, button 7.8:1.
+    hex: {
+      background: "#ffffff",
+      foreground: "#1a1a1a",
+      accent: "#0b4fa8",
+      accentForeground: "#ffffff",
+    },
+  },
+  {
+    id: "deep-night",
+    name: "Deep night",
+    // Dark edition. The accent RISES in lightness, because a dark background
+    // swallows a pigment's depth — the same reasoning as our own black-stock
+    // edition in styles.css. Body 15.3:1, button 9.1:1.
+    hex: {
+      background: "#12141a",
+      foreground: "#e8eaf0",
+      accent: "#8fb3ff",
+      accentForeground: "#0e1016",
+    },
+  },
+  {
+    id: "muted-earth",
+    name: "Muted earth",
+    // Oatmeal paper, moss accent. Body 12.4:1, button 6.3:1.
+    hex: {
+      background: "#f3eee4",
+      foreground: "#2e2a22",
+      accent: "#4f6146",
+      accentForeground: "#f6f8f3",
+    },
+  },
+  {
+    id: "high-contrast",
+    name: "High contrast",
+    // Pure black on pure white, both pairs at 21:1 — the maximum available.
+    // Here for the writers who need it and know they need it.
+    hex: {
+      background: "#ffffff",
+      foreground: "#000000",
+      accent: "#000000",
+      accentForeground: "#ffffff",
+    },
+  },
+  {
+    id: "plum",
+    name: "Plum",
+    // Colour with conviction, on a barely-tinted page. Body 15.1:1, button 9:1.
+    hex: {
+      background: "#faf5fb",
+      foreground: "#2a1b2e",
+      accent: "#6d2f7a",
+      accentForeground: "#ffffff",
+    },
+  },
+  {
+    id: "deep-teal",
+    name: "Deep teal",
+    // The other confident one, and the second dark edition: teal stock with a
+    // warm gold accent carrying dark labels. Body 12.7:1, button 11.3:1.
+    hex: {
+      background: "#062b33",
+      foreground: "#dff0f0",
+      accent: "#ffd166",
+      accentForeground: "#10241f",
+    },
+  },
+];
+
 const HEX_RE = /^#([0-9a-f]{6})$/i;
 
 /** `#rrggbb` → rgb, or null. The only accepted text form: `<input
@@ -92,6 +230,27 @@ export function toHexColor({ r, g, b }: Rgb): string {
       .toString(16)
       .padStart(2, "0");
   return `#${hex(r)}${hex(g)}${hex(b)}`;
+}
+
+/**
+ * Which starter palette the editor's four fields currently spell, if any.
+ *
+ * Selection is DERIVED rather than remembered, and that is the whole trick: a
+ * writer who picks "Plum" and then darkens the accent is no longer on Plum, and
+ * nothing has to notice the edit and clear a flag. It also means a writer who
+ * happens to arrive at a palette's exact colours by hand gets told so.
+ * Case-insensitive because a hex is a value, not a spelling.
+ */
+export function matchStarterPalette(
+  hex: Record<ThemeField, string>,
+): StarterPalette | null {
+  const same = (a: string, b: string) =>
+    a.trim().toLowerCase() === b.trim().toLowerCase();
+  return (
+    STARTER_PALETTES.find((palette) =>
+      THEME_FIELDS.every((field) => same(hex[field] ?? "", palette.hex[field])),
+    ) ?? null
+  );
 }
 
 /** One colour off the network. Integers only, in range — the lexicon's own

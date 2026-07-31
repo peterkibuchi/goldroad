@@ -6,9 +6,12 @@ import {
   contrastRatio,
   DEFAULT_THEME_HEX,
   formatRatio,
+  matchStarterPalette,
   parseHexColor,
   parseTheme,
   parseThemeForm,
+  STARTER_PALETTES,
+  THEME_FIELDS,
   themeRecord,
   themeStyle,
   themeWarnings,
@@ -184,6 +187,114 @@ describe("hex colours", () => {
     const theme = parseThemeForm((field) => DEFAULT_THEME_HEX[field]);
     expect(theme).not.toBeNull();
     expect(theme && themeWarnings(theme)).toEqual([]);
+  });
+});
+
+describe("STARTER_PALETTES — every one of them is readable", () => {
+  /** The rule the whole feature stands on: a one-click palette that trips our
+   * own contrast warning would be indefensible, so the list is checked as a
+   * list rather than palette by palette. A new entry cannot slip past this. */
+  it("passes WCAG AA on BOTH pairs, for every palette in the list", () => {
+    for (const palette of STARTER_PALETTES) {
+      const theme = parseThemeForm((field) => palette.hex[field]);
+      expect(theme, `${palette.name} has four valid hexes`).not.toBeNull();
+      if (!theme) continue;
+
+      const body = contrastRatio(theme.foreground, theme.background);
+      const button = contrastRatio(theme.accentForeground, theme.accent);
+      expect(
+        body,
+        `${palette.name}: text on background is ${formatRatio(body)}`,
+      ).toBeGreaterThanOrEqual(AA_CONTRAST);
+      expect(
+        button,
+        `${palette.name}: text on accent is ${formatRatio(button)}`,
+      ).toBeGreaterThanOrEqual(AA_CONTRAST);
+
+      // And said the other way round: the editor stays silent about all of them.
+      expect(themeWarnings(theme), `${palette.name} warns`).toEqual([]);
+    }
+  });
+
+  it("offers a set a writer can actually choose from", () => {
+    expect(STARTER_PALETTES.length).toBeGreaterThanOrEqual(6);
+    expect(STARTER_PALETTES.length).toBeLessThanOrEqual(8);
+    const ids = STARTER_PALETTES.map((p) => p.id);
+    const names = STARTER_PALETTES.map((p) => p.name);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(new Set(names).size).toBe(names.length);
+    for (const palette of STARTER_PALETTES) {
+      expect(palette.name.length).toBeGreaterThan(0);
+      // A complete palette, not a partial one — same all-or-nothing rule the
+      // parsers hold to.
+      expect(Object.keys(palette.hex).sort()).toEqual([...THEME_FIELDS].sort());
+    }
+  });
+
+  it("spans light and dark pages rather than eight shades of one idea", () => {
+    const lightness = (hexColour: string) => {
+      const rgbColour = parseHexColor(hexColour);
+      if (!rgbColour) throw new Error(`bad hex ${hexColour}`);
+      return contrastRatio(rgbColour, rgb(0, 0, 0));
+    };
+    const backgrounds = STARTER_PALETTES.map((p) =>
+      lightness(p.hex.background),
+    );
+    // At least one page a reader would call dark, and at least one light.
+    expect(backgrounds.some((l) => l < 3)).toBe(true);
+    expect(backgrounds.some((l) => l > 15)).toBe(true);
+    // And no two palettes are the same four colours wearing different names.
+    const signatures = STARTER_PALETTES.map((p) =>
+      THEME_FIELDS.map((field) => p.hex[field]).join(),
+    );
+    expect(new Set(signatures).size).toBe(signatures.length);
+  });
+
+  it("never offers Goldroad's own palette back as a choice", () => {
+    // The point of the feature is that the page stops looking like ours, and
+    // "Use the defaults" is already the way back to it.
+    for (const palette of STARTER_PALETTES) {
+      const identical = THEME_FIELDS.every(
+        (field) => palette.hex[field] === DEFAULT_THEME_HEX[field],
+      );
+      expect(identical, `${palette.name} is the default palette`).toBe(false);
+      expect(palette.hex.accent).not.toBe(DEFAULT_THEME_HEX.accent);
+    }
+  });
+});
+
+describe("matchStarterPalette — selection is derived, never remembered", () => {
+  it("recognises a palette's own colours", () => {
+    for (const palette of STARTER_PALETTES) {
+      expect(matchStarterPalette(palette.hex)?.id).toBe(palette.id);
+    }
+  });
+
+  it("compares values, not spellings", () => {
+    const [first] = STARTER_PALETTES;
+    const shouty = Object.fromEntries(
+      THEME_FIELDS.map((field) => [field, first.hex[field].toUpperCase()]),
+    ) as Record<(typeof THEME_FIELDS)[number], string>;
+    expect(matchStarterPalette(shouty)?.id).toBe(first.id);
+  });
+
+  it("lets go the moment any single colour is changed", () => {
+    for (const palette of STARTER_PALETTES) {
+      for (const field of THEME_FIELDS) {
+        const edited = { ...palette.hex, [field]: "#123456" };
+        expect(matchStarterPalette(edited)).toBeNull();
+      }
+    }
+  });
+
+  it("matches nothing for the defaults, or for a half-filled set", () => {
+    expect(matchStarterPalette(DEFAULT_THEME_HEX)).toBeNull();
+    expect(
+      matchStarterPalette({ background: "#ffffff" } as Record<
+        (typeof THEME_FIELDS)[number],
+        string
+      >),
+    ).toBeNull();
   });
 });
 
