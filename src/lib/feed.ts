@@ -128,6 +128,19 @@ export type FeedItem = {
   pubDate?: string | null;
   /** Summary/excerpt; omitted when absent. */
   description?: string | null;
+  /**
+   * The post's full text as an HTML fragment, for `<content:encoded>`.
+   * Omitted when absent.
+   *
+   * A feed carrying only an excerpt is a downgrade for anyone who reads in a
+   * feed reader, and it quietly undercuts the claim that the feed is the
+   * machine-readable twin of the page — the whole text is in the record either
+   * way, so withholding it here serves nobody. `description` stays as the
+   * summary, which is what `content:encoded` exists alongside rather than
+   * replaces: readers that show a preview list still have something short to
+   * show.
+   */
+  content?: string | null;
 };
 
 /** Hard per-value bound in the serialized feed. Record fields (titles,
@@ -137,8 +150,20 @@ export type FeedItem = {
  * mid-surrogate-pair is repaired by escapeXml's lone-surrogate handling. */
 const MAX_VALUE_CHARS = 2048;
 
-function xmlValue(value: string): string {
-  return escapeXml(value.slice(0, MAX_VALUE_CHARS));
+/**
+ * The same bound for `<content:encoded>`, which carries whole posts rather
+ * than titles and so needs its own number. 256 KB is far above any real essay
+ * (a 10,000-word piece rendered to HTML is well under 100 KB) and still bounds
+ * what one hostile record can make us escape and serialize.
+ *
+ * Truncation is silent here, deliberately: the alternative is appending a
+ * marker into somebody's post, and a feed item is not the place to editorialize
+ * about a record's size. The canonical text is always one `link` away.
+ */
+const MAX_CONTENT_CHARS = 256 * 1024;
+
+function xmlValue(value: string, limit = MAX_VALUE_CHARS): string {
+  return escapeXml(value.slice(0, limit));
 }
 
 /** Serializes a channel + items into an RSS 2.0 document. Every dynamic
@@ -147,7 +172,7 @@ function xmlValue(value: string): string {
 export function rssFeedXml(channel: FeedChannel, items: FeedItem[]): string {
   const lines = [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">',
+    '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/">',
     "  <channel>",
     `    <title>${xmlValue(channel.title)}</title>`,
     `    <link>${xmlValue(channel.link)}</link>`,
@@ -167,6 +192,16 @@ export function rssFeedXml(channel: FeedChannel, items: FeedItem[]): string {
     if (item.description) {
       lines.push(
         `      <description>${xmlValue(item.description)}</description>`,
+      );
+    }
+    if (item.content) {
+      // Entity-escaped, not CDATA — same rule as every other value in this
+      // file, and it is what the module's own spec allows. Escaping is what
+      // makes the payload inert on the way through: a feed reader unescapes it
+      // back to markup, an XML parser that does not simply sees text, and
+      // there is no `]]>` to get wrong.
+      lines.push(
+        `      <content:encoded>${xmlValue(item.content, MAX_CONTENT_CHARS)}</content:encoded>`,
       );
     }
     lines.push("    </item>");
