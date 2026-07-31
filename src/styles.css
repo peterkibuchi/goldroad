@@ -22,6 +22,48 @@
   --font-body: "Source Serif 4 Variable", Georgia, serif;
 }
 
+/*
+ * THE BLACK-STOCK EDITION — the dark register.
+ *
+ * Not an inversion. Pressroom is literally ink on paper, and mechanically
+ * inverting it produces the cheap grey every default dark mode has: a void
+ * background, glaring pure-white text, a muddy accent. But letterpress already
+ * has a considered dark artifact — the black-stock print, where printers pull
+ * opaque white and warm inks on black cover stock. Same forme, same hairlines,
+ * same square corners, same scarcity. A different edition, not a negative.
+ *
+ * Every value below derives from that, not from arithmetic:
+ *   paper    — black stock is never a void. Warm fiber (chroma 0.006 at hue
+ *              80), not an OLED-off screen.
+ *   ink      — opaque white prints slightly toned, and pure white serif on
+ *              near-black halates anyway. L 0.93, faintly warm. 14.4:1 (AAA).
+ *   ink-soft — 6.9:1. AA at any size, AAA at body.
+ *   rule     — sits close to the stock like a blind-embossed rule. 1.45:1,
+ *              decorative only, never text — the same role it has in light.
+ *   spot     — RISES. Black stock swallows a pigment's depth; the light-mode
+ *              vermillion would fall to ~3:1 here and vibrate muddily. Lifted
+ *              +0.13 lightness and two degrees warmer, chroma held, it lands
+ *              at 5.46:1 — within a tenth of its light-mode 5.55:1. The accent
+ *              keeps exactly the same job and the same legibility in both.
+ *
+ * SCOPE IS DELIBERATE. This applies to WRITER surfaces only, via the class
+ * AppShell puts on its own wrapper. Marketing stays ink-on-paper permanently —
+ * a broadsheet is printed once. Reading surfaces get no Goldroad-controlled
+ * dark ever: the person whose surface it is decides how it looks, so a
+ * publication's appearance belongs to its writer through the theming lexicon,
+ * not to our toggle.
+ *
+ * If any surface ever needs a `dark:` utility, that is a hard-coded-colour bug
+ * to fix at the source, not a case to special-case here.
+ */
+[data-theme="dark"] .writer-surface {
+  --color-paper: oklch(0.21 0.006 80);
+  --color-ink: oklch(0.93 0.005 80);
+  --color-ink-soft: oklch(0.71 0.008 80);
+  --color-rule: oklch(0.33 0.006 80);
+  --color-spot: oklch(0.67 0.19 35);
+}
+
 @custom-variant dark (&:is(.dark *));
 
 /* Focus is spot-colored everywhere (accessibility baseline).

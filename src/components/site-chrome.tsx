@@ -512,7 +512,10 @@ function WriterChrome({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-screen flex-col bg-paper font-body text-ink md:flex-row">
+    // `writer-surface` scopes the dark register (see styles.css). It sits here
+    // and nowhere else on purpose: marketing stays ink-on-paper permanently,
+    // and a publication's own pages belong to its writer, not to our toggle.
+    <div className="writer-surface flex min-h-screen flex-col bg-paper font-body text-ink md:flex-row">
       <WriterRail active={active} ident={ident} />
       <div className="flex min-w-0 flex-1 flex-col">
         <WriterTopStrip ident={ident} />

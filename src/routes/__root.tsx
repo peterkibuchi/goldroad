@@ -34,6 +34,16 @@ export const Route = createRootRoute({
   shellComponent: RootDocument,
 });
 
+/**
+ * Sets `data-theme="dark"` on <html> before anything renders, so a writer who
+ * chose the dark edition never sees a flash of the light one. Kept tiny and
+ * dependency-free because it blocks paint by design.
+ *
+ * Only WRITER surfaces read this (see the `.writer-surface` scope in
+ * styles.css) — marketing and reading pages ignore it entirely.
+ */
+const APPEARANCE_BOOTSTRAP = `(function(){try{var p=localStorage.getItem("gr-appearance");var d=p==="dark"||(p!=="light"&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(d)document.documentElement.dataset.theme="dark";}catch(e){}})();`;
+
 function RootDocument({ children }: { children: React.ReactNode }) {
   // Cookieless analytics; a no-op unless VITE_PUBLIC_POSTHOG_KEY is set.
   useEffect(() => {
@@ -43,6 +53,17 @@ function RootDocument({ children }: { children: React.ReactNode }) {
     <html lang="en">
       <head>
         <HeadContent />
+        {/* Appearance, resolved BEFORE first paint.
+            No cookie, deliberately: reading surfaces are edge-cached and
+            cookie-independent, and a theme cookie would fragment that cache
+            for every visitor. Reading the preference from localStorage in a
+            blocking inline script keeps the cache whole and still avoids a
+            flash of the wrong edition. "system" (the default) simply leaves
+            the attribute unset and lets the media query decide. */}
+        <script
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: a static, self-authored string with no interpolation — this must run before paint
+          dangerouslySetInnerHTML={{ __html: APPEARANCE_BOOTSTRAP }}
+        />
       </head>
       <body>
         {children}
