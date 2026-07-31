@@ -15,7 +15,7 @@ import "@blocknote/shadcn/style.css";
 import type { BlockNoteEditor, PartialBlock } from "@blocknote/core";
 import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export type { BlockNoteEditor };
 
@@ -61,5 +61,40 @@ export default function Editor({
     onReady(editor);
   }, [editor, initialMarkdown, initialBlocks, onReady]);
 
-  return <BlockNoteView editor={editor} onChange={onChange} theme="light" />;
+  // BlockNote paints its own surface and needs to be told which edition it is
+  // in. This was pinned to "light", which is why the editor stayed a white box
+  // on a dark page no matter how many tokens were overridden around it — the
+  // component was never reading them.
+  return (
+    <BlockNoteView editor={editor} onChange={onChange} theme={useEdition()} />
+  );
+}
+
+/**
+ * The edition currently in force, mirroring the pre-paint bootstrap in
+ * `__root`. Subscribes to the attribute so a writer switching Appearance in
+ * another tab — or the system flipping at dusk while on "System" — repaints the
+ * editor rather than stranding it in the wrong one.
+ */
+function useEdition(): "light" | "dark" {
+  const [edition, setEdition] = useState<"light" | "dark">(() =>
+    typeof document === "undefined"
+      ? "light"
+      : document.documentElement.dataset.theme === "dark"
+        ? "dark"
+        : "light",
+  );
+  useEffect(() => {
+    const read = () =>
+      setEdition(
+        document.documentElement.dataset.theme === "dark" ? "dark" : "light",
+      );
+    read();
+    const observer = new MutationObserver(read);
+    observer.observe(document.documentElement, {
+      attributeFilter: ["data-theme"],
+    });
+    return () => observer.disconnect();
+  }, []);
+  return edition;
 }

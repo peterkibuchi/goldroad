@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { isDid } from "~/lib/atproto";
 import { createOAuthClient } from "~/lib/oauth";
 import { isCrossSite } from "~/lib/origin";
-import { readSessionDid, sessionClearCookie } from "~/lib/session";
+import { clearSessionCookies, readSessionDid } from "~/lib/session";
 import { env } from "cloudflare:workers";
 
 /**
@@ -46,9 +46,10 @@ export const Route = createFileRoute("/logout")({
             console.warn("token revoke failed", err);
           }
         }
-        return home({
-          "set-cookie": sessionClearCookie(url.protocol === "https:"),
-        });
+        const headers = new Headers({ location: "/" });
+        for (const cookie of clearSessionCookies(url.protocol === "https:"))
+          headers.append("set-cookie", cookie);
+        return new Response(null, { status: 302, headers });
       },
     },
   },

@@ -38,9 +38,10 @@ import {
   type IconProps,
   IconSettings,
 } from "@tabler/icons-react";
-import type { ComponentType } from "react";
+import { type ComponentType, useEffect, useState } from "react";
 
 import { ExternalLink } from "~/components/external-link";
+import { SESSION_HINT_COOKIE } from "~/lib/session";
 import { cn } from "~/lib/utils";
 
 /**
@@ -113,12 +114,10 @@ export function SiteHeader(props: MarketingHeaderProps) {
           // A quiet link, not a button. The page's one accent belongs to the
           // founding-writers form — someone who already has an account does not
           // need to be sold, they need to find the door.
-          <a
-            className="ml-auto font-display font-semibold text-ink-soft text-sm underline underline-offset-4 transition-colors hover:text-ink"
-            href="/write"
-          >
-            Sign in
-          </a>
+          <div className="ml-auto flex items-center gap-5">
+            <AppearanceToggle />
+            <MarketingSignIn />
+          </div>
         )}
       </div>
     </header>
@@ -134,6 +133,73 @@ export function SiteHeader(props: MarketingHeaderProps) {
  * made checkable. Absent from the site, every other promise is just a
  * sentence.
  */
+/**
+ * The way in, labelled for who is actually looking.
+ *
+ * Marketing HTML is edge-cached and cookie-independent on purpose, so the
+ * server cannot render a per-visitor label without fragmenting that cache for
+ * everyone. The session cookie is HttpOnly and unreadable here — correctly.
+ * So a separate, non-sensitive presence flag (`gr_signed_in`, no identity, no
+ * authority) is read on the client and the label corrected after paint.
+ *
+ * "Sign in" is the honest default for the uncached first frame: a signed-out
+ * visitor is the common case on these pages, and a signed-in writer sees the
+ * correction immediately.
+ */
+function MarketingSignIn() {
+  const [signedIn, setSignedIn] = useState(false);
+  useEffect(() => {
+    setSignedIn(document.cookie.includes(`${SESSION_HINT_COOKIE}=1`));
+  }, []);
+  return (
+    <a
+      className="font-display font-semibold text-ink-soft text-sm underline underline-offset-4 transition-colors hover:text-ink"
+      href={signedIn ? "/home" : "/write"}
+    >
+      {signedIn ? "Your publication" : "Sign in"}
+    </a>
+  );
+}
+
+/**
+ * Appearance, for visitors who never reach Settings.
+ *
+ * A reader deciding whether to trust this product at midnight is exactly the
+ * person the dark edition was built for, and until now the only control lived
+ * behind a sign-in. Two states here rather than the three in Settings: someone
+ * flipping a switch on a marketing page is making a right-now choice, and
+ * "System" is already what they get by default.
+ */
+function AppearanceToggle() {
+  const [dark, setDark] = useState(false);
+  useEffect(() => {
+    setDark(document.documentElement.dataset.theme === "dark");
+  }, []);
+  function toggle() {
+    const next = !dark;
+    setDark(next);
+    try {
+      localStorage.setItem("gr-appearance", next ? "dark" : "light");
+    } catch {
+      // Private-mode refusal shouldn't break the control.
+    }
+    if (next) document.documentElement.dataset.theme = "dark";
+    else delete document.documentElement.dataset.theme;
+  }
+  return (
+    <button
+      aria-label={
+        dark ? "Switch to the light edition" : "Switch to the dark edition"
+      }
+      className="inline-flex min-h-9 cursor-pointer items-center font-display text-ink-soft text-sm transition-colors hover:text-ink"
+      onClick={toggle}
+      type="button"
+    >
+      {dark ? "Light" : "Dark"}
+    </button>
+  );
+}
+
 export const OPEN_LINKS = {
   repo: "https://github.com/peterkibuchi/goldroad",
   license: "https://github.com/peterkibuchi/goldroad/blob/main/LICENSE",

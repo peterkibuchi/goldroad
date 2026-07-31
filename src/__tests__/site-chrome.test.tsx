@@ -34,6 +34,26 @@ describe("SiteHeader", () => {
     ).toBe("/");
   });
 
+  it("marketing: offers appearance to visitors who never reach Settings", () => {
+    render(<SiteHeader variant="marketing" />);
+    // A reader deciding whether to trust this at midnight is exactly who the
+    // dark edition is for, and the only control used to live behind a sign-in.
+    expect(
+      screen.getByRole("button", {
+        name: /switch to the (dark|light) edition/i,
+      }),
+    ).toBeTruthy();
+  });
+
+  it("marketing: labels the door for a signed-out visitor by default", () => {
+    render(<SiteHeader variant="marketing" />);
+    // The uncached first frame assumes signed-out — the common case on these
+    // pages — and the client corrects it when the presence flag says otherwise.
+    expect(
+      screen.getByRole("link", { name: /sign in/i }).getAttribute("href"),
+    ).toBe("/write");
+  });
+
   it("marketing: keeps the sign-in quiet, not the page's accent", () => {
     render(<SiteHeader variant="marketing" />);
     // The landing page spends its one accent on the founding-writers form.
