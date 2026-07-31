@@ -599,13 +599,17 @@ export function DocumentArticle({
             surface a reader who might become a writer ever meets us on, so it
             points at /open rather than at a pitch. */}
         <footer className="mt-10 border-rule border-t pt-6">
-          {/* The writer's line leads, and it is a copyright line: their work,
-              their name, their reserved rights. Goldroad publishes it; we do
-              not own it, and the page should say so before it says anything
-              about us. */}
+          {/* Deliberately NOT a copyright notice.
+              Copyright is automatic under Berne — a notice grants nothing, and
+              "All rights reserved" has been legally inert since the last Buenos
+              Aires signatory joined Berne in 2000. Worse, it would be a claim
+              made on the writer's behalf that we have no way to know is true:
+              a writer who licensed this piece CC-BY would find us stamping
+              "all rights reserved" on it. Their byline above already carries
+              the attribution, which is the part that does real work.
+              When writers can declare a licence, this line shows THEIR choice. */}
           <p className="font-display text-ink-soft/80 text-xs">
-            © {copyrightYear} {publicationName ?? `@${ident}`}. All rights
-            reserved.
+            {copyrightYear} · {publicationName ?? `@${ident}`}
           </p>
           <p className="mt-1 font-display text-ink-soft/80 text-xs">
             <a
