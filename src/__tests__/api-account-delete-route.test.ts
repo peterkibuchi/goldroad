@@ -14,6 +14,7 @@ const store = vi.hoisted(() => ({
   deleteImportItemsForDid: vi.fn(),
   deleteImportFetchesForDid: vi.fn(),
   deleteOAuthSessionForDid: vi.fn(),
+  deleteScheduledPostsForDid: vi.fn(),
 }));
 vi.mock("~/lib/rights-store", () => store);
 
@@ -89,7 +90,7 @@ describe("guards", () => {
 });
 
 describe("deletion", () => {
-  it("deletes drafts, import ledger, import-fetch rows, and follower history for the SESSION did", async () => {
+  it("deletes drafts, import ledger, import-fetch rows, follower history and scheduled posts for the SESSION did", async () => {
     await call();
     expect(store.deleteDraftsForDid).toHaveBeenCalledWith(
       expect.anything(),
@@ -106,6 +107,12 @@ describe("deletion", () => {
       DID,
     );
     expect(store.deleteImportFetchesForDid).toHaveBeenCalledWith(
+      expect.anything(),
+      DID,
+    );
+    // A pending scheduled post is queued WORK, not just a record: leaving one
+    // behind would have the cron publishing for a deleted account.
+    expect(store.deleteScheduledPostsForDid).toHaveBeenCalledWith(
       expect.anything(),
       DID,
     );

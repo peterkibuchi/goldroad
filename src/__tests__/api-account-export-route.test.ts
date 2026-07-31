@@ -11,6 +11,7 @@ const store = vi.hoisted(() => ({
   selectDraftsForExport: vi.fn(),
   selectFollowerSnapshotsForExport: vi.fn(),
   selectImportItemsForExport: vi.fn(),
+  selectScheduledPostsForExport: vi.fn(),
 }));
 vi.mock("~/lib/rights-store", () => store);
 
@@ -71,6 +72,7 @@ beforeEach(() => {
   store.selectDraftsForExport.mockResolvedValue([]);
   store.selectImportItemsForExport.mockResolvedValue([]);
   store.selectFollowerSnapshotsForExport.mockResolvedValue([]);
+  store.selectScheduledPostsForExport.mockResolvedValue([]);
   atproto.resolveDidToHandle.mockRejectedValue(new Error("no handle"));
   atproto.resolveDidToPds.mockRejectedValue(new Error("no pds"));
 });
@@ -202,6 +204,42 @@ describe("response shape", () => {
     // The manifest is the writer's plain-language index of what we hold, so it
     // has to name this too — it can't quietly list only the older categories.
     expect(body.manifest).toMatch(/follower/i);
+  });
+
+  it("includes the scheduled posts we hold, failure reasons and all", async () => {
+    store.selectScheduledPostsForExport.mockResolvedValue([
+      {
+        draftId: "11111111-2222-4333-8444-555555555555",
+        dueAt: new Date("2026-08-04T06:00:00.000Z"),
+        status: "failed",
+        attempts: 3,
+        lastError: "Your sign-in with your data server is no longer valid.",
+        publishedRkey: null,
+        createdAt: new Date("2026-08-01T10:00:00.000Z"),
+      },
+    ]);
+    const res = await call();
+    expect(store.selectScheduledPostsForExport).toHaveBeenCalledWith(
+      expect.anything(),
+      DID,
+    );
+    const body = (await res.json()) as {
+      scheduledPosts: Array<{ dueAt: string; lastError: string | null }>;
+      manifest: string;
+    };
+    expect(body.scheduledPosts).toEqual([
+      {
+        draftId: "11111111-2222-4333-8444-555555555555",
+        dueAt: "2026-08-04T06:00:00.000Z",
+        status: "failed",
+        attempts: 3,
+        // Verbatim: our account of why their post did not go out is theirs.
+        lastError: "Your sign-in with your data server is no longer valid.",
+        publishedRkey: null,
+        createdAt: "2026-08-01T10:00:00.000Z",
+      },
+    ]);
+    expect(body.manifest).toMatch(/scheduled/i);
   });
 
   it("degrades ownPosts to null (never fails the export) when the PDS read flakes", async () => {

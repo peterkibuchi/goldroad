@@ -11,11 +11,13 @@ import {
   deleteImportFetchesForDid,
   deleteImportItemsForDid,
   deleteOAuthSessionForDid,
+  deleteScheduledPostsForDid,
   MAX_LEDGER_ROWS_PER_EXPORT,
   MAX_SNAPSHOT_ROWS_PER_EXPORT,
   selectDraftsForExport,
   selectFollowerSnapshotsForExport,
   selectImportItemsForExport,
+  selectScheduledPostsForExport,
 } from "../lib/rights-store";
 
 /**
@@ -74,6 +76,16 @@ describe("export reads — full content, capped, DID-scoped", () => {
     );
   });
 
+  it("selectScheduledPostsForExport binds the DID and ships the failure reason", () => {
+    const { sql, params } = selectScheduledPostsForExport(db, DID).toSQL();
+    expectDidBound(sql, params);
+    expect(sql.toLowerCase()).toContain('from "scheduled_posts"');
+    // If we hold a reason a writer's post did not go out, it goes out with
+    // their data — not summarised, not withheld.
+    expect(sql).toContain('"last_error"');
+    expect(sql.toLowerCase()).toContain("limit");
+  });
+
   it("selectFollowerSnapshotsForExport binds the DID, orders by day, and caps", () => {
     const { sql, params } = selectFollowerSnapshotsForExport(db, DID).toSQL();
     expectDidBound(sql, params);
@@ -112,6 +124,15 @@ describe("account-deletion deletes — DID-scoped, RETURNing so callers can see 
     const { sql, params } = deleteFollowerSnapshotsForDid(db, DID).toSQL();
     expectDidBound(sql, params);
     expect(sql.toLowerCase()).toContain('delete from "follower_snapshots"');
+    expect(sql.toLowerCase()).toContain("returning");
+  });
+
+  it("deleteScheduledPostsForDid removes queued publishing work, not just records", () => {
+    // A pending row is an INSTRUCTION TO PUBLISH. Leaving one behind would
+    // have a cron acting for a deleted account an hour later.
+    const { sql, params } = deleteScheduledPostsForDid(db, DID).toSQL();
+    expectDidBound(sql, params);
+    expect(sql.toLowerCase()).toContain('delete from "scheduled_posts"');
     expect(sql.toLowerCase()).toContain("returning");
   });
 
