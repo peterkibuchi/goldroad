@@ -13,11 +13,12 @@
  * degrades the same way: return nothing, never block the page render.
  *
  * Pure module — no `cloudflare:workers` import — so tests exercise it
- * directly; the Workers Cache lookup is feature-detected exactly like
- * ~/lib/read-cache and the /img route, not threaded through env.
+ * directly; the Workers Cache lookup is feature-detected via
+ * ~/lib/workers-cache, not threaded through env.
  */
 import { type Did, parseAtUri } from "~/lib/atproto";
 import { readBodyCapped } from "~/lib/blob";
+import { defaultCache } from "~/lib/workers-cache";
 
 /** The AppView host this module is allowed to talk to — FIXED, never derived
  * from a DID document or any other untrusted input (unlike resolveDidToPds,
@@ -242,12 +243,6 @@ export async function fetchEngagementBatches(opts: {
   );
 
   return { byUri, requested, answered };
-}
-
-/** Feature-detected Workers Cache API access — absent under plain vitest/
- * node, same pattern as ~/lib/read-cache / the /img route. */
-function defaultCache(): Cache | undefined {
-  return (globalThis as { caches?: { default?: Cache } }).caches?.default;
 }
 
 /** Synthetic, cacheable-key URL for one post's engagement — public data

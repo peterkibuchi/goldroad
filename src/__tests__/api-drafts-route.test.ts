@@ -21,6 +21,7 @@ vi.mock("~/lib/drafts", () => store);
 import { MAX_DRAFT_BODY_BYTES } from "../lib/drafts-schema";
 import { signSession } from "../lib/session";
 import { Route } from "../routes/api.drafts";
+import { handlerOf } from "./support/route-handler";
 
 // The liveness half of the session gate needs a real database, which these
 // route suites deliberately don't have — they stub the stores. So the D1 read
@@ -37,14 +38,11 @@ vi.mock("~/lib/live-session", async (importOriginal) => {
   };
 });
 
-type Handler = (ctx: { request: Request }) => Promise<Response> | Response;
-const handlers = (
-  Route.options as unknown as {
-    server: {
-      handlers: { GET: Handler; POST: Handler; DELETE: Handler };
-    };
-  }
-).server.handlers;
+const handlers = {
+  GET: handlerOf(Route, "GET"),
+  POST: handlerOf(Route, "POST"),
+  DELETE: handlerOf(Route, "DELETE"),
+};
 
 const DID = "did:plc:fake2222222222writer2222";
 const ID = "11111111-2222-3333-4444-555555555555";
@@ -304,7 +302,7 @@ describe("caching", () => {
       await call("GET", "", undefined, false),
     ];
     for (const res of responses) {
-      expect(res.headers.get("cache-control")).toBe("no-store");
+      expect(res.headers.get("cache-control")).toBe("private, no-store");
     }
   });
 });

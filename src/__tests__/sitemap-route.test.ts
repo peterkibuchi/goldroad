@@ -4,14 +4,11 @@ import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vitest";
 
 import { Route } from "../routes/sitemap[.]xml";
+import { handlerOf } from "./support/route-handler";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-type Handler = (ctx: { request: Request }) => Response | Promise<Response>;
-
-const GET = (
-  Route.options as unknown as { server: { handlers: { GET: Handler } } }
-).server.handlers.GET;
+const GET = handlerOf(Route, "GET");
 
 function parseXml(xml: string): Document {
   const { DOMParser } = new JSDOM("").window;

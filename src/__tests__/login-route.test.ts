@@ -21,13 +21,12 @@ import { OAuthResolverError } from "@atcute/oauth-node-client";
 
 import { safeReturnTo } from "~/lib/oauth";
 import { Route } from "../routes/login";
+import { handlerOf } from "./support/route-handler";
 
-type Handler = (ctx: { request: Request }) => Promise<Response> | Response;
-const handlers = (
-  Route.options as unknown as {
-    server: { handlers: { GET: Handler; POST: Handler } };
-  }
-).server.handlers;
+const handlers = {
+  GET: handlerOf(Route, "GET"),
+  POST: handlerOf(Route, "POST"),
+};
 
 function get(qs: string) {
   return handlers.GET({

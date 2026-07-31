@@ -34,14 +34,10 @@ vi.mock("~/lib/live-session", async (importOriginal) => {
 import { signSession } from "../lib/session";
 import { Route as PublishRoute } from "../routes/api.publish";
 import { Route as LogoutRoute } from "../routes/logout";
+import { handlerOf } from "./support/route-handler";
 
-type Handler = (ctx: { request: Request }) => Promise<Response> | Response;
-const handlerOf = (route: unknown): Handler =>
-  (route as { options: { server: { handlers: { POST: Handler } } } }).options
-    .server.handlers.POST;
-
-const publish = handlerOf(PublishRoute);
-const logout = handlerOf(LogoutRoute);
+const publish = handlerOf(PublishRoute, "POST");
+const logout = handlerOf(LogoutRoute, "POST");
 
 const DID = "did:plc:fake2222222222writer2222";
 const SECRET = "vitest-fake-cookie-secret"; // mirrors mocks/cloudflare-workers

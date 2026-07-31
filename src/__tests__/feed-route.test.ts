@@ -20,22 +20,17 @@ vi.mock("~/lib/moderation", async (importOriginal) => ({
 }));
 
 import { Route } from "../routes/@{$handle}.rss[.]xml";
+import { handlerOf } from "./support/route-handler";
 
 const DID = "did:plc:fake2222222222writer2222";
 const PDS = "https://pds.example";
 const PUB_AT_URI = `at://${DID}/site.standard.publication/3abc2345678de`;
 const HOSTILE_TITLE = `Attack ]]><script>alert("pwn")</script>`;
 
-type Handler = (ctx: {
-  request: Request;
-  params: { handle: string };
-}) => Promise<Response>;
-
-const GET = (
-  Route.options as unknown as {
-    server: { handlers: { GET: Handler } };
-  }
-).server.handlers.GET;
+const GET = handlerOf<{ request: Request; params: { handle: string } }>(
+  Route,
+  "GET",
+);
 
 function call(handle: string) {
   return GET({

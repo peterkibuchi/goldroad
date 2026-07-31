@@ -21,12 +21,13 @@
  * array of that same union).
  *
  * Pure module — no `cloudflare:workers` import — so tests drive it directly;
- * the Workers Cache lookup is feature-detected exactly like ~/lib/engagement,
- * ~/lib/read-cache and the /img route, not threaded through env.
+ * the Workers Cache lookup is feature-detected via ~/lib/workers-cache, not
+ * threaded through env.
  */
 import { isHandle, parseAtUri } from "~/lib/atproto";
 import { readBodyCapped } from "~/lib/blob";
 import { APPVIEW_HOST, announcedPostUri, bskyPostUrl } from "~/lib/engagement";
+import { defaultCache } from "~/lib/workers-cache";
 
 /**
  * Deliberately shorter than ~/lib/engagement's 5 s. Replies are the least
@@ -272,12 +273,6 @@ async function fetchThread(
   } catch {
     return null;
   }
-}
-
-/** Feature-detected Workers Cache API access — absent under plain vitest/
- * node, same pattern as ~/lib/engagement / ~/lib/read-cache / the /img route. */
-function defaultCache(): Cache | undefined {
-  return (globalThis as { caches?: { default?: Cache } }).caches?.default;
 }
 
 /** Synthetic, cacheable-key URL for one post's conversation. Public data, so

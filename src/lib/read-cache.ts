@@ -33,6 +33,7 @@
  * check next hit.
  */
 import { isValidCursor } from "~/lib/atproto";
+import { defaultCache } from "~/lib/workers-cache";
 
 /** Public shared-cache TTL for reading surfaces, in seconds. */
 export const READ_CACHE_TTL_SECONDS = 60;
@@ -87,8 +88,7 @@ export async function serveWithReadCache(
   request: Request,
   fetchFresh: () => Promise<Response> | Response,
 ): Promise<Response> {
-  const cache = (globalThis as { caches?: { default?: Cache } }).caches
-    ?.default;
+  const cache = defaultCache();
   if (!cache || !isCacheableReadRequest(request)) {
     return fetchFresh();
   }

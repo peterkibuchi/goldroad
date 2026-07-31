@@ -31,19 +31,13 @@ import {
 } from "~/lib/atproto";
 import { readLiveSessionDid } from "~/lib/live-session";
 import { canonicalOrigin, isCrossSite } from "~/lib/origin";
+import { privateJson } from "~/lib/private-json";
 import {
   selectDraftsForExport,
   selectFollowerSnapshotsForExport,
   selectImportItemsForExport,
 } from "~/lib/rights-store";
 import { env } from "cloudflare:workers";
-
-function json(data: unknown, status = 200): Response {
-  return Response.json(data, {
-    status,
-    headers: { "cache-control": "no-store" },
-  });
-}
 
 /** Stored draft content is our own JSON.stringify output (see ~/routes/api.drafts) —
  * a parse failure means a corrupt row. Exports that row's content as `null`
@@ -61,14 +55,14 @@ export const Route = createFileRoute("/api/account/export")({
     handlers: {
       POST: async ({ request }) => {
         if (isCrossSite(request))
-          return json({ ok: false, error: "cross_site" }, 403);
+          return privateJson({ ok: false, error: "cross_site" }, 403);
         const did = await readLiveSessionDid(
           request,
           env.COOKIE_SECRET,
           drizzle(env.DB),
         );
         if (!did || !isDid(did))
-          return json({ ok: false, error: "not_signed_in" }, 401);
+          return privateJson({ ok: false, error: "not_signed_in" }, 401);
 
         const url = new URL(request.url);
         const origin = canonicalOrigin(url.origin);
@@ -171,7 +165,9 @@ export const Route = createFileRoute("/api/account/export")({
         const filename = `goldroad-data-${new Date().toISOString().slice(0, 10)}.json`;
         return new Response(JSON.stringify(body, null, 2), {
           headers: {
-            "cache-control": "no-store",
+            // Same policy as privateJson — this is the most private payload
+            // the app serves; it just isn't shaped like the error responses.
+            "cache-control": "private, no-store",
             "content-disposition": `attachment; filename="${filename}"`,
             "content-type": "application/json",
           },

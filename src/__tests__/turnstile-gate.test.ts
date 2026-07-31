@@ -26,17 +26,13 @@ vi.mock("drizzle-orm/d1", () => ({
 import { Route as reportRoute } from "../routes/api.report";
 import { Route as waitlistRoute } from "../routes/api.waitlist";
 import { env } from "./mocks/cloudflare-workers";
-
-type Handler = (ctx: { request: Request }) => Promise<Response> | Response;
-const handlerOf = (route: unknown): Handler =>
-  (
-    route as {
-      options: { server: { handlers: { POST: Handler } } };
-    }
-  ).options.server.handlers.POST;
+import { handlerOf } from "./support/route-handler";
 
 const postWaitlist = (body: unknown) =>
-  handlerOf(waitlistRoute)({
+  handlerOf(
+    waitlistRoute,
+    "POST",
+  )({
     request: new Request("https://trygoldroad.com/api/waitlist", {
       method: "POST",
       headers: {
@@ -48,7 +44,10 @@ const postWaitlist = (body: unknown) =>
   });
 
 const postReport = (body: unknown) =>
-  handlerOf(reportRoute)({
+  handlerOf(
+    reportRoute,
+    "POST",
+  )({
     request: new Request("https://trygoldroad.com/api/report", {
       method: "POST",
       headers: {

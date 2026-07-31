@@ -27,6 +27,7 @@ vi.mock("~/lib/atproto", async () => {
 
 import { signSession } from "../lib/session";
 import { Route } from "../routes/api.account.export";
+import { handlerOf } from "./support/route-handler";
 
 // The liveness half of the session gate needs a real database, which these
 // route suites deliberately don't have — they stub the stores. So the D1 read
@@ -43,12 +44,7 @@ vi.mock("~/lib/live-session", async (importOriginal) => {
   };
 });
 
-type Handler = (ctx: { request: Request }) => Promise<Response> | Response;
-const handlers = (
-  Route.options as unknown as {
-    server: { handlers: { POST: Handler } };
-  }
-).server.handlers;
+const handlers = { POST: handlerOf(Route, "POST") };
 
 const DID = "did:plc:fake2222222222writer2222";
 const SECRET = "vitest-fake-cookie-secret"; // mirrors mocks/cloudflare-workers
@@ -97,7 +93,7 @@ describe("response shape", () => {
   it("is a no-store JSON attachment", async () => {
     const res = await call();
     expect(res.status).toBe(200);
-    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
     expect(res.headers.get("content-type")).toContain("application/json");
     expect(res.headers.get("content-disposition")).toContain("attachment");
     expect(res.headers.get("content-disposition")).toContain(".json");

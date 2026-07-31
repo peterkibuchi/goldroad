@@ -28,14 +28,8 @@ import { computeImportedSet } from "~/lib/import-flags";
 import { MAX_EXPORT_POSTS } from "~/lib/import-zip";
 import { readLiveSessionDid } from "~/lib/live-session";
 import { isCrossSite } from "~/lib/origin";
+import { privateJson } from "~/lib/private-json";
 import { env } from "cloudflare:workers";
-
-function json(data: unknown, status = 200): Response {
-  return Response.json(data, {
-    status,
-    headers: { "cache-control": "no-store" },
-  });
-}
 
 const statusPayload = z.object({
   guidHashes: z
@@ -52,25 +46,27 @@ export const Route = createFileRoute("/api/import/status")({
     handlers: {
       POST: async ({ request }) => {
         if (isCrossSite(request))
-          return json({ ok: false, error: "cross_site" }, 403);
+          return privateJson({ ok: false, error: "cross_site" }, 403);
         const did = await readLiveSessionDid(
           request,
           env.COOKIE_SECRET,
           drizzle(env.DB),
         );
         if (!did || !isDid(did))
-          return json({ ok: false, error: "not_signed_in" }, 401);
+          return privateJson({ ok: false, error: "not_signed_in" }, 401);
 
         const raw = await readBodyCapped(request, MAX_STATUS_BODY_BYTES);
-        if (raw === null) return json({ ok: false, error: "too_large" }, 413);
+        if (raw === null)
+          return privateJson({ ok: false, error: "too_large" }, 413);
         let body: unknown;
         try {
           body = JSON.parse(new TextDecoder().decode(raw));
         } catch {
-          return json({ ok: false, error: "invalid" }, 400);
+          return privateJson({ ok: false, error: "invalid" }, 400);
         }
         const parsed = statusPayload.safeParse(body);
-        if (!parsed.success) return json({ ok: false, error: "invalid" }, 400);
+        if (!parsed.success)
+          return privateJson({ ok: false, error: "invalid" }, 400);
 
         const db = drizzle(env.DB);
         // Concurrent, not sequential: the headroom count doesn't depend on the
@@ -80,7 +76,7 @@ export const Route = createFileRoute("/api/import/status")({
           computeImportedSet(db, did, parsed.data.guidHashes),
           countDrafts(db, did),
         ]);
-        return json({
+        return privateJson({
           ok: true,
           draftSlotsRemaining: Math.max(0, MAX_DRAFTS_PER_USER - draftCount),
           alreadyImported: [...imported],

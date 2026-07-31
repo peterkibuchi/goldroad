@@ -45,14 +45,8 @@ import {
 } from "~/lib/drafts-schema";
 import { readLiveSessionDid } from "~/lib/live-session";
 import { isCrossSite } from "~/lib/origin";
+import { privateJson } from "~/lib/private-json";
 import { env } from "cloudflare:workers";
-
-function json(data: unknown, status = 200): Response {
-  return Response.json(data, {
-    status,
-    headers: { "cache-control": "no-store" },
-  });
-}
 
 async function requireDid(request: Request): Promise<string | null> {
   return readLiveSessionDid(request, env.COOKIE_SECRET, drizzle(env.DB));
@@ -76,16 +70,17 @@ export const Route = createFileRoute("/api/drafts")({
       /** List my drafts (no `id`), or fetch one with content (`?id=`). */
       GET: async ({ request }) => {
         const did = await requireDid(request);
-        if (!did) return json({ ok: false, error: "not_signed_in" }, 401);
+        if (!did)
+          return privateJson({ ok: false, error: "not_signed_in" }, 401);
         const db = drizzle(env.DB);
 
         const id = new URL(request.url).searchParams.get("id");
         if (id !== null) {
           if (!isDraftId(id))
-            return json({ ok: false, error: "not_found" }, 404);
+            return privateJson({ ok: false, error: "not_found" }, 404);
           const [row] = await selectDraft(db, did, id);
-          if (!row) return json({ ok: false, error: "not_found" }, 404);
-          return json({
+          if (!row) return privateJson({ ok: false, error: "not_found" }, 404);
+          return privateJson({
             ok: true,
             draft: {
               id: row.id,
@@ -99,7 +94,7 @@ export const Route = createFileRoute("/api/drafts")({
         }
 
         const rows = await listDrafts(db, did);
-        return json({
+        return privateJson({
           ok: true,
           drafts: rows.map((row) => ({
             id: row.id,
@@ -113,22 +108,25 @@ export const Route = createFileRoute("/api/drafts")({
       /** Upsert: `id` present = update my draft, absent = create (capped). */
       POST: async ({ request }) => {
         if (isCrossSite(request))
-          return json({ ok: false, error: "cross_site" }, 403);
+          return privateJson({ ok: false, error: "cross_site" }, 403);
         const did = await requireDid(request);
-        if (!did) return json({ ok: false, error: "not_signed_in" }, 401);
+        if (!did)
+          return privateJson({ ok: false, error: "not_signed_in" }, 401);
 
         // Byte cap FIRST — never JSON.parse an unbounded body.
         const raw = await readBodyCapped(request, MAX_DRAFT_BODY_BYTES);
-        if (raw === null) return json({ ok: false, error: "too_large" }, 413);
+        if (raw === null)
+          return privateJson({ ok: false, error: "too_large" }, 413);
 
         let body: unknown;
         try {
           body = JSON.parse(new TextDecoder().decode(raw));
         } catch {
-          return json({ ok: false, error: "invalid" }, 400);
+          return privateJson({ ok: false, error: "invalid" }, 400);
         }
         const parsed = draftPayload.safeParse(body);
-        if (!parsed.success) return json({ ok: false, error: "invalid" }, 400);
+        if (!parsed.success)
+          return privateJson({ ok: false, error: "invalid" }, 400);
 
         // Re-serialize for storage so the stored string is always our own
         // JSON.stringify output. Guarded: pathological nesting can survive
@@ -137,7 +135,7 @@ export const Route = createFileRoute("/api/drafts")({
         try {
           content = JSON.stringify(parsed.data.content);
         } catch {
-          return json({ ok: false, error: "invalid" }, 400);
+          return privateJson({ ok: false, error: "invalid" }, 400);
         }
 
         const db = drizzle(env.DB);
@@ -147,8 +145,8 @@ export const Route = createFileRoute("/api/drafts")({
             dek: parsed.data.dek,
             content,
           });
-          if (!row) return json({ ok: false, error: "not_found" }, 404);
-          return json({
+          if (!row) return privateJson({ ok: false, error: "not_found" }, 404);
+          return privateJson({
             ok: true,
             draft: { id: row.id, updatedAt: row.updatedAt.toISOString() },
           });
@@ -159,7 +157,7 @@ export const Route = createFileRoute("/api/drafts")({
         // exact quota, so that slack is fine).
         const [{ n }] = await countDrafts(db, did);
         if (n >= MAX_DRAFTS_PER_USER) {
-          return json({ ok: false, error: "draft_limit" }, 409);
+          return privateJson({ ok: false, error: "draft_limit" }, 409);
         }
         const [row] = await insertDraft(db, {
           id: crypto.randomUUID(),
@@ -168,7 +166,7 @@ export const Route = createFileRoute("/api/drafts")({
           dek: parsed.data.dek,
           content,
         });
-        return json(
+        return privateJson(
           {
             ok: true,
             draft: { id: row.id, updatedAt: row.updatedAt.toISOString() },
@@ -180,16 +178,18 @@ export const Route = createFileRoute("/api/drafts")({
       /** Delete my draft (`?id=`). */
       DELETE: async ({ request }) => {
         if (isCrossSite(request))
-          return json({ ok: false, error: "cross_site" }, 403);
+          return privateJson({ ok: false, error: "cross_site" }, 403);
         const did = await requireDid(request);
-        if (!did) return json({ ok: false, error: "not_signed_in" }, 401);
+        if (!did)
+          return privateJson({ ok: false, error: "not_signed_in" }, 401);
         const id = new URL(request.url).searchParams.get("id") ?? "";
-        if (!isDraftId(id)) return json({ ok: false, error: "not_found" }, 404);
+        if (!isDraftId(id))
+          return privateJson({ ok: false, error: "not_found" }, 404);
         const rows = await deleteDraft(drizzle(env.DB), did, id);
         if (rows.length === 0) {
-          return json({ ok: false, error: "not_found" }, 404);
+          return privateJson({ ok: false, error: "not_found" }, 404);
         }
-        return json({ ok: true });
+        return privateJson({ ok: true });
       },
     },
   },

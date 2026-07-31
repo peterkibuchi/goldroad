@@ -37,15 +37,9 @@ import {
 } from "~/lib/import-store";
 import { readLiveSessionDid } from "~/lib/live-session";
 import { isCrossSite } from "~/lib/origin";
+import { privateJson } from "~/lib/private-json";
 import { MAX_TITLE_LENGTH } from "~/lib/publish";
 import { env } from "cloudflare:workers";
-
-function json(data: unknown, status = 200): Response {
-  return Response.json(data, {
-    status,
-    headers: { "cache-control": "no-store" },
-  });
-}
 
 const importDraftPayload = z.object({
   title: z.string().max(MAX_TITLE_LENGTH),
@@ -69,26 +63,28 @@ export const Route = createFileRoute("/api/import/draft")({
     handlers: {
       POST: async ({ request }) => {
         if (isCrossSite(request))
-          return json({ ok: false, error: "cross_site" }, 403);
+          return privateJson({ ok: false, error: "cross_site" }, 403);
         const did = await readLiveSessionDid(
           request,
           env.COOKIE_SECRET,
           drizzle(env.DB),
         );
         if (!did || !isDid(did))
-          return json({ ok: false, error: "not_signed_in" }, 401);
+          return privateJson({ ok: false, error: "not_signed_in" }, 401);
 
         // Byte cap FIRST — the same bound stored drafts live under.
         const raw = await readBodyCapped(request, MAX_DRAFT_BODY_BYTES);
-        if (raw === null) return json({ ok: false, error: "too_large" }, 413);
+        if (raw === null)
+          return privateJson({ ok: false, error: "too_large" }, 413);
         let body: unknown;
         try {
           body = JSON.parse(new TextDecoder().decode(raw));
         } catch {
-          return json({ ok: false, error: "invalid" }, 400);
+          return privateJson({ ok: false, error: "invalid" }, 400);
         }
         const parsed = importDraftPayload.safeParse(body);
-        if (!parsed.success) return json({ ok: false, error: "invalid" }, 400);
+        if (!parsed.success)
+          return privateJson({ ok: false, error: "invalid" }, 400);
         const { title, content, source } = parsed.data;
 
         // Re-serialize for storage (stored strings are always our own
@@ -97,7 +93,7 @@ export const Route = createFileRoute("/api/import/draft")({
         try {
           contentJson = JSON.stringify(content);
         } catch {
-          return json({ ok: false, error: "invalid" }, 400);
+          return privateJson({ ok: false, error: "invalid" }, 400);
         }
 
         // Provenance link: only a public https URL is stored (it renders as
@@ -116,13 +112,13 @@ export const Route = createFileRoute("/api/import/draft")({
         let revive = false;
         if (existing) {
           if (existing.publishedRkey) {
-            return json({ ok: false, error: "already_imported" }, 409);
+            return privateJson({ ok: false, error: "already_imported" }, 409);
           }
           const live = existing.draftId
             ? await selectLiveDraftIds(db, did, [existing.draftId])
             : [];
           if (live.length > 0) {
-            return json(
+            return privateJson(
               {
                 ok: false,
                 error: "already_imported",
@@ -136,7 +132,7 @@ export const Route = createFileRoute("/api/import/draft")({
 
         const [{ n }] = await countDrafts(db, did);
         if (n >= MAX_DRAFTS_PER_USER) {
-          return json({ ok: false, error: "draft_limit" }, 409);
+          return privateJson({ ok: false, error: "draft_limit" }, 409);
         }
 
         const draftId = crypto.randomUUID();
@@ -168,7 +164,7 @@ export const Route = createFileRoute("/api/import/draft")({
                 draftId,
               }),
         ]);
-        return json({ ok: true, draft: { id: draftId } }, 201);
+        return privateJson({ ok: true, draft: { id: draftId } }, 201);
       },
     },
   },

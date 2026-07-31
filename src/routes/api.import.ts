@@ -50,14 +50,8 @@ import {
 } from "~/lib/import-store";
 import { readLiveSessionDid } from "~/lib/live-session";
 import { isCrossSite } from "~/lib/origin";
+import { privateJson } from "~/lib/private-json";
 import { env } from "cloudflare:workers";
-
-function json(data: unknown, status = 200): Response {
-  return Response.json(data, {
-    status,
-    headers: { "cache-control": "no-store" },
-  });
-}
 
 const importPayload = z.object({
   url: z.string().min(1).max(MAX_IMPORT_URL_LENGTH),
@@ -70,16 +64,16 @@ function importErrorResponse(err: ImportError): Response {
   switch (err.code) {
     case "invalid_url":
     case "own_host":
-      return json({ ok: false, error: "invalid_url" }, 400);
+      return privateJson({ ok: false, error: "invalid_url" }, 400);
     case "feed_too_large":
-      return json({ ok: false, error: "feed_too_large" }, 413);
+      return privateJson({ ok: false, error: "feed_too_large" }, 413);
     case "upstream_blocked":
-      return json({ ok: false, error: "upstream_blocked" }, 502);
+      return privateJson({ ok: false, error: "upstream_blocked" }, 502);
     case "too_many_redirects":
     case "fetch_failed":
-      return json({ ok: false, error: "fetch_failed" }, 502);
+      return privateJson({ ok: false, error: "fetch_failed" }, 502);
     default:
-      return json({ ok: false, error: "not_a_feed" }, 422);
+      return privateJson({ ok: false, error: "not_a_feed" }, 422);
   }
 }
 
@@ -122,26 +116,28 @@ export const Route = createFileRoute("/api/import")({
     handlers: {
       POST: async ({ request }) => {
         if (isCrossSite(request))
-          return json({ ok: false, error: "cross_site" }, 403);
+          return privateJson({ ok: false, error: "cross_site" }, 403);
         const did = await readLiveSessionDid(
           request,
           env.COOKIE_SECRET,
           drizzle(env.DB),
         );
         if (!did || !isDid(did))
-          return json({ ok: false, error: "not_signed_in" }, 401);
+          return privateJson({ ok: false, error: "not_signed_in" }, 401);
 
         // The payload is one short URL — cap the body well below any parse.
         const raw = await readBodyCapped(request, 8 * 1024);
-        if (raw === null) return json({ ok: false, error: "too_large" }, 413);
+        if (raw === null)
+          return privateJson({ ok: false, error: "too_large" }, 413);
         let body: unknown;
         try {
           body = JSON.parse(new TextDecoder().decode(raw));
         } catch {
-          return json({ ok: false, error: "invalid" }, 400);
+          return privateJson({ ok: false, error: "invalid" }, 400);
         }
         const parsed = importPayload.safeParse(body);
-        if (!parsed.success) return json({ ok: false, error: "invalid" }, 400);
+        if (!parsed.success)
+          return privateJson({ ok: false, error: "invalid" }, 400);
 
         const db = drizzle(env.DB);
         const now = Date.now();
@@ -151,7 +147,7 @@ export const Route = createFileRoute("/api/import")({
         await pruneImportFetches(db, windowStart);
         const [{ n }] = await countRecentImportFetches(db, did, windowStart);
         if (n >= MAX_IMPORTS_PER_HOUR) {
-          return json({ ok: false, error: "rate_limited" }, 429);
+          return privateJson({ ok: false, error: "rate_limited" }, 429);
         }
         await insertImportFetch(db, did);
 
@@ -161,7 +157,7 @@ export const Route = createFileRoute("/api/import")({
         } catch (err) {
           if (err instanceof ImportError) return importErrorResponse(err);
           console.error("feed import failed", err);
-          return json({ ok: false, error: "fetch_failed" }, 502);
+          return privateJson({ ok: false, error: "fetch_failed" }, 502);
         }
 
         // Already-imported flags: hash every item's guid, then the shared
@@ -177,7 +173,7 @@ export const Route = createFileRoute("/api/import")({
             : new Set<string>();
 
         const [{ n: draftCount }] = await countDrafts(db, did);
-        return json({
+        return privateJson({
           ok: true,
           feed: { title: feed.title, url: feedUrl },
           totalItems: feed.totalItems,

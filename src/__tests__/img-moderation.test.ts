@@ -8,17 +8,15 @@ import { env } from "cloudflare:workers";
 vi.mock("~/lib/moderation", () => ({ anyHidden: vi.fn(async () => true) }));
 
 import { Route } from "../routes/img.$did.$cid";
+import { handlerOf } from "./support/route-handler";
 
 const DID = "did:plc:fake2222222222writer2222";
 const CID = "bafkreicanarycanarycanarycanarycanarycanary";
 
-type Handler = (ctx: {
+const GET = handlerOf<{
   request: Request;
   params: { did: string; cid: string };
-}) => Promise<Response>;
-const GET = (
-  Route.options as unknown as { server: { handlers: { GET: Handler } } }
-).server.handlers.GET;
+}>(Route, "GET");
 
 afterEach(() => {
   // biome-ignore lint/suspicious/noExplicitAny: mutating the test env stub
