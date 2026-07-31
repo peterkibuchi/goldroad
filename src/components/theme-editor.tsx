@@ -183,11 +183,18 @@ export function ThemeEditor({
       {/* Advisory, not an error: a polite live region — never role="alert" —
           and the save button below it is never disabled. Always rendered, so
           a warning arrives as new text in a region the reader is already in
-          rather than as a region appearing from nowhere. */}
+          rather than as a region appearing from nowhere.
+
+          Ink, not the accent, and that is the point rather than a preference.
+          The accent means two things in this app — the primary action, and an
+          error (see Notice) — and this is neither: it is a remark about a
+          choice we are about to save anyway. It also sits inches from a
+          preview rendering the WRITER'S accent, and two unrelated reds side by
+          side read as a rendering fault rather than as two meanings. */}
       <div aria-live="polite" className="[&:not(:empty)]:mt-8">
         {warnings.map((warning) => (
           <p
-            className="border border-spot px-4 py-3 font-display text-sm text-spot leading-relaxed [&+&]:mt-3"
+            className="border border-ink px-4 py-3 font-display text-ink text-sm leading-relaxed [&+&]:mt-3"
             key={warning.id}
           >
             {warning.message}
