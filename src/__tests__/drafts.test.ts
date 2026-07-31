@@ -78,6 +78,41 @@ describe("selectDraft / updateDraft / deleteDraft — ownership in the WHERE", (
     expect(sql.toLowerCase()).toContain("returning");
   });
 
+  it("updateDraft writes the markdown projection when it is given one", () => {
+    const { sql, params } = updateDraft(db, DID, ID, {
+      title: "t",
+      dek: "",
+      content: "[]",
+      markdown: "the words",
+    }).toSQL();
+    expect(sql).toContain('"markdown"');
+    expect(params).toContain("the words");
+  });
+
+  it("updateDraft LEAVES the projection alone when markdown is undefined", () => {
+    // The single most consequential line in this file: the projection is the
+    // only rendering of a document a cron can publish. A save that simply
+    // didn't send one (an old tab, a partial client) must not be able to blank
+    // it — that would turn a scheduled post into an empty one.
+    const { sql } = updateDraft(db, DID, ID, {
+      title: "t",
+      dek: "",
+      content: "[]",
+    }).toSQL();
+    expect(sql).not.toContain('"markdown"');
+  });
+
+  it("updateDraft still clears the projection when explicitly emptied", () => {
+    const { sql, params } = updateDraft(db, DID, ID, {
+      title: "t",
+      dek: "",
+      content: "[]",
+      markdown: "",
+    }).toSQL();
+    expect(sql).toContain('"markdown"');
+    expect(params).toContain("");
+  });
+
   it("deleteDraft binds id AND did and RETURNs the row", () => {
     const { sql, params } = deleteDraft(db, DID, ID).toSQL();
     expectOwnershipBound(sql, params);
@@ -101,8 +136,10 @@ describe("countDrafts / insertDraft — the create path", () => {
       title: "Hello",
       dek: "A subtitle",
       content: '[{"type":"paragraph"}]',
+      markdown: "Hello\n\nSome words.",
     }).toSQL();
     expect(sql.toLowerCase()).toContain('insert into "drafts"');
+    expect(params).toContain("Hello\n\nSome words.");
     expect(params).toContain(ID);
     expect(params).toContain(DID);
     expect(params).toContain("Hello");

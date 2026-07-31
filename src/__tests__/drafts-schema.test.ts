@@ -81,8 +81,11 @@ describe("isDraftId", () => {
 });
 
 describe("the drafts caps (pinned contract)", () => {
-  it("bounds the request body at 256 KiB and drafts at 50 per writer", () => {
-    expect(MAX_DRAFT_BODY_BYTES).toBe(256 * 1024);
+  it("bounds the request body at 512 KiB and drafts at 50 per writer", () => {
+    // 512 KiB, up from 256: a save now carries the markdown projection as well
+    // as the blocks, so the same words travel twice in one request. Still a
+    // bound — the per-writer draft cap is what keeps the product honest.
+    expect(MAX_DRAFT_BODY_BYTES).toBe(512 * 1024);
     expect(MAX_DRAFTS_PER_USER).toBe(50);
   });
 });

@@ -50,7 +50,9 @@ export function countDrafts(db: DrizzleD1, did: string) {
 }
 
 /** Creates a draft. `id` is minted by the caller (crypto.randomUUID());
- * created_at/updated_at come from the schema defaults. */
+ * created_at/updated_at come from the schema defaults. `markdown` (the publish
+ * projection) defaults to "" in the schema, so a caller with nothing to project
+ * yet may omit it. */
 export function insertDraft(
   db: DrizzleD1,
   row: {
@@ -59,6 +61,7 @@ export function insertDraft(
     title: string;
     dek: string;
     content: string;
+    markdown?: string;
   },
 ) {
   return db
@@ -67,18 +70,36 @@ export function insertDraft(
     .returning({ id: drafts.id, updatedAt: drafts.updatedAt });
 }
 
-/** Updates a draft the writer owns; empty result = missing or not theirs.
+/**
+ * Updates a draft the writer owns; empty result = missing or not theirs.
  * Every writable field is passed on every save (the editor always knows all of
- * them), so a cleared subtitle clears the column. */
+ * them), so a cleared subtitle clears the column.
+ *
+ * `markdown` is the exception, and deliberately so: UNDEFINED LEAVES THE STORED
+ * PROJECTION ALONE. It is the only copy of a document a cron can publish
+ * (~/db/schema), so a caller that simply didn't send one must not be able to
+ * blank it — writing "" there would turn a scheduled post into an empty one.
+ * An explicit "" still clears it, which is what an emptied editor sends.
+ */
 export function updateDraft(
   db: DrizzleD1,
   did: string,
   id: string,
-  fields: { title: string; dek: string; content: string },
+  fields: {
+    title: string;
+    dek: string;
+    content: string;
+    markdown?: string;
+  },
 ) {
+  const { markdown, ...always } = fields;
   return db
     .update(drafts)
-    .set({ ...fields, updatedAt: new Date() })
+    .set({
+      ...always,
+      ...(markdown === undefined ? {} : { markdown }),
+      updatedAt: new Date(),
+    })
     .where(and(eq(drafts.id, id), eq(drafts.did, did)))
     .returning({ id: drafts.id, updatedAt: drafts.updatedAt });
 }

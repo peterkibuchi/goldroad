@@ -588,6 +588,11 @@ function postDraft(payload: {
   title: string;
   dek: string;
   content: unknown;
+  /** The markdown projection of `content` — the same string publishing sends to
+   * the record. Saved with the blocks (never separately) because it is what a
+   * scheduled publish reads hours from now, and only the editor can produce
+   * it: see `markdown` in ~/db/schema. */
+  markdown: string;
 }): Promise<Response> {
   const body = JSON.stringify(payload);
   return fetch("/api/drafts", {
@@ -699,6 +704,7 @@ export function Compose({
     const title = titleRef.current?.value ?? "";
     const dek = dekRef.current?.value ?? "";
     const blocks = editor.document;
+    const markdown = editor.blocksToMarkdownLossy(blocks);
     // A subtitle alone is worth a draft row too — it's words the writer typed.
     if (
       !draftIdRef.current &&
@@ -717,6 +723,7 @@ export function Compose({
         title,
         dek,
         content: blocks,
+        markdown,
       });
       if (res.status === 404 && draftIdRef.current && !publishingRef.current) {
         // The draft was deleted elsewhere (another tab, the dashboard) —
@@ -724,7 +731,7 @@ export function Compose({
         // publish: there the deletion IS the completion, and recreating
         // would resurrect the just-published draft.
         draftIdRef.current = null;
-        res = await postDraft({ title, dek, content: blocks });
+        res = await postDraft({ title, dek, content: blocks, markdown });
       }
       if (res.ok) {
         const data = (await res.json()) as { draft?: { id?: string } };
