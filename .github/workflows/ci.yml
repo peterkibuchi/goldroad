@@ -46,9 +46,15 @@ jobs:
         shell: bash
         run: find . -type f -name ".env.example" -exec sh -c 'cp "$1" "${1%.*}"' _ {} \;
 
+      # --error-on-warnings, because a warning nobody fails on is a warning
+      # nobody reads. A class-order warning shipped to main this way: the local
+      # habit is `check:write`, which does not fix nursery rules, and the tail
+      # of a passing run looks identical whether the count is 0 or 1. The tree
+      # is at zero warnings, so this costs nothing until something regresses —
+      # and then it says so here rather than three commits later.
       - name: Run linter
         run: |
-          pnpm check
+          pnpm check --error-on-warnings
 
   typecheck:
     runs-on: ubuntu-latest
