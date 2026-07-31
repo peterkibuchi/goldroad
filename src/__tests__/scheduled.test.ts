@@ -14,6 +14,26 @@ const snapshots = vi.hoisted(() => ({
 }));
 vi.mock("~/lib/follower-snapshots", () => snapshots);
 
+const scheduledPosts = vi.hoisted(() => ({
+  d1ScheduledPostStore: vi.fn(() => ({ scheduleStore: true })),
+  runScheduledPublishPass: vi.fn(async () => ({
+    attempted: 0,
+    published: 0,
+    failed: 0,
+    retrying: 0,
+    contended: 0,
+    releasedStale: 0,
+    capped: false,
+    pruned: true,
+  })),
+}));
+vi.mock("~/lib/scheduled-posts", () => scheduledPosts);
+
+const scheduledPublish = vi.hoisted(() => ({
+  cronPublisher: vi.fn(() => ({ publisher: true })),
+}));
+vi.mock("~/lib/scheduled-publish", () => scheduledPublish);
+
 const backup = vi.hoisted(() => ({
   d1BackupStore: vi.fn(() => ({ backupStore: true })),
   runBackupCheck: vi.fn(async () => ({
@@ -44,6 +64,18 @@ beforeEach(() => {
   });
   backup.d1BackupStore.mockReturnValue({ backupStore: true });
   backup.runBackupCheck.mockResolvedValue({ failures: [], pruned: true });
+  scheduledPosts.d1ScheduledPostStore.mockReturnValue({ scheduleStore: true });
+  scheduledPublish.cronPublisher.mockReturnValue({ publisher: true });
+  scheduledPosts.runScheduledPublishPass.mockResolvedValue({
+    attempted: 0,
+    published: 0,
+    failed: 0,
+    retrying: 0,
+    contended: 0,
+    releasedStale: 0,
+    capped: false,
+    pruned: true,
+  });
 });
 
 afterEach(() => {
@@ -107,7 +139,7 @@ describe("selfCheck — core invariants (audit #6)", () => {
   });
 });
 
-describe("runScheduled — four jobs, one hourly trigger, none able to sink another", () => {
+describe("runScheduled — five jobs, one hourly trigger, none able to sink another", () => {
   function healthyOrigin() {
     vi.stubGlobal(
       "fetch",
@@ -136,6 +168,105 @@ describe("runScheduled — four jobs, one hourly trigger, none able to sink anot
     const env = { DB: {}, WEBHOOK_URL: "https://hook.example" };
     return env as unknown as Env & { WEBHOOK_URL: string };
   }
+
+  it("publishes due posts FIRST — the one job whose lateness a reader sees", async () => {
+    // Everything after this is self-healing next hour or already reported by
+    // CI; a tick that runs out of budget before reaching this one is a
+    // writer's post going out late, which nothing else here can undo.
+    healthyOrigin();
+    quiet();
+    const order: string[] = [];
+    scheduledPosts.runScheduledPublishPass.mockImplementation(async () => {
+      order.push("scheduled");
+      return {
+        attempted: 1,
+        published: 1,
+        failed: 0,
+        retrying: 0,
+        contended: 0,
+        releasedStale: 0,
+        capped: false,
+        pruned: true,
+      };
+    });
+    snapshots.runFollowerSnapshotPass.mockImplementation(async () => {
+      order.push("snapshots");
+      return {
+        day: "2026-07-29",
+        attempted: 0,
+        sampled: 0,
+        failed: 0,
+        pruned: true,
+      };
+    });
+
+    await runScheduled(brokenDb());
+
+    expect(order).toEqual(["scheduled", "snapshots"]);
+    expect(scheduledPosts.runScheduledPublishPass).toHaveBeenCalledWith({
+      store: { scheduleStore: true },
+      publish: { publisher: true },
+    });
+  });
+
+  it("still runs every other job when the publish pass reports failures", async () => {
+    // A writer's revoked grant is recorded on their row and shown to them in
+    // the posts manager; it is not an operator's page, and it must not cost
+    // anybody else their hour.
+    healthyOrigin();
+    quiet();
+    scheduledPosts.runScheduledPublishPass.mockResolvedValue({
+      attempted: 2,
+      published: 0,
+      failed: 2,
+      retrying: 0,
+      contended: 0,
+      releasedStale: 0,
+      capped: true,
+      pruned: true,
+    });
+
+    await runScheduled(envWithHook());
+
+    expect(snapshots.runFollowerSnapshotPass).toHaveBeenCalledTimes(1);
+    expect(backup.runBackupCheck).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not page the owner about a writer's own failed post", async () => {
+    const posts: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes("hook.example")) {
+          posts.push(String(init?.body));
+          return new Response(null);
+        }
+        return url.includes("client-metadata")
+          ? Response.json({
+              client_id: "https://trygoldroad.com/oauth/client-metadata.json",
+            })
+          : new Response("<html>Goldroad</html>");
+      }),
+    );
+    quiet();
+    scheduledPosts.runScheduledPublishPass.mockResolvedValue({
+      attempted: 1,
+      published: 0,
+      failed: 1,
+      retrying: 0,
+      contended: 0,
+      releasedStale: 0,
+      capped: false,
+      pruned: true,
+    });
+
+    await runScheduled(envWithHook());
+
+    // The writer is the person who can fix a revoked grant, and the posts
+    // manager tells them. The webhook is for invariants nobody else watches.
+    expect(posts).toHaveLength(0);
+  });
 
   it("samples follower counts even when the oauth_kv purge blows up", async () => {
     healthyOrigin();
