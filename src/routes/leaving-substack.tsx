@@ -219,6 +219,17 @@ export function LeavingSubstack() {
             those rows say so — they're the ones worth reading closely.
           </p>
           <ComparisonTable />
+          <p className="mt-8 max-w-[58ch] border-rule border-t pt-4 font-display text-ink-soft text-sm leading-normal">
+            Every row above is either something you can test today or something
+            marked as not built yet — and the code behind both is public.{" "}
+            <a
+              className="font-semibold text-ink underline decoration-2 underline-offset-4 transition-colors hover:text-spot"
+              href="/open"
+            >
+              Read what's open
+            </a>
+            .
+          </p>
           <figure className="mt-12 border-ink border-l-2 pl-5">
             <p className="font-black font-display text-5xl text-ink md:text-6xl">
               0%
