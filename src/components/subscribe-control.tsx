@@ -28,6 +28,7 @@
 import { useLocation } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
+import { capture } from "~/lib/posthog";
 import {
   readSubscriptionState,
   type SubscriptionState,
@@ -87,6 +88,15 @@ export function SubscribeControl({
     }
     setState({ status: "known", subscribed: result.subscribed });
     setNote(result.subscribed ? "subscribed" : "unsubscribed");
+    // Captured only on a confirmed write. The property is the publication being
+    // subscribed to, which is public — never the reader, whose identity is not
+    // ours to report on somebody else's page.
+    capture(
+      result.subscribed ? "publication_subscribed" : "publication_unsubscribed",
+      {
+        publication,
+      },
+    );
   }
 
   return (

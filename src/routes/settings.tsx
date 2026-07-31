@@ -2,7 +2,7 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { drizzle } from "drizzle-orm/d1";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { AppearanceControl } from "~/components/appearance-control";
 import { ExternalLink } from "~/components/external-link";
@@ -20,6 +20,7 @@ import { blobImagePath, coverImageCid } from "~/lib/blob";
 import { squareIconImage } from "~/lib/image";
 import { readLiveSessionDid } from "~/lib/live-session";
 import { canonicalOrigin, LEGACY_ORIGINS, ownOrigins } from "~/lib/origin";
+import { capture } from "~/lib/posthog";
 import {
   isOwnPublicationUrl,
   MAX_NAME_LENGTH,
@@ -137,10 +138,18 @@ const getSettings = createServerFn({ method: "GET" }).handler(async () => {
 
 export const Route = createFileRoute("/settings")({
   validateSearch: (search: Record<string, unknown>) => {
-    const out: { error?: string; saved?: boolean; moved?: boolean } = {};
+    const out: {
+      error?: string;
+      saved?: boolean;
+      moved?: boolean;
+      kind?: "theme";
+    } = {};
     if (typeof search.error === "string") out.error = search.error;
     if (search.saved === "1" || search.saved === 1) out.saved = true;
     if (search.moved === "1" || search.moved === 1) out.moved = true;
+    // Which save it was. Only "theme" is distinguished, because that is the
+    // feature whose adoption we cannot otherwise see.
+    if (search.kind === "theme") out.kind = "theme";
     return out;
   },
   loader: async () => {
@@ -362,9 +371,18 @@ function SettingsPage() {
     theme,
     dataCounts,
   } = Route.useLoaderData();
-  const { error, saved, moved } = Route.useSearch();
+  const { error, saved, moved, kind } = Route.useSearch();
   const message = errorMessage(error);
   const [iconBusy, setIconBusy] = useState(false);
+
+  // Theme adoption, captured where the save LANDS rather than where it was
+  // submitted: the form posts to /api/publish and redirects, so the browser
+  // that submitted it is gone by the time the write succeeds. Same pattern the
+  // dashboard uses for post_published. Fires once per arrival with kind=theme,
+  // never on a plain profile save.
+  useEffect(() => {
+    if (saved && kind === "theme") capture("theme_saved", { ident });
+  }, [saved, kind, ident]);
 
   return (
     <AppShell header={{ variant: "signed-in", ident, active: "settings" }}>
