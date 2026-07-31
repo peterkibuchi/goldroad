@@ -9,109 +9,44 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as WriteRouteImport } from './routes/write'
-import { Route as TermsRouteImport } from './routes/terms'
-import { Route as StatsRouteImport } from './routes/stats'
-import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
-import { Route as SettingsRouteImport } from './routes/settings'
-import { Route as ReportRouteImport } from './routes/report'
-import { Route as PrivacyRouteImport } from './routes/privacy'
-import { Route as PoliciesRouteImport } from './routes/policies'
-import { Route as OpenRouteImport } from './routes/open'
-import { Route as LogoutRouteImport } from './routes/logout'
-import { Route as LoginRouteImport } from './routes/login'
-import { Route as LeavingSubstackRouteImport } from './routes/leaving-substack'
-import { Route as ImportRouteImport } from './routes/import'
-import { Route as HomeRouteImport } from './routes/home'
-import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as HomeRouteImport } from './routes/home'
+import { Route as ImportRouteImport } from './routes/import'
+import { Route as LeavingSubstackRouteImport } from './routes/leaving-substack'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as LogoutRouteImport } from './routes/logout'
+import { Route as OpenRouteImport } from './routes/open'
+import { Route as PoliciesRouteImport } from './routes/policies'
+import { Route as PrivacyRouteImport } from './routes/privacy'
+import { Route as ReportRouteImport } from './routes/report'
+import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
+import { Route as StatsRouteImport } from './routes/stats'
+import { Route as TermsRouteImport } from './routes/terms'
+import { Route as WriteRouteImport } from './routes/write'
 import { Route as AtChar123handleChar125IndexRouteImport } from './routes/@{$handle}.index'
-import { Route as OauthJwksDotjsonRouteImport } from './routes/oauth.jwks[.]json'
-import { Route as OauthClientMetadataDotjsonRouteImport } from './routes/oauth.client-metadata[.]json'
-import { Route as OauthCallbackRouteImport } from './routes/oauth.callback'
-import { Route as ApiWaitlistRouteImport } from './routes/api.waitlist'
-import { Route as ApiStatsRouteImport } from './routes/api.stats'
-import { Route as ApiReportRouteImport } from './routes/api.report'
-import { Route as ApiPublishRouteImport } from './routes/api.publish'
-import { Route as ApiImportRouteImport } from './routes/api.import'
-import { Route as ApiDraftsRouteImport } from './routes/api.drafts'
-import { Route as AtChar123handleChar125RssDotxmlRouteImport } from './routes/@{$handle}.rss[.]xml'
 import { Route as AtChar123handleChar125RkeyRouteImport } from './routes/@{$handle}.$rkey'
-import { Route as PHandleRkeyRouteImport } from './routes/p.$handle.$rkey'
-import { Route as ImgDidCidRouteImport } from './routes/img.$did.$cid'
-import { Route as ApiImportStatusRouteImport } from './routes/api.import.status'
-import { Route as ApiImportDraftRouteImport } from './routes/api.import.draft'
-import { Route as ApiAccountExportRouteImport } from './routes/api.account.export'
+import { Route as AtChar123handleChar125RssDotxmlRouteImport } from './routes/@{$handle}.rss[.]xml'
+import { Route as ApiDraftsRouteImport } from './routes/api.drafts'
+import { Route as ApiImportRouteImport } from './routes/api.import'
+import { Route as ApiPublishRouteImport } from './routes/api.publish'
+import { Route as ApiReportRouteImport } from './routes/api.report'
+import { Route as ApiStatsRouteImport } from './routes/api.stats'
+import { Route as ApiWaitlistRouteImport } from './routes/api.waitlist'
+import { Route as OauthCallbackRouteImport } from './routes/oauth.callback'
+import { Route as OauthClientMetadataDotjsonRouteImport } from './routes/oauth.client-metadata[.]json'
+import { Route as OauthJwksDotjsonRouteImport } from './routes/oauth.jwks[.]json'
 import { Route as ApiAccountDeleteRouteImport } from './routes/api.account.delete'
+import { Route as ApiAccountExportRouteImport } from './routes/api.account.export'
+import { Route as ApiImportDraftRouteImport } from './routes/api.import.draft'
+import { Route as ApiImportStatusRouteImport } from './routes/api.import.status'
+import { Route as ImgDidCidRouteImport } from './routes/img.$did.$cid'
+import { Route as PHandleRkeyRouteImport } from './routes/p.$handle.$rkey'
 
-const WriteRoute = WriteRouteImport.update({
-  id: '/write',
-  path: '/write',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const TermsRoute = TermsRouteImport.update({
-  id: '/terms',
-  path: '/terms',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const StatsRoute = StatsRouteImport.update({
-  id: '/stats',
-  path: '/stats',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
-  id: '/sitemap.xml',
-  path: '/sitemap.xml',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SettingsRoute = SettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ReportRoute = ReportRouteImport.update({
-  id: '/report',
-  path: '/report',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PrivacyRoute = PrivacyRouteImport.update({
-  id: '/privacy',
-  path: '/privacy',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PoliciesRoute = PoliciesRouteImport.update({
-  id: '/policies',
-  path: '/policies',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const OpenRoute = OpenRouteImport.update({
-  id: '/open',
-  path: '/open',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LogoutRoute = LogoutRouteImport.update({
-  id: '/logout',
-  path: '/logout',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LeavingSubstackRoute = LeavingSubstackRouteImport.update({
-  id: '/leaving-substack',
-  path: '/leaving-substack',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ImportRoute = ImportRouteImport.update({
-  id: '/import',
-  path: '/import',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const HomeRoute = HomeRouteImport.update({
-  id: '/home',
-  path: '/home',
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DashboardRoute = DashboardRouteImport.update({
@@ -119,9 +54,74 @@ const DashboardRoute = DashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const HomeRoute = HomeRouteImport.update({
+  id: '/home',
+  path: '/home',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ImportRoute = ImportRouteImport.update({
+  id: '/import',
+  path: '/import',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LeavingSubstackRoute = LeavingSubstackRouteImport.update({
+  id: '/leaving-substack',
+  path: '/leaving-substack',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LogoutRoute = LogoutRouteImport.update({
+  id: '/logout',
+  path: '/logout',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OpenRoute = OpenRouteImport.update({
+  id: '/open',
+  path: '/open',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PoliciesRoute = PoliciesRouteImport.update({
+  id: '/policies',
+  path: '/policies',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrivacyRoute = PrivacyRouteImport.update({
+  id: '/privacy',
+  path: '/privacy',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReportRoute = ReportRouteImport.update({
+  id: '/report',
+  path: '/report',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
+  id: '/sitemap.xml',
+  path: '/sitemap.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StatsRoute = StatsRouteImport.update({
+  id: '/stats',
+  path: '/stats',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TermsRoute = TermsRouteImport.update({
+  id: '/terms',
+  path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const WriteRoute = WriteRouteImport.update({
+  id: '/write',
+  path: '/write',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AtChar123handleChar125IndexRoute =
@@ -130,9 +130,51 @@ const AtChar123handleChar125IndexRoute =
     path: '/@{$handle}/',
     getParentRoute: () => rootRouteImport,
   } as any)
-const OauthJwksDotjsonRoute = OauthJwksDotjsonRouteImport.update({
-  id: '/oauth/jwks.json',
-  path: '/oauth/jwks.json',
+const AtChar123handleChar125RkeyRoute =
+  AtChar123handleChar125RkeyRouteImport.update({
+    id: '/@{$handle}/$rkey',
+    path: '/@{$handle}/$rkey',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const AtChar123handleChar125RssDotxmlRoute =
+  AtChar123handleChar125RssDotxmlRouteImport.update({
+    id: '/@{$handle}/rss.xml',
+    path: '/@{$handle}/rss.xml',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiDraftsRoute = ApiDraftsRouteImport.update({
+  id: '/api/drafts',
+  path: '/api/drafts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiImportRoute = ApiImportRouteImport.update({
+  id: '/api/import',
+  path: '/api/import',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublishRoute = ApiPublishRouteImport.update({
+  id: '/api/publish',
+  path: '/api/publish',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiReportRoute = ApiReportRouteImport.update({
+  id: '/api/report',
+  path: '/api/report',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiStatsRoute = ApiStatsRouteImport.update({
+  id: '/api/stats',
+  path: '/api/stats',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWaitlistRoute = ApiWaitlistRouteImport.update({
+  id: '/api/waitlist',
+  path: '/api/waitlist',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OauthCallbackRoute = OauthCallbackRouteImport.update({
+  id: '/oauth/callback',
+  path: '/oauth/callback',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OauthClientMetadataDotjsonRoute =
@@ -141,81 +183,39 @@ const OauthClientMetadataDotjsonRoute =
     path: '/oauth/client-metadata.json',
     getParentRoute: () => rootRouteImport,
   } as any)
-const OauthCallbackRoute = OauthCallbackRouteImport.update({
-  id: '/oauth/callback',
-  path: '/oauth/callback',
+const OauthJwksDotjsonRoute = OauthJwksDotjsonRouteImport.update({
+  id: '/oauth/jwks.json',
+  path: '/oauth/jwks.json',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiWaitlistRoute = ApiWaitlistRouteImport.update({
-  id: '/api/waitlist',
-  path: '/api/waitlist',
+const ApiAccountDeleteRoute = ApiAccountDeleteRouteImport.update({
+  id: '/api/account/delete',
+  path: '/api/account/delete',
   getParentRoute: () => rootRouteImport,
-} as any)
-const ApiStatsRoute = ApiStatsRouteImport.update({
-  id: '/api/stats',
-  path: '/api/stats',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiReportRoute = ApiReportRouteImport.update({
-  id: '/api/report',
-  path: '/api/report',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiPublishRoute = ApiPublishRouteImport.update({
-  id: '/api/publish',
-  path: '/api/publish',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiImportRoute = ApiImportRouteImport.update({
-  id: '/api/import',
-  path: '/api/import',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiDraftsRoute = ApiDraftsRouteImport.update({
-  id: '/api/drafts',
-  path: '/api/drafts',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AtChar123handleChar125RssDotxmlRoute =
-  AtChar123handleChar125RssDotxmlRouteImport.update({
-    id: '/@{$handle}/rss.xml',
-    path: '/@{$handle}/rss.xml',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const AtChar123handleChar125RkeyRoute =
-  AtChar123handleChar125RkeyRouteImport.update({
-    id: '/@{$handle}/$rkey',
-    path: '/@{$handle}/$rkey',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const PHandleRkeyRoute = PHandleRkeyRouteImport.update({
-  id: '/p/$handle/$rkey',
-  path: '/p/$handle/$rkey',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ImgDidCidRoute = ImgDidCidRouteImport.update({
-  id: '/img/$did/$cid',
-  path: '/img/$did/$cid',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiImportStatusRoute = ApiImportStatusRouteImport.update({
-  id: '/status',
-  path: '/status',
-  getParentRoute: () => ApiImportRoute,
-} as any)
-const ApiImportDraftRoute = ApiImportDraftRouteImport.update({
-  id: '/draft',
-  path: '/draft',
-  getParentRoute: () => ApiImportRoute,
 } as any)
 const ApiAccountExportRoute = ApiAccountExportRouteImport.update({
   id: '/api/account/export',
   path: '/api/account/export',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ApiAccountDeleteRoute = ApiAccountDeleteRouteImport.update({
-  id: '/api/account/delete',
-  path: '/api/account/delete',
+const ApiImportDraftRoute = ApiImportDraftRouteImport.update({
+  id: '/draft',
+  path: '/draft',
+  getParentRoute: () => ApiImportRoute,
+} as any)
+const ApiImportStatusRoute = ApiImportStatusRouteImport.update({
+  id: '/status',
+  path: '/status',
+  getParentRoute: () => ApiImportRoute,
+} as any)
+const ImgDidCidRoute = ImgDidCidRouteImport.update({
+  id: '/img/$did/$cid',
+  path: '/img/$did/$cid',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PHandleRkeyRoute = PHandleRkeyRouteImport.update({
+  id: '/p/$handle/$rkey',
+  path: '/p/$handle/$rkey',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -476,102 +476,11 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/write': {
-      id: '/write'
-      path: '/write'
-      fullPath: '/write'
-      preLoaderRoute: typeof WriteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/terms': {
-      id: '/terms'
-      path: '/terms'
-      fullPath: '/terms'
-      preLoaderRoute: typeof TermsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/stats': {
-      id: '/stats'
-      path: '/stats'
-      fullPath: '/stats'
-      preLoaderRoute: typeof StatsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/sitemap.xml': {
-      id: '/sitemap.xml'
-      path: '/sitemap.xml'
-      fullPath: '/sitemap.xml'
-      preLoaderRoute: typeof SitemapDotxmlRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/settings': {
-      id: '/settings'
-      path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof SettingsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/report': {
-      id: '/report'
-      path: '/report'
-      fullPath: '/report'
-      preLoaderRoute: typeof ReportRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/privacy': {
-      id: '/privacy'
-      path: '/privacy'
-      fullPath: '/privacy'
-      preLoaderRoute: typeof PrivacyRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/policies': {
-      id: '/policies'
-      path: '/policies'
-      fullPath: '/policies'
-      preLoaderRoute: typeof PoliciesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/open': {
-      id: '/open'
-      path: '/open'
-      fullPath: '/open'
-      preLoaderRoute: typeof OpenRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/logout': {
-      id: '/logout'
-      path: '/logout'
-      fullPath: '/logout'
-      preLoaderRoute: typeof LogoutRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/leaving-substack': {
-      id: '/leaving-substack'
-      path: '/leaving-substack'
-      fullPath: '/leaving-substack'
-      preLoaderRoute: typeof LeavingSubstackRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/import': {
-      id: '/import'
-      path: '/import'
-      fullPath: '/import'
-      preLoaderRoute: typeof ImportRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/home': {
-      id: '/home'
-      path: '/home'
-      fullPath: '/home'
-      preLoaderRoute: typeof HomeRouteImport
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dashboard': {
@@ -581,11 +490,102 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+    '/home': {
+      id: '/home'
+      path: '/home'
+      fullPath: '/home'
+      preLoaderRoute: typeof HomeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/import': {
+      id: '/import'
+      path: '/import'
+      fullPath: '/import'
+      preLoaderRoute: typeof ImportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/leaving-substack': {
+      id: '/leaving-substack'
+      path: '/leaving-substack'
+      fullPath: '/leaving-substack'
+      preLoaderRoute: typeof LeavingSubstackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/logout': {
+      id: '/logout'
+      path: '/logout'
+      fullPath: '/logout'
+      preLoaderRoute: typeof LogoutRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/open': {
+      id: '/open'
+      path: '/open'
+      fullPath: '/open'
+      preLoaderRoute: typeof OpenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/policies': {
+      id: '/policies'
+      path: '/policies'
+      fullPath: '/policies'
+      preLoaderRoute: typeof PoliciesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/privacy': {
+      id: '/privacy'
+      path: '/privacy'
+      fullPath: '/privacy'
+      preLoaderRoute: typeof PrivacyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/report': {
+      id: '/report'
+      path: '/report'
+      fullPath: '/report'
+      preLoaderRoute: typeof ReportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sitemap.xml': {
+      id: '/sitemap.xml'
+      path: '/sitemap.xml'
+      fullPath: '/sitemap.xml'
+      preLoaderRoute: typeof SitemapDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/stats': {
+      id: '/stats'
+      path: '/stats'
+      fullPath: '/stats'
+      preLoaderRoute: typeof StatsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/terms': {
+      id: '/terms'
+      path: '/terms'
+      fullPath: '/terms'
+      preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/write': {
+      id: '/write'
+      path: '/write'
+      fullPath: '/write'
+      preLoaderRoute: typeof WriteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/@{$handle}/': {
@@ -595,67 +595,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AtChar123handleChar125IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/oauth/jwks.json': {
-      id: '/oauth/jwks.json'
-      path: '/oauth/jwks.json'
-      fullPath: '/oauth/jwks.json'
-      preLoaderRoute: typeof OauthJwksDotjsonRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/oauth/client-metadata.json': {
-      id: '/oauth/client-metadata.json'
-      path: '/oauth/client-metadata.json'
-      fullPath: '/oauth/client-metadata.json'
-      preLoaderRoute: typeof OauthClientMetadataDotjsonRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/oauth/callback': {
-      id: '/oauth/callback'
-      path: '/oauth/callback'
-      fullPath: '/oauth/callback'
-      preLoaderRoute: typeof OauthCallbackRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/waitlist': {
-      id: '/api/waitlist'
-      path: '/api/waitlist'
-      fullPath: '/api/waitlist'
-      preLoaderRoute: typeof ApiWaitlistRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/stats': {
-      id: '/api/stats'
-      path: '/api/stats'
-      fullPath: '/api/stats'
-      preLoaderRoute: typeof ApiStatsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/report': {
-      id: '/api/report'
-      path: '/api/report'
-      fullPath: '/api/report'
-      preLoaderRoute: typeof ApiReportRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/publish': {
-      id: '/api/publish'
-      path: '/api/publish'
-      fullPath: '/api/publish'
-      preLoaderRoute: typeof ApiPublishRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/import': {
-      id: '/api/import'
-      path: '/api/import'
-      fullPath: '/api/import'
-      preLoaderRoute: typeof ApiImportRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/drafts': {
-      id: '/api/drafts'
-      path: '/api/drafts'
-      fullPath: '/api/drafts'
-      preLoaderRoute: typeof ApiDraftsRouteImport
+    '/@{$handle}/$rkey': {
+      id: '/@{$handle}/$rkey'
+      path: '/@{$handle}/$rkey'
+      fullPath: '/@{$handle}/$rkey'
+      preLoaderRoute: typeof AtChar123handleChar125RkeyRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/@{$handle}/rss.xml': {
@@ -665,40 +609,75 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AtChar123handleChar125RssDotxmlRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/@{$handle}/$rkey': {
-      id: '/@{$handle}/$rkey'
-      path: '/@{$handle}/$rkey'
-      fullPath: '/@{$handle}/$rkey'
-      preLoaderRoute: typeof AtChar123handleChar125RkeyRouteImport
+    '/api/drafts': {
+      id: '/api/drafts'
+      path: '/api/drafts'
+      fullPath: '/api/drafts'
+      preLoaderRoute: typeof ApiDraftsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/p/$handle/$rkey': {
-      id: '/p/$handle/$rkey'
-      path: '/p/$handle/$rkey'
-      fullPath: '/p/$handle/$rkey'
-      preLoaderRoute: typeof PHandleRkeyRouteImport
+    '/api/import': {
+      id: '/api/import'
+      path: '/api/import'
+      fullPath: '/api/import'
+      preLoaderRoute: typeof ApiImportRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/img/$did/$cid': {
-      id: '/img/$did/$cid'
-      path: '/img/$did/$cid'
-      fullPath: '/img/$did/$cid'
-      preLoaderRoute: typeof ImgDidCidRouteImport
+    '/api/publish': {
+      id: '/api/publish'
+      path: '/api/publish'
+      fullPath: '/api/publish'
+      preLoaderRoute: typeof ApiPublishRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/import/status': {
-      id: '/api/import/status'
-      path: '/status'
-      fullPath: '/api/import/status'
-      preLoaderRoute: typeof ApiImportStatusRouteImport
-      parentRoute: typeof ApiImportRoute
+    '/api/report': {
+      id: '/api/report'
+      path: '/api/report'
+      fullPath: '/api/report'
+      preLoaderRoute: typeof ApiReportRouteImport
+      parentRoute: typeof rootRouteImport
     }
-    '/api/import/draft': {
-      id: '/api/import/draft'
-      path: '/draft'
-      fullPath: '/api/import/draft'
-      preLoaderRoute: typeof ApiImportDraftRouteImport
-      parentRoute: typeof ApiImportRoute
+    '/api/stats': {
+      id: '/api/stats'
+      path: '/api/stats'
+      fullPath: '/api/stats'
+      preLoaderRoute: typeof ApiStatsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/waitlist': {
+      id: '/api/waitlist'
+      path: '/api/waitlist'
+      fullPath: '/api/waitlist'
+      preLoaderRoute: typeof ApiWaitlistRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/oauth/callback': {
+      id: '/oauth/callback'
+      path: '/oauth/callback'
+      fullPath: '/oauth/callback'
+      preLoaderRoute: typeof OauthCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/oauth/client-metadata.json': {
+      id: '/oauth/client-metadata.json'
+      path: '/oauth/client-metadata.json'
+      fullPath: '/oauth/client-metadata.json'
+      preLoaderRoute: typeof OauthClientMetadataDotjsonRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/oauth/jwks.json': {
+      id: '/oauth/jwks.json'
+      path: '/oauth/jwks.json'
+      fullPath: '/oauth/jwks.json'
+      preLoaderRoute: typeof OauthJwksDotjsonRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/account/delete': {
+      id: '/api/account/delete'
+      path: '/api/account/delete'
+      fullPath: '/api/account/delete'
+      preLoaderRoute: typeof ApiAccountDeleteRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/account/export': {
       id: '/api/account/export'
@@ -707,11 +686,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAccountExportRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/api/account/delete': {
-      id: '/api/account/delete'
-      path: '/api/account/delete'
-      fullPath: '/api/account/delete'
-      preLoaderRoute: typeof ApiAccountDeleteRouteImport
+    '/api/import/draft': {
+      id: '/api/import/draft'
+      path: '/draft'
+      fullPath: '/api/import/draft'
+      preLoaderRoute: typeof ApiImportDraftRouteImport
+      parentRoute: typeof ApiImportRoute
+    }
+    '/api/import/status': {
+      id: '/api/import/status'
+      path: '/status'
+      fullPath: '/api/import/status'
+      preLoaderRoute: typeof ApiImportStatusRouteImport
+      parentRoute: typeof ApiImportRoute
+    }
+    '/img/$did/$cid': {
+      id: '/img/$did/$cid'
+      path: '/img/$did/$cid'
+      fullPath: '/img/$did/$cid'
+      preLoaderRoute: typeof ImgDidCidRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/p/$handle/$rkey': {
+      id: '/p/$handle/$rkey'
+      path: '/p/$handle/$rkey'
+      fullPath: '/p/$handle/$rkey'
+      preLoaderRoute: typeof PHandleRkeyRouteImport
       parentRoute: typeof rootRouteImport
     }
   }

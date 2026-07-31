@@ -145,6 +145,25 @@ describe("ThemeEditor — contrast warns, and never blocks", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
+  it("speaks in ink, not in the accent — it is advice, not an error", () => {
+    // The accent carries two meanings in this app: the primary action, and an
+    // error. A contrast warning is neither — it remarks on a choice we are
+    // about to save anyway. It also sits beside a preview rendering the
+    // WRITER'S accent, and two unrelated reds together read as a rendering
+    // fault rather than as two meanings.
+    const { container } = render(
+      <ThemeEditor publicationName="The Long Way" theme={null} />,
+    );
+    fireEvent.change(colourInput("foreground"), {
+      target: { value: "#c8c8c8" },
+    });
+    const warning = container.querySelector('[aria-live="polite"] p');
+    expect(warning).not.toBeNull();
+    expect(warning?.className).toContain("text-ink");
+    expect(warning?.className).not.toContain("text-spot");
+    expect(warning?.className).not.toContain("border-spot");
+  });
+
   it("keeps saving available no matter how unreadable the choice is", () => {
     render(<ThemeEditor publicationName="The Long Way" theme={null} />);
     fireEvent.change(colourInput("foreground"), {
