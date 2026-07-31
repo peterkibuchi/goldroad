@@ -18,7 +18,12 @@
  * release notes are a CHANGELOG for users, assembled from merged PR titles, not
  * a place to restate reasoning that belongs in the commits.
  *
- * Usage: pnpm release            (cuts the next counter for today)
+ * WHAT THIS DOES, in order: pushes `main` to the `release` branch — which is
+ * the production channel and therefore the actual deploy — then tags and writes
+ * the GitHub release. Deploy before stamp, so a version never claims to be live
+ * before it is.
+ *
+ * Usage: pnpm release            (deploys, then cuts the next counter for today)
  *        pnpm release --dry-run  (prints the tag it would cut, touches nothing)
  */
 import { execFileSync } from "node:child_process";
@@ -86,6 +91,13 @@ if (run("git", ["status", "--porcelain"]) !== "")
   throw new Error("working tree is dirty");
 if (run("git", ["rev-list", "--count", "origin/main..HEAD"]) !== "0")
   throw new Error("main has commits that are not pushed");
+
+// Deploy FIRST, then stamp it. `release` is the production channel
+// (wrangler.jsonc) — pushing it is what ships. Tagging before that would mint a
+// version that claims to be live and is not, and the first version of this
+// script did exactly that: it cut v2026.07.31.15 while production still served
+// the commit before it.
+run("git", ["push", "--quiet", "origin", "main:release"]);
 
 run("git", ["tag", "-a", tag, "-m", tag]);
 run("git", ["push", "--quiet", "origin", tag]);
