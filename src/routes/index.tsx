@@ -31,13 +31,13 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Publish where your readers already are. Goldroad turns your Bluesky handle into a publication: long-form on a page you own, sent to the timeline as a native card. Your posts, your list, your name — portable, and we take 0% of what readers pay you.",
+          "Publish where your readers already are. Goldroad turns your Bluesky handle into a publication: long-form on a page you own, sent to the timeline as a native card. Your posts, your name, your archive — portable, and when reader payments ship we take 0% of what readers pay you.",
       },
       { property: "og:title", content: "Goldroad" },
       {
         property: "og:description",
         content:
-          "Publish where your readers already are — long-form on a page you own, sent to the Bluesky timeline as a native card. We take 0% of what readers pay you.",
+          "Publish where your readers already are — long-form on a page you own, sent to the Bluesky timeline as a native card. When reader payments ship, we take 0% of what readers pay you.",
       },
       { property: "og:type", content: "website" },
       { property: "og:url", content: `${CANONICAL_ORIGIN}/` },
@@ -457,9 +457,9 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
                 Your list and your readers
               </dt>
               <dd className="mt-2 text-ink-soft text-sm leading-relaxed">
-                Followers stay tied to your handle, not our app. Subscriber
-                emails export any day. Leaving Goldroad takes all of it with
-                you.
+                Followers stay tied to your handle, not our app. Your archive
+                exports any day, and every post already lives in a repository
+                you control. Leaving Goldroad takes all of it with you.
               </dd>
             </div>
             <div>
@@ -500,11 +500,12 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
             Be one of the founding writers.
           </h2>
           <p className="mt-4 max-w-[58ch] text-pretty text-ink-soft text-lg leading-relaxed">
-            Goldroad is almost here. The core already works — publishing to your
-            own repo, native on Bluesky — and we're opening to founding writers
-            first, before newsletters, reader payments, and Substack import
-            land. Join and you'll get in early, a say in what we build, and
-            founding perks when paid plans arrive.
+            The core already works: publishing to your own repo, native on
+            Bluesky, your archive imported from Substack, Ghost, Medium or
+            WordPress, scheduled posts, and your own colours on your pages.
+            We're opening to founding writers before newsletters and reader
+            payments land. Join and you'll get in early, a say in what we build,
+            and founding perks when paid plans arrive.
           </p>
           <div className="mt-8 max-w-xl">
             <FoundingWritersForm />
