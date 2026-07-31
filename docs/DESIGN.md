@@ -116,13 +116,35 @@ Body text holds at least 4.5:1 contrast; ink-soft on paper passes and must never
 lightened past it. Motion stays under ~150ms and is limited to color and transform; any
 future entrance animation needs a reduced-motion fallback.
 
-## Dark mode is deferred, deliberately
+## Dark mode, and who decides how a page looks
 
-Product surfaces are light-only for now. This is a decision, not an oversight: the
-Pressroom register is literally ink on paper, so a dark theme is a second art direction
-rather than a variable swap. Reading surfaces will get a dark treatment when writer
-theming lands, which is the protocol-native place for it — a theme belongs to the writer's
-publication, not to our toggle. The `.dark` variable block in `styles.css` exists only to
-keep editor internals sane; no product surface sets the class.
+Dark mode is not a variable swap of the light palette. Pressroom is literally ink on paper,
+and mechanically inverting it gives you the cheap grey every default dark mode has. The dark
+register is the **black-stock edition** — the letterpress artifact where printers pull opaque
+white and warm inks on black cover stock. Warm near-black rather than a void, faintly toned
+white rather than glaring, and an accent that *rises* in lightness because black stock
+swallows a pigment's depth. Values and their contrast ratios are documented at the palette
+block in `src/styles.css`; derive from the tokens, never re-pick.
 
-Revisit when writer theming ships, or when readers ask for it.
+**Which surfaces follow which appearance** is the load-bearing part, and it is a precedence
+rule rather than an ownership rule:
+
+| Surface | Follows |
+| --- | --- |
+| Marketing, app chrome, the editor, legal and `/open` | Our appearance — the reader's toggle or their system |
+| A publication page whose author set a theme | The **author's** colours |
+| A publication page with no theme | The **reader's** — an absence is not an instruction to be white |
+| Any page, where the reader chose light or dark **by hand** | The **reader's**, overriding an author's theme |
+
+The last row is the accessibility floor: following your system is not an opinion about
+someone else's page, but choosing by hand is a statement about how you need to read. So an
+explicit choice wins, an untouched one defers, and a themed page offers a way back ("as
+published") so the override can't quietly become the end of theming. An overridden theme is
+**dropped**, never adjusted — auto-darkening a chosen palette is what makes browser
+dark-mode hacks muddy, and it misrepresents the author's brand.
+
+`color-scheme` is declared on the root so the parts of a page the browser paints and CSS
+can't reach — a `<select>`'s popup, scrollbars, autofill — follow the edition too.
+
+If a surface ever needs a `dark:` utility, that is a hard-coded-colour bug to fix at the
+source, not a case to special-case.
