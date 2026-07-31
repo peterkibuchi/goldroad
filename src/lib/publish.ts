@@ -3,12 +3,20 @@
  * `site.standard.publication` — the consensus lexicons —
  * using the typed shapes from @atcute/standard-site. NO custom NSIDs here,
  * ever, until we own a domain to root our lexicon namespace on (NSIDs are
- * permanent, unrenameable public API).
+ * permanent, unrenameable public API). The one field the lexicons don't
+ * define — the inline-image blob list — is a plain namespaced property with a
+ * storage reason, not a content format: see DocumentRecord below.
  */
 import type * as SiteStandardDocument from "@atcute/standard-site/types/document";
 import type * as SiteStandardPublication from "@atcute/standard-site/types/publication";
 
 import type { StandardDocument, StandardPublication } from "~/lib/atproto";
+import {
+  type BlobObject,
+  isAllowedImageMime,
+  isBlobObject,
+  MAX_IMAGE_BLOB_BYTES,
+} from "~/lib/blob";
 import { stripMarkdown } from "~/lib/feed";
 import { type BasicTheme, themeRecord } from "~/lib/theme";
 
@@ -57,6 +65,118 @@ export type CoverImageBlob = NonNullable<
   SiteStandardDocument.Main["coverImage"]
 >;
 
+/**
+ * An inline body image's blob. The modern blob shape only (`isBlobObject`
+ * refuses the legacy `{cid, mimeType}` form the cover type still tolerates) —
+ * nothing we write predates it, and /img needs `ref.$link`.
+ */
+export type InlineImageBlob = BlobObject;
+
+/**
+ * Inline body images per document. Generous for an illustrated post or an
+ * imported archive item (~5 images is typical), small enough that the blob
+ * array can never bloat the record.
+ */
+export const MAX_INLINE_IMAGES = 50;
+
+/**
+ * Where inline-image blobs are referenced from. NOT a `site.standard.document`
+ * field — the lexicon has one blob slot (`coverImage`) and none for body
+ * images — and it is not decoration either: an atproto PDS only serves blobs
+ * that a record references. `com.atproto.sync.getBlob` reads the PERMANENT
+ * blobstore key, and `uploadBlob` alone leaves a blob untethered at a temp key
+ * (verified against the reference PDS: actor-store/blob/{reader,transactor}.ts
+ * — `verifyBlobAndMakePermanent` runs on record write, `deleteDereferencedBlobs`
+ * on every subsequent one). So a body image whose CID the record never names
+ * would 404 forever, and one dropped from an edit is correctly reclaimed.
+ *
+ * A plain namespaced field, deliberately not an invented `pub.goldroad.*` NSID:
+ * NSIDs are permanent public API (see AGENTS.md) and this is a storage
+ * requirement, not a content format. Other apps ignore it; the markdown in
+ * `textContent` stays the interoperable representation, and `/img/<did>/<cid>`
+ * names both halves of a `getBlob` call for anyone who wants the original.
+ */
+export interface DocumentRecord extends SiteStandardDocument.Main {
+  goldroadInlineImages?: InlineImageBlob[];
+}
+
+/**
+ * The one seam where a document record crosses into the XRPC `record` input
+ * (an open JSON object). The generated lexicon type doesn't know about the
+ * inline-image field — that IS the point of an extension field — and an
+ * interface extending it stops satisfying the input's index signature, so the
+ * widening happens here, once, instead of at every write site.
+ */
+export function toRecordInput(record: DocumentRecord): Record<string, unknown> {
+  return { ...record } as Record<string, unknown>;
+}
+
+/**
+ * The blob CIDs a body actually uses, read off the `/img/<did>/<cid>` proxy
+ * paths the editor writes. The DID segment is not matched: it is always the
+ * writer's own repo, it may be percent-encoded (blobImagePath encodes it), and
+ * the CID alone is what a blob reference is keyed on.
+ */
+function inlineImageCidsInBody(body: string): Set<string> {
+  const cids = new Set<string>();
+  for (const match of body.matchAll(
+    /\/img\/[^/\s)"'<>]+\/([a-zA-Z0-9]{24,256})/g,
+  )) {
+    cids.add(match[1]);
+  }
+  return cids;
+}
+
+/**
+ * The inline-image blobs a record must reference: every candidate blob whose
+ * CID the body still uses, validated to the same terms as a cover (well-formed
+ * blob, allowlisted raster, within the lexicon's 1MB cap) and deduped.
+ *
+ * Candidates are untrusted — they arrive as JSON from the browser (the blobs
+ * `/api/publish?intent=uploadImage` handed back) merged with whatever the
+ * previous version of the record carried. Filtering by the body is what keeps
+ * the two in step: an image the writer deleted loses its reference and the PDS
+ * reclaims it; an image they kept keeps resolving after the edit.
+ */
+export function inlineImagesForBody(
+  body: string,
+  candidates: readonly unknown[],
+): InlineImageBlob[] {
+  const used = inlineImageCidsInBody(body);
+  if (used.size === 0) return [];
+  const seen = new Set<string>();
+  const out: InlineImageBlob[] = [];
+  for (const candidate of candidates) {
+    if (out.length >= MAX_INLINE_IMAGES) break;
+    if (!isBlobObject(candidate)) continue;
+    if (!isAllowedImageMime(candidate.mimeType)) continue;
+    if (candidate.size <= 0 || candidate.size > MAX_IMAGE_BLOB_BYTES) continue;
+    const cid = candidate.ref.$link;
+    if (!used.has(cid) || seen.has(cid)) continue;
+    seen.add(cid);
+    out.push(candidate);
+  }
+  return out;
+}
+
+/**
+ * The browser's `images` form field → candidate blobs. Malformed JSON is an
+ * empty list, never a failed publish: the words are what matter, and an image
+ * that loses its reference degrades to a broken picture, not a lost post.
+ */
+export function parseInlineImagesField(raw: unknown): unknown[] {
+  if (typeof raw !== "string" || raw === "") return [];
+  // Bounded before parsing: ~200 bytes per blob entry, so this admits every
+  // legitimate payload and refuses a pathological one without parsing it.
+  if (raw.length > MAX_INLINE_IMAGES * 500) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 export type DocumentInput = {
   title: string;
   /** Markdown body (BlockNote's lossy markdown export; plain prose is valid markdown). */
@@ -71,6 +191,9 @@ export type DocumentInput = {
   /** Cover image blob, already uploaded via com.atproto.repo.uploadBlob —
    * the record reference is what keeps the blob alive on the PDS. */
   coverImage?: CoverImageBlob;
+  /** Candidate inline-image blobs (browser-submitted, untrusted) — filtered
+   * against the body by inlineImagesForBody before they reach the record. */
+  inlineImageSources?: readonly unknown[];
   publishedAt?: Date;
 };
 
@@ -142,12 +265,10 @@ export function writerDek(doc: {
  * `textContent` (interop-readable; plain prose round-trips cleanly); the
  * rich `content` union waits for our own lexicon, post-domain.
  */
-export function buildDocumentRecord(
-  input: DocumentInput,
-): SiteStandardDocument.Main {
+export function buildDocumentRecord(input: DocumentInput): DocumentRecord {
   const { title, body } = validateTitleAndBody(input.title, input.body);
 
-  const record: SiteStandardDocument.Main = {
+  const record: DocumentRecord = {
     $type: "site.standard.document",
     title,
     // GenericUri template type; at:// and https:// URIs always contain ":".
@@ -159,6 +280,8 @@ export function buildDocumentRecord(
   const description = resolveDescription(input.dek, body);
   if (description) record.description = description;
   if (input.coverImage) record.coverImage = input.coverImage;
+  const inline = inlineImagesForBody(body, input.inlineImageSources ?? []);
+  if (inline.length > 0) record.goldroadInlineImages = inline;
   return record;
 }
 
@@ -183,9 +306,12 @@ export function updateDocumentRecord(
      * excerpt, exactly as it did before the field existed. */
     dek?: string;
     coverImage?: CoverImageBlob | null;
+    /** Blobs uploaded during THIS edit. The record's existing references are
+     * merged in automatically, so an untouched image keeps resolving. */
+    inlineImageSources?: readonly unknown[];
     updatedAt?: Date;
   },
-): SiteStandardDocument.Main {
+): DocumentRecord {
   if (existing.content != null)
     throw new Error("document has a rich content union — not editable here");
   if (typeof existing.site !== "string" || !existing.site.includes(":"))
@@ -198,11 +324,21 @@ export function updateDocumentRecord(
     title,
     publishedAt: existing.publishedAt ?? new Date().toISOString(),
     updatedAt: (changes.updatedAt ?? new Date()).toISOString(),
-  } as SiteStandardDocument.Main;
+  } as DocumentRecord;
   record.textContent = body || undefined;
   record.description = resolveDescription(changes.dek, body);
   if (changes.coverImage) record.coverImage = changes.coverImage;
   else if (changes.coverImage === null) record.coverImage = undefined;
+  // Recomputed from the SAVED body, never inherited wholesale: an image the
+  // writer deleted must lose its reference (the PDS then reclaims the blob),
+  // and one they kept must keep it (the PDS would otherwise reclaim that).
+  const inline = inlineImagesForBody(body, [
+    ...(changes.inlineImageSources ?? []),
+    ...(Array.isArray(existing.goldroadInlineImages)
+      ? existing.goldroadInlineImages
+      : []),
+  ]);
+  record.goldroadInlineImages = inline.length > 0 ? inline : undefined;
   return record;
 }
 

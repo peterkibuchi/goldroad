@@ -379,6 +379,10 @@ export type StandardDocument = {
   /** Cover/thumbnail image blob (lexicon: image/*, ≤1MB). Untrusted shape —
    * validate with isBlobObject (~/lib/blob) before dereferencing. */
   coverImage?: unknown;
+  /** Inline body-image blobs (our own field — see DocumentRecord in
+   * ~/lib/publish for why the record has to carry them). Untrusted shape;
+   * inlineImagesForBody validates every entry. */
+  goldroadInlineImages?: unknown;
 };
 
 /** site.standard.publication — untrusted network shape, fields optional.

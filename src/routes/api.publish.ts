@@ -19,7 +19,10 @@ import {
   type StandardPublication,
 } from "~/lib/atproto";
 import {
+  blobImagePath,
   isAllowedImageMime,
+  isBlobCid,
+  isBlobObject,
   MAX_IMAGE_BLOB_BYTES,
   thumbFromCover,
 } from "~/lib/blob";
@@ -45,6 +48,7 @@ import {
   LEGACY_ORIGINS,
   ownOrigins,
 } from "~/lib/origin";
+import { privateJson } from "~/lib/private-json";
 import {
   buildDocumentRecord,
   buildPublicationRecord,
@@ -58,7 +62,9 @@ import {
   MAX_NAME_LENGTH,
   MAX_PUBLICATION_DESCRIPTION_LENGTH,
   MAX_TITLE_LENGTH,
+  parseInlineImagesField,
   TID_RE,
+  toRecordInput,
   updateDocumentRecord,
   withBasicTheme,
 } from "~/lib/publish";
@@ -158,7 +164,8 @@ export const Route = createFileRoute("/api/publish")({
           intentField === "theme" ||
           intentField === "delete" ||
           intentField === "announce" ||
-          intentField === "migrate"
+          intentField === "migrate" ||
+          intentField === "uploadImage"
             ? intentField
             : "document";
 
@@ -174,6 +181,17 @@ export const Route = createFileRoute("/api/publish")({
           });
           for (const cookie of clearSessionCookies(url.protocol === "https:"))
             expired.append("set-cookie", cookie);
+          // The image upload is a fetch, not a form post: a 303 to an HTML
+          // page would reach it as an unreadable body. Say what happened.
+          if (intent === "uploadImage") {
+            expired.delete("location");
+            expired.set("content-type", "application/json");
+            expired.set("cache-control", "private, no-store");
+            return new Response(
+              JSON.stringify({ ok: false, error: "session_expired" }),
+              { status: 401, headers: expired },
+            );
+          }
           return new Response(null, { status: 303, headers: expired });
         }
 
@@ -204,6 +222,8 @@ export const Route = createFileRoute("/api/publish")({
             return announceDocument(ctx);
           case "migrate":
             return migratePublication(ctx);
+          case "uploadImage":
+            return uploadInlineImage(ctx);
           default:
             return publishDocument(ctx);
         }
@@ -246,6 +266,11 @@ async function publishDocument({
     dek.length > MAX_DEK_LENGTH
   )
     return backToWrite("too_long", editRkey || undefined);
+
+  // Blobs the editor uploaded for this draft's body images (intent=uploadImage
+  // handed them back). Untrusted: the record builders keep only the ones the
+  // body still references, and only if they validate as raster blobs in cap.
+  const inlineImageSources = parseInlineImagesField(form.get("images"));
 
   // ---- Cover image: optional multipart file → com.atproto.repo.uploadBlob.
   // Uploaded FIRST so both create and edit reference the returned blob — the
@@ -301,6 +326,7 @@ async function publishDocument({
         dek,
         // blob = replace, null = remove, undefined = keep the existing cover.
         coverImage: coverBlob ?? (removeCover ? null : undefined),
+        inlineImageSources,
       });
     } catch (err) {
       console.warn("record merge refused", err);
@@ -315,7 +341,7 @@ async function publishDocument({
         repo: did,
         collection: "site.standard.document",
         rkey: editRkey,
-        record,
+        record: toRecordInput(record),
         swapRecord: existing.cid,
       },
     });
@@ -416,6 +442,7 @@ async function publishDocument({
     site,
     path: `/${rkey}`,
     coverImage: coverBlob,
+    inlineImageSources,
     publishedAt: originalAt ?? undefined,
   });
 
@@ -424,7 +451,7 @@ async function publishDocument({
       repo: did,
       collection: "site.standard.document",
       rkey,
-      record,
+      record: toRecordInput(record),
     },
   });
   // @atcute/client does not throw on XRPC errors — check ok explicitly.
@@ -457,6 +484,66 @@ async function publishDocument({
   // Success lands on the dashboard: the new post on top, a "view it live"
   // link, and the explicit opt-in "Announce on Bluesky" action.
   return backToDashboard({ published: rkey });
+}
+
+/**
+ * An inline body image → a blob in the writer's own repo, answered as the
+ * same-origin `/img/<did>/<cid>` proxy path the editor writes into the
+ * markdown. Same intent, same session, same CSRF gate and same lexicon caps as
+ * the cover upload above — a second write path to the PDS is exactly what the
+ * one-handler rule exists to prevent.
+ *
+ * The blob JSON travels back with the URL because the record has to reference
+ * it at publish time or the PDS never serves it (see DocumentRecord in
+ * ~/lib/publish); the browser hands the collected blobs to the publish form,
+ * and this handler's answers are re-validated there.
+ *
+ * JSON, not a redirect: this is the one intent called by fetch.
+ */
+async function uploadInlineImage({
+  rpc,
+  form,
+  did,
+}: WriteContext): Promise<Response> {
+  const file = form.get("file");
+  if (!(file instanceof File) || file.size === 0)
+    return privateJson({ ok: false, error: "no_file" }, 400);
+  if (!isAllowedImageMime(file.type))
+    return privateJson({ ok: false, error: "image_type" }, 415);
+  // The browser downscales first; this is where the lexicon's cap counts.
+  if (file.size > MAX_IMAGE_BLOB_BYTES)
+    return privateJson({ ok: false, error: "image_too_large" }, 413);
+
+  const uploaded = await rpc
+    .post("com.atproto.repo.uploadBlob", {
+      headers: { "content-type": file.type },
+      input: file,
+    })
+    .catch((err: unknown) => {
+      console.error("inline image uploadBlob threw", err);
+      return null;
+    });
+  if (!uploaded) return privateJson({ ok: false, error: "upload_failed" }, 502);
+  if (!uploaded.ok) {
+    if (isInsufficientScope(uploaded))
+      return privateJson({ ok: false, error: "image_scope" }, 403);
+    console.error(
+      "inline image uploadBlob failed",
+      uploaded.status,
+      uploaded.data,
+    );
+    return privateJson({ ok: false, error: "upload_failed" }, 502);
+  }
+
+  // A blob we can't turn into a servable /img path is a failure, not a URL the
+  // writer discovers is broken after publishing.
+  const blob = uploaded.data.blob;
+  const cid = isBlobObject(blob) ? blob.ref.$link : null;
+  if (!cid || !isBlobCid(cid)) {
+    console.error("inline image uploadBlob returned an unusable blob", blob);
+    return privateJson({ ok: false, error: "upload_failed" }, 502);
+  }
+  return privateJson({ ok: true, url: blobImagePath(did, cid), blob }, 201);
 }
 
 /**
