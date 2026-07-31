@@ -11,8 +11,8 @@
  * chronological order the same thing up to 99 releases in a day, which is more
  * than we will ever want.
  *
- * The date is UTC, matching the tag's own meaning — a release is stamped by
- * when it shipped, and "which day is it" must not depend on who is running this.
+ * The date is the maintainer's local day (see RELEASE_TZ below), and ordering is
+ * protected by an explicit guard rather than by the choice of clock.
  *
  * Notes come from GitHub's own generator against the previous tag, deliberately:
  * release notes are a CHANGELOG for users, assembled from merged PR titles, not
@@ -41,15 +41,53 @@ function run(cmd, args) {
   }
 }
 
-const now = new Date();
-const datePart = [
-  now.getUTCFullYear(),
-  String(now.getUTCMonth() + 1).padStart(2, "0"),
-  String(now.getUTCDate()).padStart(2, "0"),
-].join(".");
+/**
+ * The release timezone. A CalVer tag is read by people, not machines — nothing
+ * in the build parses it — so it should say the day its author was living in.
+ * Stamping UTC put every late-night session on the previous date: work done
+ * after 03:00 EAT is a new day here and yesterday in UTC, which is how one
+ * calendar date collected thirty-four releases across two nights.
+ *
+ * The original rationale was that "which day is it" must not depend on who runs
+ * this. That protects tag ordering, and the guard below protects it directly
+ * instead — which is the better place for it, because it holds no matter what
+ * clock or zone the machine has.
+ */
+const RELEASE_TZ = "Africa/Nairobi";
+const datePart = new Intl.DateTimeFormat("en-CA", {
+  timeZone: RELEASE_TZ,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+})
+  .format(new Date())
+  .replaceAll("-", ".");
 const prefix = `v${datePart}`;
 
 run("git", ["fetch", "--tags", "--quiet"]);
+
+/**
+ * Tags must never go backwards. Whatever clock produced `datePart`, a new tag
+ * that sorts below the newest existing one would break the "latest release" any
+ * lexicographic reader picks — including GitHub's own releases list, which is
+ * what sent an older tag to the top of that page once already.
+ */
+const newest = run("git", ["tag", "--list", "v20*"])
+  .split("\n")
+  .filter(Boolean)
+  .sort()
+  .at(-1);
+// `v2026.08.01.02` → `2026.08.01`. Dot-separated, zero-padded, fixed width, so
+// string comparison is date comparison.
+const newestDate = newest?.slice(1, 11);
+if (newestDate && newestDate > datePart) {
+  throw new Error(
+    `Refusing to cut ${prefix}: ${newest} is already newer. The clock or the ` +
+      `timezone (${RELEASE_TZ}) is wrong, and a tag that sorts backwards breaks ` +
+      `every lexicographic "latest release" reader.`,
+  );
+}
+
 const existing = run("git", ["tag", "--list", `${prefix}*`])
   .split("\n")
   .filter(Boolean);
