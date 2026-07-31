@@ -2,10 +2,12 @@
  * The posts manager — the writer's content workbench, and the only surface
  * whose job is "find and act on a piece of my writing".
  *
- * Two tabs, because a writer has exactly two work states today: Published
- * (their repo) and Drafts (our D1). There is no Scheduled tab, because
- * scheduled publishing does not exist — an empty third tab would promise a
- * feature we don't have.
+ * Three tabs, one per work state a writer actually has: Published (their repo),
+ * Scheduled (queued in our D1, plus anything that failed on its way out) and
+ * Drafts (our D1). The Scheduled tab is the answer to "did it go out?" — a
+ * question a writer must never have to guess at, which is why a failed schedule
+ * appears here with the cron's own reason on it and a button that publishes it
+ * this second.
  *
  * Sorting, searching and the row models are TanStack Table's, driven headless:
  * the library owns the row pipeline, this file owns every pixel. The rows are
@@ -45,6 +47,7 @@ import { SearchIcon } from "~/components/icons";
 import { MovePublicationNotice } from "~/components/move-publication-notice";
 import { Notice } from "~/components/notice";
 import { PostMetrics, PostThumb } from "~/components/post-summary";
+import { ScheduledTime } from "~/components/scheduled-time";
 import { AppShell } from "~/components/site-chrome";
 import { matchesPostQuery } from "~/lib/archive";
 import {
@@ -63,6 +66,7 @@ import {
   mapDashboardRows,
   type PostSort,
   type PostsTab,
+  type ScheduledPostRow,
   sortingStateFor,
   VIEWS_COLUMN,
   viewsByRkey,
@@ -78,6 +82,7 @@ import { LEGACY_ORIGINS, ownOrigins } from "~/lib/origin";
 import { capture } from "~/lib/posthog";
 import { isOwnPublicationUrl, TID_RE } from "~/lib/publish";
 import { formatReadingTime } from "~/lib/reading-time";
+import { selectWriterSchedule } from "~/lib/scheduled-posts";
 import { useWriterStats } from "~/lib/use-writer-stats";
 import { cn } from "~/lib/utils";
 import { env } from "cloudflare:workers";
@@ -93,6 +98,16 @@ const ERROR_MESSAGES: Record<string, string> = {
     "This post has no public URL to announce — it may belong to a publication Goldroad can't resolve right now.",
   move_no_publication:
     "There's no publication to move yet — it's created when you publish your first post.",
+  schedule_in_flight:
+    "That post is publishing right now — give it a moment and refresh to see it.",
+  schedule_no_draft:
+    "That scheduled post's draft couldn't be found, so there was nothing to publish.",
+  draft_not_found:
+    "That draft isn't in your drafts anymore, so there was nothing to publish.",
+  unschedule_failed:
+    "That schedule couldn't be cancelled just now. Try again in a moment.",
+  missing_title:
+    "That draft has no title, so it couldn't be published. Open it, give it a title, and schedule it again.",
 };
 
 function errorMessage(code: string | undefined): string | null {
@@ -103,6 +118,8 @@ function errorMessage(code: string | undefined): string | null {
     return `Announcing failed (${code.slice("announce_failed:".length)}). Try again.`;
   if (code.startsWith("move_failed:"))
     return `Moving your publication failed (${code.slice("move_failed:".length)}). Try again.`;
+  if (code.startsWith("publish_failed:"))
+    return `Publishing failed (${code.slice("publish_failed:".length)}). Your draft is safe — try again, or schedule it for later.`;
   return ERROR_MESSAGES[code] ?? "Something went wrong. Try again.";
 }
 
@@ -132,12 +149,18 @@ const getDashboard = createServerFn({ method: "GET" })
     const pds = await resolveDidToPds(did).catch(() => null);
     // The PDS fan-out and the D1 drafts read run in one parallel batch —
     // neither depends on the other, so the page pays the slowest, not the sum.
-    const [draftRows, [page, onLegacyUrl]] = await Promise.all([
+    const [draftRows, scheduleRows, [page, onLegacyUrl]] = await Promise.all([
       // The writer's private drafts, from our own D1 (they are never in the
       // repo — see /api/drafts). A failed read stays distinguishable from
       // "no drafts" (null, same policy as rows) so the section can say so
       // instead of implying the writer's drafts vanished.
       listDrafts(drizzle(env.DB), did).catch(() => null),
+      // The writer's queue: pending posts and anything that failed on its way
+      // out. Same null-means-the-read-flaked policy as the drafts above — an
+      // empty Scheduled tab must mean "nothing queued", never "we couldn't
+      // tell", because the difference between those is whether a post of
+      // theirs is going out.
+      selectWriterSchedule(drizzle(env.DB), did).catch(() => null),
       pds
         ? Promise.all([
             listRecordsPage<StandardDocument>(
@@ -207,6 +230,23 @@ const getDashboard = createServerFn({ method: "GET" })
           updatedAt: d.updatedAt.toISOString(),
           description: null,
         })) ?? null,
+      scheduled:
+        scheduleRows?.map((row) => ({
+          id: row.id,
+          draftId: row.draftId,
+          dueAt: row.dueAt.toISOString(),
+          // The query returns pending and failed rows only.
+          status:
+            row.status === "failed"
+              ? ("failed" as const)
+              : ("pending" as const),
+          attempts: row.attempts,
+          lastError: row.lastError,
+          // The join is a LEFT join: a row whose draft vanished still has to be
+          // nameable, because it is the row the writer most needs to see.
+          title: row.title?.trim() || "(untitled draft)",
+          description: null,
+        })) ?? null,
     };
   });
 
@@ -218,6 +258,8 @@ export const Route = createFileRoute("/dashboard")({
       announced?: string;
       deleted?: boolean;
       moved?: boolean;
+      scheduled?: boolean;
+      unscheduled?: boolean;
       cursor?: string;
       tab?: PostsTab;
     } = {};
@@ -229,9 +271,18 @@ export const Route = createFileRoute("/dashboard")({
       out.announced = search.announced;
     if (search.deleted === "1" || search.deleted === 1) out.deleted = true;
     if (search.moved === "1" || search.moved === 1) out.moved = true;
+    if (search.scheduled === "1" || search.scheduled === 1)
+      out.scheduled = true;
+    if (search.unscheduled === "1" || search.unscheduled === 1)
+      out.unscheduled = true;
     if (isValidCursor(search.cursor)) out.cursor = search.cursor;
-    // The tab is a real address so the overview can link straight to drafts.
-    if (search.tab === "drafts" || search.tab === "published")
+    // The tab is a real address so the overview can link straight to drafts,
+    // and so scheduling can land the writer on their queue.
+    if (
+      search.tab === "drafts" ||
+      search.tab === "published" ||
+      search.tab === "scheduled"
+    )
       out.tab = search.tab;
     return out;
   },
@@ -525,6 +576,7 @@ export function PostsManager({
   rows,
   engagement,
   drafts,
+  scheduled,
   cursor,
   nextCursor,
   tab,
@@ -536,6 +588,8 @@ export function PostsManager({
   engagement: Map<string, DocumentEngagement>;
   /** null = the drafts read flaked. */
   drafts: DraftRow[] | null;
+  /** Queued and failed posts; null = the read flaked. */
+  scheduled: ScheduledPostRow[] | null;
   cursor?: string;
   nextCursor: string | null;
   tab: PostsTab;
@@ -621,6 +675,17 @@ export function PostsManager({
     query,
   );
 
+  // The queue is chronological BY NATURE — soonest first, straight from the
+  // query — so it doesn't run through the table's sort control; a "newest first"
+  // queue would put next year's post above tomorrow's. Search still applies,
+  // through the same matcher the other two tabs and the public archive use.
+  const visibleScheduled = (scheduled ?? []).filter((row) =>
+    matchesPostQuery(row, query),
+  );
+  const failedCount = (scheduled ?? []).filter(
+    (row) => row.status === "failed",
+  ).length;
+
   const isSearching = query.trim() !== "";
   const paginated = Boolean(cursor || nextCursor);
   const visiblePosts = postsTable.getRowModel().rows;
@@ -629,7 +694,8 @@ export function PostsManager({
     rows !== null &&
     rows.length === 0 &&
     drafts !== null &&
-    drafts.length === 0;
+    drafts.length === 0 &&
+    (scheduled === null || scheduled.length === 0);
 
   return (
     <>
@@ -647,6 +713,20 @@ export function PostsManager({
             panelId="panel-published"
             tabId="tab-published"
           />
+          {/* The Scheduled tab is only furniture when nothing is queued — but
+              it appears the moment something is, and it appears FIRST among the
+              unpublished states, because a post about to go out is more urgent
+              than a draft that isn't. */}
+          {scheduled !== null && scheduled.length > 0 && (
+            <TabButton
+              active={tab === "scheduled"}
+              count={scheduled.length}
+              label={failedCount > 0 ? "Scheduled ·" : "Scheduled"}
+              onSelect={() => onTabChange("scheduled")}
+              panelId="panel-scheduled"
+              tabId="tab-scheduled"
+            />
+          )}
           <TabButton
             active={tab === "drafts"}
             count={drafts?.length}
@@ -764,6 +844,52 @@ export function PostsManager({
                 </a>
               </p>
             )}
+          </>
+        )}
+      </div>
+
+      <div
+        aria-labelledby="tab-scheduled"
+        hidden={tab !== "scheduled"}
+        id="panel-scheduled"
+        role="tabpanel"
+      >
+        {scheduled === null ? (
+          <Notice tone="alert">
+            Your scheduled posts couldn't be loaded right now, so this list
+            isn't the whole story — refresh to try again. Anything queued is
+            still queued.
+          </Notice>
+        ) : scheduled.length === 0 ? (
+          <p className="mt-8 text-ink-soft leading-relaxed">
+            Nothing scheduled. You can set a date and time when you write —
+            press{" "}
+            <a
+              className="underline underline-offset-2 transition-colors hover:text-ink"
+              href="/write"
+            >
+              New post
+            </a>{" "}
+            and look beside Publish.
+          </p>
+        ) : visibleScheduled.length === 0 ? (
+          <p className="mt-8 text-ink-soft leading-relaxed">
+            No scheduled posts match "{query.trim()}".
+          </p>
+        ) : (
+          <>
+            <SectionRule>
+              {visibleScheduled.length}{" "}
+              {visibleScheduled.length === 1 ? "post" : "posts"} waiting
+              {failedCount > 0
+                ? ` · ${failedCount} didn't go out`
+                : " · soonest first"}
+            </SectionRule>
+            <ul>
+              {visibleScheduled.map((row) => (
+                <ScheduledListRow key={row.id} row={row} />
+              ))}
+            </ul>
           </>
         )}
       </div>
@@ -891,6 +1017,101 @@ function PublishedRow({ ident, row }: { ident: string; row: ManagerRow }) {
 }
 
 /**
+ * One scheduled post — and the whole point of this tab: A WRITER MUST NEVER HAVE
+ * TO WONDER WHETHER SOMETHING WENT OUT.
+ *
+ * A pending row states its time in the writer's own zone. A failed row states
+ * the cron's own reason VERBATIM (it was written for them to read — see
+ * ~/lib/scheduled-publish) and carries the two ways out: publish it now, or
+ * cancel and keep the draft. Both are plain form posts to /api/publish, like
+ * every other action on this page.
+ *
+ * Exported for tests (dashboard-scheduled.test.tsx) — not a route.
+ */
+export function ScheduledListRow({ row }: { row: ScheduledPostRow }) {
+  const failed = row.status === "failed";
+  const editHref = `/write?draft=${encodeURIComponent(row.draftId)}`;
+  return (
+    <li className="border-rule border-b py-5">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <a
+          className="font-semibold text-ink leading-snug hover:underline hover:underline-offset-4"
+          href={editHref}
+        >
+          {row.title}
+        </a>
+        <span className="font-display text-ink-soft text-sm">
+          {failed ? "Didn't go out \u00b7 was due " : "Scheduled for "}
+          <ScheduledTime iso={row.dueAt} />
+        </span>
+      </div>
+      {failed && (
+        <Notice tone="alert">
+          {/* The cron's own words, unedited: paraphrasing them here would be a
+              second copy of the same message, free to drift from the stored
+              one. */}
+          {row.lastError ??
+            "This post didn't go out, and Goldroad didn't record why. Publishing it now is the fastest way through."}
+        </Notice>
+      )}
+      <div className="mt-2 flex flex-wrap items-center gap-x-4">
+        <a className={INLINE_ACTION} href={editHref}>
+          Edit
+        </a>
+        <form
+          action="/api/publish"
+          className="inline"
+          method="post"
+          onSubmit={(event) => {
+            // A failed post needs no confirmation — publishing is the fix. One
+            // that is merely waiting does: pressing this gives up its slot.
+            if (
+              !failed &&
+              !window.confirm(
+                `Publish "${row.title}" now instead of waiting for its scheduled time?`,
+              )
+            )
+              event.preventDefault();
+          }}
+        >
+          <input name="intent" type="hidden" value="publish-now" />
+          <input name="draftId" type="hidden" value={row.draftId} />
+          <button className={cn(INLINE_ACTION, "cursor-pointer")} type="submit">
+            Publish now
+          </button>
+        </form>
+        <form
+          action="/api/publish"
+          className="inline"
+          method="post"
+          onSubmit={(event) => {
+            if (
+              !window.confirm(
+                `Cancel the schedule for "${row.title}"? It stays in your drafts.`,
+              )
+            )
+              event.preventDefault();
+          }}
+        >
+          <input name="intent" type="hidden" value="unschedule" />
+          <input name="id" type="hidden" value={row.id} />
+          <button className={DESTRUCTIVE_ACTION} type="submit">
+            Cancel
+          </button>
+        </form>
+        {/* Said plainly rather than hidden: a post on its third try is a post
+            in trouble, and the writer is the one who can act on that. */}
+        {row.attempts > 1 && (
+          <span className="font-display text-ink-soft text-xs">
+            {row.attempts} attempts
+          </span>
+        )}
+      </div>
+    </li>
+  );
+}
+
+/**
  * One draft row. Delete is a fetch (the drafts API is JSON, unlike the
  * form-posting publish intents) followed by a router invalidate to refresh
  * the loader data; confirm-before-delete and destructive hover match the
@@ -992,8 +1213,16 @@ function FirstRun() {
 }
 
 function DashboardPage() {
-  const { ident, handle, rows, engagement, nextCursor, onLegacyUrl, drafts } =
-    Route.useLoaderData();
+  const {
+    ident,
+    handle,
+    rows,
+    engagement,
+    nextCursor,
+    onLegacyUrl,
+    drafts,
+    scheduled,
+  } = Route.useLoaderData();
   const search = Route.useSearch();
   const { error, published, announced, deleted, moved, cursor } = search;
   const navigate = Route.useNavigate();
@@ -1054,6 +1283,18 @@ function DashboardPage() {
             </ExternalLink>
           </Notice>
         )}
+        {search.scheduled && (
+          <Notice tone="info">
+            Scheduled. It's in the queue below with its time — you can change
+            it, cancel it, or publish it now from there.
+          </Notice>
+        )}
+        {search.unscheduled && (
+          <Notice tone="info">
+            Schedule cancelled — the post is back to being a draft, and nothing
+            will publish on its own.
+          </Notice>
+        )}
         {deleted && <Notice tone="info">Deleted from your repo.</Notice>}
         {moved && (
           <Notice tone="info">
@@ -1098,6 +1339,7 @@ function DashboardPage() {
             })
           }
           rows={rows}
+          scheduled={scheduled}
           tab={tab}
         />
       </main>

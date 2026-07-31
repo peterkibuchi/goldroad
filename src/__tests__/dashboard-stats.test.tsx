@@ -48,6 +48,7 @@ function renderManager(
       nextCursor={null}
       onTabChange={() => {}}
       rows={rows}
+      scheduled={[]}
       tab="published"
     />,
   );

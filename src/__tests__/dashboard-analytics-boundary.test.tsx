@@ -59,6 +59,7 @@ function renderManager(rows: DashboardRow[]) {
       ident={IDENT}
       nextCursor={null}
       onTabChange={() => {}}
+      scheduled={[]}
       rows={rows}
       tab="published"
     />,
