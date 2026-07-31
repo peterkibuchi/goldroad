@@ -74,6 +74,19 @@ before OAuth works.
    pnpm deploy
    ```
 
+## The hourly cron is not optional
+
+`wrangler.jsonc` declares one cron trigger (`0 * * * *`), and every scheduled job
+in the app runs off it — including **scheduled publishing**. Remove the trigger
+and a writer can still schedule a post; nothing will ever publish it, which is
+the one failure this app works hardest to avoid. Keep the trigger, and add jobs
+to `runScheduled()` in `src/lib/scheduled.ts` rather than adding triggers (the
+free plan allows five per account, and one is enough).
+
+The hour is the resolution: a post due at 09:20 goes out on the 10:00 tick. Each
+tick publishes up to five due posts and leaves the rest for the next one, saying
+so in its log line.
+
 ## Configuration boundaries
 
 - The **top level** of `wrangler.jsonc` is the generic self-host target: your
