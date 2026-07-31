@@ -542,7 +542,7 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
                 <dt className="font-bold font-display text-base text-ink">
                   {q}
                 </dt>
-                <dd className="mt-2 text-ink-soft text-base leading-relaxed">
+                <dd className="mt-2 text-base text-ink-soft leading-relaxed">
                   {a}
                 </dd>
               </div>
