@@ -504,71 +504,103 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
           </p>
         </MarketingSection>
 
-        {/* Founding-writers signup — honest launch-updates list, not a gate. */}
+        {/* Founding-writers signup — the page's conversion moment, so the
+            structure carries the priority: three parallel goods, then the one
+            number that makes the offer concrete, then the form. Ruled columns
+            rather than cards — Pressroom separates with rules, and a grid of
+            same-size cards is the lazy container. No new spot: the kicker and
+            the submit button already spend this section's accent. */}
         <MarketingSection divider id="join">
           <Kicker>Founding writers</Kicker>
           <h2 className="mt-4 max-w-[22ch] text-balance font-black font-display text-3xl text-ink leading-tight tracking-tight md:text-4xl">
             Be one of the founding writers.
           </h2>
-          <p className="mt-4 max-w-[58ch] text-pretty text-ink-soft text-lg leading-relaxed">
-            The core is live: drafts, images, footnotes, scheduling, your own
-            colours, and your archive imported from Substack, Ghost, Medium or
-            WordPress — every post published to an account you own and announced
-            natively on Bluesky. Newsletters and reader payments are still being
+          <p className="mt-4 max-w-[54ch] text-pretty text-ink-soft text-lg leading-relaxed">
+            The core is live. Newsletters and reader payments are still being
             built.
           </p>
-          {/* The offer, in nameable goods rather than abstractions. Each line is
-              claimable today or is a promise we can keep forever; the cap is a
-              deliverability fact, not scarcity theatre, which is why we say why.
-              Deliberately NOT a held price — our costs scale with a writer's
-              list, so a frozen rate would be a cheque against an unknown. */}
-          <ul className="mt-6 max-w-[58ch] space-y-2.5 text-base text-ink-soft leading-relaxed">
-            <li className="flex gap-3">
-              <span aria-hidden="true" className="text-ink">
-                ·
-              </span>
-              <span>
-                <strong className="font-display font-semibold text-ink">
-                  A founding mark on your publication
-                </strong>{" "}
-                — yours to keep, whatever we become.
-              </span>
-            </li>
-            <li className="flex gap-3">
-              <span aria-hidden="true" className="text-ink">
-                ·
-              </span>
-              <span>
-                <strong className="font-display font-semibold text-ink">
-                  Newsletters and payments first
-                </strong>{" "}
-                — and a direct line while the group is small enough for one.
-              </span>
-            </li>
-            <li className="flex gap-3">
-              <span aria-hidden="true" className="text-ink">
-                ·
-              </span>
-              <span>
-                <strong className="font-display font-semibold text-ink">
-                  What works for you today stays free for you
-                </strong>{" "}
-                — permanently. You'll never be moved onto a paid plan to keep
-                what you already have.
-              </span>
-            </li>
+          {/* What "live" means, as a spec strip rather than a sentence: this is
+              a list of seven facts, and prose was making the reader parse it
+              like an argument. Display face and hairline separators mark it as
+              inventory, which is also what makes it skimmable. */}
+          <ul className="mt-5 flex max-w-[62ch] flex-wrap items-center gap-x-3 gap-y-2 font-display text-ink text-sm">
+            {[
+              "Drafts & autosave",
+              "Images",
+              "Footnotes",
+              "Scheduling",
+              "Your own colours",
+              "Import from Substack, Ghost, Medium, WordPress",
+              "Native Bluesky cards",
+            ].map((item, i) => (
+              <li className="flex items-center gap-3" key={item}>
+                {i > 0 && (
+                  <span aria-hidden="true" className="text-rule">
+                    /
+                  </span>
+                )}
+                {item}
+              </li>
+            ))}
           </ul>
-          <p className="mt-6 max-w-[58ch] text-pretty text-base text-ink-soft leading-relaxed">
-            We're taking <strong className="text-ink">25 writers</strong> to
-            start, and the reason is email: a new sending domain has to earn its
-            reputation slowly, so small groups are what keep your newsletter out
-            of spam later. Publishing stays free for good — paid plans will sell
-            the things that cost us money, like domains, email delivery and
-            deeper analytics, never a share of what your readers pay you.
-          </p>
-          <div className="mt-8 max-w-xl">
+          {/* The offer, in nameable goods rather than abstractions — and set as
+              three equal columns because they ARE parallel and equal. Each is
+              claimable today or is a promise we can keep forever. Deliberately
+              NOT a held price: our costs scale with a writer's list, so a frozen
+              rate would be a cheque against a number we do not know. */}
+          <dl className="mt-12 grid grid-cols-1 gap-x-10 gap-y-8 sm:grid-cols-3">
+            {[
+              {
+                term: "A founding mark",
+                detail:
+                  "On your publication, yours to keep whatever we become.",
+              },
+              {
+                term: "Newsletters and payments first",
+                detail:
+                  "And a direct line while the group is small enough for one.",
+              },
+              {
+                term: "Free stays free — for you",
+                detail:
+                  "What works for you today keeps working, permanently. You are never moved onto a paid plan to keep what you already have.",
+              },
+            ].map(({ term, detail }) => (
+              <div className="border-ink border-t-2 pt-4" key={term}>
+                <dt className="font-bold font-display text-ink text-sm uppercase tracking-[0.08em]">
+                  {term}
+                </dt>
+                <dd className="mt-2.5 text-ink-soft text-sm leading-relaxed">
+                  {detail}
+                </dd>
+              </div>
+            ))}
+          </dl>
+          {/* The number, in the element this design system already uses for a
+              figure that carries an argument (see the 0% on /leaving-substack).
+              It was buried mid-sentence, which wasted the most specific and most
+              persuasive token on the page — and the caption is the part that
+              turns a cap into a reason. */}
+          <figure className="mt-14 border-ink border-l-2 pl-5">
+            <p className="font-black font-display text-5xl text-ink md:text-6xl">
+              25
+            </p>
+            <figcaption className="mt-3 max-w-[52ch] text-ink-soft text-sm leading-relaxed">
+              writers to start — and the reason is email. A new sending domain
+              has to earn its reputation slowly, so small groups are what keep
+              your newsletter out of spam later.
+            </figcaption>
+          </figure>
+          <div className="mt-10 max-w-xl">
             <FoundingWritersForm />
           </div>
+          {/* Pricing belongs near the decision, at footnote weight — it answers
+              a question rather than making a pitch. */}
+          <p className="mt-8 max-w-[56ch] border-rule border-t pt-4 font-display text-ink-soft text-sm leading-normal">
+            Publishing stays free for good. Paid plans will sell the things that
+            cost us money — domains, email delivery, deeper analytics — never a
+            share of what your readers pay you.
+          </p>
         </MarketingSection>
       </main>
 

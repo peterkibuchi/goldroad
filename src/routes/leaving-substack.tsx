@@ -87,6 +87,23 @@ const ROWS: Row[] = [
     roadmap: true,
   },
   {
+    label: "Your archive when you leave",
+    goldroad:
+      "Full export — posts, account and all — and the originals were never ours to hold",
+    substack: "Export file only; images not included",
+  },
+  {
+    label: "Feeds",
+    goldroad: "Full-text RSS for every publication",
+    substack: "Excerpt, depending on your settings",
+  },
+  {
+    label: "The look of your page",
+    goldroad:
+      "A theme that travels with your account, honoured by apps we didn't write",
+    substack: "Substack's template",
+  },
+  {
     label: "Import your archive",
     goldroad:
       "Upload your Substack, Medium, Ghost, or WordPress export — or paste any feed — your archive arrives as private drafts",
@@ -215,9 +232,72 @@ export function LeavingSubstack() {
           </figure>
         </MarketingSection>
 
+        {/* THE EMPHASIS INVERSION. The page used to run table → roadmap, which
+            put what we cannot do yet ahead of everything we can. This section
+            goes first because it is the only part a reader can verify today,
+            and each row names a mechanism rather than a benefit — a claim you
+            can check is worth more than one you have to believe. Ruled columns,
+            no cards. */}
+        <MarketingSection divider>
+          <Kicker>Here today</Kicker>
+          <h2 className="mt-4 max-w-[24ch] text-balance font-black font-display text-3xl text-ink leading-tight tracking-tight md:text-4xl">
+            What's already true, and checkable.
+          </h2>
+          <p className="mt-4 max-w-[58ch] text-pretty text-ink-soft text-lg leading-relaxed">
+            None of this is on a roadmap. It works now, and every line names how
+            — so you can test it before you trust it.
+          </p>
+          <dl className="mt-12 grid grid-cols-1 gap-x-10 gap-y-9 sm:grid-cols-2 lg:grid-cols-3">
+            {[
+              {
+                term: "Your whole archive, in minutes",
+                detail:
+                  "Substack, Ghost, Medium and WordPress exports, or any feed. The file is parsed on your machine and never reaches us; posts arrive as private drafts.",
+              },
+              {
+                term: "Images that survive the move",
+                detail:
+                  "Body images are copied out of your old host into an account you own, so closing that account later costs your archive nothing.",
+              },
+              {
+                term: "Footnotes that look like footnotes",
+                detail:
+                  "Set below a rule in their own type, linked both ways — for the pieces that carry citations.",
+              },
+              {
+                term: "Publish on a schedule",
+                detail:
+                  "Pick the moment; it goes out without you. If anything stops it, the reason is written where you'll see it rather than swallowed.",
+              },
+              {
+                term: "Full-text feeds",
+                detail:
+                  "Every publication has an RSS twin carrying the whole post, not an excerpt — the machine-readable version of your archive.",
+              },
+              {
+                term: "Your colours, everywhere",
+                detail:
+                  "A theme stored in your own account, so other apps on the network render your page in it too. Not a setting in our database.",
+              },
+            ].map(({ term, detail }) => (
+              <div className="border-ink border-t-2 pt-4" key={term}>
+                <dt className="font-bold font-display text-ink text-sm uppercase tracking-[0.08em]">
+                  {term}
+                </dt>
+                <dd className="mt-2.5 text-ink-soft text-sm leading-relaxed">
+                  {detail}
+                </dd>
+              </div>
+            ))}
+          </dl>
+          <p className="mt-10 max-w-[56ch] border-rule border-t pt-4 font-display text-ink-soft text-sm leading-normal">
+            Bring the archive today. Bring the list when the machinery's ready.
+          </p>
+        </MarketingSection>
+
         {/* Mirror mode — shipped: import + provenance back to the original. */}
         <MarketingSection divider>
-          <Kicker>Here now</Kicker>
+          <Kicker>At your own pace</Kicker>
           <h2 className="mt-4 max-w-[22ch] text-balance font-black font-display text-3xl text-ink leading-tight tracking-tight md:text-4xl">
             Keep publishing on Substack, too.
           </h2>
@@ -226,6 +306,12 @@ export function LeavingSubstack() {
             exactly where they are. Readers keep landing on your Substack until
             you decide otherwise, so you can move at whatever pace suits you —
             one post, or all of them.
+          </p>
+          <p className="mt-4 max-w-[60ch] text-pretty text-ink-soft text-lg leading-relaxed">
+            Your images come across too — copied out of Substack's servers into
+            an account you own — so closing your Substack later costs your
+            archive nothing. The export file itself is read on your machine; it
+            never reaches us.
           </p>
         </MarketingSection>
 
