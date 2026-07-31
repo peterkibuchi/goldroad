@@ -33,6 +33,7 @@ import { Route as ApiImportRouteImport } from './routes/api.import'
 import { Route as ApiPublishRouteImport } from './routes/api.publish'
 import { Route as ApiReportRouteImport } from './routes/api.report'
 import { Route as ApiStatsRouteImport } from './routes/api.stats'
+import { Route as ApiSubscriptionRouteImport } from './routes/api.subscription'
 import { Route as ApiWaitlistRouteImport } from './routes/api.waitlist'
 import { Route as OauthCallbackRouteImport } from './routes/oauth.callback'
 import { Route as OauthClientMetadataDotjsonRouteImport } from './routes/oauth.client-metadata[.]json'
@@ -167,6 +168,11 @@ const ApiStatsRoute = ApiStatsRouteImport.update({
   path: '/api/stats',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiSubscriptionRoute = ApiSubscriptionRouteImport.update({
+  id: '/api/subscription',
+  path: '/api/subscription',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiWaitlistRoute = ApiWaitlistRouteImport.update({
   id: '/api/waitlist',
   path: '/api/waitlist',
@@ -243,6 +249,7 @@ export interface FileRoutesByFullPath {
   '/api/publish': typeof ApiPublishRoute
   '/api/report': typeof ApiReportRoute
   '/api/stats': typeof ApiStatsRoute
+  '/api/subscription': typeof ApiSubscriptionRoute
   '/api/waitlist': typeof ApiWaitlistRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/oauth/client-metadata.json': typeof OauthClientMetadataDotjsonRoute
@@ -279,6 +286,7 @@ export interface FileRoutesByTo {
   '/api/publish': typeof ApiPublishRoute
   '/api/report': typeof ApiReportRoute
   '/api/stats': typeof ApiStatsRoute
+  '/api/subscription': typeof ApiSubscriptionRoute
   '/api/waitlist': typeof ApiWaitlistRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/oauth/client-metadata.json': typeof OauthClientMetadataDotjsonRoute
@@ -316,6 +324,7 @@ export interface FileRoutesById {
   '/api/publish': typeof ApiPublishRoute
   '/api/report': typeof ApiReportRoute
   '/api/stats': typeof ApiStatsRoute
+  '/api/subscription': typeof ApiSubscriptionRoute
   '/api/waitlist': typeof ApiWaitlistRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/oauth/client-metadata.json': typeof OauthClientMetadataDotjsonRoute
@@ -354,6 +363,7 @@ export interface FileRouteTypes {
     | '/api/publish'
     | '/api/report'
     | '/api/stats'
+    | '/api/subscription'
     | '/api/waitlist'
     | '/oauth/callback'
     | '/oauth/client-metadata.json'
@@ -390,6 +400,7 @@ export interface FileRouteTypes {
     | '/api/publish'
     | '/api/report'
     | '/api/stats'
+    | '/api/subscription'
     | '/api/waitlist'
     | '/oauth/callback'
     | '/oauth/client-metadata.json'
@@ -426,6 +437,7 @@ export interface FileRouteTypes {
     | '/api/publish'
     | '/api/report'
     | '/api/stats'
+    | '/api/subscription'
     | '/api/waitlist'
     | '/oauth/callback'
     | '/oauth/client-metadata.json'
@@ -463,6 +475,7 @@ export interface RootRouteChildren {
   ApiPublishRoute: typeof ApiPublishRoute
   ApiReportRoute: typeof ApiReportRoute
   ApiStatsRoute: typeof ApiStatsRoute
+  ApiSubscriptionRoute: typeof ApiSubscriptionRoute
   ApiWaitlistRoute: typeof ApiWaitlistRoute
   OauthCallbackRoute: typeof OauthCallbackRoute
   OauthClientMetadataDotjsonRoute: typeof OauthClientMetadataDotjsonRoute
@@ -644,6 +657,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiStatsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/subscription': {
+      id: '/api/subscription'
+      path: '/api/subscription'
+      fullPath: '/api/subscription'
+      preLoaderRoute: typeof ApiSubscriptionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/waitlist': {
       id: '/api/waitlist'
       path: '/api/waitlist'
@@ -755,6 +775,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublishRoute: ApiPublishRoute,
   ApiReportRoute: ApiReportRoute,
   ApiStatsRoute: ApiStatsRoute,
+  ApiSubscriptionRoute: ApiSubscriptionRoute,
   ApiWaitlistRoute: ApiWaitlistRoute,
   OauthCallbackRoute: OauthCallbackRoute,
   OauthClientMetadataDotjsonRoute: OauthClientMetadataDotjsonRoute,
