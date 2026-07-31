@@ -409,7 +409,10 @@ function StatsPage() {
                 : ""}
               Days run midnight to midnight, UTC. Reader counts are approximate
               — we don't follow readers around the web, so some are never
-              counted.
+              counted. Subscriber totals aren't available yet: a subscription
+              lives in the reader's own account, and adding them up needs an
+              index of the whole network that we don't run. The subscriptions
+              are being kept from today regardless.
             </p>
           </>
         )}
