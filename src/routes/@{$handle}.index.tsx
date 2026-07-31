@@ -9,7 +9,7 @@ import {
 } from "~/components/document-article";
 import { SearchIcon } from "~/components/icons";
 import { WriterSurface } from "~/components/writer-surface";
-import { filterPostsByQuery, groupPostsByMonth, monogram } from "~/lib/archive";
+import { filterPostsByQuery, groupPostsByMonth } from "~/lib/archive";
 import {
   isDid,
   isHandle,
@@ -193,36 +193,33 @@ type ArchivePost = {
   readingMinutes: number;
 };
 
-/** Fixed-size thumbnail slot for an archive row — a cover if the post has
- * one, else the publication's own icon, else a quiet monogram. Always
- * renders the same h-20 w-20 box so cover-less rows never leave an
- * inconsistent gap in the list's rhythm. */
-function PostThumb({
+/**
+ * Thumbnail slot for an archive row — a cover if the post has one, else the
+ * publication's own icon, else NOTHING.
+ *
+ * It used to fall back to the title's first letter in a grey box, to keep every
+ * row the same width. That box was the wrong trade: a lone capital in a tinted
+ * square reads as a broken image rather than as a design, and a title starting
+ * with O or I gives you a grey square containing what looks like a zero or a
+ * stray rule. The row's rhythm comes from its consistent vertical padding, not
+ * from a placeholder — so a post with no picture simply gets the full width for
+ * its words, which is what an archive of writing should do anyway.
+ */
+export function PostThumb({
   coverPath,
   iconPath,
-  title,
 }: {
   coverPath: string | null;
   iconPath: string | null;
-  title: string;
 }) {
-  if (coverPath || iconPath) {
-    return (
-      <img
-        alt=""
-        className="mt-1 h-20 w-20 shrink-0 object-cover"
-        loading="lazy"
-        src={(coverPath ?? iconPath) as string}
-      />
-    );
-  }
+  if (!coverPath && !iconPath) return null;
   return (
-    <div
-      aria-hidden="true"
-      className="mt-1 flex h-20 w-20 shrink-0 items-center justify-center bg-ink/5 font-display text-2xl text-ink-soft/40"
-    >
-      {monogram(title)}
-    </div>
+    <img
+      alt=""
+      className="mt-1 h-20 w-20 shrink-0 object-cover"
+      loading="lazy"
+      src={(coverPath ?? iconPath) as string}
+    />
   );
 }
 
@@ -244,11 +241,12 @@ function PostRow({
         href={`/@${encodeURIComponent(ident)}/${encodeURIComponent(post.rkey)}`}
       >
         <span className="min-w-0 flex-1">
-          <h2 className="text-balance font-semibold text-2xl text-ink leading-snug group-hover:underline group-hover:underline-offset-4">
+          {/* Display face, matching the post page this row leads to. */}
+          <h2 className="text-balance font-bold font-display text-[1.375rem] text-ink leading-snug tracking-[-0.01em] group-hover:underline group-hover:underline-offset-4">
             {post.title}
           </h2>
           {post.description ? (
-            <p className="mt-2.5 line-clamp-2 text-base text-ink-soft leading-relaxed">
+            <p className="mt-2 line-clamp-2 font-display text-[0.9375rem] text-ink-soft leading-[1.55]">
               {post.description}
             </p>
           ) : null}
@@ -263,11 +261,7 @@ function PostRow({
             </p>
           )}
         </span>
-        <PostThumb
-          coverPath={post.coverPath}
-          iconPath={iconPath}
-          title={post.title}
-        />
+        <PostThumb coverPath={post.coverPath} iconPath={iconPath} />
       </a>
     </li>
   );
@@ -321,14 +315,26 @@ export function PublicationView({
               />
             )}
             <div className="min-w-0">
-              <h1 className="text-balance font-semibold text-5xl text-ink leading-[1.05] md:text-6xl">
+              {/* Same pairing as a post's header: display for the furniture,
+                  serif kept for reading matter. It was one serif doing every
+                  job here too, which meant walking from this page into a post
+                  changed typographic voice halfway through the journey.
+
+                  Smaller than it was (5xl→6xl was set before the post title
+                  came down to 32px, and a masthead shouting over the headlines
+                  beneath it inverts what the page is for). Negative tracking
+                  for the same reason the post title takes it. */}
+              <h1 className="text-balance font-bold font-display text-[2.25rem] text-ink leading-[1.1] tracking-[-0.02em]">
                 {publication?.name ?? ident}
               </h1>
-              <p className="mt-4 font-display text-ink-soft text-sm tracking-wide">
+              <p className="mt-3 font-display text-ink-soft text-sm tracking-wide">
                 @{ident}
               </p>
               {publication?.description ? (
-                <p className="mt-6 max-w-[52ch] text-ink-soft text-lg italic leading-relaxed">
+                // Roman, not italic. Italic had become a default soft voice
+                // across the product rather than an emphasis, which costs it
+                // all meaning — the same correction the post dek got.
+                <p className="mt-5 font-display text-[0.9375rem] text-ink-soft leading-[1.55]">
                   {publication.description}
                 </p>
               ) : null}
