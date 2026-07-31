@@ -26,9 +26,10 @@
     "deploy": "pnpm run build && wrangler deploy --config dist/server/wrangler.json",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "wrangler d1 migrations apply goldroad-db --local",
-    "db:migrate:prod": "wrangler d1 migrations apply goldroad-db --remote",
+    "db:migrate:prod": "wrangler d1 migrations apply goldroad-db --remote --env production",
     "cf:types": "wrangler types",
-    "release": "node scripts/release.mjs"
+    "release": "node scripts/release.mjs",
+    "db:migrate:staging": "wrangler d1 migrations apply goldroad-db-staging --remote --env staging"
   },
   "dependencies": {
     "@atcute/atproto": "^4.0.3",
