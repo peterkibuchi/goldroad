@@ -238,3 +238,53 @@ describe("DocumentArticle — the close", () => {
     expect(screen.queryByText(/leave anytime/i)).toBeNull();
   });
 });
+
+/**
+ * The header's type scale, pinned because it has moved twice.
+ *
+ * The dek is the WRITER'S sentence. It belongs in the body serif; setting it in
+ * the display face moved the writer's words into Goldroad's interface voice,
+ * which is the one thing a reading page must not do. And its size has to sit
+ * between the title and the byline, or the header descends large / very small /
+ * small and the second-most-important line on the page becomes the weakest.
+ */
+describe("DocumentArticle — the header descends", () => {
+  const withDek = () =>
+    render(
+      <DocumentArticle
+        doc={{ ...baseDoc, description: "A one-sentence hook." }}
+        ident="writer.example"
+      />,
+    );
+
+  it("sets the dek in the writer's voice, not the interface's", () => {
+    const { container } = withDek();
+    const dek = screen.getByText("A one-sentence hook.");
+    // No display face: the surface's own font-body applies, so the dek reads
+    // as prose. The signal comes from the face, which frees the size from
+    // having to carry it.
+    expect(dek.className).not.toContain("font-display");
+    expect(dek.className).not.toContain("tracking-");
+    expect(container.querySelector("h1")?.className).toContain("font-semibold");
+  });
+
+  it("keeps the dek between the title and the byline", () => {
+    const { container } = withDek();
+    const dek = screen.getByText("A one-sentence hook.");
+    // 16px — under the 17px body so it introduces rather than competes, and
+    // above the 14px byline so the order down the page never inverts.
+    expect(dek.className).toContain("text-base");
+    expect(dek.className).not.toContain("text-xs");
+    // Scoped to the header: the handle also appears in the colophon.
+    const header = container.querySelector("header");
+    const byline = header?.querySelector('a[href="/@writer.example"]');
+    expect(byline?.closest("div")?.className).toContain("text-sm");
+  });
+
+  it("holds the dek to a readable measure", () => {
+    withDek();
+    expect(screen.getByText("A one-sentence hook.").className).toContain(
+      "max-w-[62ch]",
+    );
+  });
+});
