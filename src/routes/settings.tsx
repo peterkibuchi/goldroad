@@ -4,6 +4,7 @@ import { getRequest } from "@tanstack/react-start/server";
 import { drizzle } from "drizzle-orm/d1";
 import { useRef, useState } from "react";
 
+import { AppearanceControl } from "~/components/appearance-control";
 import { ExternalLink } from "~/components/external-link";
 import { MovePublicationNotice } from "~/components/move-publication-notice";
 import { Notice } from "~/components/notice";
@@ -462,6 +463,10 @@ function SettingsPage() {
               links keep working.
             </span>
           </p>
+        </SettingsSection>
+
+        <SettingsSection id="appearance" title="Appearance">
+          <AppearanceControl />
         </SettingsSection>
 
         <SettingsSection
