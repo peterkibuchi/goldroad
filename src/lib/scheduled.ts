@@ -1,24 +1,31 @@
 /**
- * Workers Cron body (free tier: up to 5 triggers/account). Four jobs, run
+ * Workers Cron body (free tier: up to 5 triggers/account). FIVE jobs, run
  * hourly from ONE trigger:
  *
- * 1. Purge expired oauth_kv rows (audit #7). `D1Store.get` only deletes an
+ * 1. Publish scheduled posts that are due (~/lib/scheduled-posts). It runs
+ *    FIRST, and that ordering is deliberate: it is the only job here a reader
+ *    will ever notice, since a tick that runs out of budget before reaching it
+ *    is a writer's post going out late. Everything below it is either
+ *    self-healing on the next hour (the follower sample is capped and
+ *    idempotent per day) or reported by CI. The pass is bounded — a handful of
+ *    posts per tick — and says in its log line when it left a queue behind.
+ * 2. Purge expired oauth_kv rows (audit #7). `D1Store.get` only deletes an
  *    expired row when that exact key is read again, so abandoned authorize
  *    `state:` rows — every login started but never completed — accumulate
  *    forever. This sweeps them. Sessions (`sess:`, expires_at = null) are left
  *    alone; they're removed on logout.
- * 2. Sample follower counts, one row per writer per UTC day, and prune samples
+ * 3. Sample follower counts, one row per writer per UTC day, and prune samples
  *    past their retention window (~/lib/follower-snapshots). Hourly rather than
  *    daily on purpose: the pass is idempotent per day, so running it 24 times
  *    self-heals a missed midnight run, a platform blip, or a writer who first
  *    signs in at 14:00.
- * 3. A backup-freshness check (~/lib/backup). The nightly off-platform export
+ * 4. A backup-freshness check (~/lib/backup). The nightly off-platform export
  *    runs in CI, not here — D1's export is an account-scoped REST operation, not
  *    something the `DB` binding can do. What this adds is the part CI cannot
  *    self-report: a backup job that has silently stopped looks exactly like one
  *    that is working, so the cron watches the heartbeat CI stamps and folds any
  *    complaint into the same alert path as the self-check below.
- * 4. A self-check of core invariants (audit #6). Logs are on but nobody is
+ * 5. A self-check of core invariants (audit #6). Logs are on but nobody is
  *    paged; this POSTs failures to WEBHOOK_URL if that secret is set, and is a
  *    silent no-op otherwise. The GitHub-Action canary remains the primary
  *    alerting path — this is a cheap always-on backstop.
@@ -34,6 +41,11 @@ import {
   type SnapshotPassResult,
 } from "~/lib/follower-snapshots";
 import { CANONICAL_ORIGIN } from "~/lib/origin";
+import {
+  d1ScheduledPostStore,
+  runScheduledPublishPass,
+} from "~/lib/scheduled-posts";
+import { cronPublisher } from "~/lib/scheduled-publish";
 
 type DrizzleD1 = ReturnType<typeof drizzle>;
 
@@ -128,12 +140,23 @@ function snapshotFailures(result: SnapshotPassResult): string[] {
   return failures;
 }
 
-/** The cron handler body: purge, sample follower counts, check the backup
- * heartbeat, self-check, alert. Never throws (a cron that throws just retries;
- * we'd rather log and move on), and each job is independent — a failure in one
- * still leaves the others run. */
+/** The cron handler body: publish what's due, purge, sample follower counts,
+ * check the backup heartbeat, self-check, alert. Never throws (a cron that
+ * throws just retries; we'd rather log and move on), and each job is
+ * independent — a failure in one still leaves the others run. */
 export async function runScheduled(env: CronEnv): Promise<void> {
   const db = drizzle(env.DB);
+  // Scheduled posts first — the one job whose lateness a reader can see. The
+  // pass never throws and reports what it did, including whether it hit its
+  // per-tick cap; failures are recorded ON THE ROW in words the writer reads in
+  // the posts manager, which is why they don't ride the operator alert path
+  // below. A revoked grant is the writer's to fix, not the owner's to be paged
+  // about; systemic trouble shows up as a run of them in this log line.
+  const scheduled = await runScheduledPublishPass({
+    store: d1ScheduledPostStore(db),
+    publish: cronPublisher(db),
+  });
+  console.log("scheduled publish pass", scheduled);
   try {
     await purgeExpiredOauthKv(db, Date.now());
   } catch (err) {
