@@ -394,4 +394,8 @@ export type StandardPublication = {
   /** Square identity image (lexicon: image/*, ≤1MB, ≥256×256) — untrusted
    * shape, validate with coverImageCid (~/lib/blob) before dereferencing. */
   icon?: unknown;
+  /** Embedded site.standard.theme.basic — the author's four colours, written
+   * by us or by any other app on the shared lexicon (Leaflet, pckt, Offprint).
+   * Untrusted shape; validate with parseTheme (~/lib/theme) before applying. */
+  basicTheme?: unknown;
 };
