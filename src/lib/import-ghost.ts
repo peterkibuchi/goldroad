@@ -23,6 +23,7 @@
  *    conversion step downstream) speaks HTML, not Ghost's Lexical dialect.
  */
 import {
+  comparePublishedAtDesc,
   detectPreview,
   guidHash,
   isoDate,
@@ -188,15 +189,7 @@ export function parseGhostExport(text: string): ParsedGhostExport {
   }
 
   // Newest first, matching the Substack and feed pickers.
-  posts.sort((a, b) => {
-    const at = a.publishedAt
-      ? Date.parse(a.publishedAt)
-      : Number.NEGATIVE_INFINITY;
-    const bt = b.publishedAt
-      ? Date.parse(b.publishedAt)
-      : Number.NEGATIVE_INFINITY;
-    return bt - at;
-  });
+  posts.sort(comparePublishedAtDesc);
 
   return { posts, failures, skippedPages, truncated };
 }

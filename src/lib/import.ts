@@ -245,6 +245,31 @@ export function isoDate(raw: string | null): string | null {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+/**
+ * Newest first, undated last — the order every import picker presents, so it
+ * reads like the feed path and the dashboard: recent work on top.
+ *
+ * Undated posts sort with `-Infinity` rather than 0 so they park at the end
+ * instead of claiming 1970 — and an unparseable date counts as undated, since
+ * `Date.parse` answers NaN there and NaN would poison the subtraction. Two
+ * undated posts compare equal, so a format with a tiebreaker of its own (the
+ * Substack path's numeric post id) gets a real 0 to chain from rather than a
+ * NaN that `Array.prototype.sort` silently swallows.
+ */
+export function comparePublishedAtDesc(
+  a: { publishedAt: string | null },
+  b: { publishedAt: string | null },
+): number {
+  const at = epochOrUndated(a.publishedAt);
+  const bt = epochOrUndated(b.publishedAt);
+  return at === bt ? 0 : bt - at;
+}
+
+function epochOrUndated(raw: string | null): number {
+  const parsed = raw ? Date.parse(raw) : Number.NaN;
+  return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed;
+}
+
 /** Tail window scanned for a trailing self-link ("Read more"). */
 const PREVIEW_TAIL_CHARS = 400;
 /** Text shorter than this (tags stripped) reads as a teaser, not a post. */

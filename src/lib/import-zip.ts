@@ -30,6 +30,7 @@
  * BlockNote conversion structurally drops script/iframe/unknown nodes.
  */
 import {
+  comparePublishedAtDesc,
   detectPreview,
   guidHash,
   isoDate,
@@ -310,19 +311,12 @@ export function parseSubstackExport(bytes: Uint8Array): ParsedExport {
 
   // Newest first (unknown dates last, then by numeric id descending) — the
   // picker reads like the feed path and the dashboard: recent work on top.
-  posts.sort((a, b) => {
-    const at = a.publishedAt
-      ? Date.parse(a.publishedAt)
-      : Number.NEGATIVE_INFINITY;
-    const bt = b.publishedAt
-      ? Date.parse(b.publishedAt)
-      : Number.NEGATIVE_INFINITY;
-    if (at !== bt) return bt - at;
-    return (
+  posts.sort(
+    (a, b) =>
+      comparePublishedAtDesc(a, b) ||
       (Number.parseInt(b.postId, 10) || 0) -
-      (Number.parseInt(a.postId, 10) || 0)
-    );
-  });
+        (Number.parseInt(a.postId, 10) || 0),
+  );
 
   return {
     posts,

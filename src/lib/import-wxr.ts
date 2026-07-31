@@ -21,6 +21,7 @@
  * runtime/parser behavior, at the cost of nothing a real export needs.
  */
 import {
+  comparePublishedAtDesc,
   detectPreview,
   guidHash,
   isoDate,
@@ -164,15 +165,7 @@ export function parseWxrExport(xmlText: string): ParsedWxrExport {
     });
   }
 
-  posts.sort((a, b) => {
-    const at = a.publishedAt
-      ? Date.parse(a.publishedAt)
-      : Number.NEGATIVE_INFINITY;
-    const bt = b.publishedAt
-      ? Date.parse(b.publishedAt)
-      : Number.NEGATIVE_INFINITY;
-    return bt - at;
-  });
+  posts.sort(comparePublishedAtDesc);
 
   return {
     posts,

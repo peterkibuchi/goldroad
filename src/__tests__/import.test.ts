@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertImportableUrl,
   clampOriginalDate,
+  comparePublishedAtDesc,
   detectPreview,
   discoverFeedUrls,
   extractFirstImageUrl,
@@ -436,6 +437,38 @@ describe("guidHash", () => {
     expect(a).toMatch(/^[0-9a-f]{64}$/);
     expect(await guidHash("guid-1")).toBe(a);
     expect(await guidHash("guid-2")).not.toBe(a);
+  });
+});
+
+describe("comparePublishedAtDesc — the order every import picker presents", () => {
+  const post = (publishedAt: string | null) => ({ publishedAt });
+
+  it("puts the newest first", () => {
+    const posts = [post("2024-01-01T00:00:00Z"), post("2026-01-01T00:00:00Z")];
+    posts.sort(comparePublishedAtDesc);
+    expect(posts.map((p) => p.publishedAt)).toEqual([
+      "2026-01-01T00:00:00Z",
+      "2024-01-01T00:00:00Z",
+    ]);
+  });
+
+  it("parks undated posts at the end, not at 1970", () => {
+    const posts = [post(null), post("1969-01-01T00:00:00Z")];
+    posts.sort(comparePublishedAtDesc);
+    expect(posts.map((p) => p.publishedAt)).toEqual([
+      "1969-01-01T00:00:00Z",
+      null,
+    ]);
+  });
+
+  it("calls two undated posts equal, so a format's own tiebreaker decides", () => {
+    // Subtracting two infinities would be NaN; a caller chaining `|| idDesc`
+    // must see a real 0 here.
+    expect(comparePublishedAtDesc(post(null), post(null))).toBe(0);
+  });
+
+  it("treats an unparseable date as undated rather than as NaN", () => {
+    expect(comparePublishedAtDesc(post("not a date"), post(null))).toBe(0);
   });
 });
 
