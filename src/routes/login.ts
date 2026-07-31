@@ -13,10 +13,15 @@ import { createOAuthClient, safeReturnTo } from "~/lib/oauth";
 function backToSignIn(
   error: "invalid_handle" | "handle_not_found" | "signin_unavailable",
   handle: string,
+  returnTo?: string,
 ): Response {
   const params = new URLSearchParams({ error });
   // 253 = the handle grammar's length cap: longer junk gets clipped, not echoed.
   params.set("handle", handle.slice(0, 253));
+  // Where the writer was headed survives the typo too. Without this, mistyping
+  // a handle after being bounced here from /stats silently reroutes them: the
+  // panel would re-post its own default instead of their destination.
+  if (returnTo !== undefined) params.set("returnTo", returnTo);
   return new Response(null, {
     status: 303,
     headers: { location: `/write?${params}` },
@@ -44,9 +49,17 @@ async function startLogin(
   returnTo: string,
 ): Promise<Response> {
   const trimmed = normalizeHandle(handle);
+  // Guarded once, here, so every path below carries the same vetted value —
+  // the state the PDS gets back, and the redirects that hand the writer back
+  // to the sign-in panel. `undefined` = the form named nothing, so the panel
+  // keeps its own default rather than being told one.
+  const dest = returnTo === "" ? undefined : safeReturnTo(returnTo);
   // Nothing entered: the sign-in panel itself is the answer — no error yet.
-  if (trimmed === "") return seeOther("/write");
-  if (!isHandle(trimmed)) return backToSignIn("invalid_handle", trimmed);
+  if (trimmed === "")
+    return seeOther(
+      dest ? `/write?returnTo=${encodeURIComponent(dest)}` : "/write",
+    );
+  if (!isHandle(trimmed)) return backToSignIn("invalid_handle", trimmed, dest);
   const client = createOAuthClient(new URL(request.url).origin);
   try {
     const { url } = await client.authorize({
@@ -71,6 +84,7 @@ async function startLogin(
         ? "handle_not_found"
         : "signin_unavailable",
       trimmed,
+      dest,
     );
   }
 }

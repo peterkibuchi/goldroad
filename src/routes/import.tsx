@@ -62,8 +62,10 @@ const getImportViewer = createServerFn({ method: "GET" }).handler(async () => {
 export const Route = createFileRoute("/import")({
   loader: async () => {
     const viewer = await getImportViewer();
-    // Unauthed → /write, which renders the sign-in form (same as /dashboard).
-    if (!viewer) throw redirect({ to: "/write" });
+    // Unauthed → /write, which renders the sign-in form (same as /dashboard),
+    // carrying this page as the destination to come back to.
+    if (!viewer)
+      throw redirect({ to: "/write", search: { returnTo: "/import" } });
     return viewer;
   },
   head: () => ({

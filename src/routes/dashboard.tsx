@@ -238,8 +238,10 @@ export const Route = createFileRoute("/dashboard")({
   loaderDeps: ({ search }) => ({ cursor: search.cursor }),
   loader: async ({ deps }) => {
     const dashboard = await getDashboard({ data: { cursor: deps.cursor } });
-    // Unauthed → /write, which renders the sign-in form.
-    if (!dashboard) throw redirect({ to: "/write" });
+    // Unauthed → /write, which renders the sign-in form; it sends the writer
+    // back here once they're in, not into the editor.
+    if (!dashboard)
+      throw redirect({ to: "/write", search: { returnTo: "/dashboard" } });
     return dashboard;
   },
   head: () => ({

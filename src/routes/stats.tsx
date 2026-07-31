@@ -174,8 +174,10 @@ export const Route = createFileRoute("/stats")({
   loaderDeps: () => ({}),
   loader: async () => {
     const stats = await getStats();
-    // Unauthed → /write, which renders the sign-in form (same as Posts).
-    if (!stats) throw redirect({ to: "/write" });
+    // Unauthed → /write, which renders the sign-in form (same as Posts),
+    // carrying this page as the destination to come back to.
+    if (!stats)
+      throw redirect({ to: "/write", search: { returnTo: "/stats" } });
     return stats;
   },
   head: () => ({

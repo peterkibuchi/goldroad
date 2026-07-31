@@ -133,7 +133,10 @@ export const Route = createFileRoute("/settings")({
   },
   loader: async () => {
     const settings = await getSettings();
-    if (!settings) throw redirect({ to: "/write" });
+    // Unauthed → /write, which renders the sign-in form, carrying this page as
+    // the destination to come back to.
+    if (!settings)
+      throw redirect({ to: "/write", search: { returnTo: "/settings" } });
     return settings;
   },
   head: () => ({

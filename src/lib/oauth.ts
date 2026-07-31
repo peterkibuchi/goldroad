@@ -178,8 +178,15 @@ export function createOAuthClient(requestOrigin: string): OAuthClient {
  * This lands on the auth path: `returnTo` rides the OAuth `state` and becomes a
  * `Location` after a writer authenticates. Someone arriving at an attacker's
  * page from us, mid-sign-in, is in the ideal frame of mind to retype a password.
+ *
+ * The default fallback is the overview, not the editor. A sign-in that names no
+ * destination is a writer arriving at their own publication; dropping them into
+ * a blank editor answers "who am I signed in as, and what's happened since?"
+ * with a cursor. `/home` answers it, and its first-run panel and next-action
+ * row put the editor one click away. An explicit `returnTo` — including
+ * `/write` from the editor's own sign-in panel — is honored unchanged.
  */
-export function safeReturnTo(value: unknown, fallback = "/write"): string {
+export function safeReturnTo(value: unknown, fallback = "/home"): string {
   if (typeof value !== "string") return fallback;
   if (!/^\/[^/\\]/.test(value)) return fallback;
   return value;
