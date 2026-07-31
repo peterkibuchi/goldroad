@@ -1089,7 +1089,13 @@ async function savePublication({
   // "keep the one that's there".
   const removeIcon = form.get("removeIcon") === "1";
 
-  const own = await findOwnPublication(pds, did, origins);
+  const found = await findOwnPublication(pds, did, origins);
+  // A publication we couldn't read is not a publication the writer lacks, and
+  // the difference decides createRecord vs putRecord below. Refuse instead:
+  // one flaked read would otherwise leave a duplicate record in their repo
+  // forever, while the save they asked for appears to have done nothing.
+  if (!found.ok) return backToSettings("save_failed:publication_unreadable");
+  const own = found.own;
   // Saving never silently rewrites a legacy publication URL — the writer moves
   // it explicitly via the `migrate` intent, so the two changes stay separate.
   const url =
@@ -1157,7 +1163,9 @@ async function saveTheme({
 
   // A theme has nowhere to live without a publication, and creating one here
   // would invent a name and a URL the writer never chose.
-  const own = await findOwnPublication(pds, did, origins);
+  const found = await findOwnPublication(pds, did, origins);
+  if (!found.ok) return backToSettings("save_failed:publication_unreadable");
+  const own = found.own;
   if (!own) return backToSettings("theme_no_publication");
   const rkey = rkeyFromUri(own.uri);
   if (!rkey) return backToSettings("save_failed:bad_rkey");
@@ -1207,7 +1215,9 @@ async function migratePublication({
       : backToDashboard(query);
 
   if (!pds) return back({ error: "move_failed:pds_unresolved" });
-  const own = await findOwnPublication(pds, did, origins);
+  const found = await findOwnPublication(pds, did, origins);
+  if (!found.ok) return back({ error: "move_failed:publication_unreadable" });
+  const own = found.own;
   if (!own) return back({ error: "move_no_publication" });
   // Already canonical (e.g. double-submit): nothing to write, report success.
   if (!isOwnPublicationUrl(own.value.url, LEGACY_ORIGINS)) {

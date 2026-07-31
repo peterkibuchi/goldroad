@@ -428,4 +428,25 @@ describe("ThemeEditor — accessibility", () => {
     render(<ThemeEditor publicationName="The Long Way" theme={null} />);
     expect(screen.getByRole("group", { name: "Colours" })).toBeTruthy();
   });
+
+  // `theme={null}` is ambiguous on its own: it means "no theme saved" OR "we
+  // couldn't read the record". In the second case the editor is showing the
+  // defaults, and both buttons would write those over colours the writer did
+  // choose — a save writing our palette, and the reset dropping theirs. The
+  // server can't catch this one, because ITS read succeeds.
+  it("cannot be saved when the publication couldn't be read", () => {
+    render(
+      <ThemeEditor disabled publicationName="The Long Way" theme={null} />,
+    );
+    const save = screen.getByRole("button", { name: "Save colours" });
+    const reset = screen.getByRole("button", { name: "Use the defaults" });
+    expect((save as HTMLButtonElement).disabled).toBe(true);
+    expect((reset as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("is saveable in the ordinary case", () => {
+    render(<ThemeEditor publicationName="The Long Way" theme={savedTheme} />);
+    const save = screen.getByRole("button", { name: "Save colours" });
+    expect((save as HTMLButtonElement).disabled).toBe(false);
+  });
 });

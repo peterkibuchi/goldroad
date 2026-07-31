@@ -233,11 +233,16 @@ function ThemePreview({
 export function ThemeEditor({
   publicationName,
   theme,
+  disabled = false,
 }: {
   /** Shown in the preview's masthead slot so it reads as the writer's page. */
   publicationName: string;
   /** The theme in the writer's publication record, or null if it has none. */
   theme: BasicTheme | null;
+  /** Set when the publication couldn't be read. `theme` is then null for want
+   * of an answer rather than for want of a theme, so the editor is showing
+   * defaults — and saving them would overwrite colours the writer did choose. */
+  disabled?: boolean;
 }) {
   const [hex, setHex] = useState(() => initialHex(theme));
   // Every hex in state came from the defaults, a starter palette or a colour
@@ -341,7 +346,8 @@ export function ThemeEditor({
 
       <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3">
         <button
-          className="min-h-11 cursor-pointer bg-spot px-8 py-2.5 font-bold font-display text-base text-paper transition-colors hover:bg-ink"
+          className="min-h-11 cursor-pointer bg-spot px-8 py-2.5 font-bold font-display text-base text-paper transition-colors hover:bg-ink disabled:cursor-default disabled:opacity-40"
+          disabled={disabled}
           type="submit"
         >
           Save colours
@@ -350,7 +356,8 @@ export function ThemeEditor({
             `basicTheme` rather than writing our palette into the writer's
             repo — reverting should leave no trace that a theme was ever set. */}
         <button
-          className="-my-2 inline-flex min-h-11 cursor-pointer items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
+          className="-my-2 inline-flex min-h-11 cursor-pointer items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink disabled:cursor-default disabled:opacity-40"
+          disabled={disabled}
           name="reset"
           type="submit"
           value="1"

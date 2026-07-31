@@ -26,6 +26,7 @@ const schedules = vi.hoisted(() => ({ deleteSchedulesForDraft: vi.fn() }));
 vi.mock("~/lib/scheduled-posts", () => schedules);
 
 import {
+  findOwnPublication,
   publishStoredDraft,
   resolvePublicationSite,
 } from "../lib/publish-document";
@@ -169,6 +170,63 @@ describe("resolvePublicationSite", () => {
     });
     expect(site).toBe("https://trygoldroad.com/@writer.example");
     expect(posted).toHaveLength(0);
+  });
+
+  // The distinction the whole discriminated return exists for. A PDS that
+  // didn't answer is not a writer without a publication, and creating one on
+  // that guess leaves a second, permanent, public record in their repo — one
+  // that every later lookup ignores, because `reverse: true` is oldest-first.
+  it("does not create a publication when the read failed", async () => {
+    atproto.listRecords.mockRejectedValue(new Error("502 Bad Gateway"));
+    const { rpc, posted } = fakeRpc();
+    const site = await resolvePublicationSite({
+      rpc,
+      did: DID,
+      ident: "writer.example",
+      pds: "https://pds.example.com",
+      origin: "https://trygoldroad.com",
+      origins: ["https://trygoldroad.com"],
+    });
+    expect(posted).toHaveLength(0);
+    // A loose document — the same honest fallback as having no PDS to ask.
+    expect(site).toBe("https://trygoldroad.com/@writer.example");
+  });
+});
+
+describe("findOwnPublication", () => {
+  it("reports a failed read as unreadable, not as absent", async () => {
+    atproto.listRecords.mockRejectedValue(new Error("502 Bad Gateway"));
+    const found = await findOwnPublication("https://pds.example.com", DID, [
+      "https://trygoldroad.com",
+    ]);
+    expect(found.ok).toBe(false);
+    expect(found.own).toBeNull();
+  });
+
+  it("reports an empty repo as readable with nothing in it", async () => {
+    atproto.listRecords.mockResolvedValue([]);
+    const found = await findOwnPublication("https://pds.example.com", DID, [
+      "https://trygoldroad.com",
+    ]);
+    expect(found.ok).toBe(true);
+    expect(found.own).toBeNull();
+  });
+
+  it("reports another app's publication as readable but not ours", async () => {
+    atproto.listRecords.mockResolvedValue([
+      {
+        uri: `at://${DID}/site.standard.publication/3aaaaaaaaaaaa`,
+        value: {
+          $type: "site.standard.publication",
+          url: "https://elsewhere.leaflet.pub",
+        },
+      },
+    ]);
+    const found = await findOwnPublication("https://pds.example.com", DID, [
+      "https://trygoldroad.com",
+    ]);
+    expect(found.ok).toBe(true);
+    expect(found.own).toBeNull();
   });
 });
 
