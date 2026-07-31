@@ -48,6 +48,14 @@ const FALSE_CLAIMS: ReadonlyArray<{ phrase: string; why: string }> = [
     why: "no subscriber list exists to export (corrected 2026-07-31)",
   },
   {
+    phrase: "Full-text RSS",
+    why: "the feed renders markdown at request time, and a 10 ms CPU budget only covers short posts — full text needs HTML rendered once at publish, not per request (corrected 2026-08-01)",
+  },
+  {
+    phrase: "carrying the whole post, not an excerpt",
+    why: "same claim, and it explicitly contrasted with Substack on the one axis we could not hold (corrected 2026-08-01)",
+  },
+  {
     phrase: "Subscriber emails export",
     why: "same claim, different phrasing (corrected 2026-07-31)",
   },

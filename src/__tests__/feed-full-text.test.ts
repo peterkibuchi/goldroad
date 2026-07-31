@@ -2,7 +2,11 @@
 import { describe, expect, it } from "vitest";
 
 import { rssFeedXml } from "~/lib/feed";
-import { markdownToHtml } from "~/lib/markdown-html";
+import {
+  MARKDOWN_PARSE_BUDGET_CHARS,
+  markdownBudget,
+  markdownToHtml,
+} from "~/lib/markdown-html";
 
 const channel = {
   title: "A publication",
@@ -85,14 +89,12 @@ describe("content:encoded in the feed", () => {
     }
   });
 
-  it("bounds a hostile record without bounding a real essay", () => {
-    // A 10,000-word post renders well under the cap; the cap exists for the
-    // record that carries a megabyte of one repeated character.
-    const essay = "word ".repeat(10_000);
-    expect(rssFeedXml(channel, [item(`<p>${essay}</p>`)])).toContain(
-      essay.trim(),
-    );
-
+  // This used to be named for bounding hostile input while asserting only that
+  // the OUTPUT serializer truncates. `item()` takes already-rendered HTML, so
+  // the step that actually had no bound — the markdown parse — was never
+  // exercised, and the suite read as though it were covered. The parse is what
+  // costs CPU, and it is paid before any output can be measured.
+  it("bounds the serialized output of a hostile record", () => {
     const huge = "x".repeat(300_000);
     const xml = rssFeedXml(channel, [item(huge)]);
     expect(xml).toContain("content:encoded");
@@ -107,5 +109,71 @@ describe("content:encoded in the feed", () => {
     ]);
     expect(xml).toContain("<description>A summary</description>");
     expect(xml).toContain("The whole piece");
+  });
+});
+
+/**
+ * The parse-side bound — the one the old test above was mistakenly credited
+ * with. What matters is how much markdown is HANDED TO the parser across one
+ * request, because that is the CPU cost and it is paid before any output exists
+ * to measure. A Workers free-tier invocation gets 10 ms; a 50-record feed page
+ * of full-text rendering measures ~3 s.
+ */
+describe("markdownBudget — how much one request may parse", () => {
+  it("renders while the budget covers the next document, then stops", () => {
+    const budget = markdownBudget(1_000);
+    expect(budget.render("word ".repeat(120))).toContain("<p>"); // 600 chars
+    expect(budget.remaining).toBe(400);
+    // 600 more would exceed 1,000 — refused whole rather than truncated.
+    expect(budget.render("word ".repeat(120))).toBe("");
+    expect(budget.remaining).toBe(400);
+    // A shorter one still fits: the budget tracks characters, not calls.
+    expect(budget.render("word ".repeat(20))).toContain("<p>");
+  });
+
+  it("refuses a document larger than the whole budget outright", () => {
+    const budget = markdownBudget(1_000);
+    // Never partially rendered: cutting markdown mid-document emits a dangling
+    // emphasis run or half a code fence, and the parse is already paid.
+    expect(budget.render("x".repeat(5_000))).toBe("");
+    expect(budget.remaining).toBe(1_000);
+  });
+
+  it("bounds a full 50-record feed page to the budget, not 50× it", () => {
+    const budget = markdownBudget(MARKDOWN_PARSE_BUDGET_CHARS);
+    const post = "word ".repeat(4_000); // 20,000 chars, a realistic long essay
+    const rendered = Array.from({ length: 50 }, () => budget.render(post));
+    // The measured cost of doing this unbounded is ~3,000 ms of CPU against a
+    // 10 ms limit — a 1102, not a slow feed.
+    expect(budget.remaining).toBe(MARKDOWN_PARSE_BUDGET_CHARS);
+    expect(rendered.every((html) => html === "")).toBe(true);
+  });
+
+  it("spends the budget on the items it is given first", () => {
+    const budget = markdownBudget(6_000);
+    const short = "word ".repeat(400); // 2,000 chars
+    const first = budget.render(short);
+    const second = budget.render(short);
+    const third = budget.render(short);
+    const fourth = budget.render(short);
+    // Three fit, the fourth doesn't. The route sorts newest-first before
+    // spending, so "first" means the posts a reader actually sees.
+    expect([first, second, third].every((h) => h.includes("<p>"))).toBe(true);
+    expect(fourth).toBe("");
+  });
+
+  // Pinned in both directions, because the number is derived from a
+  // measurement and a well-meaning "let's serve more" would silently
+  // reintroduce a 1102. See the table on the constant.
+  it("keeps the shipped budget where the measurement put it", () => {
+    expect(MARKDOWN_PARSE_BUDGET_CHARS).toBe(2_000);
+  });
+
+  it("charges nothing for records with no text", () => {
+    const budget = markdownBudget(1_000);
+    expect(budget.render(undefined)).toBe("");
+    expect(budget.render("")).toBe("");
+    expect(budget.render("   ")).toBe("");
+    expect(budget.remaining).toBe(1_000);
   });
 });

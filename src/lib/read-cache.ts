@@ -20,13 +20,14 @@
  * force full-cost renders. If a reading surface ever becomes personalized, add
  * a Vary/skip here.
  *
- * The cache key is normalized to origin + pathname + the validated `cursor`
- * param only — every other query param is stripped, so `/@h?x=<random>` can't
- * mint distinct full-cost MISSes. This NARROWS but does not fully close the
- * amplifier: `isValidCursor` checks shape only, so `/@h?cursor=<random-valid-
- * shape>` still varies the key and forces a MISS. Volumetric abuse of that is
- * the job of the single free CF rate-limit rule on read paths (owner action,
- * audit §2.2) — the cache handles the common repeated-read case. Only 200
+ * The cache key is normalized to origin + pathname, plus the validated `cursor`
+ * param on the one path that paginates — every other query param is stripped,
+ * so `/@h?x=<random>` can't mint distinct full-cost MISSes. This NARROWS but
+ * does not fully close the amplifier: `isValidCursor` checks shape only, so
+ * `/@h?cursor=<random-valid-shape>` still varies the key on that path and
+ * forces a MISS. Volumetric abuse of that is the job of the single free CF
+ * rate-limit rule on read paths (owner action) — the cache handles the common
+ * repeated-read case. Only 200
  * responses of an allowlisted content type (the HTML pages plus the RSS
  * feeds — see CACHEABLE_CONTENT_TYPES) without a Set-Cookie are stored; 404s
  * (takedowns included) and upstream flakes never cache, so they re-run the
@@ -51,13 +52,22 @@ export function isCacheableReadRequest(request: Request): boolean {
   return READ_SURFACE_RE.test(new URL(request.url).pathname);
 }
 
-/** Normalized cache key: origin + pathname + only a valid `cursor` param.
- * Stripping every other query param prevents cache-key pollution. */
+/** The only paths that paginate: a bare `/@handle`, whose "Older posts" link
+ * carries `?cursor=`. A document page and an RSS feed both ignore the param, so
+ * varying their keys on it would mint unlimited distinct full-cost MISSes for
+ * byte-identical content — and `isValidCursor` is shape-only, so any 512-char
+ * string qualifies. Keep the vary where pagination actually lives. */
+const PAGINATED_PATH_RE = /^\/@[^/]+\/?$/;
+
+/** Normalized cache key: origin + pathname, plus a valid `cursor` param on the
+ * one path that reads it. Stripping the rest prevents cache-key pollution. */
 export function readCacheKey(request: Request): string {
   const url = new URL(request.url);
   const key = new URL(url.origin + url.pathname);
   const cursor = url.searchParams.get("cursor");
-  if (cursor && isValidCursor(cursor)) key.searchParams.set("cursor", cursor);
+  if (cursor && isValidCursor(cursor) && PAGINATED_PATH_RE.test(url.pathname)) {
+    key.searchParams.set("cursor", cursor);
+  }
   return key.toString();
 }
 
