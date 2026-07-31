@@ -93,6 +93,12 @@ screenshot this line, or cringe at it?
 - **State promises positively.** "We'll never sell your list" names the fear and thereby
   evokes it; "your followers stay yours" is the same promise as a possession. If a
   sentence needs a "never" to be comforting, rewrite it as a freedom.
+  - **One recorded exception:** "If Goldroad vanished tonight, your publication wouldn't."
+    It may be used once, as a page's single flourish. It breaks the rule deliberately
+    because the fear it names is *ours*, not the writer's, and inviting the reader to
+    imagine us gone is the strongest available proof that they do not depend on us.
+    A rule holds until the value of the exception exceeds the value of the rule — and
+    then the exception is **named and bounded here**, never taken quietly.
 - Unshipped features are marked as on the roadmap, never described in the present tense.
 
 ## Interaction vocabulary
