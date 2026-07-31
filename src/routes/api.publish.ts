@@ -60,8 +60,10 @@ import {
   MAX_TITLE_LENGTH,
   TID_RE,
   updateDocumentRecord,
+  withBasicTheme,
 } from "~/lib/publish";
 import { clearSessionCookies } from "~/lib/session";
+import { parseThemeForm } from "~/lib/theme";
 import { env } from "cloudflare:workers";
 
 function redirectTo(location: string, extra?: HeadersInit): Response {
@@ -153,6 +155,7 @@ export const Route = createFileRoute("/api/publish")({
         const intentField = form.get("intent");
         const intent =
           intentField === "publication" ||
+          intentField === "theme" ||
           intentField === "delete" ||
           intentField === "announce" ||
           intentField === "migrate"
@@ -193,6 +196,8 @@ export const Route = createFileRoute("/api/publish")({
         switch (intent) {
           case "publication":
             return savePublication(ctx);
+          case "theme":
+            return saveTheme(ctx);
           case "delete":
             return deleteDocument(ctx);
           case "announce":
@@ -693,6 +698,64 @@ async function savePublication({
   );
   if (!res.ok) {
     console.error("publication save failed", res.status, res.data);
+    return backToSettings(`save_failed:${res.data.error}`);
+  }
+  return backToSettings();
+}
+
+/**
+ * The writer's four colours → `basicTheme` on their publication record.
+ *
+ * No second write path and no new collection: `site.standard.publication`
+ * EMBEDS `site.standard.theme.basic` (see the lexicon reading in ~/lib/theme),
+ * so saving a theme is a publication putRecord that leaves every other field —
+ * including fields other apps wrote — exactly as it found them.
+ *
+ * The colours arrive as four `#rrggbb` strings and are parsed here, at the
+ * write door: nothing reaches a record that is not four integers in 0–255.
+ * `reset=1` is "use the defaults", which removes the field rather than storing
+ * our palette in the writer's repo.
+ */
+async function saveTheme({
+  rpc,
+  form,
+  did,
+  pds,
+  origins,
+}: WriteContext): Promise<Response> {
+  if (!pds) return backToSettings("save_failed:pds_unresolved");
+
+  const reset = form.get("reset") === "1";
+  const theme = reset ? null : parseThemeForm((field) => form.get(field));
+  // All four or nothing — a half-applied palette is how a page ends up
+  // unreadable, so a malformed submit changes nothing at all.
+  if (!reset && !theme) return backToSettings("theme_invalid");
+
+  // A theme has nowhere to live without a publication, and creating one here
+  // would invent a name and a URL the writer never chose.
+  const own = await findOwnPublication(pds, did, origins);
+  if (!own) return backToSettings("theme_no_publication");
+  const rkey = rkeyFromUri(own.uri);
+  if (!rkey) return backToSettings("save_failed:bad_rkey");
+
+  let record: ReturnType<typeof withBasicTheme>;
+  try {
+    record = withBasicTheme(own.value, theme);
+  } catch (err) {
+    console.warn("theme merge refused", err);
+    return backToSettings("save_failed:invalid_record");
+  }
+
+  const res = await rpc.post("com.atproto.repo.putRecord", {
+    input: {
+      repo: did,
+      collection: "site.standard.publication",
+      rkey,
+      record,
+    },
+  });
+  if (!res.ok) {
+    console.error("theme save failed", res.status, res.data);
     return backToSettings(`save_failed:${res.data.error}`);
   }
   return backToSettings();

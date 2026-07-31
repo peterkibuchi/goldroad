@@ -9,6 +9,7 @@ import { ExternalLink } from "~/components/external-link";
 import { MovePublicationNotice } from "~/components/move-publication-notice";
 import { Notice } from "~/components/notice";
 import { AppShell } from "~/components/site-chrome";
+import { ThemeEditor } from "~/components/theme-editor";
 import {
   listRecords,
   resolveDidToHandle,
@@ -25,6 +26,7 @@ import {
   MAX_PUBLICATION_DESCRIPTION_LENGTH,
 } from "~/lib/publish";
 import { countDraftsForDid, countImportItemsForDid } from "~/lib/rights-store";
+import { type BasicTheme, parseTheme } from "~/lib/theme";
 import { env } from "cloudflare:workers";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -37,6 +39,10 @@ const ERROR_MESSAGES: Record<string, string> = {
     "Uploading images needs a permission your current sign-in doesn't include yet — sign out and sign in again to add it.",
   move_no_publication:
     "There's no publication to move yet — it's created when you publish your first post.",
+  theme_no_publication:
+    "Your colours are stored with your publication, and there isn't one yet — it's created when you publish your first post.",
+  theme_invalid:
+    "Those colours didn't come through. Pick them again and save — nothing was changed.",
   delete_account_failed:
     "Deleting your account didn't go through. Refresh the page and try again.",
 };
@@ -71,6 +77,7 @@ const getSettings = createServerFn({ method: "GET" }).handler(async () => {
   let publicationUrl = `${canonicalOrigin(origin)}/@${ident}`;
   let onLegacyUrl = false;
   let iconPath: string | null = null;
+  let theme: BasicTheme | null = null;
   try {
     const pds = await resolveDidToPds(did);
     const pubs = await listRecords<StandardPublication>(
@@ -94,6 +101,10 @@ const getSettings = createServerFn({ method: "GET" }).handler(async () => {
       // mint a /img path from it.
       const iconCid = coverImageCid(own.value.icon);
       if (iconCid) iconPath = blobImagePath(did, iconCid);
+      // The writer's own record is read back through the same door a
+      // stranger's is: a theme another app wrote (or wrote badly) must not
+      // reach the editor unvalidated.
+      theme = parseTheme(own.value.basicTheme);
     }
   } catch {
     // No publication yet, or the PDS is unreachable — the form starts fresh.
@@ -119,6 +130,7 @@ const getSettings = createServerFn({ method: "GET" }).handler(async () => {
     iconPath,
     publicationUrl,
     onLegacyUrl,
+    theme,
     dataCounts,
   };
 });
@@ -347,6 +359,7 @@ function SettingsPage() {
     iconPath,
     publicationUrl,
     onLegacyUrl,
+    theme,
     dataCounts,
   } = Route.useLoaderData();
   const { error, saved, moved } = Route.useSearch();
@@ -450,6 +463,21 @@ function SettingsPage() {
               </ExternalLink>
             </div>
           </form>
+        </SettingsSection>
+
+        <SettingsSection
+          id="colours"
+          intro="Four colours for your publication page and your posts. They're stored in your publication record on the open network, not in a Goldroad setting — so they come with you if you leave, and other apps that read the same records can use them too. Goldroad's own pages keep their own look."
+          title="Colours"
+        >
+          {exists ? (
+            <ThemeEditor publicationName={name || ident} theme={theme} />
+          ) : (
+            <p className="font-display text-ink-soft text-sm">
+              Your colours are stored with your publication — create one above,
+              or publish your first post, and they'll appear here.
+            </p>
+          )}
         </SettingsSection>
 
         <SettingsSection id="address" title="Your public address">
