@@ -87,7 +87,10 @@ const components: Components = {
 
 export function Prose({ markdown }: { markdown: string }) {
   return (
-    <div className="text-[1.0625rem] leading-[1.7]">
+    // `gr-prose` is a styling hook, not a look: it marks the writer's own
+    // prose so a themed page can put their accent on the links inside it
+    // without recolouring page chrome (see [data-writer-theme] in styles.css).
+    <div className="gr-prose text-[1.0625rem] leading-[1.7]">
       <Markdown components={components} remarkPlugins={[remarkGfm]}>
         {markdown}
       </Markdown>
