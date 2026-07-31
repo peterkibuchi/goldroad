@@ -172,9 +172,9 @@ describe("safeReturnTo — the real open-redirect guard", () => {
   });
 
   it("falls back on protocol-relative and absolute URLs", () => {
-    expect(safeReturnTo("//evil.example")).toBe("/write");
-    expect(safeReturnTo("https://evil.example")).toBe("/write");
-    expect(safeReturnTo("javascript:alert(1)")).toBe("/write");
+    expect(safeReturnTo("//evil.example")).toBe("/home");
+    expect(safeReturnTo("https://evil.example")).toBe("/home");
+    expect(safeReturnTo("javascript:alert(1)")).toBe("/home");
   });
 
   it("falls back on a backslash authority, which browsers treat as a slash", () => {
@@ -184,8 +184,32 @@ describe("safeReturnTo — the real open-redirect guard", () => {
     expect(
       new URL("/\\evil.example", "https://trygoldroad.com/oauth/callback").href,
     ).toBe("https://evil.example/");
-    expect(safeReturnTo("/\\evil.example")).toBe("/write");
-    expect(safeReturnTo("/\\\\evil.example")).toBe("/write");
+    expect(safeReturnTo("/\\evil.example")).toBe("/home");
+    expect(safeReturnTo("/\\\\evil.example")).toBe("/home");
+  });
+
+  it("refuses every hostile shape regardless of the fallback offered", () => {
+    // The refusal is the guard; the fallback is only where a refusal lands.
+    // Changing the default must never turn a rejected value into an accepted
+    // one, so the whole refusal set is re-run against an explicit fallback.
+    for (const hostile of [
+      "//evil.example",
+      "https://evil.example",
+      "http://evil.example",
+      "javascript:alert(1)",
+      "/\\evil.example",
+      "/\\\\evil.example",
+      "",
+      "write",
+      "?next=/write",
+      null,
+      undefined,
+      42,
+      { toString: () => "/write" },
+    ]) {
+      expect(safeReturnTo(hostile, "/settings")).toBe("/settings");
+      expect(safeReturnTo(hostile)).toBe("/home");
+    }
   });
 
   it("still allows a path whose later segments contain a backslash", () => {
@@ -195,7 +219,89 @@ describe("safeReturnTo — the real open-redirect guard", () => {
   });
 
   it("falls back on non-strings, honoring the given fallback", () => {
-    expect(safeReturnTo(null)).toBe("/write");
+    expect(safeReturnTo(null)).toBe("/home");
     expect(safeReturnTo(undefined, "/dashboard")).toBe("/dashboard");
+  });
+});
+
+/**
+ * Where a plain sign-in lands. The overview documents itself as the surface a
+ * signed-in writer lands on; the fallback used to say /write, so a sign-in that
+ * named no destination dropped the writer into a blank editor. These pin the
+ * agreement, in both directions.
+ */
+describe("sign-in landing", () => {
+  it("sends a writer who named no destination to the overview", () => {
+    expect(safeReturnTo(undefined)).toBe("/home");
+    expect(safeReturnTo("")).toBe("/home");
+  });
+
+  it("still honors an explicit /write — the editor's own sign-in panel", () => {
+    expect(safeReturnTo("/write")).toBe("/write");
+    expect(safeReturnTo("/write?draft=abc123")).toBe("/write?draft=abc123");
+  });
+
+  it("carries the destination through the POST that starts sign-in", async () => {
+    authorize.mockResolvedValue({
+      url: new URL("https://pds.example/authorize?request_uri=fake"),
+    });
+    await post({ handle: "writer.bsky.social", returnTo: "/stats" });
+    expect(authorize).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: { type: "account", identifier: "writer.bsky.social" },
+        state: { returnTo: "/stats" },
+      }),
+    );
+  });
+
+  it("falls back to the overview when the POST names no destination", async () => {
+    authorize.mockResolvedValue({
+      url: new URL("https://pds.example/authorize?request_uri=fake"),
+    });
+    await post({ handle: "writer.bsky.social" });
+    expect(authorize).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: { type: "account", identifier: "writer.bsky.social" },
+        state: { returnTo: "/home" },
+      }),
+    );
+  });
+
+  it("refuses a hostile destination on the way in, landing on the overview", async () => {
+    authorize.mockResolvedValue({
+      url: new URL("https://pds.example/authorize?request_uri=fake"),
+    });
+    await post({
+      handle: "writer.bsky.social",
+      returnTo: "//evil.example/phish",
+    });
+    expect(authorize).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: { type: "account", identifier: "writer.bsky.social" },
+        state: { returnTo: "/home" },
+      }),
+    );
+  });
+
+  it("keeps the destination on the way back from a failed attempt", async () => {
+    // A writer bounced here from /stats who then mistypes their handle must not
+    // be quietly rerouted: the panel re-posts what it is handed.
+    const res = await post({ handle: "not_a_handle", returnTo: "/stats" });
+    expect(locationOf(res).searchParams.get("returnTo")).toBe("/stats");
+  });
+
+  it("never echoes a hostile destination back into the sign-in form", async () => {
+    const res = await post({
+      handle: "not_a_handle",
+      returnTo: "//evil.example",
+    });
+    expect(locationOf(res).searchParams.get("returnTo")).toBe("/home");
+  });
+
+  it("tells the panel nothing when the form named no destination", async () => {
+    // Absent, not "/home": /write is the panel's own default, and a writer who
+    // came to the editor to write should stay headed there.
+    const res = await post({ handle: "not_a_handle" });
+    expect(locationOf(res).searchParams.get("returnTo")).toBeNull();
   });
 });

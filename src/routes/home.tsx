@@ -146,10 +146,14 @@ const getOverview = createServerFn({ method: "GET" }).handler(async () => {
  * The landing contract for this surface: the overview is the signed-in home,
  * so arriving without a session is not an error page — it's a redirect to the
  * sign-in form at /write, exactly like the posts manager does.
+ *
+ * The bounce names this page as the destination, so signing in comes back here
+ * rather than stranding the writer in the editor that happens to host the form.
  * Exported so the contract is testable without a live session.
  */
 export function requireOverview<T>(overview: T | null): T {
-  if (!overview) throw redirect({ to: "/write" });
+  if (!overview)
+    throw redirect({ to: "/write", search: { returnTo: "/home" } });
   return overview;
 }
 

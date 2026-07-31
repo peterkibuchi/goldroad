@@ -81,7 +81,14 @@ describe("overview — landing contract", () => {
     }
     expect(isRedirect(thrown)).toBe(true);
     // A router redirect is a Response carrying its navigation options.
-    expect((thrown as { options: { to?: string } }).options.to).toBe("/write");
+    const options = (
+      thrown as { options: { to?: string; search?: { returnTo?: string } } }
+    ).options;
+    expect(options.to).toBe("/write");
+    // …and it names this page as the destination, so signing in comes back to
+    // the overview instead of stranding the writer in the editor that happens
+    // to host the sign-in form.
+    expect(options.search?.returnTo).toBe("/home");
   });
 
   it("passes the writer's own data straight through", () => {
