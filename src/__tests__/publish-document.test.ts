@@ -1,0 +1,270 @@
+// @vitest-environment node
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+/**
+ * The record-writing core all three publish paths share — the interactive
+ * publish, "publish now", and the cron.
+ *
+ * The reason it exists is drift: three copies of "which publication does a
+ * document attach to, and what is written back afterwards" would diverge, and
+ * the copy that diverged would be the cron's, because nobody watches it. So
+ * this suite pins the policy once, and both callers inherit it.
+ */
+const atproto = vi.hoisted(() => ({ listRecords: vi.fn() }));
+vi.mock("~/lib/atproto", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/atproto")>()),
+  ...atproto,
+}));
+
+const drafts = vi.hoisted(() => ({ deleteDraft: vi.fn() }));
+vi.mock("~/lib/drafts", () => drafts);
+
+const ledger = vi.hoisted(() => ({ setPublishedRkey: vi.fn() }));
+vi.mock("~/lib/import-store", () => ledger);
+
+import {
+  publishStoredDraft,
+  resolvePublicationSite,
+} from "../lib/publish-document";
+
+const DID = "did:plc:fake2222222222writer2222" as const;
+const PUB_URI = `at://${DID}/site.standard.publication/3lyk73wxnok2f`;
+
+type Posted = { nsid: string; input: Record<string, unknown> };
+
+/** A stand-in for @atcute/client: records what was posted, answers as told. */
+function fakeRpc(
+  answers: Array<{ ok: boolean; status?: number; data?: unknown }> = [],
+) {
+  const posted: Posted[] = [];
+  const rpc = {
+    post(nsid: string, options: { input: Record<string, unknown> }) {
+      posted.push({ nsid, input: options.input });
+      const answer = answers.shift() ?? { ok: true, data: {} };
+      return Promise.resolve({
+        ok: answer.ok,
+        status: answer.status ?? (answer.ok ? 200 : 400),
+        data: answer.data ?? {},
+      });
+    },
+    // biome-ignore lint/suspicious/noExplicitAny: a narrow stand-in for the client
+  } as any;
+  return { rpc, posted };
+}
+
+const DRAFT = {
+  id: "11111111-2222-4333-8444-555555555555",
+  title: "The long way round",
+  dek: "On slow software",
+  markdown: "Some words.",
+};
+
+function input(
+  rpc: unknown,
+  extra: Partial<Parameters<typeof publishStoredDraft>[0]> = {},
+) {
+  return {
+    // biome-ignore lint/suspicious/noExplicitAny: no live D1 in this suite
+    rpc: rpc as any,
+    // biome-ignore lint/suspicious/noExplicitAny: the store calls are mocked
+    db: {} as any,
+    did: DID,
+    ident: "writer.example",
+    pds: "https://pds.example.com",
+    origin: "https://trygoldroad.com",
+    origins: ["https://trygoldroad.com"] as const,
+    draft: DRAFT,
+    ...extra,
+  };
+}
+
+beforeEach(() => {
+  atproto.listRecords.mockReset();
+  drafts.deleteDraft.mockReset();
+  ledger.setPublishedRkey.mockReset();
+  atproto.listRecords.mockResolvedValue([
+    {
+      uri: PUB_URI,
+      cid: "bafyreipublication",
+      value: {
+        $type: "site.standard.publication",
+        name: "The Long Way",
+        url: "https://trygoldroad.com/@writer.example",
+      },
+    },
+  ]);
+  drafts.deleteDraft.mockResolvedValue([{ id: DRAFT.id }]);
+  ledger.setPublishedRkey.mockResolvedValue([]);
+});
+
+describe("resolvePublicationSite", () => {
+  it("attaches to the writer's own publication when they have one", async () => {
+    const { rpc, posted } = fakeRpc();
+    const site = await resolvePublicationSite({
+      rpc,
+      did: DID,
+      ident: "writer.example",
+      pds: "https://pds.example.com",
+      origin: "https://trygoldroad.com",
+      origins: ["https://trygoldroad.com"],
+    });
+    expect(site).toBe(PUB_URI);
+    expect(posted).toHaveLength(0); // nothing created
+  });
+
+  it("creates one on a first publish, named after the handle", async () => {
+    atproto.listRecords.mockResolvedValue([]);
+    const { rpc, posted } = fakeRpc();
+    const site = await resolvePublicationSite({
+      rpc,
+      did: DID,
+      ident: "writer.example",
+      pds: "https://pds.example.com",
+      origin: "https://trygoldroad.com",
+      origins: ["https://trygoldroad.com"],
+    });
+    expect(posted[0]?.nsid).toBe("com.atproto.repo.createRecord");
+    expect(posted[0]?.input.collection).toBe("site.standard.publication");
+    expect(site).toMatch(/^at:\/\/did:plc:.*\/site\.standard\.publication\//);
+  });
+
+  it("never adopts a publication another app owns", async () => {
+    atproto.listRecords.mockResolvedValue([
+      {
+        uri: `at://${DID}/site.standard.publication/3aaaaaaaaaaaa`,
+        value: {
+          $type: "site.standard.publication",
+          url: "https://elsewhere.leaflet.pub",
+        },
+      },
+    ]);
+    const { rpc } = fakeRpc();
+    const site = await resolvePublicationSite({
+      rpc,
+      did: DID,
+      ident: "writer.example",
+      pds: "https://pds.example.com",
+      origin: "https://trygoldroad.com",
+      origins: ["https://trygoldroad.com"],
+    });
+    // It created its own instead of writing into Leaflet's.
+    expect(site).not.toContain("3aaaaaaaaaaaa");
+  });
+
+  it("falls back to the https publication URL with no PDS to ask", async () => {
+    const { rpc, posted } = fakeRpc();
+    const site = await resolvePublicationSite({
+      rpc,
+      did: DID,
+      ident: "writer.example",
+      pds: null,
+      origin: "https://trygoldroad.com",
+      origins: ["https://trygoldroad.com"],
+    });
+    expect(site).toBe("https://trygoldroad.com/@writer.example");
+    expect(posted).toHaveLength(0);
+  });
+});
+
+describe("publishStoredDraft", () => {
+  it("writes the draft's own words to a site.standard.document", async () => {
+    const { rpc, posted } = fakeRpc();
+    const result = await publishStoredDraft(input(rpc));
+    expect(result.ok).toBe(true);
+    const create = posted.find(
+      (p) => p.input.collection === "site.standard.document",
+    );
+    expect(create?.input.repo).toBe(DID);
+    const record = create?.input.record as Record<string, unknown>;
+    expect(record.title).toBe(DRAFT.title);
+    expect(record.textContent).toBe("Some words.");
+    expect(record.description).toBe("On slow software");
+    expect(record.site).toBe(PUB_URI);
+    // No cover: a blob uploaded now and referenced hours later is a blob the
+    // PDS may have reclaimed, so scheduled posts publish text.
+    expect(record.coverImage).toBeUndefined();
+  });
+
+  it("reports the rkey it published under, and it matches the record path", async () => {
+    const { rpc, posted } = fakeRpc();
+    const result = await publishStoredDraft(input(rpc));
+    if (!result.ok) throw new Error("expected a publish");
+    const create = posted.find(
+      (p) => p.input.collection === "site.standard.document",
+    );
+    expect(create?.input.rkey).toBe(result.rkey);
+    const record = create?.input.record as { path?: string } | undefined;
+    expect(record?.path).toBe(`/${result.rkey}`);
+  });
+
+  it("completes the draft and records the import write-back", async () => {
+    const { rpc } = fakeRpc();
+    await publishStoredDraft(input(rpc));
+    expect(ledger.setPublishedRkey).toHaveBeenCalledWith(
+      expect.anything(),
+      DID,
+      DRAFT.id,
+      expect.any(String),
+    );
+    expect(drafts.deleteDraft).toHaveBeenCalledWith(
+      expect.anything(),
+      DID,
+      DRAFT.id,
+    );
+  });
+
+  it("still reports success when the write-backs flake — the record is live", async () => {
+    ledger.setPublishedRkey.mockRejectedValue(new Error("d1 down"));
+    drafts.deleteDraft.mockRejectedValue(new Error("d1 down"));
+    const quiet = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { rpc } = fakeRpc();
+    expect((await publishStoredDraft(input(rpc))).ok).toBe(true);
+    quiet.mockRestore();
+  });
+
+  it("refuses an untitled draft with a reason a writer can act on", async () => {
+    const { rpc, posted } = fakeRpc();
+    const result = await publishStoredDraft(
+      input(rpc, { draft: { ...DRAFT, title: "  " } }),
+    );
+    expect(result).toMatchObject({ ok: false, retry: false });
+    if (result.ok) throw new Error("expected a refusal");
+    expect(result.reason).toMatch(/no title/i);
+    expect(posted).toHaveLength(0);
+  });
+
+  it("treats a 5xx as worth another hour", async () => {
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { rpc } = fakeRpc([
+      { ok: false, status: 502, data: { error: "UpstreamFailure" } },
+    ]);
+    const result = await publishStoredDraft(input(rpc, { pds: null }));
+    if (result.ok) throw new Error("expected a failure");
+    expect(result.retry).toBe(true);
+    expect(result.reason).toMatch(/try again within the hour/i);
+    expect(result.code).toBe("publish_failed:UpstreamFailure");
+    quiet.mockRestore();
+  });
+
+  it("treats a refusal as final — next hour will refuse it too", async () => {
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { rpc } = fakeRpc([
+      { ok: false, status: 400, data: { error: "InvalidRequest" } },
+    ]);
+    const result = await publishStoredDraft(input(rpc, { pds: null }));
+    if (result.ok) throw new Error("expected a failure");
+    expect(result.retry).toBe(false);
+    expect(result.reason).toMatch(/refused/i);
+    quiet.mockRestore();
+  });
+
+  it("does not delete the draft when the publish failed", async () => {
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { rpc } = fakeRpc([
+      { ok: false, status: 400, data: { error: "InvalidRequest" } },
+    ]);
+    await publishStoredDraft(input(rpc, { pds: null }));
+    expect(drafts.deleteDraft).not.toHaveBeenCalled();
+    quiet.mockRestore();
+  });
+});

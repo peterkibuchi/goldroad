@@ -9,7 +9,6 @@ import { type AssociatedRef, buildAnnouncePost } from "~/lib/announce";
 import {
   getRecordEntry,
   isDid,
-  listRecords,
   parseAtUri,
   RKEY_RE,
   resolveDidToHandle,
@@ -26,7 +25,7 @@ import {
   MAX_IMAGE_BLOB_BYTES,
   thumbFromCover,
 } from "~/lib/blob";
-import { deleteDraft } from "~/lib/drafts";
+import { deleteDraft, selectDraft } from "~/lib/drafts";
 import { isDraftId } from "~/lib/drafts-schema";
 import { clampOriginalDate, rehostBodyImages } from "~/lib/import";
 import {
@@ -64,6 +63,19 @@ import {
   updateDocumentRecord,
   withBasicTheme,
 } from "~/lib/publish";
+import {
+  findOwnPublication,
+  publishStoredDraft,
+  resolvePublicationSite,
+} from "~/lib/publish-document";
+import { dueAtProblem, localToUtcMs } from "~/lib/schedule-time";
+import {
+  cancelSchedule,
+  deleteSchedulesForDraft,
+  deleteUnclaimedSchedulesForDraft,
+  selectScheduleForDraft,
+  upsertSchedule,
+} from "~/lib/scheduled-posts";
 import { clearSessionCookies } from "~/lib/session";
 import { parseThemeForm } from "~/lib/theme";
 import { env } from "cloudflare:workers";
@@ -78,6 +90,15 @@ function redirectTo(location: string, extra?: HeadersInit): Response {
 function backToWrite(error: string, editRkey?: string): Response {
   const params = new URLSearchParams({ error });
   if (editRkey) params.set("edit", editRkey);
+  return redirectTo(`/write?${params}`);
+}
+
+/** Back to the editor with the draft still loaded. A bare /write?error would
+ * strand the writer on a blank page with their words "somewhere" — technically
+ * saved, and no comfort at all. */
+function backToDraft(draftId: string, error: string): Response {
+  const params = new URLSearchParams({ error });
+  if (isDraftId(draftId)) params.set("draft", draftId);
   return redirectTo(`/write?${params}`);
 }
 
@@ -103,23 +124,6 @@ function backToDashboard(query: Record<string, string>): Response {
  */
 function isInsufficientScope(res: { ok: boolean; status: number }): boolean {
   return !res.ok && (res.status === 401 || res.status === 403);
-}
-
-/** The writer's Goldroad-managed publication: URL prefix-matched on our
- * origins (canonical + legacy) so we never touch publication records owned by
- * other apps (e.g. Leaflet). */
-async function findOwnPublication(
-  pds: string,
-  did: string,
-  origins: readonly string[],
-) {
-  const pubs = await listRecords<StandardPublication>(
-    pds,
-    did,
-    "site.standard.publication",
-    { reverse: true },
-  ).catch(() => []);
-  return pubs.find((p) => isOwnPublicationUrl(p.value.url, origins)) ?? null;
 }
 
 /**
@@ -161,9 +165,20 @@ export const Route = createFileRoute("/api/publish")({
           intentField === "delete" ||
           intentField === "announce" ||
           intentField === "migrate" ||
-          intentField === "uploadImage"
+          intentField === "uploadImage" ||
+          intentField === "schedule" ||
+          intentField === "unschedule" ||
+          intentField === "publish-now"
             ? intentField
             : "document";
+
+        // Scheduling touches OUR database and nothing else — no record is
+        // written, so these two run before the session is restored. That isn't
+        // only an economy: restoring a session refreshes the writer's token,
+        // and doing that to save a due date would spend a refresh (and widen
+        // the race documented in ~/lib/scheduled-posts) for no write at all.
+        if (intent === "schedule") return scheduleDraft(form, did);
+        if (intent === "unschedule") return unscheduleDraft(form, did);
 
         const client = createOAuthClient(url.origin);
         let session: OAuthSession;
@@ -220,6 +235,8 @@ export const Route = createFileRoute("/api/publish")({
             return migratePublication(ctx);
           case "uploadImage":
             return uploadInlineImage(ctx);
+          case "publish-now":
+            return publishNow(ctx);
           default:
             return publishDocument(ctx);
         }
@@ -227,6 +244,95 @@ export const Route = createFileRoute("/api/publish")({
     },
   },
 });
+
+/**
+ * `intent=schedule` — publish this draft at a moment the writer picked.
+ *
+ * NOT A SECOND WRITE PATH. Nothing here touches the writer's repo: it saves a
+ * due date beside a draft id, and the hourly cron does the publishing through
+ * the same `publishStoredDraft` the button below uses. Which is also why it
+ * runs before the session restore in the handler above.
+ *
+ * The draft is the payload, so this writes no content: the editor forces a save
+ * (blocks AND the markdown projection) and waits for it before submitting, so
+ * by the time this runs the row holds exactly what was on screen. What this
+ * checks is what a cron hours later cannot recover from — that the draft is
+ * really this writer's, and that it has a title.
+ *
+ * Times arrive as the writer's wall clock plus the zone offset in effect AT
+ * THAT MOMENT, and are converted once, here, at the write door
+ * (~/lib/schedule-time). Only UTC is stored.
+ */
+async function scheduleDraft(form: FormData, did: string): Promise<Response> {
+  const draftId = String(form.get("draftId") ?? "");
+  if (!isDraftId(draftId)) return backToDraft(draftId, "schedule_no_draft");
+
+  const offsetField = form.get("dueTzOffset");
+  const offset =
+    typeof offsetField === "string" && offsetField.trim() !== ""
+      ? Number(offsetField)
+      : null;
+  // localToUtcMs refuses a null/implausible offset outright — a missing offset
+  // must never be read as "UTC, then", which would silently shift every
+  // scheduled time by the writer's own offset.
+  const dueAt = localToUtcMs(form.get("dueAtLocal"), offset);
+  const problem = dueAtProblem(dueAt, Date.now());
+  if (problem) return backToDraft(draftId, `schedule_${problem}`);
+
+  const db = drizzle(env.DB);
+  const [draft] = await selectDraft(db, did, draftId).catch(() => []);
+  // Missing OR not theirs — deliberately the same answer, as everywhere else.
+  if (!draft) return backToDraft(draftId, "schedule_no_draft");
+  // A titled post is the one thing publishing cannot do without, and finding
+  // that out at 09:00 tomorrow is strictly worse than finding out now.
+  if (!draft.title.trim()) return backToDraft(draftId, "missing_title");
+
+  try {
+    await upsertSchedule(db, {
+      id: crypto.randomUUID(),
+      did,
+      draftId,
+      dueAt: new Date(dueAt as number),
+    });
+  } catch (err) {
+    console.error("schedule write failed", err);
+    return backToDraft(draftId, "schedule_failed");
+  }
+  // Land on the queue, not back in the editor: the writer's next question is
+  // "is it really going out, and when", and this is the page that answers it.
+  return backToDashboard({ tab: "scheduled", scheduled: "1" });
+}
+
+/** `intent=unschedule` — cancel. The row is deleted (see cancelSchedule), so
+ * the writer is back to simply having a draft. Accepts the schedule's own id
+ * (from the posts manager) or the draft id (from the editor, which knows the
+ * draft and not the row). */
+async function unscheduleDraft(form: FormData, did: string): Promise<Response> {
+  const id = String(form.get("id") ?? "");
+  const draftId = String(form.get("draftId") ?? "");
+  const backToEditor = form.get("returnTo") === "write";
+  const db = drizzle(env.DB);
+  try {
+    if (isDraftId(id)) await cancelSchedule(db, did, id);
+    else if (isDraftId(draftId))
+      await deleteSchedulesForDraft(db, did, draftId);
+    else
+      return backToEditor
+        ? backToDraft(draftId, "unschedule_failed")
+        : backToDashboard({ error: "unschedule_failed", tab: "scheduled" });
+  } catch (err) {
+    console.error("unschedule failed", err);
+    return backToEditor
+      ? backToDraft(draftId, "unschedule_failed")
+      : backToDashboard({ error: "unschedule_failed", tab: "scheduled" });
+  }
+  // A cancel that matched nothing reports success: the row is gone either way,
+  // which is the state the writer asked for (same reasoning as the idempotent
+  // account deletion).
+  return backToEditor
+    ? redirectTo(`/write?draft=${encodeURIComponent(draftId)}&unscheduled=1`)
+    : backToDashboard({ tab: "scheduled", unscheduled: "1" });
+}
 
 type WriteContext = {
   rpc: Client;
@@ -373,36 +479,18 @@ async function publishDocument({
   const originalAt = importRow ? clampOriginalDate(importRow.originalAt) : null;
 
   // ---- Create: attach to the writer's publication (auto-created on first
-  // publish — name defaults to the handle; editable later in /settings) ----
+  // publish — name defaults to the handle; editable later in /settings). The
+  // same resolution the scheduled and publish-now paths use, so all three
+  // attach documents identically (~/lib/publish-document).
   const rkey = originalAt ? generateTid(originalAt.getTime()) : generateTid();
-  const publicationUrl = `${origin}/@${ident}`;
-  let site = publicationUrl; // loose-document fallback: https publication URL
-  if (pds) {
-    const own = await findOwnPublication(pds, did, origins);
-    if (own) {
-      site = own.uri;
-    } else {
-      const pubRkey = generateTid();
-      const created = await rpc
-        .post("com.atproto.repo.createRecord", {
-          input: {
-            repo: did,
-            collection: "site.standard.publication",
-            rkey: pubRkey,
-            record: buildPublicationRecord({
-              name: ident,
-              url: publicationUrl,
-            }),
-          },
-        })
-        .catch(() => null);
-      if (created?.ok) {
-        site = `at://${did}/site.standard.publication/${pubRkey}`;
-      } else if (created) {
-        console.warn("publication auto-create failed", created.data);
-      }
-    }
-  }
+  const site = await resolvePublicationSite({
+    rpc,
+    did,
+    ident,
+    pds,
+    origin,
+    origins,
+  });
 
   // ---- Imported posts: copy the body images into the writer's own repo.
   // Lazily, for THIS post, at the moment they decide to keep it — never as a
@@ -557,6 +645,71 @@ async function uploadInlineImage({
     return privateJson({ ok: false, error: "upload_failed" }, 502);
   }
   return privateJson({ ok: true, url: blobImagePath(did, cid), blob }, 201);
+}
+
+/**
+ * `intent=publish-now` — the escape hatch beside a scheduled post: publish it
+ * this second instead of waiting for (or arguing with) the cron. It is the way
+ * out of a FAILED schedule, and the reason a failure is never a dead end.
+ *
+ * It publishes through the same `publishStoredDraft` the cron uses, so a post
+ * that goes out this way is byte-for-byte the post that would have gone out on
+ * schedule — no second record shape to keep in step.
+ *
+ * TAKE THE ROW OUT OF THE QUEUE FIRST, and only if no tick holds its lease.
+ * That ordering is the whole double-publish guard on this path: a row that no
+ * longer exists cannot be claimed by a tick a moment later, and a row a tick
+ * ALREADY claimed means a publish is in flight right now — which this refuses
+ * rather than races. The cost of taking the row first is that a publish which
+ * then fails leaves the writer with a draft and no schedule (they are told, and
+ * the draft is untouched); the cost of the other order is publishing twice.
+ */
+async function publishNow({
+  rpc,
+  form,
+  did,
+  ident,
+  pds,
+  origin,
+  origins,
+}: WriteContext): Promise<Response> {
+  const draftId = String(form.get("draftId") ?? "");
+  if (!isDraftId(draftId))
+    return backToDashboard({ error: "schedule_no_draft", tab: "scheduled" });
+  const db = drizzle(env.DB);
+
+  const [released] = await deleteUnclaimedSchedulesForDraft(
+    db,
+    did,
+    draftId,
+  ).catch(() => []);
+  if (!released) {
+    const [inFlight] = await selectScheduleForDraft(db, did, draftId).catch(
+      () => [],
+    );
+    // A row still there after an unclaimed-only delete is a claimed row: the
+    // cron is publishing it as we speak.
+    if (inFlight)
+      return backToDashboard({ error: "schedule_in_flight", tab: "scheduled" });
+  }
+
+  const [draft] = await selectDraft(db, did, draftId).catch(() => []);
+  if (!draft)
+    return backToDashboard({ error: "draft_not_found", tab: "scheduled" });
+
+  const outcome = await publishStoredDraft({
+    rpc,
+    db,
+    did,
+    ident,
+    pds,
+    origin,
+    origins,
+    draft,
+  });
+  if (!outcome.ok)
+    return backToDashboard({ error: outcome.code, tab: "scheduled" });
+  return backToDashboard({ published: outcome.rkey });
 }
 
 /**
