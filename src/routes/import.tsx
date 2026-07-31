@@ -732,7 +732,7 @@ function ImportPage() {
         <h1 className="font-black font-display text-3xl text-ink tracking-tight">
           Import your writing
         </h1>
-        <p className="mt-2 max-w-[54ch] text-ink-soft">
+        <p className="mt-2 text-ink-soft">
           Bring your posts over as private drafts — nothing publishes until you
           say so. You don't have to migrate day one: imported posts mirror your
           originals, the source stays untouched, and readers are pointed to the
@@ -816,7 +816,7 @@ export function SourcePicker({
         >
           Paste your publication's address (or its RSS feed)
         </label>
-        <p className="mt-1 max-w-[54ch] font-display text-ink-soft text-sm">
+        <p className="mt-1 font-display text-ink-soft text-sm">
           Ghost, Medium, WordPress, beehiiv — anywhere with a feed. Feeds carry
           your most recent posts.
         </p>
@@ -863,14 +863,14 @@ export function SourcePicker({
         >
           Or upload your export
         </h2>
-        <p className="mt-1 max-w-[54ch] font-display text-ink-soft text-sm">
+        <p className="mt-1 font-display text-ink-soft text-sm">
           Substack (Settings → Exports), Medium, Ghost (Settings → Advanced →
           Import/export), or WordPress (Tools → Export) — upload the export file
           and it's read right here in your browser, never uploaded. It carries
           your whole archive, not just recent posts.
         </p>
         <label
-          className="mt-3 block max-w-[54ch] font-display text-ink-soft text-sm"
+          className="mt-3 block font-display text-ink-soft text-sm"
           htmlFor="pub-host"
         >
           Your publication's address{" "}
@@ -1014,7 +1014,7 @@ function PickList({
         </p>
       )}
       {isFile && skippedNotice && (
-        <p className="mt-2 max-w-[54ch] font-display text-ink-soft text-sm">
+        <p className="mt-2 font-display text-ink-soft text-sm">
           {skippedNotice} — never imported as posts.
         </p>
       )}
@@ -1027,7 +1027,7 @@ function PickList({
         </Notice>
       )}
       {isFile && data.file?.withoutProvenance && (
-        <p className="mt-2 max-w-[54ch] font-display text-ink-soft text-sm">
+        <p className="mt-2 font-display text-ink-soft text-sm">
           No publication address given, so these import as plain drafts — no
           link back to the originals. Go back and add it if you want each draft
           to keep one.
@@ -1039,7 +1039,7 @@ function PickList({
           post are links. Said here, before the import, because the moment it
           matters is months later when the writer deletes the old account and
           wonders where the illustrations went. */}
-      <p className="mt-2 max-w-[54ch] font-display text-ink-soft text-sm">
+      <p className="mt-2 font-display text-ink-soft text-sm">
         Pictures inside your posts stay linked to where they're hosted today —
         only cover images are copied across. If you later delete the account
         you're importing from, those pictures stop loading. Keep it up, or
@@ -1183,7 +1183,7 @@ function ProgressList({
       </ul>
       {done && (
         <div className="mt-6">
-          <p className="max-w-[54ch] text-ink-soft leading-relaxed">
+          <p className="text-ink-soft leading-relaxed">
             {saved} {saved === 1 ? "draft" : "drafts"} saved
             {skipped > 0 ? `, ${skipped} skipped` : ""}.{" "}
             {sourceHost ? `${sourceHost} hasn't changed — ` : ""}publish the

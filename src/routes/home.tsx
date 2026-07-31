@@ -482,7 +482,7 @@ function FirstRun() {
       <h2 className="font-black font-display text-ink text-xl tracking-tight">
         Your publication starts with one post.
       </h2>
-      <p className="mt-3 max-w-[52ch] text-ink-soft leading-relaxed">
+      <p className="mt-3 text-ink-soft leading-relaxed">
         Whatever you publish goes straight into your own data repo and appears
         on your public page. Announce it and your Bluesky followers see it as a
         card linking back to you — no cold start, no list to build first.

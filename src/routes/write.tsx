@@ -755,12 +755,12 @@ export function SchedulePanel({
       )}
       <p
         aria-live="polite"
-        className="mt-2 max-w-[52ch] font-display text-ink-soft text-xs leading-relaxed"
+        className="mt-2 font-display text-ink-soft text-xs leading-relaxed"
       >
         {busy ? "Saving your draft…" : zoneNote}
       </p>
       {/* Stated where the decision is made, not discovered afterwards. */}
-      <p className="mt-1 max-w-[52ch] font-display text-ink-soft text-xs leading-relaxed">
+      <p className="mt-1 font-display text-ink-soft text-xs leading-relaxed">
         A scheduled post publishes its words, not a cover image — add a cover by
         editing the post once it's out, or press Publish instead.
       </p>
@@ -1275,7 +1275,7 @@ export function Compose({
           >
             {editing ? "Save changes" : "Publish"}
           </button>
-          <p className="max-w-[44ch] font-display text-ink-soft text-xs leading-relaxed">
+          <p className="font-display text-ink-soft text-xs leading-relaxed">
             {editing
               ? "Saves the changes to the post in your own data repo."
               : "Goes live on your public page the moment you press it, and saves to your own data repo — the account behind your handle. It's yours; Goldroad just holds the pen."}
