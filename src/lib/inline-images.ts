@@ -284,6 +284,21 @@ export function imagesMissingAltText(blocks: readonly unknown[]): number {
   return missing;
 }
 
+/**
+ * Images still hosted somewhere else. On an imported draft these are exactly
+ * the ones publishing will copy into the writer's repo (see rehostBodyImages
+ * in ~/lib/import), which is what the write page warns about beforehand.
+ */
+export function countRemoteImages(blocks: readonly unknown[]): number {
+  let remote = 0;
+  walkBlocks(blocks, (block) => {
+    if (block.type !== "image") return;
+    const url = block.props?.url;
+    if (typeof url === "string" && /^https?:\/\//i.test(url)) remote += 1;
+  });
+  return remote;
+}
+
 /** Does this document carry images served through our own blob proxy? Used to
  * warn on a resumed draft, whose images cannot render until it publishes. */
 export function hasProxiedImages(blocks: readonly unknown[]): boolean {

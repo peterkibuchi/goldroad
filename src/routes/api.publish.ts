@@ -28,11 +28,7 @@ import {
 } from "~/lib/blob";
 import { deleteDraft } from "~/lib/drafts";
 import { isDraftId } from "~/lib/drafts-schema";
-import {
-  clampOriginalDate,
-  extractFirstImageUrl,
-  fetchCoverCandidate,
-} from "~/lib/import";
+import { clampOriginalDate, rehostBodyImages } from "~/lib/import";
 import {
   adoptMirror,
   clearPublishedImport,
@@ -408,41 +404,58 @@ async function publishDocument({
     }
   }
 
-  // Imported posts without a writer-picked cover: try the post's first image
-  // as one, fetched server-side under the same SSRF regime as the feed
-  // (hop-validated, 1 MB stream cap, raster-only MIME) and uploaded as a
-  // proper record-referenced blob — the ONE image that survives the source
-  // deleting its CDN copies. Every miss is silent by design: a cover is
-  // nice-to-have, the publish is not.
-  if (!coverBlob && importRow) {
-    const imageUrl = extractFirstImageUrl(body);
-    const candidate = imageUrl
-      ? await fetchCoverCandidate(
-          imageUrl,
-          MAX_IMAGE_BLOB_BYTES,
-          isAllowedImageMime,
-        )
-      : null;
-    if (candidate) {
-      const uploaded = await rpc
-        .post("com.atproto.repo.uploadBlob", {
-          headers: { "content-type": candidate.mime },
-          input: new Blob([candidate.bytes], { type: candidate.mime }),
-        })
-        .catch(() => null);
-      if (uploaded?.ok) coverBlob = uploaded.data.blob;
+  // ---- Imported posts: copy the body images into the writer's own repo.
+  // Lazily, for THIS post, at the moment they decide to keep it — never as a
+  // bulk job at import, because it spends their repo quota. An imported body
+  // points at the source's CDN, which is precisely the copy that vanishes
+  // when they leave that platform; rehosting is what makes the archive
+  // theirs. Every fetch runs under the feed's SSRF regime (see
+  // rehostBodyImages) — an import does not make a writer-supplied URL
+  // trusted. Best-effort per image: a miss keeps the original URL.
+  let publishBody = body;
+  let rehostedBlobs: unknown[] = [];
+  if (importRow) {
+    const rehosted = await rehostBodyImages({
+      body,
+      did,
+      maxBytes: MAX_IMAGE_BLOB_BYTES,
+      isAllowedMime: isAllowedImageMime,
+      imagePath: blobImagePath,
+      upload: async (bytes, mime) => {
+        const uploaded = await rpc
+          .post("com.atproto.repo.uploadBlob", {
+            headers: { "content-type": mime },
+            input: new Blob([bytes], { type: mime }),
+          })
+          .catch(() => null);
+        return uploaded?.ok ? uploaded.data.blob : null;
+      },
+    }).catch((err) => {
+      console.warn("inline image rehost failed", err);
+      return null;
+    });
+    if (rehosted) {
+      publishBody = rehosted.body;
+      rehostedBlobs = rehosted.blobs;
     }
   }
+
+  // An imported post with no writer-picked cover borrows its first body
+  // image — already fetched and uploaded just above, so this costs nothing.
+  // thumbFromCover is the same validation a cover gets (raster, ≤1MB).
+  if (!coverBlob && rehostedBlobs.length > 0)
+    coverBlob = thumbFromCover(rehostedBlobs[0]) ?? undefined;
 
   // Canonical URL composes as publication.url + path: …/@<ident> + /<rkey>.
   const record = buildDocumentRecord({
     title,
-    body,
+    body: publishBody,
     dek,
     site,
     path: `/${rkey}`,
     coverImage: coverBlob,
-    inlineImageSources,
+    // Rehosted blobs need a record reference exactly as uploaded ones do.
+    inlineImageSources: [...inlineImageSources, ...rehostedBlobs],
     publishedAt: originalAt ?? undefined,
   });
 
