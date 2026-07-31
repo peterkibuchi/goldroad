@@ -888,6 +888,10 @@ export function Compose({
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savingRef = useRef(false);
   const saveInFlightRef = useRef<Promise<string | null> | null>(null);
+  /** The document differs from what is persisted — which is a *different*
+   * question from whether autosave is pending. Editing a published post never
+   * autosaves, so nothing ever clears this flag there and the leave-page
+   * confirmation is the writer's only safety net. */
   const dirtyRef = useRef(false);
   const publishingRef = useRef(false);
   // Loading resumed blocks fires the editor's onChange before onReady —
@@ -896,10 +900,11 @@ export function Compose({
 
   useEffect(() => () => imageStore.dispose(), [imageStore]);
 
+  // Unsaved changes get the browser's leave-page confirmation. Registered on
+  // both surfaces, and most important on the one that has no autosave behind
+  // it: an edit of a published post is held nowhere but this tab, so a stray
+  // click on a rail link (they are full-page navigations) is unrecoverable.
   useEffect(() => {
-    if (editing) return;
-    // Unsaved changes get the browser's leave-page confirmation: the debounce
-    // window (and a failed save) must not silently cost a writer their words.
     const warn = (event: BeforeUnloadEvent) => {
       if (dirtyRef.current && !publishingRef.current) event.preventDefault();
     };
@@ -908,7 +913,7 @@ export function Compose({
       window.removeEventListener("beforeunload", warn);
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [editing]);
+  }, []);
 
   function handleEditorReady(instance: BlockNoteEditor) {
     readyRef.current = true;
@@ -1057,8 +1062,13 @@ export function Compose({
       setMissingAlt(imagesMissingAltText(editor.document));
       setRemoteImages(countRemoteImages(editor.document));
     }
-    if (editing || publishingRef.current || !readyRef.current) return;
+    if (publishingRef.current || !readyRef.current) return;
+    // Marked dirty on both surfaces so the leave-page guard applies; only new
+    // compositions go on to schedule a save. (The ready check matters here —
+    // loading a post into the editor fires onChange, and treating hydration as
+    // an edit would prompt a writer who has changed nothing.)
     dirtyRef.current = true;
+    if (editing) return;
     scheduleSave();
   }
 
