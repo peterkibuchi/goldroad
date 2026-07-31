@@ -52,6 +52,16 @@ components — use the token.
 primary action, or a kicker. If two spot elements compete on one screen, one of them is
 wrong. This is the constraint most likely to be violated by well-intentioned changes.
 
+On the signed-in writer surfaces that moment is **spent by the chrome, once**: the command
+rail's "New post" button. Chrome spends no spot anywhere else — every navigation row, and
+the active-section marker, is ink. The amendment is deliberate: the writer's single most
+important act wears the product's single accent, in the same place, on every surface they
+work in. Its consequence is paid on the pages, which is the part that gets forgotten —
+page-level primaries on those surfaces take the ink vocabulary instead, and the posts
+manager has no "New post" of its own because the rail carries it. The reasoning, and the
+ink fallback if the rail button proves too loud in practice, are written down at
+`RailPrimaryAction` in `src/components/site-chrome.tsx`.
+
 Borders are 1–2px solid ink, or 3px double for Pressroom structure; hairline `--color-rule`
 for calm separations. No shadows as decoration. Radius is 0 on Pressroom surfaces — print
 doesn't round corners — while editor and shadcn internals keep their own small radius.

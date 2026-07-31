@@ -11,12 +11,12 @@
  *    at the bottom (the native-app account-switcher spot); content gets the
  *    full width writing surfaces want. Below ~760px the rail can't survive —
  *    it collapses to a slim top strip (wordmark + public-page/sign-out) plus
- *    a bottom tab bar (icons only, real destinations only — the mobile-native
- *    pattern for this exact job). A quiet "Soon" row (Newsletter) is folded in
- *    as a non-interactive promise, so shipping that surface later never forces
- *    another chrome rework — the same slot Stats graduated out of when it
- *    became a real destination. Both frames read the same
- *    design tokens; reading surfaces (see ~/components/document-article)
+ *    a bottom tab bar (destinations plus the center "New" slot — the
+ *    mobile-native pattern for this exact job). A quiet "Soon" row
+ *    (Newsletter) is folded in as a non-interactive promise, so shipping that
+ *    surface later never forces another chrome rework — the same slot Stats
+ *    graduated out of when it became a real destination. Both frames read the
+ *    same design tokens; reading surfaces (see ~/components/document-article)
  *    never render either one.
  *
  * The rail is viewport-anchored, not document-anchored: `sticky top-0 h-dvh`
@@ -24,13 +24,14 @@
  * The document keeps the only scrollbar — the rail's nav region is the single
  * place allowed to scroll, and only if its own rows ever outgrow the viewport.
  *
- * Chrome deliberately spends no spot color: the vermillion accent is scarce
- * (one moment per view) and belongs to the page's primary action, so the
- * active-section marker is a solid ink rule instead.
+ * Navigation lists places; the primary action is a button. "New post" is not a
+ * destination, so it sits above the nav landmark as the rail's one action and
+ * carries the accent — the single amendment to "chrome spends no spot," argued
+ * in full at `RailPrimaryAction`. Every navigation row stays ink.
  */
 import {
   IconChartBar,
-  IconFileImport,
+  IconHome,
   IconList,
   IconMail,
   IconPencil,
@@ -42,7 +43,17 @@ import type { ComponentType } from "react";
 import { ExternalLink } from "~/components/external-link";
 import { cn } from "~/lib/utils";
 
-export type WriterNavItem = "write" | "import" | "posts" | "stats" | "settings";
+/**
+ * The rail's destinations — places a writer can be, and nothing else.
+ *
+ * "Write" used to sit here as a peer of Posts and Settings, which answered
+ * "where can I go" with "do something"; it is now the rail's primary action
+ * (see `RailPrimaryAction`). Import left too: importing is a task you perform
+ * on your archive roughly once, not a place you live, so it belongs in the
+ * posts manager's toolbar. Surfaces that are an *act* rather than a place —
+ * the editor, the importer — pass no `active` item at all.
+ */
+export type WriterNavItem = "home" | "posts" | "stats" | "settings";
 
 type MarketingHeaderProps =
   /** Marketing surfaces — wordmark home, waitlist-era status, sign-in path. */
@@ -274,8 +285,9 @@ const WRITER_NAV: ReadonlyArray<{
   label: string;
   Icon: NavIcon;
 }> = [
-  { item: "write", href: "/write", label: "Write", Icon: IconPencil },
-  { item: "import", href: "/import", label: "Import", Icon: IconFileImport },
+  // Home is an explicit row, not a secret behind the wordmark: "click the logo"
+  // is a convention designers know and writers don't.
+  { item: "home", href: "/home", label: "Home", Icon: IconHome },
   { item: "posts", href: "/dashboard", label: "Posts", Icon: IconList },
   { item: "stats", href: "/stats", label: "Stats", Icon: IconChartBar },
   {
@@ -284,6 +296,27 @@ const WRITER_NAV: ReadonlyArray<{
     label: "Settings",
     Icon: IconSettings,
   },
+];
+
+/** The writer's one primary act, reachable from every surface they work in. */
+const NEW_POST = { href: "/write", label: "New post", Icon: IconPencil };
+
+/**
+ * Mobile tab order: Home · Posts · New · Stats · Settings — the primary action
+ * in the center slot, the one native pattern for exactly this job. A `null`
+ * item marks the action: it is not a destination, so it can never be the
+ * active row, and the label shortens to "New" where a tab is four characters
+ * wide (its accessible name stays "New post").
+ */
+const MOBILE_TABS: ReadonlyArray<{
+  item: WriterNavItem | null;
+  href: string;
+  label: string;
+  Icon: NavIcon;
+}> = [
+  ...WRITER_NAV.slice(0, 2),
+  { item: null, href: NEW_POST.href, label: "New", Icon: NEW_POST.Icon },
+  ...WRITER_NAV.slice(2),
 ];
 
 /** Visible growth promises, not live routes, so shipping a new destination
@@ -320,6 +353,48 @@ function RailLink({
     >
       <Icon aria-hidden="true" className="shrink-0" size={19} stroke={1.75} />
       {label}
+    </a>
+  );
+}
+
+/**
+ * The rail's primary action: full-width, directly under the wordmark, above
+ * the nav landmark — a button, not a row, because it does something rather
+ * than going somewhere. It is a link (it navigates to the editor), styled to
+ * read as the action it is.
+ *
+ * ACCENT BUDGET, AMENDED ON PURPOSE. The house rule is "chrome spends no spot
+ * color" (see docs/DESIGN.md); this one element breaks it. The rule's intent
+ * was ever only "one vermillion moment per view", and making that moment the
+ * *same* moment on every writer surface is the strongest reading of it: the
+ * writer's single most important act finally wears the product's single
+ * accent, in the same place, always. The consequence is paid honestly on the
+ * pages — page-level spot primaries demote (the overview's next action goes to
+ * the ink vocabulary, the posts manager's own "New post" is gone, the rail
+ * carries it), so no writer view shows two accents.
+ *
+ * FALLBACK, STATED UP FRONT: if this reads loud across /home, /stats and
+ * /settings once it is on screen, the button goes `bg-ink` (hover to spot,
+ * matching the empty-state vocabulary) and the pages take their spot
+ * primaries back. That is a one-line change here plus reverting the page
+ * demotions — nothing downstream depends on which way it lands.
+ *
+ * Every navigation row stays ink either way: the active-section marker is a
+ * solid ink rule, never the accent.
+ */
+function RailPrimaryAction() {
+  return (
+    <a
+      className="flex min-h-11 w-full items-center justify-center gap-2 bg-spot px-4 font-bold font-display text-base text-paper transition-colors hover:bg-ink"
+      href={NEW_POST.href}
+    >
+      <NEW_POST.Icon
+        aria-hidden="true"
+        className="shrink-0"
+        size={18}
+        stroke={2}
+      />
+      {NEW_POST.label}
     </a>
   );
 }
@@ -405,9 +480,12 @@ function WriterRail({
     // whose toolbars make `vh` lie.
     <aside className="sticky top-0 hidden h-dvh w-56 shrink-0 flex-col border-ink border-r-3 border-double md:flex">
       <div className="shrink-0 px-4 pt-4 pb-2">
-        {/* The wordmark is home: for a signed-in writer that's the overview,
-            not the posts manager. */}
+        {/* The wordmark still goes home — but it's no longer the only way
+            there: Home is a nav row now. */}
         <Wordmark href="/home" />
+        <div className="mt-3">
+          <RailPrimaryAction />
+        </div>
       </div>
       {/* The one region permitted to scroll, and only when the rows genuinely
           outgrow the viewport — at these counts they never do, but a writer on
@@ -467,9 +545,17 @@ function WriterTopStrip({ ident }: { ident: string }) {
   );
 }
 
-/** Bottom tab bar replacing the rail below ~760px — the mobile-native
- * pattern for this exact job. Real destinations only: "Soon" rows stay a
- * desktop-rail-only promise, not clutter on a screen this narrow. */
+/**
+ * Bottom tab bar replacing the rail below ~760px — the mobile-native pattern
+ * for this exact job. Real destinations plus the center "New" slot; "Soon"
+ * rows stay a desktop-rail-only promise, not clutter on a screen this narrow.
+ *
+ * The action rides *inside* this landmark rather than above it, unlike the
+ * desktop rail: at this width the tab bar is the entire chrome, and the native
+ * convention writers already know puts the compose button in the middle of the
+ * bar. Splitting it out would buy semantic tidiness at the cost of the one
+ * shape every phone user can already operate.
+ */
 function WriterTabBar({ active }: { active?: WriterNavItem }) {
   return (
     <nav
@@ -477,21 +563,25 @@ function WriterTabBar({ active }: { active?: WriterNavItem }) {
       // Safe-area padding keeps the tabs clear of a phone's home indicator.
       className="fixed inset-x-0 bottom-0 z-10 flex border-ink border-t-3 border-double bg-paper pb-[env(safe-area-inset-bottom)] md:hidden"
     >
-      {WRITER_NAV.map(({ item, href, label, Icon }) => {
-        const isActive = active === item;
+      {MOBILE_TABS.map(({ item, href, label, Icon }) => {
+        const isAction = item === null;
+        const isActive = item !== null && active === item;
         return (
           <a
             aria-current={isActive ? "page" : undefined}
+            aria-label={isAction ? NEW_POST.label : undefined}
             className={cn(
               // Same active vocabulary as the rail: a solid ink rule on the
-              // leading edge, no spot color spent on chrome.
+              // leading edge. The accent is spent once, on the action.
               "flex min-h-11 flex-1 flex-col items-center gap-0.5 border-transparent border-t-2 px-1 py-2 font-display font-semibold text-[0.68rem] focus-visible:-outline-offset-2",
-              isActive ? "border-ink font-bold text-ink" : "text-ink-soft",
+              isAction && "bg-spot font-bold text-paper",
+              !isAction &&
+                (isActive ? "border-ink font-bold text-ink" : "text-ink-soft"),
             )}
             href={href}
-            key={item}
+            key={item ?? "new"}
           >
-            <Icon aria-hidden="true" size={20} stroke={1.75} />
+            <Icon aria-hidden="true" size={20} stroke={isAction ? 2 : 1.75} />
             {label}
           </a>
         );

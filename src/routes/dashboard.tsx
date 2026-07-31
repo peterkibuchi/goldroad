@@ -671,20 +671,36 @@ export function PostsManager({
               value={query}
             />
           </label>
-          <label className="flex min-h-9 items-center gap-2 font-display text-ink-soft text-sm">
-            <span>Sort</span>
-            <select
-              className="cursor-pointer border-rule border-b bg-transparent pb-1 font-display text-ink text-sm focus:outline-none"
-              onChange={(event) => setSort(event.target.value as PostSort)}
-              value={sort}
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+            <label className="flex min-h-9 items-center gap-2 font-display text-ink-soft text-sm">
+              <span>Sort</span>
+              <select
+                className="cursor-pointer border-rule border-b bg-transparent pb-1 font-display text-ink text-sm focus:outline-none"
+                onChange={(event) => setSort(event.target.value as PostSort)}
+                value={sort}
+              >
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+                {/* Only offered once there are counts to sort by — a sort that
+                    can't move anything is a dead control. */}
+                {canSortByViews && <option value="most-read">Most read</option>}
+              </select>
+            </label>
+            {/* Import lives here, not in the rail: it's something you do to
+                your archive — occasionally, from the place your archive is —
+                rather than a destination you navigate to. Secondary weight,
+                because the toolbar's job is the list beneath it. The ellipsis
+                is the old menu convention: this opens a further step, it
+                doesn't import anything on click. A genuinely empty account
+                never sees this toolbar, so `FirstRun` keeps its own import
+                link, as does the overview's next-action row. */}
+            <a
+              className="inline-flex min-h-11 items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
+              href="/import"
             >
-              <option value="newest">Newest first</option>
-              <option value="oldest">Oldest first</option>
-              {/* Only offered once there are counts to sort by — a sort that
-                  can't move anything is a dead control. */}
-              {canSortByViews && <option value="most-read">Most read</option>}
-            </select>
-          </label>
+              Import…
+            </a>
+          </div>
         </div>
       )}
 
@@ -995,32 +1011,18 @@ function DashboardPage() {
   return (
     <AppShell header={{ variant: "signed-in", ident, active: "posts" }}>
       <main className="mx-auto w-full max-w-3xl px-6 py-10">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="font-black font-display text-3xl text-ink tracking-tight">
-              Your posts
-            </h1>
-            <p className="mt-2 max-w-[52ch] text-ink-soft">
-              Everything published from your own data repo — including posts
-              written in other apps.
-            </p>
-          </div>
-          <div className="flex flex-col items-end gap-1">
-            <a
-              className="inline-flex min-h-11 items-center bg-spot px-5 font-bold font-display text-base text-paper transition-colors hover:bg-ink"
-              href="/write"
-            >
-              New post
-            </a>
-            {/* Import entry point: writers arriving with an existing
-                publication bring it with them (posts land as drafts). */}
-            <a
-              className="inline-flex min-h-9 items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
-              href="/import"
-            >
-              Import your writing
-            </a>
-          </div>
+        {/* No page-level "New post" button here any more: the rail carries the
+            writer's primary action on every surface, and a second copy of it
+            would spend the view's one accent twice. Import moved down into the
+            manager's toolbar, where a task done to your archive belongs. */}
+        <div>
+          <h1 className="font-black font-display text-3xl text-ink tracking-tight">
+            Your posts
+          </h1>
+          <p className="mt-2 max-w-[52ch] text-ink-soft">
+            Everything published from your own data repo — including posts
+            written in other apps.
+          </p>
         </div>
 
         {published && (

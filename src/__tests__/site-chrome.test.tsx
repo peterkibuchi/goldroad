@@ -166,9 +166,7 @@ describe("AppShell — marketing/signed-out", () => {
  * aria-label="Writer" navigation region and repeat the same link labels.
  */
 describe("AppShell — signed-in (command rail)", () => {
-  function renderShell(
-    active?: "write" | "import" | "posts" | "stats" | "settings",
-  ) {
+  function renderShell(active?: "home" | "posts" | "stats" | "settings") {
     render(
       <AppShell
         header={{ active, ident: "writer.bsky.social", variant: "signed-in" }}
@@ -183,19 +181,16 @@ describe("AppShell — signed-in (command rail)", () => {
     return rail;
   }
 
+  /** The rail as a whole — nav landmark plus the action above it. */
+  function rail() {
+    return screen.getByRole("complementary");
+  }
+
   it("renders the writer nav, identity, and sign-out in the rail", () => {
     renderShell("posts");
     const nav = railNav();
-    expect(within(nav).getByRole("link", { name: "Write" })).toBeDefined();
+    expect(within(nav).getByRole("link", { name: "Home" })).toBeDefined();
     expect(within(nav).getByRole("link", { name: "Settings" })).toBeDefined();
-    // Import sits between Write and Posts — writers arriving with an archive
-    // must find the door without hunting for it.
-    const labels = [...nav.querySelectorAll("a")].map((a) => a.textContent);
-    expect(labels.indexOf("Import")).toBe(labels.indexOf("Write") + 1);
-    expect(labels.indexOf("Posts")).toBe(labels.indexOf("Import") + 1);
-    expect(
-      within(nav).getByRole("link", { name: "Import" }).getAttribute("href"),
-    ).toBe("/import");
     // Identity, public-page link, and sign-out live in the rail's bottom
     // cluster, not the nav landmark.
     expect(screen.getAllByText("writer.bsky.social")[0]).toBeDefined();
@@ -225,19 +220,169 @@ describe("AppShell — signed-in (command rail)", () => {
     ).toBe("page");
     expect(
       within(nav)
-        .getByRole("link", { name: "Write" })
+        .getByRole("link", { name: "Home" })
         .getAttribute("aria-current"),
     ).toBeNull();
   });
 
-  it("the Import section carries its own active state", () => {
-    renderShell("import");
-    const nav = railNav();
-    expect(
-      within(nav)
-        .getByRole("link", { name: "Import" })
-        .getAttribute("aria-current"),
-    ).toBe("page");
+  /**
+   * The information architecture, asserted as a contract.
+   *
+   * "Write" was a rail row and shouldn't have been: navigation lists places,
+   * and writing is the thing you do, not a place you go. Import was a row too,
+   * and it's a task performed on your archive — it lives in the posts
+   * manager's toolbar now. Both regressions are cheap to reintroduce by adding
+   * "one more row", hence these.
+   */
+  describe("navigation lists places, and only places", () => {
+    it("carries exactly Home, Posts, Stats, Settings, in that order", () => {
+      renderShell("home");
+      const nav = railNav();
+      expect([...nav.querySelectorAll("a")].map((a) => a.textContent)).toEqual([
+        "Home",
+        "Posts",
+        "Stats",
+        "Settings",
+      ]);
+      const hrefOf = (name: string) =>
+        within(nav).getByRole("link", { name }).getAttribute("href");
+      expect(hrefOf("Home")).toBe("/home");
+      expect(hrefOf("Posts")).toBe("/dashboard");
+      expect(hrefOf("Stats")).toBe("/stats");
+      expect(hrefOf("Settings")).toBe("/settings");
+    });
+
+    it("keeps Write and Import out of the nav landmark entirely", () => {
+      renderShell("posts");
+      for (const nav of screen.getAllByRole("navigation", { name: "Writer" })) {
+        expect(within(nav).queryByRole("link", { name: "Write" })).toBeNull();
+        expect(
+          within(nav).queryByRole("link", { name: /^import/i }),
+        ).toBeNull();
+      }
+      // Nothing in the chrome links to the importer any more — it's reached
+      // from the posts manager, which is where an archive task belongs.
+      expect(screen.queryByRole("link", { name: /^import/i })).toBeNull();
+    });
+
+    it("makes Home reachable without knowing the wordmark is a link", () => {
+      // The regression this pins: /home used to be reachable only by clicking
+      // the wordmark, a convention designers know and writers don't.
+      renderShell("posts");
+      const nav = railNav();
+      expect(
+        within(nav).getByRole("link", { name: "Home" }).getAttribute("href"),
+      ).toBe("/home");
+    });
+
+    it("marks Home active on the overview", () => {
+      renderShell("home");
+      const nav = railNav();
+      expect(
+        within(nav).getByRole("link", { name: "Home" }).getAttribute("href"),
+      ).toBe("/home");
+      expect(
+        within(nav)
+          .getByRole("link", { name: "Home" })
+          .getAttribute("aria-current"),
+      ).toBe("page");
+    });
+
+    it("lights no row on surfaces that are an act, not a place", () => {
+      // The editor and the importer pass no active item: a writer there is
+      // doing something, not standing somewhere.
+      renderShell();
+      for (const nav of screen.getAllByRole("navigation", { name: "Writer" })) {
+        for (const link of within(nav).getAllByRole("link")) {
+          expect(link.getAttribute("aria-current")).toBeNull();
+        }
+      }
+    });
+  });
+
+  /**
+   * The primary action. It has to be reachable, obviously not a nav row, and
+   * the only accent moment in the chrome — that last one is a deliberate
+   * amendment to "chrome spends no spot color", and the thing most likely to
+   * be undone by a well-meaning cleanup.
+   */
+  describe("New post — a primary action, not a destination", () => {
+    function primaryAction() {
+      return within(rail()).getByRole("link", { name: "New post" });
+    }
+
+    it("sits in the rail, above the nav landmark, pointing at the editor", () => {
+      renderShell("posts");
+      const action = primaryAction();
+      expect(action.getAttribute("href")).toBe("/write");
+      // Outside the nav landmark: it is not one of the places.
+      expect(railNav().contains(action)).toBe(false);
+      // And before the destinations in reading and tab order.
+      expect(
+        action.compareDocumentPosition(railNav()) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
+
+    it("is visually distinct from every navigation row", () => {
+      renderShell("posts");
+      const action = primaryAction();
+      // The accent, spent once, on the writer's most important act.
+      expect(action.className).toContain("bg-spot");
+      expect(action.className).toContain("text-paper");
+      // Navigation stays ink — including the active row's marker.
+      for (const link of within(railNav()).getAllByRole("link")) {
+        expect(link.className).not.toContain("spot");
+      }
+    });
+
+    it("is a full-width touch target, keyboard-reachable as a link", () => {
+      renderShell("stats");
+      const action = primaryAction();
+      expect(action.className).toContain("min-h-11");
+      expect(action.className).toContain("w-full");
+      // A real anchor with a real href — never a div with a click handler.
+      expect(action.tagName).toBe("A");
+      expect(action.getAttribute("aria-current")).toBeNull();
+    });
+
+    it("spends the accent exactly once in the whole chrome", () => {
+      renderShell("posts");
+      // One spot element per frame: the rail's action, and the mobile tab
+      // bar's center slot (only one frame is ever visible at a time). Resting
+      // state only — a hover that reaches for spot spends nothing until then.
+      const spot = [...document.querySelectorAll("[class]")].filter((el) =>
+        el.classList.contains("bg-spot"),
+      );
+      expect(spot).toHaveLength(2);
+      for (const el of spot) {
+        expect(el.getAttribute("href")).toBe("/write");
+      }
+    });
+
+    it("takes the center slot on mobile, labelled for assistive tech", () => {
+      renderShell("posts");
+      const navs = screen.getAllByRole("navigation", { name: "Writer" });
+      const tabBar = navs[1];
+      const tabs = [...tabBar.querySelectorAll("a")];
+      // Home · Posts · New · Stats · Settings — the action in the middle, the
+      // one native pattern for exactly this job.
+      expect(tabs.map((a) => a.textContent)).toEqual([
+        "Home",
+        "Posts",
+        "New",
+        "Stats",
+        "Settings",
+      ]);
+      const action = within(tabBar).getByRole("link", { name: "New post" });
+      expect(action.getAttribute("href")).toBe("/write");
+      // Visible text shortens to "New"; the accessible name stays whole and
+      // still contains it (voice control can say either).
+      expect(action.textContent).toBe("New");
+      expect(action.className).toContain("bg-spot");
+      // It is an action, so it is never the active tab.
+      expect(action.getAttribute("aria-current")).toBeNull();
+    });
   });
 
   it("wordmark goes home-for-writers (the overview)", () => {
@@ -329,7 +474,7 @@ describe("AppShell — signed-in (command rail)", () => {
     // Rail nav + mobile tab bar, both present (CSS decides which is shown).
     expect(navs).toHaveLength(2);
     const tabBar = navs[1];
-    expect(within(tabBar).getByRole("link", { name: "Write" })).toBeDefined();
+    expect(within(tabBar).getByRole("link", { name: "Home" })).toBeDefined();
     // Stats graduated out of the Soon slot, so it belongs in the tab bar too.
     expect(
       within(tabBar).getByRole("link", { name: "Stats" }).getAttribute("href"),
