@@ -354,7 +354,11 @@ describe("inventory: every resting accent on a signed-in surface is a named exce
    */
   const PRIMARIES: Array<[string, string]> = [
     ["routes/write.tsx", '{editing ? "Save changes" : "Publish"}'],
-    ["routes/settings.tsx", '{exists ? "Save changes" : "Create publication"}'],
+    // Anchored on the ternary's tail rather than the whole expression: the
+    // CONDITION on that label is free to change (it already has, to cover a
+    // publication we couldn't read), and what this test cares about is the
+    // button, not the branch that picks its word.
+    ["routes/settings.tsx", ': "Create publication"}'],
     ["components/theme-editor.tsx", "Save colours"],
     ["routes/import.tsx", "Find my posts"],
     ["routes/import.tsx", "Import {count} to drafts"],
