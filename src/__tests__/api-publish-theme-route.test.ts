@@ -282,3 +282,41 @@ describe("POST /api/publish — intent=theme, refusals write nothing", () => {
     expect(posted).toHaveLength(0);
   });
 });
+
+/**
+ * Every intent here decides what to write by first reading the publication, so
+ * each one has to tell "the writer has none" apart from "we couldn't ask". Read
+ * as one, the answers are all wrong in a different way: the profile save creates
+ * a permanent duplicate record, and the other two tell a writer who has a
+ * publication that they don't.
+ */
+describe("POST /api/publish — a publication that can't be read", () => {
+  beforeEach(() => {
+    atproto.listRecords.mockRejectedValue(new Error("502 Bad Gateway"));
+  });
+
+  it("refuses the profile save instead of creating a second publication", async () => {
+    const res = await call({
+      intent: "publication",
+      name: "The Long Way",
+      description: "Essays about slow software.",
+    });
+    expect(posted.some((p) => p.nsid === "com.atproto.repo.createRecord")).toBe(
+      false,
+    );
+    expect(posted).toHaveLength(0);
+    expect(errorFrom(res)).toBe("save_failed:publication_unreadable");
+  });
+
+  it("refuses the theme save without claiming there is no publication", async () => {
+    const res = await call(COLOURS);
+    expect(posted).toHaveLength(0);
+    expect(errorFrom(res)).toBe("save_failed:publication_unreadable");
+  });
+
+  it("refuses the URL move without claiming there is no publication", async () => {
+    const res = await call({ intent: "migrate", returnTo: "settings" });
+    expect(posted).toHaveLength(0);
+    expect(errorFrom(res)).toBe("move_failed:publication_unreadable");
+  });
+});

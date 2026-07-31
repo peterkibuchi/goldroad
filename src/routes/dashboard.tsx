@@ -108,10 +108,15 @@ const ERROR_MESSAGES: Record<string, string> = {
     "That schedule couldn't be cancelled just now. Try again in a moment.",
   missing_title:
     "That draft has no title, so it couldn't be published. Open it, give it a title, and schedule it again.",
+  // Named ahead of the prefix fallbacks below, which would print the raw code.
+  "move_failed:publication_unreadable":
+    "We couldn't reach your publication just now, so nothing was moved. Refresh the page and try again.",
 };
 
 function errorMessage(code: string | undefined): string | null {
   if (!code) return null;
+  const named = ERROR_MESSAGES[code];
+  if (named) return named;
   if (code.startsWith("delete_failed:"))
     return `Deleting failed (${code.slice("delete_failed:".length)}). Try again.`;
   if (code.startsWith("announce_failed:"))
@@ -120,7 +125,7 @@ function errorMessage(code: string | undefined): string | null {
     return `Moving your publication failed (${code.slice("move_failed:".length)}). Try again.`;
   if (code.startsWith("publish_failed:"))
     return `Publishing failed (${code.slice("publish_failed:".length)}). Your draft is safe — try again, or schedule it for later.`;
-  return ERROR_MESSAGES[code] ?? "Something went wrong. Try again.";
+  return "Something went wrong. Try again.";
 }
 
 /** Scope errors are fixed by a fresh sign-in (new consent = new scope grant). */

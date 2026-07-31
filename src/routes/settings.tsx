@@ -46,15 +46,24 @@ const ERROR_MESSAGES: Record<string, string> = {
     "Those colours didn't come through. Pick them again and save — nothing was changed.",
   delete_account_failed:
     "Deleting your account didn't go through. Refresh the page and try again.",
+  // Named ahead of the two prefix fallbacks below, which would otherwise print
+  // the raw code at a writer. Nothing was written, and saying so is the point:
+  // the reason we refused is that we couldn't tell what was already there.
+  "save_failed:publication_unreadable":
+    "We couldn't reach your publication just now, so nothing was changed. Refresh the page and try again.",
+  "move_failed:publication_unreadable":
+    "We couldn't reach your publication just now, so nothing was moved. Refresh the page and try again.",
 };
 
 function errorMessage(code: string | undefined): string | null {
   if (!code) return null;
+  const named = ERROR_MESSAGES[code];
+  if (named) return named;
   if (code.startsWith("save_failed:"))
     return `Saving failed (${code.slice("save_failed:".length)}). Try again.`;
   if (code.startsWith("move_failed:"))
     return `Moving your publication failed (${code.slice("move_failed:".length)}). Try again.`;
-  return ERROR_MESSAGES[code] ?? "Something went wrong. Try again.";
+  return "Something went wrong. Try again.";
 }
 
 const getSettings = createServerFn({ method: "GET" }).handler(async () => {
@@ -79,6 +88,9 @@ const getSettings = createServerFn({ method: "GET" }).handler(async () => {
   let onLegacyUrl = false;
   let iconPath: string | null = null;
   let theme: BasicTheme | null = null;
+  /** We asked the PDS and it didn't answer — which is NOT the same as having no
+   * publication, and the form below cannot be trusted either way. See the catch. */
+  let unreadable = false;
   try {
     const pds = await resolveDidToPds(did);
     const pubs = await listRecords<StandardPublication>(
@@ -107,8 +119,14 @@ const getSettings = createServerFn({ method: "GET" }).handler(async () => {
       // reach the editor unvalidated.
       theme = parseTheme(own.value.basicTheme);
     }
-  } catch {
-    // No publication yet, or the PDS is unreachable — the form starts fresh.
+  } catch (err) {
+    // Deliberately NOT treated as "no publication yet". An empty form rendered
+    // from a failed read is a trap: the writer types a name over what looks
+    // like a blank slate, submits, and their existing description — which the
+    // form posted as "" — is deleted from the record. So say we couldn't load
+    // it, and don't offer to save it. (Same honesty as the D1 counts below.)
+    console.warn("settings publication read failed", err);
+    unreadable = true;
   }
 
   // Record counts for the "Your data" section — cheap enough to run on every
@@ -126,6 +144,7 @@ const getSettings = createServerFn({ method: "GET" }).handler(async () => {
   return {
     ident,
     exists,
+    unreadable,
     name,
     description,
     iconPath,
@@ -363,6 +382,7 @@ function SettingsPage() {
   const {
     ident,
     exists,
+    unreadable,
     name,
     description,
     iconPath,
@@ -425,6 +445,15 @@ function SettingsPage() {
             method="post"
           >
             <input name="intent" type="hidden" value="publication" />
+            {/* The fields below are blank because the read failed, not because
+                the writer has nothing — saving now would post those blanks. */}
+            {unreadable && (
+              <Notice tone="alert">
+                We couldn't load your publication just now, so these fields may
+                not show what's saved. Refresh the page before changing
+                anything.
+              </Notice>
+            )}
             <IconField existingPath={iconPath} onBusyChange={setIconBusy} />
             <div className="flex flex-col gap-2">
               <label className={FIELD_LABEL} htmlFor="name">
@@ -467,10 +496,12 @@ function SettingsPage() {
             <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
               <button
                 className="min-h-11 cursor-pointer bg-spot px-8 py-2.5 font-bold font-display text-base text-paper transition-colors hover:bg-ink disabled:cursor-default disabled:opacity-40"
-                disabled={iconBusy}
+                disabled={iconBusy || unreadable}
                 type="submit"
               >
-                {exists ? "Save changes" : "Create publication"}
+                {/* Not "Create publication" when the read failed — we don't
+                    know that there isn't one, and the server refuses anyway. */}
+                {exists || unreadable ? "Save changes" : "Create publication"}
               </button>
               {/* New tab: leaving for the public page would drop unsaved edits. */}
               <ExternalLink
@@ -489,7 +520,11 @@ function SettingsPage() {
           title="Colours"
         >
           {exists ? (
-            <ThemeEditor publicationName={name || ident} theme={theme} />
+            <ThemeEditor
+              disabled={unreadable}
+              publicationName={name || ident}
+              theme={theme}
+            />
           ) : (
             <p className="font-display text-ink-soft text-sm">
               Your colours are stored with your publication — create one above,

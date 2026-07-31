@@ -32,21 +32,38 @@ import { deleteSchedulesForDraft } from "~/lib/scheduled-posts";
 
 type DrizzleD1 = ReturnType<typeof drizzle>;
 
-/** The writer's Goldroad-managed publication: URL prefix-matched on our
- * origins (canonical + legacy) so we never touch publication records owned by
- * other apps (e.g. Leaflet). */
+/**
+ * The writer's Goldroad-managed publication: URL prefix-matched on our origins
+ * (canonical + legacy) so we never touch publication records owned by other
+ * apps (e.g. Leaflet).
+ *
+ * `ok` separates "they have none" from "we couldn't ask", because every caller
+ * writes to this collection and the two states want opposite behaviour. Read as
+ * one, a flaked PDS read looks like a first-time writer, and the write that
+ * follows creates a SECOND publication record — permanent, public, carrying
+ * their name, and invisible to every later lookup (`reverse: true` is
+ * oldest-first, so the original keeps winning). Callers must decide explicitly.
+ */
 export async function findOwnPublication(
   pds: string,
   did: string,
   origins: readonly string[],
 ) {
-  const pubs = await listRecords<StandardPublication>(
-    pds,
-    did,
-    "site.standard.publication",
-    { reverse: true },
-  ).catch(() => []);
-  return pubs.find((p) => isOwnPublicationUrl(p.value.url, origins)) ?? null;
+  let pubs: Awaited<ReturnType<typeof listRecords<StandardPublication>>>;
+  try {
+    pubs = await listRecords<StandardPublication>(
+      pds,
+      did,
+      "site.standard.publication",
+      { reverse: true },
+    );
+  } catch (err) {
+    console.warn("publication read failed", err);
+    return { ok: false as const, own: null };
+  }
+  const own =
+    pubs.find((p) => isOwnPublicationUrl(p.value.url, origins)) ?? null;
+  return { ok: true as const, own };
 }
 
 /**
@@ -69,8 +86,12 @@ export async function resolvePublicationSite(input: {
   const publicationUrl = `${origin}/@${ident}`;
   if (!pds) return publicationUrl;
 
-  const own = await findOwnPublication(pds, did, origins);
+  const { ok, own } = await findOwnPublication(pds, did, origins);
   if (own) return own.uri;
+  // Couldn't ask — so we don't know they have none, and creating one on that
+  // guess is how a writer ends up with two. A loose document is the honest
+  // outcome here, and it is the same one this function already falls back to.
+  if (!ok) return publicationUrl;
 
   const pubRkey = generateTid();
   const created = await rpc
