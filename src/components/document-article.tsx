@@ -4,6 +4,7 @@ import { Conversation } from "~/components/conversation";
 import { ExternalLink } from "~/components/external-link";
 import { HeartIcon, ReplyIcon, RepostIcon } from "~/components/icons";
 import { Prose } from "~/components/prose";
+import { WriterSurface } from "~/components/writer-surface";
 import {
   getRecordEntry,
   isDid,
@@ -37,6 +38,7 @@ import {
   type RelatedPost,
   selectRelatedPosts,
 } from "~/lib/related-posts";
+import { type BasicTheme, parseTheme } from "~/lib/theme";
 
 /** A validated cover/icon image reference, serveable through /img/$did/$cid. */
 export type CoverRef = { did: string; cid: string };
@@ -156,6 +158,12 @@ export async function loadDocument(identParam: string, rkey: string) {
     }
     const iconCid = coverImageCid(pub?.value.icon);
     if (iconCid) publicationIcon = { did, cid: iconCid };
+    // The author's colours travel with the publication the document belongs
+    // to, wherever that publication was written — a Leaflet author's post
+    // renders here in the theme they set in Leaflet. A loose document (an
+    // https `site` with no publication record) has no theme to read, and gets
+    // the default palette, which is the correct answer rather than a gap.
+    const theme = parseTheme(pub?.value.basicTheme);
 
     const coverCid = coverImageCid(doc.coverImage);
     return {
@@ -164,6 +172,7 @@ export async function loadDocument(identParam: string, rkey: string) {
       publicationName,
       publicationDescription,
       publicationIcon,
+      theme,
       mirror,
       relatedPosts: selectRelatedPosts(relatedPage.records, rkey),
       engagement,
@@ -367,12 +376,15 @@ export function DocumentArticle({
   relatedPosts,
   engagement,
   conversation,
+  theme,
 }: {
   doc: StandardDocument;
   ident: string;
   publicationName?: string | null;
   publicationDescription?: string | null;
   publicationIcon?: CoverRef | null;
+  /** The author's validated theme, or null for our default palette. */
+  theme?: BasicTheme | null;
   cover?: CoverRef | null;
   mirror?: MirrorInfo | null;
   relatedPosts?: RelatedPost[];
@@ -395,7 +407,9 @@ export function DocumentArticle({
   ).getUTCFullYear();
 
   return (
-    <div className="min-h-screen bg-paper font-body text-ink">
+    // The writer's surface, not ours: their theme applies here, our dark-mode
+    // toggle deliberately does not (see WriterSurface and styles.css).
+    <WriterSurface theme={theme}>
       <article className="mx-auto max-w-[42rem] px-6 py-16 md:py-24">
         {cover && (
           // Fixed aspect box reserves the layout slot before the image
@@ -622,7 +636,7 @@ export function DocumentArticle({
           </p>
         </footer>
       </article>
-    </div>
+    </WriterSurface>
   );
 }
 

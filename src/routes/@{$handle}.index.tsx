@@ -8,6 +8,7 @@ import {
   ReportLink,
 } from "~/components/document-article";
 import { SearchIcon } from "~/components/icons";
+import { WriterSurface } from "~/components/writer-surface";
 import { filterPostsByQuery, groupPostsByMonth, monogram } from "~/lib/archive";
 import {
   isDid,
@@ -26,6 +27,7 @@ import { blobImagePath, coverImageCid } from "~/lib/blob";
 import { checkHidden } from "~/lib/moderation";
 import { CANONICAL_ORIGIN } from "~/lib/origin";
 import { formatReadingTime, listItemReadingMinutes } from "~/lib/reading-time";
+import { type BasicTheme, parseTheme } from "~/lib/theme";
 import { cn } from "~/lib/utils";
 
 /**
@@ -113,6 +115,13 @@ export const Route = createFileRoute("/@{$handle}/")({
         ident,
         publication,
         publicationAtUri,
+        // The author's own colours, if their publication record carries a
+        // valid site.standard.theme.basic. Any author's — a Leaflet or pckt
+        // writer's page renders here in the theme they set over there,
+        // because it is the same record shape in the same lexicon. Invalid
+        // or absent both come back null and the page keeps our default
+        // palette (see parseTheme: a theme is never half-applied).
+        theme: parseTheme(publication?.basicTheme),
         iconPath: iconCid ? blobImagePath(did, iconCid) : null,
         posts,
         nextCursor: docsPage.cursor,
@@ -265,8 +274,29 @@ function PostRow({
 }
 
 function PublicationPage() {
-  const { ident, publication, posts, nextCursor, iconPath } =
-    Route.useLoaderData();
+  // Spread, for the same reason the document route does it: the loader
+  // returns exactly the facts the page renders, and hand-picking them is how
+  // one quietly goes missing. The head's keys (publicationAtUri) are ignored.
+  return <PublicationView {...Route.useLoaderData()} />;
+}
+
+/** The publication page itself, props-in — exported for tests, not a route. */
+export function PublicationView({
+  ident,
+  publication,
+  posts,
+  nextCursor,
+  iconPath,
+  theme,
+}: {
+  ident: string;
+  publication: StandardPublication | null;
+  posts: ArchivePost[];
+  nextCursor: string | null;
+  iconPath: string | null;
+  /** The author's validated theme, or null for our default palette. */
+  theme?: BasicTheme | null;
+}) {
   const [query, setQuery] = useState("");
   const filtered = filterPostsByQuery(posts, query);
   const isSearching = query.trim() !== "";
@@ -275,7 +305,9 @@ function PublicationPage() {
     : groupPostsByMonth(filtered);
 
   return (
-    <div className="min-h-screen bg-paper font-body text-ink">
+    // The writer's surface, not ours: their theme applies here, our dark-mode
+    // toggle deliberately does not (see WriterSurface and styles.css).
+    <WriterSurface theme={theme}>
       <main className="mx-auto max-w-[42rem] px-6 py-16 md:py-24">
         {/* The masthead: the writer's name is the largest text on the page —
             this is their publication, not a Goldroad page. */}
@@ -399,7 +431,7 @@ function PublicationPage() {
           </p>
         </footer>
       </main>
-    </div>
+    </WriterSurface>
   );
 }
 

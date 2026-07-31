@@ -18,6 +18,11 @@
   --color-ink-soft: oklch(0.42 0 0);
   --color-rule: oklch(0.85 0 0);
   --color-spot: oklch(0.54 0.19 33);
+  /* Text that sits ON the spot colour. Already the pairing every `bg-spot`
+     button in the app hard-codes as `text-paper`; named here because
+     site.standard.theme.basic lets a writer choose it (accentForeground) and
+     a themed page has to be able to override it. */
+  --color-spot-foreground: oklch(1 0 0);
   --font-display: "Libre Franklin Variable", system-ui, sans-serif;
   --font-body: "Source Serif 4 Variable", Georgia, serif;
 }
@@ -96,6 +101,43 @@
   --border: var(--color-rule);
   --input: var(--color-rule);
   --ring: var(--color-spot);
+}
+
+/*
+ * THE WRITER'S OWN EDITION — site.standard.theme.basic.
+ *
+ * The mirror of the block above, and the other half of the same rule. That
+ * block says which surfaces follow OUR appearance. This one is what happens
+ * on the surfaces that follow the WRITER'S: their publication page and their
+ * post pages carry `data-writer-theme` when the publication record holds a
+ * valid theme, and the four colours arrive as inline custom properties on
+ * that element (themeStyle, ~/lib/theme). They retint the same
+ * --color-paper / --color-ink / --color-spot every reading surface already
+ * consumes, so `bg-paper`, `text-ink-soft`, `border-rule` and `bg-ink/5` all
+ * follow with no component knowing a theme exists. Tokens, not new colour.
+ *
+ * The author does not have to be a Goldroad writer. These pages render any
+ * atproto author's site.standard records, so a Leaflet author who set a theme
+ * gets their page here in their own colours. Reading a shared lexicon is the
+ * entire argument; honouring it is the part that costs nothing.
+ *
+ * Only two things need the theme rather than just the tokens:
+ *   links     — the lexicon defines accent as the colour "used for links".
+ *               Scoped to the writer's prose: chrome links (Older posts, the
+ *               printer's mark) already name their own colour and should stay
+ *               in the calm register. In @layer base so any utility class
+ *               still out-cascades it.
+ *   selection — the one place on a reading page where text sits ON the
+ *               accent, which is the pair accentForeground exists for.
+ */
+@layer base {
+  [data-writer-theme] .gr-prose a {
+    color: var(--color-spot);
+  }
+}
+[data-writer-theme] ::selection {
+  background: var(--color-spot);
+  color: var(--color-spot-foreground);
 }
 
 @custom-variant dark (&:is(.dark *));
