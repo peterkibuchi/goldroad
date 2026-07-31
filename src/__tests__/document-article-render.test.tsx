@@ -10,6 +10,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => ({
 }));
 
 import { DocumentArticle } from "#/components/document-article";
+import { clearEdition } from "#/lib/appearance";
 
 // No vitest globals in this repo — RTL auto-cleanup doesn't run; do it by hand.
 afterEach(cleanup);
@@ -402,5 +403,57 @@ describe("DocumentArticle — the reader's edition switch", () => {
     );
     expect(document.documentElement.dataset.theme).toBeUndefined();
     expect(localStorage.getItem("gr-appearance")).toBe("light");
+  });
+});
+
+/**
+ * The reset path must not depend on `matchMedia` existing.
+ *
+ * It shipped assuming it does. jsdom has no `matchMedia`, and neither do some
+ * embedded webviews, so "hand this page back to its author" threw instead of
+ * working. The suite still reported 1272 passing, because an unhandled error
+ * raised during a click is counted separately from a failed assertion — which
+ * is exactly why this test asserts the absence rather than trusting the count.
+ */
+describe("clearEdition without matchMedia", () => {
+  afterEach(() => {
+    delete document.documentElement.dataset.theme;
+    delete document.documentElement.dataset.readerEdition;
+    localStorage.clear();
+  });
+
+  it("resets to the light edition rather than throwing", () => {
+    const original = window.matchMedia;
+    // @ts-expect-error — deleting it is the environment under test.
+    delete window.matchMedia;
+    try {
+      document.documentElement.dataset.readerEdition = "dark";
+      document.documentElement.dataset.theme = "dark";
+      localStorage.setItem("gr-appearance", "dark");
+      expect(() => clearEdition()).not.toThrow();
+      expect(localStorage.getItem("gr-appearance")).toBeNull();
+      expect(document.documentElement.dataset.readerEdition).toBeUndefined();
+      expect(document.documentElement.dataset.theme).toBeUndefined();
+    } finally {
+      if (original) window.matchMedia = original;
+    }
+  });
+
+  it("still follows a system that does say dark", () => {
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) =>
+      ({
+        matches: query.includes("dark"),
+      }) as MediaQueryList) as typeof window.matchMedia;
+    try {
+      clearEdition();
+      expect(document.documentElement.dataset.theme).toBe("dark");
+    } finally {
+      if (original) window.matchMedia = original;
+      else {
+        // @ts-expect-error — restore the absent state jsdom started in.
+        delete window.matchMedia;
+      }
+    }
   });
 });
