@@ -1,10 +1,12 @@
 import { notFound, useLocation } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 
 import { Conversation } from "~/components/conversation";
 import { ExternalLink } from "~/components/external-link";
 import { HeartIcon, ReplyIcon, RepostIcon } from "~/components/icons";
 import { Prose } from "~/components/prose";
 import { WriterSurface } from "~/components/writer-surface";
+import { currentEdition, type Edition, setEdition } from "~/lib/appearance";
 import {
   getRecordEntry,
   isDid,
@@ -297,6 +299,39 @@ export function ReportLink({ className }: { className?: string }) {
     <a className={className ?? "transition-colors hover:text-ink"} href={href}>
       Report
     </a>
+  );
+}
+
+/**
+ * The reader's own edition switch, for a page whose author set no theme.
+ *
+ * Why it exists at all: an unthemed reading page follows the reader's system
+ * preference, and until now that was the whole story — a reader who wanted to
+ * read light on a dark machine, or dark on a light one, had no way to say so
+ * from the page they were reading. The preference itself was always honoured
+ * everywhere; only the control was missing outside our own chrome.
+ *
+ * Renders nothing until mounted. The label states the edition it switches TO,
+ * and getting that from the server would mean either guessing the reader's
+ * system setting or varying edge-cached HTML per reader — so the label waits
+ * one paint rather than being wrong or uncacheable.
+ */
+function ReaderEdition() {
+  const [edition, setLocal] = useState<Edition | null>(null);
+  useEffect(() => setLocal(currentEdition()), []);
+  if (!edition) return null;
+  const next: Edition = edition === "dark" ? "light" : "dark";
+  return (
+    <button
+      className="cursor-pointer font-display text-inherit transition-colors hover:text-ink"
+      onClick={() => {
+        setEdition(next);
+        setLocal(next);
+      }}
+      type="button"
+    >
+      Read in {next}
+    </button>
   );
 }
 
@@ -651,6 +686,19 @@ export function DocumentArticle({
               Goldroad — open-source, writer-owned publishing
             </a>{" "}
             · <ReportLink />
+            {/* Only when the author set no theme. An unthemed page follows the
+                READER's edition, so the control belongs where the preference
+                actually applies — and on a themed page there would be nothing
+                for it to change, because the author's colours are the answer.
+                Down here rather than in the header: the platform disappears on
+                a writer's surface, so our one control keeps our one line's
+                volume instead of putting a widget above their masthead. */}
+            {!theme && (
+              <>
+                {" · "}
+                <ReaderEdition />
+              </>
+            )}
           </p>
         </footer>
       </article>

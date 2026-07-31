@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // useLocation needs a live TanStack Router context this test doesn't set up
@@ -286,5 +286,70 @@ describe("DocumentArticle — the header descends", () => {
     expect(screen.getByText("A one-sentence hook.").className).toContain(
       "max-w-[62ch]",
     );
+  });
+});
+
+/**
+ * The reader's edition switch.
+ *
+ * An unthemed reading page follows the reader's system preference — which was
+ * always honoured, but until now had no control outside our own chrome, so a
+ * reader who wanted to read light on a dark machine had to go find the
+ * homepage. On a themed page there is deliberately nothing to switch: the
+ * author answered the question.
+ */
+describe("DocumentArticle — the reader's edition switch", () => {
+  const rgb = (r: number, g: number, b: number) => ({ r, g, b });
+
+  afterEach(() => {
+    delete document.documentElement.dataset.theme;
+  });
+
+  it("offers the switch on a page whose author set no theme", async () => {
+    render(<DocumentArticle doc={baseDoc} ident="writer.example" />);
+    // Mounted-only: the label names the edition it switches TO, and the server
+    // cannot know the reader's system setting without varying cached HTML.
+    expect(
+      await screen.findByRole("button", { name: /read in/i }),
+    ).toBeTruthy();
+  });
+
+  it("names the edition it switches to, not the one you are in", async () => {
+    document.documentElement.dataset.theme = "dark";
+    render(<DocumentArticle doc={baseDoc} ident="writer.example" />);
+    expect(
+      await screen.findByRole("button", { name: "Read in light" }),
+    ).toBeTruthy();
+  });
+
+  it("stays off a page the author themed", () => {
+    render(
+      <DocumentArticle
+        doc={baseDoc}
+        ident="writer.example"
+        theme={{
+          background: rgb(18, 17, 16),
+          foreground: rgb(240, 236, 228),
+          accent: rgb(226, 160, 60),
+          accentForeground: rgb(18, 17, 16),
+        }}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /read in/i })).toBeNull();
+  });
+
+  it("repaints and remembers when the reader switches", async () => {
+    render(<DocumentArticle doc={baseDoc} ident="writer.example" />);
+    const button = await screen.findByRole("button", { name: "Read in dark" });
+    fireEvent.click(button);
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(localStorage.getItem("gr-appearance")).toBe("dark");
+    // And back: "light" is a stored CHOICE, while the attribute is removed so
+    // the system can speak again on the next load.
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Read in light" }),
+    );
+    expect(document.documentElement.dataset.theme).toBeUndefined();
+    expect(localStorage.getItem("gr-appearance")).toBe("light");
   });
 });
