@@ -150,6 +150,37 @@ export function viewsByRkey(
 /** The posts manager's three work states: out, queued, and in progress. */
 export type PostsTab = "published" | "drafts" | "scheduled";
 
+/**
+ * The tablist's keyboard map — the ARIA tabs pattern's arrow keys, as a pure
+ * function of the visible strip. Returns the tab a key should move to, or null
+ * for a key the tablist doesn't own, so the caller only swallows keys it
+ * actually handled (Tab, typing, and browser shortcuts stay the browser's).
+ *
+ * Wrapping in both directions is deliberate: the strip is a ring of two or
+ * three items, and a dead end at either edge is exactly how a keyboard user
+ * concludes a tab can't be reached at all.
+ *
+ * `tabs` is the VISIBLE order rather than the type's three states, because
+ * Scheduled comes and goes with the queue and the keys have to walk what is
+ * actually on screen.
+ */
+export function nextPostsTab(
+  key: string,
+  tabs: PostsTab[],
+  current: PostsTab,
+): PostsTab | null {
+  if (tabs.length === 0) return null;
+  if (key === "Home") return tabs[0];
+  if (key === "End") return tabs[tabs.length - 1];
+  if (key !== "ArrowLeft" && key !== "ArrowRight") return null;
+  const at = tabs.indexOf(current);
+  // A selected tab that isn't in the visible strip can't be stepped from; the
+  // ring starts at its head so the keys still go somewhere real.
+  if (at === -1) return tabs[0];
+  const delta = key === "ArrowRight" ? 1 : -1;
+  return tabs[(at + delta + tabs.length) % tabs.length];
+}
+
 /** Column ids the manager sorts by. Kept as constants because they're the
  * contract between the column definitions and the sort control. */
 export const DATE_COLUMN = "date";
