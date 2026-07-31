@@ -61,16 +61,21 @@
  * the one part of the product meant to make a first impression. Our own pages
  * are ours to adapt.
  *
- * What stays out is PUBLICATION reading pages, and that exclusion is the
- * principle rather than an omission: the person whose surface it is decides how
- * it looks. A writer's page follows the appearance they give it through the
- * theming lexicon, never our toggle. We do not get to restyle someone else's
- * publication because a reader's laptop asked us to.
+ * A PUBLICATION reading page is the one surface that is not ours, and the rule
+ * there is whoever actually expressed a preference wins. A writer who set a
+ * theme has said how their page should look, and their answer stands however
+ * dark the reader's laptop is — we do not restyle someone else's publication
+ * because a stranger's OS asked us to. A writer who set NO theme has said
+ * nothing, and an absence is not an instruction to be white: the only
+ * preference in the room is the reader's, so the reader's is honoured.
+ * Hence `:not([data-writer-theme])` — the attribute is exactly "the author
+ * answered this question", and it is the whole condition.
  *
  * If any surface ever needs a `dark:` utility, that is a hard-coded-colour bug
  * to fix at the source, not a case to special-case here.
  */
-[data-theme="dark"] .goldroad-surface {
+[data-theme="dark"] .goldroad-surface,
+[data-theme="dark"] .writer-surface:not([data-writer-theme]) {
   --color-paper: oklch(0.21 0.006 80);
   --color-ink: oklch(0.93 0.005 80);
   --color-ink-soft: oklch(0.71 0.008 80);

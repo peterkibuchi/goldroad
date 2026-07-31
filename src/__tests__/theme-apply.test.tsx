@@ -298,3 +298,54 @@ describe("degrading correctly — a theme can never break a reader's page", () =
     expect(container.firstElementChild?.getAttribute("style")).toBeNull();
   });
 });
+
+/**
+ * Who wins when the author and the reader disagree — and who wins when only
+ * one of them has said anything at all.
+ *
+ * The CSS is one selector (`[data-theme="dark"]
+ * .writer-surface:not([data-writer-theme])` in styles.css) and it cannot be
+ * asserted through jsdom, which applies no stylesheets. What CAN be pinned is
+ * the pair of hooks that selector keys on, and pinning them is the point: the
+ * rule is only correct while an unthemed page is markable as such and a themed
+ * page is not.
+ */
+describe("an unthemed page follows the reader; a themed one does not", () => {
+  it("marks an unthemed page as reader-themeable — no author answer to defer to", () => {
+    const { container } = render(
+      <WriterSurface theme={null}>
+        <p>Body</p>
+      </WriterSurface>,
+    );
+    const root = container.firstElementChild;
+    expect(root?.classList.contains("writer-surface")).toBe(true);
+    // The absence the dark-mode rule selects on. An author who set nothing has
+    // expressed no preference, so the reader's stands.
+    expect(root?.hasAttribute("data-writer-theme")).toBe(false);
+  });
+
+  it("marks a themed page as the author's, out of the reader toggle's reach", () => {
+    const { container } = render(
+      <WriterSurface theme={theme}>
+        <p>Body</p>
+      </WriterSurface>,
+    );
+    const root = container.firstElementChild;
+    expect(root?.classList.contains("writer-surface")).toBe(true);
+    expect(root?.hasAttribute("data-writer-theme")).toBe(true);
+  });
+
+  it("gives a rejected theme the reader's page, not a white one", () => {
+    // Same door as everywhere else: a theme we could not validate is absent,
+    // and absent means the reader decides. A malformed record on a stranger's
+    // PDS must not be able to force a light page on someone who chose dark.
+    const { container } = render(
+      <WriterSurface theme={parseTheme({ accent: rgb(1, 2, 3) })}>
+        <p>Body</p>
+      </WriterSurface>,
+    );
+    expect(container.firstElementChild?.hasAttribute("data-writer-theme")).toBe(
+      false,
+    );
+  });
+});

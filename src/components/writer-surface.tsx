@@ -6,10 +6,9 @@ import { cn } from "~/lib/utils";
  * page and the post pages, and nothing else.
  *
  * This is the counterpart to `.goldroad-surface`: that class marks the pages
- * whose appearance is ours to set (marketing, app chrome, the editor, which
- * follow the reader's dark-mode toggle). This one marks the pages whose
- * appearance is the writer's, which follow their theme and never our toggle.
- * A page is one or the other, never both.
+ * whose appearance is ours to set (marketing, app chrome, the editor). This one
+ * marks the pages whose appearance is the author's. A page is one or the other,
+ * never both.
  *
  * `theme` is whatever `parseTheme` returned for the author's publication
  * record — null for no theme, a malformed theme, a partial one, or an author
@@ -17,6 +16,14 @@ import { cn } from "~/lib/utils";
  * `data-writer-theme` attribute, so an absent theme and a rejected theme are
  * indistinguishable to everything downstream. That is the intent: a theme we
  * could not fully validate must not be able to half-apply.
+ *
+ * That attribute does double duty, and the second job is the reader's. It is
+ * the record of whether the AUTHOR answered the question of how this page
+ * looks. When they did, their answer stands over any reader preference. When
+ * they did not, nobody has answered it but the reader — so an unthemed page
+ * follows the reader's dark-mode choice rather than defaulting to white at
+ * midnight, which is a default nobody chose. The `:not([data-writer-theme])`
+ * rule in styles.css is that sentence in CSS.
  */
 export function WriterSurface({
   children,
@@ -29,7 +36,10 @@ export function WriterSurface({
 }) {
   return (
     <div
-      className={cn("min-h-screen bg-paper font-body text-ink", className)}
+      className={cn(
+        "writer-surface min-h-screen bg-paper font-body text-ink",
+        className,
+      )}
       // Presence is the signal; the value is never read. Only set for a theme
       // that survived validation.
       data-writer-theme={theme ? "" : undefined}
