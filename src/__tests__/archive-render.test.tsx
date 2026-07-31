@@ -1,7 +1,8 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { filterPostsByQuery, groupPostsByMonth, monogram } from "#/lib/archive";
+import { filterPostsByQuery, groupPostsByMonth } from "#/lib/archive";
+import { PostThumb } from "#/routes/@{$handle}.index";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -17,62 +18,31 @@ afterEach(cleanup);
  * and a cover-less row that still holds the list's rhythm.
  */
 
-/** Mirror of the route's PostThumb: cover → publication icon → monogram,
- * always in the same fixed-size box. */
-function Thumb({
-  coverPath,
-  iconPath,
-  title,
-}: {
-  coverPath: string | null;
-  iconPath: string | null;
-  title: string;
-}) {
-  if (coverPath || iconPath) {
-    return (
-      <img
-        alt=""
-        className="mt-1 h-20 w-20 shrink-0 object-cover"
-        loading="lazy"
-        src={(coverPath ?? iconPath) as string}
-      />
-    );
-  }
-  return (
-    <div
-      aria-hidden="true"
-      className="mt-1 flex h-20 w-20 shrink-0 items-center justify-center bg-ink/5 font-display text-2xl text-ink-soft/40"
-      data-testid="thumb-placeholder"
-    >
-      {monogram(title)}
-    </div>
-  );
-}
-
-describe("archive thumbnail slot — no blank hole, constant rhythm", () => {
+describe("archive thumbnail slot", () => {
   it("renders the post's own cover when it has one", () => {
-    render(<Thumb coverPath="/img/did/cover" iconPath={null} title="A post" />);
+    render(<PostThumb coverPath="/img/did/cover" iconPath={null} />);
     const img = document.querySelector('img[alt=""]');
     expect(img?.getAttribute("src")).toBe("/img/did/cover");
     expect(img?.getAttribute("loading")).toBe("lazy");
   });
 
   it("falls back to the publication icon when the post has no cover", () => {
-    render(<Thumb coverPath={null} iconPath="/img/did/icon" title="A post" />);
+    render(<PostThumb coverPath={null} iconPath="/img/did/icon" />);
     expect(document.querySelector('img[alt=""]')?.getAttribute("src")).toBe(
       "/img/did/icon",
     );
   });
 
-  it("falls back to a quiet monogram — never an empty slot — with neither", () => {
-    render(<Thumb coverPath={null} iconPath={null} title="Substack notes" />);
-    const placeholder = screen.getByTestId("thumb-placeholder");
-    expect(placeholder.textContent).toBe("S");
-    // Same fixed box as the image arms, so cover-less rows keep the rhythm.
-    expect(placeholder.className).toContain("h-20");
-    expect(placeholder.className).toContain("w-20");
-    // Decorative only — it must not reach assistive tech as content.
-    expect(placeholder.getAttribute("aria-hidden")).toBe("true");
+  it("renders NOTHING when there is no picture to show", () => {
+    // It used to render the title's first letter in a grey box, to keep every
+    // row the same width. A lone capital in a tinted square reads as a broken
+    // image, and a title starting with O gives you a square containing what
+    // looks like a zero. The row's rhythm comes from its vertical padding; a
+    // post with no picture gets the full width for its words instead.
+    const { container } = render(
+      <PostThumb coverPath={null} iconPath={null} />,
+    );
+    expect(container.firstChild).toBeNull();
   });
 });
 
