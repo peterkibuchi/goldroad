@@ -1,6 +1,8 @@
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import { cn } from "~/lib/utils";
+
 /**
  * Calm-register markdown renderer for reader surfaces.
  *
@@ -83,6 +85,31 @@ const components: Components = {
     />
   ),
   td: (p) => <td className="border-rule border-b py-2 pr-4" {...strip(p)} />,
+  // Footnotes come free with GFM (`[^1]` and its definition), and they matter
+  // more than their size suggests: the writers who need them are the ones
+  // writing the essays this product exists for. Two elements carry them.
+  sup: (p) => (
+    // The marker. Display type at a small size so a digit riding the baseline
+    // reads as a reference rather than as a typo in the serif.
+    <sup className="ml-px font-display text-[0.7em]" {...strip(p)} />
+  ),
+  section: (p) => {
+    // The only <section> markdown can produce is the GFM footnotes block, and
+    // without this it rendered as an ordinary numbered list running straight on
+    // from the last paragraph — no signal that the piece had ended.
+    const { className, ...rest } = strip(p);
+    return (
+      <section
+        // Their className ("footnotes") is kept, not replaced: it is the hook
+        // the spec defines, and merging costs nothing.
+        className={cn(
+          "mt-12 border-rule border-t pt-6 text-[0.9375rem] text-ink-soft",
+          className,
+        )}
+        {...rest}
+      />
+    );
+  },
 };
 
 export function Prose({ markdown }: { markdown: string }) {
