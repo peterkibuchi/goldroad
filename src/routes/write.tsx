@@ -619,10 +619,16 @@ function SubtitleField({
  */
 export function SchedulePanel({
   existing,
+  draftId,
   prepare,
   disabled,
 }: {
   existing: PendingSchedule | null;
+  /** The draft this panel is scheduling, when it has been saved once — what a
+   * cancel needs in order to return the writer to THIS draft rather than to a
+   * blank editor. Null for a composition that has never been saved, which
+   * cannot have a schedule to cancel either. */
+  draftId: string | null;
   /** Flush the draft; resolves to its id, or null if the save failed. */
   prepare: () => Promise<string | null>;
   disabled?: boolean;
@@ -727,7 +733,9 @@ export function SchedulePanel({
           <input name="intent" type="hidden" value="unschedule" />
           <input name="id" type="hidden" value={existing.id} />
           <input name="returnTo" type="hidden" value="write" />
-          <input name="draftId" type="hidden" value={existing.id} />
+          {/* The DRAFT's id, not the schedule row's: it is what sends the
+              writer back to the piece they were editing. */}
+          <input name="draftId" type="hidden" value={draftId ?? ""} />
           <button
             className="-my-2 inline-flex min-h-9 cursor-pointer items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-spot"
             type="submit"
@@ -1270,6 +1278,7 @@ export function Compose({
         {!editing && (
           <SchedulePanel
             disabled={!editor || coverBusy}
+            draftId={resumed?.id ?? null}
             existing={resumed?.schedule ?? null}
             prepare={prepareForSchedule}
           />

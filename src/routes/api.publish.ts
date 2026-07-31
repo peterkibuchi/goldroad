@@ -276,6 +276,7 @@ async function scheduleDraft(form: FormData, did: string): Promise<Response> {
   // must never be read as "UTC, then", which would silently shift every
   // scheduled time by the writer's own offset.
   const dueAt = localToUtcMs(form.get("dueAtLocal"), offset);
+  if (dueAt === null) return backToDraft(draftId, "schedule_invalid");
   const problem = dueAtProblem(dueAt, Date.now());
   if (problem) return backToDraft(draftId, `schedule_${problem}`);
 
@@ -292,7 +293,7 @@ async function scheduleDraft(form: FormData, did: string): Promise<Response> {
       id: crypto.randomUUID(),
       did,
       draftId,
-      dueAt: new Date(dueAt as number),
+      dueAt: new Date(dueAt),
     });
   } catch (err) {
     console.error("schedule write failed", err);
@@ -313,6 +314,9 @@ async function unscheduleDraft(form: FormData, did: string): Promise<Response> {
   const backToEditor = form.get("returnTo") === "write";
   const db = drizzle(env.DB);
   try {
+    // A schedule id and a draft id are both server-minted crypto.randomUUID()
+    // values, so the draft-id validator is the right shape check for either —
+    // and the queries below are the thing that decides whose row it is.
     if (isDraftId(id)) await cancelSchedule(db, did, id);
     else if (isDraftId(draftId))
       await deleteSchedulesForDraft(db, did, draftId);

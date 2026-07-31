@@ -58,7 +58,13 @@ describe("SchedulePanel — its own form, and what it refuses to do", () => {
     prepare: () => Promise<string | null>,
     existing: { id: string; dueAt: string } | null = null,
   ) {
-    render(<SchedulePanel existing={existing} prepare={prepare} />);
+    render(
+      <SchedulePanel
+        draftId={DRAFT_ID}
+        existing={existing}
+        prepare={prepare}
+      />,
+    );
     return {
       time: screen.getByLabelText(/Schedule for later|Change the time/),
       button: screen.getByRole("button", { name: /Schedule|Reschedule/ }),
@@ -122,6 +128,7 @@ describe("SchedulePanel — its own form, and what it refuses to do", () => {
   it("shows an existing schedule with its zone named, and offers a cancel", () => {
     render(
       <SchedulePanel
+        draftId={DRAFT_ID}
         existing={{ id: ROW_ID, dueAt: "2027-08-04T06:00:00.000Z" }}
         prepare={async () => DRAFT_ID}
       />,
@@ -136,8 +143,35 @@ describe("SchedulePanel — its own form, and what it refuses to do", () => {
     expect(screen.getByRole("button", { name: "Reschedule" })).toBeTruthy();
   });
 
+  it("cancels by the schedule's id, but returns to the DRAFT", () => {
+    // The two ids are both UUIDs, so sending the wrong one here would land the
+    // writer in a blank editor with a "draft not found" and their piece
+    // apparently gone.
+    render(
+      <SchedulePanel
+        draftId={DRAFT_ID}
+        existing={{ id: ROW_ID, dueAt: "2027-08-04T06:00:00.000Z" }}
+        prepare={async () => DRAFT_ID}
+      />,
+    );
+    const cancel = screen
+      .getByRole("button", { name: "Cancel the schedule" })
+      .closest("form") as HTMLFormElement;
+    const data = new FormData(cancel);
+    expect(data.get("intent")).toBe("unschedule");
+    expect(data.get("id")).toBe(ROW_ID);
+    expect(data.get("draftId")).toBe(DRAFT_ID);
+    expect(data.get("returnTo")).toBe("write");
+  });
+
   it("states the cover limitation where the decision is made", () => {
-    render(<SchedulePanel existing={null} prepare={async () => DRAFT_ID} />);
+    render(
+      <SchedulePanel
+        draftId={null}
+        existing={null}
+        prepare={async () => DRAFT_ID}
+      />,
+    );
     expect(document.body.textContent).toMatch(/not a cover image/i);
   });
 });
