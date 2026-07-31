@@ -71,6 +71,14 @@ export const hiddenContent = sqliteTable("hidden_content", {
  * reach into it. Empty string is the honest default — a draft with no
  * subtitle, not a missing one.
  *
+ * `inline_images` is the companion the projection needs: the JSON blob
+ * references for body images already uploaded to the writer's repo
+ * (~/lib/inline-images). A PDS only serves a blob some record references, so a
+ * post published without them renders its own images as broken — and the
+ * browser's per-session store of those references is gone by the time a cron
+ * runs. "" means "no body images", and a save from a session that uploaded none
+ * leaves whatever is stored alone (the same rule `markdown` follows).
+ *
  * `markdown` is the SAME projection publishing sends to the record's
  * `textContent`, saved next to the blocks it came from. It exists because that
  * projection can only be produced by the editor: `blocksToMarkdownLossy` needs
@@ -89,6 +97,7 @@ export const drafts = sqliteTable(
     dek: text("dek").notNull().default(""),
     content: text("content").notNull(),
     markdown: text("markdown").notNull().default(""),
+    inlineImages: text("inline_images").notNull().default(""),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .notNull()
       .$defaultFn(() => new Date()),

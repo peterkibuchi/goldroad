@@ -1,0 +1,1 @@
+ALTER TABLE `drafts` ADD `inline_images` text DEFAULT '' NOT NULL;

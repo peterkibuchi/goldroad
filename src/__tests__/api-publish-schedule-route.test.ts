@@ -90,6 +90,7 @@ function draftRow(extra: Record<string, unknown> = {}) {
     dek: "",
     content: "[]",
     markdown: "Some words.",
+    inlineImages: "",
     createdAt: NOW,
     updatedAt: NOW,
     ...extra,

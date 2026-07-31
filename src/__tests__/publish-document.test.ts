@@ -57,6 +57,7 @@ const DRAFT = {
   title: "The long way round",
   dek: "On slow software",
   markdown: "Some words.",
+  inlineImages: "",
 };
 
 function input(
@@ -220,6 +221,64 @@ describe("publishStoredDraft", () => {
     const { rpc } = fakeRpc();
     expect((await publishStoredDraft(input(rpc))).ok).toBe(true);
     quiet.mockRestore();
+  });
+
+  it("carries the body's image blobs, so a published post's pictures work", async () => {
+    // A PDS only serves a blob some record references. The browser's
+    // per-session store of these is long gone by the time a cron runs, which is
+    // why they travel with the draft.
+    const cid = "bafkreiinlineimage2222222222222222222222222222222222222222";
+    const blob = {
+      $type: "blob",
+      ref: { $link: cid },
+      mimeType: "image/jpeg",
+      size: 1234,
+    };
+    const { rpc, posted } = fakeRpc();
+    await publishStoredDraft(
+      input(rpc, {
+        draft: {
+          ...DRAFT,
+          markdown: `Words.\n\n![a photo](/img/${DID}/${cid})`,
+          inlineImages: JSON.stringify([blob]),
+        },
+      }),
+    );
+    const record = posted.find(
+      (p) => p.input.collection === "site.standard.document",
+    )?.input.record as { goldroadInlineImages?: unknown[] };
+    expect(record.goldroadInlineImages).toEqual([blob]);
+  });
+
+  it("keeps only the blobs the body still references", async () => {
+    const stale = {
+      $type: "blob",
+      ref: {
+        $link: "bafkreideleted222222222222222222222222222222222222222222",
+      },
+      mimeType: "image/jpeg",
+      size: 10,
+    };
+    const { rpc, posted } = fakeRpc();
+    await publishStoredDraft(
+      input(rpc, {
+        draft: { ...DRAFT, inlineImages: JSON.stringify([stale]) },
+      }),
+    );
+    const record = posted.find(
+      (p) => p.input.collection === "site.standard.document",
+    )?.input.record as { goldroadInlineImages?: unknown[] };
+    expect(record.goldroadInlineImages).toBeUndefined();
+  });
+
+  it("publishes the words even when the stored references are unreadable", async () => {
+    // An image that loses its reference is a broken picture; a post that
+    // refuses to publish over one is a lost post.
+    const { rpc } = fakeRpc();
+    const result = await publishStoredDraft(
+      input(rpc, { draft: { ...DRAFT, inlineImages: "{not json" } }),
+    );
+    expect(result.ok).toBe(true);
   });
 
   it("refuses an untitled draft with a reason a writer can act on", async () => {

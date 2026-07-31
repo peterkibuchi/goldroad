@@ -7,6 +7,7 @@ import { z } from "zod";
 import {
   MAX_BODY_LENGTH,
   MAX_DEK_LENGTH,
+  MAX_INLINE_IMAGES,
   MAX_TITLE_LENGTH,
 } from "~/lib/publish";
 
@@ -62,6 +63,15 @@ export const draftPayload = z.object({
   dek: z.string().max(MAX_DEK_LENGTH).default(""),
   content: z.array(z.unknown()),
   markdown: z.string().max(MAX_BODY_LENGTH).optional(),
+  /** The `images` field's JSON, stored so a publish that happens without the
+   * browser (the cron) can still reference the body's blobs. Same
+   * absent-means-keep rule as `markdown`, which is what lets a resumed session
+   * that uploaded nothing leave the stored references intact. Bounded exactly
+   * as the publish form's copy is (~/lib/publish's parseInlineImagesField). */
+  inlineImages: z
+    .string()
+    .max(MAX_INLINE_IMAGES * 500)
+    .optional(),
 });
 
 export type DraftPayload = z.infer<typeof draftPayload>;

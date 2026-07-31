@@ -102,6 +102,31 @@ describe("selectDraft / updateDraft / deleteDraft — ownership in the WHERE", (
     expect(sql).not.toContain('"markdown"');
   });
 
+  it("updateDraft LEAVES the image references alone when they aren't sent", () => {
+    // The store the browser keeps them in is per-editor-session, so a resumed
+    // draft sends none. Blanking them would publish a post whose own pictures
+    // are broken — a PDS only serves a blob some record references.
+    const { sql } = updateDraft(db, DID, ID, {
+      title: "t",
+      dek: "",
+      content: "[]",
+      markdown: "the words",
+    }).toSQL();
+    expect(sql).not.toContain('"inline_images"');
+  });
+
+  it("updateDraft writes the image references when a session uploaded some", () => {
+    const { sql, params } = updateDraft(db, DID, ID, {
+      title: "t",
+      dek: "",
+      content: "[]",
+      markdown: "the words",
+      inlineImages: '[{"$type":"blob"}]',
+    }).toSQL();
+    expect(sql).toContain('"inline_images"');
+    expect(params).toContain('[{"$type":"blob"}]');
+  });
+
   it("updateDraft still clears the projection when explicitly emptied", () => {
     const { sql, params } = updateDraft(db, DID, ID, {
       title: "t",

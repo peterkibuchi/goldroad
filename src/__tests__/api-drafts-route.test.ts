@@ -250,6 +250,27 @@ describe("POST — upsert", () => {
     );
   });
 
+  it("stores the body images' blob references with the projection", async () => {
+    store.updateDraft.mockResolvedValue([{ id: ID, updatedAt: NOW }]);
+    await call(
+      "POST",
+      "",
+      JSON.stringify({
+        id: ID,
+        title: "Hi",
+        content: [{ type: "paragraph" }],
+        markdown: "Hi",
+        inlineImages: '[{"$type":"blob"}]',
+      }),
+    );
+    expect(store.updateDraft).toHaveBeenCalledWith(
+      expect.anything(),
+      DID,
+      ID,
+      expect.objectContaining({ inlineImages: '[{"$type":"blob"}]' }),
+    );
+  });
+
   it("passes markdown through as UNDEFINED when a save omits it", async () => {
     // Absent means "leave the stored projection alone", not "it's empty": a tab
     // left open across a deploy must not blank the only copy a cron can
@@ -258,9 +279,12 @@ describe("POST — upsert", () => {
     await call("POST", "", payload(ID));
     const fields = store.updateDraft.mock.calls[0][3] as {
       markdown?: string;
+      inlineImages?: string;
     };
     expect("markdown" in fields).toBe(true);
     expect(fields.markdown).toBeUndefined();
+    // Same rule for the image references, and for the same reason.
+    expect(fields.inlineImages).toBeUndefined();
   });
 
   it("stores the subtitle alongside the blocks, never inside them", async () => {
