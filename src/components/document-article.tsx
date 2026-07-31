@@ -5,6 +5,7 @@ import { Conversation } from "~/components/conversation";
 import { ExternalLink } from "~/components/external-link";
 import { HeartIcon, ReplyIcon, RepostIcon } from "~/components/icons";
 import { Prose } from "~/components/prose";
+import { SubscribeControl } from "~/components/subscribe-control";
 import { WriterSurface } from "~/components/writer-surface";
 import {
   clearEdition,
@@ -151,6 +152,14 @@ export async function loadDocument(identParam: string, rkey: string) {
       ]);
 
     let publicationUrl: string | undefined;
+    // What a subscription points at. Minted from the ref we already validated
+    // (same repo, publication collection) rather than read off the getRecord
+    // response, which can come back with an empty `uri` and is the writer's
+    // PDS talking about itself either way.
+    const publicationAtUri =
+      pub && siteRef
+        ? recordAtUri(did, siteRef.collection, siteRef.rkey)
+        : null;
     let publicationName: string | null = null;
     let publicationDescription: string | null = null;
     let publicationIcon: CoverRef | null = null;
@@ -179,6 +188,7 @@ export async function loadDocument(identParam: string, rkey: string) {
       publicationName,
       publicationDescription,
       publicationIcon,
+      publicationAtUri,
       theme,
       mirror,
       relatedPosts: selectRelatedPosts(relatedPage.records, rkey),
@@ -444,6 +454,7 @@ export function DocumentArticle({
   publicationName,
   publicationDescription,
   publicationIcon,
+  publicationAtUri,
   cover,
   mirror,
   relatedPosts,
@@ -456,6 +467,10 @@ export function DocumentArticle({
   publicationName?: string | null;
   publicationDescription?: string | null;
   publicationIcon?: CoverRef | null;
+  /** The publication record a subscription would point at. Absent on a loose
+   * document (an https `site` with no publication record) — there is nothing to
+   * subscribe to, and the card simply doesn't offer it. */
+  publicationAtUri?: string | null;
   /** The author's validated theme, or null for our default palette. */
   theme?: BasicTheme | null;
   cover?: CoverRef | null;
@@ -664,6 +679,14 @@ export function DocumentArticle({
                   {publicationDescription}
                 </p>
               )}
+              {/* Subscribing leads, because it is the only one of the three
+                  that happens HERE — the other two hand the reader to Bluesky
+                  or to their feed reader. Still ink and still quiet: this
+                  card is the writer's capture moment, not ours. */}
+              <SubscribeControl
+                className="mt-5"
+                publicationAtUri={publicationAtUri ?? null}
+              />
               <p className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 font-display text-sm">
                 <ExternalLink
                   className="font-semibold text-ink underline underline-offset-2 transition-colors hover:text-ink-soft"

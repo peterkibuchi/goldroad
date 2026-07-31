@@ -8,6 +8,7 @@ import {
   ReportLink,
 } from "~/components/document-article";
 import { SearchIcon } from "~/components/icons";
+import { SubscribeControl } from "~/components/subscribe-control";
 import { WriterSurface } from "~/components/writer-surface";
 import { filterPostsByQuery, groupPostsByMonth } from "~/lib/archive";
 import {
@@ -270,7 +271,8 @@ function PostRow({
 function PublicationPage() {
   // Spread, for the same reason the document route does it: the loader
   // returns exactly the facts the page renders, and hand-picking them is how
-  // one quietly goes missing. The head's keys (publicationAtUri) are ignored.
+  // one quietly goes missing. `publicationAtUri` was head-only until the
+  // subscribe control needed the record a subscription points at.
   return <PublicationView {...Route.useLoaderData()} />;
 }
 
@@ -278,6 +280,7 @@ function PublicationPage() {
 export function PublicationView({
   ident,
   publication,
+  publicationAtUri,
   posts,
   nextCursor,
   iconPath,
@@ -285,6 +288,9 @@ export function PublicationView({
 }: {
   ident: string;
   publication: StandardPublication | null;
+  /** The publication record's URI — what a subscription points at. Null for an
+   * author with no publication record, who has nothing to subscribe to yet. */
+  publicationAtUri?: string | null;
   posts: ArchivePost[];
   nextCursor: string | null;
   iconPath: string | null;
@@ -338,6 +344,14 @@ export function PublicationView({
                   {publication.description}
                 </p>
               ) : null}
+              {/* Under the identity it belongs to, inside the masthead rule —
+                  the one place on this page where an act on the publication
+                  makes sense. Ink, because the accent moment on a reading
+                  surface is the writer's, not ours (see SubscribeControl). */}
+              <SubscribeControl
+                className="mt-6"
+                publicationAtUri={publicationAtUri ?? null}
+              />
             </div>
           </div>
         </header>
