@@ -40,6 +40,33 @@ export function setEdition(next: Edition): void {
   } catch {
     // Preference is a nicety; the repaint below is the actual request.
   }
-  if (next === "dark") document.documentElement.dataset.theme = "dark";
-  else delete document.documentElement.dataset.theme;
+  const root = document.documentElement;
+  if (next === "dark") root.dataset.theme = "dark";
+  else delete root.dataset.theme;
+  // Choosing by hand is what earns the override of a writer's theme — see the
+  // bootstrap in __root.tsx. Setting it here keeps a switch made on this page
+  // effective on this page, not only after the next load.
+  root.dataset.readerEdition = next;
+}
+
+/**
+ * Back to deferring: the system decides our surfaces, and an author's theme
+ * decides theirs.
+ *
+ * The third state, and the one that makes the override safe to offer — without
+ * a way back, a reader who once tapped "dark" could never see a writer's
+ * colours again. Removing the stored value rather than storing "system" means
+ * an untouched reader and a reset one are the same reader.
+ */
+export function clearEdition(): void {
+  try {
+    localStorage.removeItem(APPEARANCE_KEY);
+  } catch {
+    // Same as above: the repaint is the request.
+  }
+  const root = document.documentElement;
+  delete root.dataset.readerEdition;
+  if (window.matchMedia("(prefers-color-scheme: dark)").matches)
+    root.dataset.theme = "dark";
+  else delete root.dataset.theme;
 }

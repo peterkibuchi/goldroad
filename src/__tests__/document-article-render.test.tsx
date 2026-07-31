@@ -309,6 +309,8 @@ describe("DocumentArticle — the reader's edition switch", () => {
 
   afterEach(() => {
     delete document.documentElement.dataset.theme;
+    delete document.documentElement.dataset.readerEdition;
+    localStorage.clear();
   });
 
   it("offers the switch on a page whose author set no theme", async () => {
@@ -328,20 +330,63 @@ describe("DocumentArticle — the reader's edition switch", () => {
     ).toBeTruthy();
   });
 
-  it("stays off a page the author themed", () => {
+  const themed = () => ({
+    background: rgb(18, 17, 16),
+    foreground: rgb(240, 236, 228),
+    accent: rgb(226, 160, 60),
+    accentForeground: rgb(18, 17, 16),
+  });
+
+  it("is offered on a themed page too — the reader's eyes still count", async () => {
     render(
-      <DocumentArticle
-        doc={baseDoc}
-        ident="writer.example"
-        theme={{
-          background: rgb(18, 17, 16),
-          foreground: rgb(240, 236, 228),
-          accent: rgb(226, 160, 60),
-          accentForeground: rgb(18, 17, 16),
-        }}
-      />,
+      <DocumentArticle doc={baseDoc} ident="writer.example" theme={themed()} />,
     );
-    expect(screen.queryByRole("button", { name: /read in/i })).toBeNull();
+    expect(
+      await screen.findByRole("button", { name: /read in/i }),
+    ).toBeTruthy();
+  });
+
+  it("offers the way back only once the reader is actually overriding", async () => {
+    // Without "as published", a reader who once chose an edition could never
+    // see a writer's colours again and the override would end theming.
+    const { unmount } = render(
+      <DocumentArticle doc={baseDoc} ident="writer.example" theme={themed()} />,
+    );
+    // Nothing chosen yet: the author's theme is what's showing, so there is
+    // nothing to hand back.
+    expect(screen.queryByRole("button", { name: "As published" })).toBeNull();
+    unmount();
+
+    document.documentElement.dataset.readerEdition = "dark";
+    render(
+      <DocumentArticle doc={baseDoc} ident="writer.example" theme={themed()} />,
+    );
+    expect(
+      await screen.findByRole("button", { name: "As published" }),
+    ).toBeTruthy();
+  });
+
+  it("never offers the way back on an unthemed page — nothing to go back to", async () => {
+    document.documentElement.dataset.readerEdition = "dark";
+    render(<DocumentArticle doc={baseDoc} ident="writer.example" />);
+    await screen.findByRole("button", { name: /read in/i });
+    expect(screen.queryByRole("button", { name: "As published" })).toBeNull();
+  });
+
+  it("hands the page back to its author, and stops overriding", async () => {
+    document.documentElement.dataset.readerEdition = "dark";
+    document.documentElement.dataset.theme = "dark";
+    localStorage.setItem("gr-appearance", "dark");
+    render(
+      <DocumentArticle doc={baseDoc} ident="writer.example" theme={themed()} />,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "As published" }),
+    );
+    // The stored choice is REMOVED, not set to "system": an untouched reader
+    // and a reset one have to be the same reader.
+    expect(localStorage.getItem("gr-appearance")).toBeNull();
+    expect(document.documentElement.dataset.readerEdition).toBeUndefined();
   });
 
   it("repaints and remembers when the reader switches", async () => {
