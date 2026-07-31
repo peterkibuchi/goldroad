@@ -55,7 +55,7 @@ import { cn } from "~/lib/utils";
  * posts manager's toolbar. Surfaces that are an *act* rather than a place —
  * the editor, the importer — pass no `active` item at all.
  */
-export type WriterNavItem = "home" | "posts" | "stats" | "settings";
+type WriterNavItem = "home" | "posts" | "stats" | "settings";
 
 type MarketingHeaderProps =
   /** Marketing surfaces — wordmark home, waitlist-era status, sign-in path. */

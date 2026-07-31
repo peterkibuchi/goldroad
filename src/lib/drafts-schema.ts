@@ -73,5 +73,3 @@ export const draftPayload = z.object({
     .max(MAX_INLINE_IMAGES * 500)
     .optional(),
 });
-
-export type DraftPayload = z.infer<typeof draftPayload>;

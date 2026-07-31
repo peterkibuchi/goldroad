@@ -81,16 +81,6 @@ export const PUBLISHED_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 export type ScheduledStatus = "pending" | "published" | "failed";
 
-/** One row as the writer's own surfaces read it. */
-export type ScheduledRow = {
-  id: string;
-  draftId: string;
-  dueAt: Date;
-  status: ScheduledStatus;
-  attempts: number;
-  lastError: string | null;
-};
-
 /** A due row as the cron reads it — identity only, no content. */
 export type DuePost = { id: string; did: string; draftId: string };
 

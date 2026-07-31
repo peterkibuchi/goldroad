@@ -49,7 +49,7 @@ import {
 import { type BasicTheme, parseTheme } from "~/lib/theme";
 
 /** A validated cover/icon image reference, serveable through /img/$did/$cid. */
-export type CoverRef = { did: string; cid: string };
+type CoverRef = { did: string; cid: string };
 
 /**
  * Public reading surface — calm register: serif body,

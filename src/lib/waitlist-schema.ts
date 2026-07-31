@@ -8,5 +8,3 @@ export const waitlistPayload = z.object({
   email: z.string().trim().toLowerCase().pipe(z.email().max(254)),
   gr_extra: z.literal("").optional(),
 });
-
-export type WaitlistPayload = z.infer<typeof waitlistPayload>;
