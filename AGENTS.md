@@ -13,7 +13,8 @@ render any atproto author's `site.standard` records, not just ours.
 ## Stack
 
 TanStack Start (SSR, file-based routing) · React 19 + React Compiler · Tailwind v4 ·
-shadcn · Biome (lint + format) · Vitest · t3-env (`src/env.ts`).
+Biome (lint + format) · Vitest · t3-env (`src/env.ts`). The UI is hand-built — see
+Code conventions.
 Package manager: **pnpm**. Path alias: `~/*` → `src/*` (see tsconfig).
 
 - **Hosting:** Cloudflare Workers (`wrangler.jsonc`). Free-tier constraints matter:
@@ -81,14 +82,24 @@ Keep tests green.
 
 ## Code conventions
 
-- **DRY · KISS · YAGNI.** No speculative abstraction. Don't reinvent what shadcn /
-  TanStack already provide.
+- **DRY · KISS · YAGNI.** No speculative abstraction. Don't reinvent what
+  TanStack already provides.
 - Prefer TanStack-native solutions (file routes, route `head` for SEO, loaders,
   TanStack Form/Query/Table) before hand-rolling.
 - Use the `cn()` helper for class merging. Follow Biome's sorted-classes +
   organized-imports (a `check:write` fixes both).
-- Accessibility is non-negotiable; default to primitives that handle it
-  automatically (shadcn / Base UI).
+- **The UI is hand-built, and that is a choice with a cost.** No component
+  library is installed: the pressroom look fights every library's defaults, and
+  native elements (`<dialog>`, `<details>`, radio groups) already do more than
+  they get credit for. The cost is that ARIA patterns are OURS to finish. A
+  roving `tabIndex` without arrow keys is not "most of a tab strip", it is a
+  keyboard trap — half a pattern is worse than none, because it removes the
+  browser's default and puts nothing back. So: implement the whole pattern
+  against the WAI-ARIA APG and test it with keys, or add the primitive
+  deliberately (and say so in a PR) rather than approximating it.
+- Accessibility is non-negotiable. `shadcn add` still works via
+  `pnpx shadcn@latest` — `components.json` is configured and `src/components/ui`
+  holds what has been vendored. The CLI is deliberately not a dependency.
 
 ## Verification & review
 

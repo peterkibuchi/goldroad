@@ -1,6 +1,9 @@
 @import "tailwindcss";
+/* Needed by @blocknote/shadcn's menus, not by us: its dist uses `animate-in`,
+   `fade-in`, `zoom-in` and `slide-in`, and the @source line below makes OUR
+   build responsible for generating them. Removing this un-animates the editor's
+   toolbar and slash menu. */
 @import "tw-animate-css";
-@import "shadcn/tailwind.css";
 @import "@fontsource-variable/inter";
 @import "@fontsource-variable/libre-franklin";
 @import "@fontsource-variable/source-serif-4";
