@@ -211,11 +211,68 @@ export function excerpt(body: string): string {
   return `${collapsed.slice(0, DESCRIPTION_EXCERPT_LENGTH - 1).trimEnd()}…`;
 }
 
+/** Minimal entity decode for text pulled back out of an HTML attribute or a
+ * <figcaption>. Ampersand LAST so "&amp;lt;" doesn't become "<". */
+function decodeBasicEntities(text: string): string {
+  return text
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#(?:39|x27);/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
+/** Markdown image syntax for one image. A URL with spaces or parens takes the
+ * angle-bracket form; `[` and `]` can't appear unescaped in the alt text. */
+function imageMarkdown(alt: string, src: string): string {
+  const text = alt.replace(/[[\]]/g, "").replace(/\s+/g, " ").trim();
+  const url = /[\s()]/.test(src) ? `<${src}>` : src;
+  return `![${text}](${url})`;
+}
+
+/**
+ * `<figure><img …><figcaption>…</figcaption></figure>` → real markdown.
+ *
+ * BlockNote exports a CAPTIONED image as that raw HTML rather than as
+ * `![alt](src)` (uncaptioned images export as markdown). Reader surfaces
+ * render markdown with no rehype-raw — raw HTML is dropped, deliberately and
+ * permanently — so storing the export verbatim would make every captioned
+ * image invisible to readers while looking perfectly fine in the editor.
+ * Folding it here, on the way into the record, keeps the picture and turns
+ * the caption into the italic line underneath that it already looks like.
+ *
+ * Runs on every publish and edit, so a body that never had a figure in it
+ * pays one failed regex match.
+ */
+export function foldImageFigures(markdown: string): string {
+  if (!markdown.includes("<figure")) return markdown;
+  return markdown.replace(
+    /<figure[^>]*>\s*<img\b([^>]*)>\s*(?:<figcaption[^>]*>([\s\S]*?)<\/figcaption>\s*)?<\/figure>/gi,
+    (whole, attrs: string, caption: string | undefined) => {
+      const src = /\bsrc\s*=\s*"([^"]*)"/i.exec(attrs)?.[1];
+      if (!src) return whole; // nothing to point at — leave it alone
+      const alt = decodeBasicEntities(
+        /\balt\s*=\s*"([^"]*)"/i.exec(attrs)?.[1] ?? "",
+      );
+      const image = imageMarkdown(alt, decodeBasicEntities(src));
+      // Tags out BEFORE entities in: decoding first would let an escaped
+      // "&lt;hi&gt;" become a real tag and get stripped as markup.
+      const text = decodeBasicEntities((caption ?? "").replace(/<[^>]*>/g, ""))
+        .replace(/\s+/g, " ")
+        .trim();
+      // A caption identical to the alt text would just read twice.
+      return text && text !== alt.trim()
+        ? `${image}\n\n*${text.replace(/\*/g, "\\*")}*`
+        : image;
+    },
+  );
+}
+
 function validateTitleAndBody(rawTitle: string, rawBody: string) {
   // A title is one line. The field can't produce a newline, but a paste can —
   // collapse rather than store a record title that renders broken everywhere.
   const title = rawTitle.replace(/\s+/g, " ").trim();
-  const body = rawBody.replace(/\r\n/g, "\n").trim();
+  const body = foldImageFigures(rawBody.replace(/\r\n/g, "\n")).trim();
   if (!title) throw new Error("title is required");
   if (title.length > MAX_TITLE_LENGTH)
     throw new Error(`title exceeds ${MAX_TITLE_LENGTH} characters`);

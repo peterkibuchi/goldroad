@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
  */
 import {
   buildDocumentRecord,
+  foldImageFigures,
   inlineImagesForBody,
   MAX_INLINE_IMAGES,
   parseInlineImagesField,
@@ -185,5 +186,51 @@ describe("records carry their body's images", () => {
       { title: "T", body: imageMarkdown(CID_A) },
     );
     expect(record.goldroadInlineImages).toBeUndefined();
+  });
+});
+
+describe("foldImageFigures", () => {
+  it("turns a captioned figure into markdown plus an italic caption line", () => {
+    expect(
+      foldImageFigures(
+        '<figure><img src="/img/did/cid" alt="A cat"><figcaption>On the wall.</figcaption></figure>',
+      ),
+    ).toBe("![A cat](/img/did/cid)\n\n*On the wall.*");
+  });
+
+  it("keeps the image when there is no caption, and drops a caption that just repeats the alt text", () => {
+    expect(
+      foldImageFigures('<figure><img src="/a.png" alt="A cat"></figure>'),
+    ).toBe("![A cat](/a.png)");
+    expect(
+      foldImageFigures(
+        '<figure><img src="/a.png" alt="A cat"><figcaption>A cat</figcaption></figure>',
+      ),
+    ).toBe("![A cat](/a.png)");
+  });
+
+  it("decodes entities, strips caption markup, and angle-bracket-wraps an awkward URL", () => {
+    expect(
+      foldImageFigures(
+        '<figure><img src="/a b(1).png" alt="Tom &amp; Jerry"><figcaption><em>Say &lt;hi&gt;</em></figcaption></figure>',
+      ),
+    ).toBe("![Tom & Jerry](</a b(1).png>)\n\n*Say <hi>*");
+  });
+
+  it("leaves a body with no figure — and a figure with no src — exactly as it found it", () => {
+    const plain = "Just words with an ![image](/a.png).";
+    expect(foldImageFigures(plain)).toBe(plain);
+    const srcless = '<figure><img alt="nothing"></figure>';
+    expect(foldImageFigures(srcless)).toBe(srcless);
+  });
+
+  it("is applied on the way into the record, so readers never get raw HTML", () => {
+    const record = buildDocumentRecord({
+      title: "Illustrated",
+      site: "https://example.com/@writer",
+      path: "/3l",
+      body: '<figure><img src="/img/did/cid" alt="A cat"><figcaption>On the wall.</figcaption></figure>',
+    });
+    expect(record.textContent).toBe("![A cat](/img/did/cid)\n\n*On the wall.*");
   });
 });

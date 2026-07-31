@@ -19,6 +19,11 @@ import { selectDraft } from "~/lib/drafts";
 import { isDraftId, MAX_DRAFTS_PER_USER } from "~/lib/drafts-schema";
 import { downscaleImage } from "~/lib/image";
 import { selectMirror } from "~/lib/import-store";
+import {
+  createInlineImageStore,
+  hasProxiedImages,
+  imagesMissingAltText,
+} from "~/lib/inline-images";
 import { readLiveSessionDid } from "~/lib/live-session";
 import {
   MAX_DEK_LENGTH,
@@ -599,6 +604,13 @@ export function Compose({
 }) {
   const [editor, setEditor] = useState<BlockNoteEditor | null>(null);
   const [coverBusy, setCoverBusy] = useState(false);
+  // Body images uploaded during this session. One store per mount: the editor
+  // fills it, the publish form submits it (the record must reference every
+  // blob it uses — see ~/lib/inline-images).
+  const [imageStore] = useState(createInlineImageStore);
+  // Re-rendered only when the count actually changes, so counting on every
+  // keystroke costs nothing (React bails out on an identical value).
+  const [missingAlt, setMissingAlt] = useState(0);
   const [saveState, setSaveState] = useState<SaveState>(
     resumed ? "saved" : "idle",
   );
@@ -606,10 +618,12 @@ export function Compose({
   const [initialBlocks] = useState<unknown[] | undefined>(() =>
     parseDraftBlocks(resumed?.blocksJson),
   );
+  const resumedHasImages = hasProxiedImages(initialBlocks ?? []);
   const bodyRef = useRef<HTMLInputElement>(null);
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const dekRef = useRef<HTMLTextAreaElement>(null);
   const draftIdInputRef = useRef<HTMLInputElement>(null);
+  const imagesInputRef = useRef<HTMLInputElement>(null);
   const editing = draft !== null;
   /** Display host for the mirror-adoption notice ("writer.substack.com"). */
   let mirrorHost: string | null = null;
@@ -633,6 +647,8 @@ export function Compose({
   // Loading resumed blocks fires the editor's onChange before onReady —
   // ignore changes until the editor is ready so hydration never "saves".
   const readyRef = useRef(false);
+
+  useEffect(() => () => imageStore.dispose(), [imageStore]);
 
   useEffect(() => {
     if (editing) return;
@@ -748,6 +764,11 @@ export function Compose({
 
   /** Title keystrokes and editor changes both funnel here. */
   function handleDraftChange() {
+    // Accessibility first, and regardless of autosave: an image with no alt
+    // text is unreadable to a screen reader, so the count has to track the
+    // document even when the draft itself is never saved (an edit of a
+    // published post).
+    if (editor) setMissingAlt(imagesMissingAltText(editor.document));
     if (editing || publishingRef.current || !readyRef.current) return;
     dirtyRef.current = true;
     scheduleSave();
@@ -787,6 +808,8 @@ export function Compose({
         draftIdInputRef.current.value = draftIdRef.current ?? "";
       if (bodyRef.current)
         bodyRef.current.value = editor.blocksToMarkdownLossy(editor.document);
+      if (imagesInputRef.current)
+        imagesInputRef.current.value = imageStore.toField();
       form.submit();
     };
     // Clicking Publish blurs the editor, so a save may be mid-flight — and it
@@ -865,6 +888,9 @@ export function Compose({
             <input name="draftId" ref={draftIdInputRef} type="hidden" />
           )}
           <input name="body" ref={bodyRef} type="hidden" />
+          {/* The blobs this session uploaded. The server keeps only the ones
+              the submitted body still references. */}
+          <input name="images" ref={imagesInputRef} type="hidden" />
           <CoverPicker
             existingPath={draft?.coverPath ?? null}
             onBusyChange={setCoverBusy}
@@ -904,6 +930,7 @@ export function Compose({
           <ClientOnly fallback={<EditorFallback />}>
             <Suspense fallback={<EditorFallback />}>
               <Editor
+                imageStore={imageStore}
                 initialBlocks={initialBlocks}
                 initialMarkdown={draft?.textContent || undefined}
                 onChange={handleDraftChange}
@@ -912,6 +939,27 @@ export function Compose({
             </Suspense>
           </ClientOnly>
         </div>
+        {/* Images added to an unpublished draft are already in the writer's
+            repo, but a PDS only serves a blob some record references — so
+            after a reload they stay blank until this draft publishes. Said
+            here rather than left to be discovered as breakage. */}
+        {!editing && resumedHasImages && (
+          <p className="mt-4 font-display text-ink-soft text-xs leading-relaxed">
+            Images in this draft are already saved to your repo, but they stay
+            blank here until you publish — that's when your server starts
+            serving them.
+          </p>
+        )}
+        {/* Alt text is what a screen reader has to work with, and the only
+            person who can write it is the person who chose the picture. A
+            count, not a block: it's the writer's call. */}
+        {missingAlt > 0 && (
+          <p className="mt-4 font-display text-ink-soft text-xs leading-relaxed">
+            {missingAlt === 1
+              ? "One image has no alt text — select it and use “Edit alt text” to describe it for readers who can't see it."
+              : `${missingAlt} images have no alt text — select each one and use “Edit alt text” to describe it for readers who can't see it.`}
+          </p>
+        )}
         {/* The consequence of the button is stated beside the button, where the
             decision is actually made. */}
         <div className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-3 border-rule border-t pt-6">

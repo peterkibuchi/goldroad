@@ -13,15 +13,49 @@
 import "@blocknote/shadcn/style.css";
 
 import type { BlockNoteEditor, PartialBlock } from "@blocknote/core";
+import { en } from "@blocknote/core/locales";
 import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
 import { useEffect, useRef, useState } from "react";
 
+import {
+  createInlineImageUploader,
+  type InlineImageStore,
+  type UploadStatus,
+} from "~/lib/inline-images";
+
 export type { BlockNoteEditor };
+
+/**
+ * BlockNote's own image controls, relabelled.
+ *
+ * "Rename image" edits the block's `name` prop — which is the `alt` attribute
+ * it renders and the `![alt](…)` text it exports on publish. Leaving it called
+ * "rename" hides the only accessibility control the editor has behind a word
+ * about filenames. Spread from the shipped English dictionary so a BlockNote
+ * upgrade that adds strings doesn't lose them.
+ */
+const DICTIONARY = {
+  ...en,
+  formatting_toolbar: {
+    ...en.formatting_toolbar,
+    file_rename: {
+      tooltip: {
+        ...en.formatting_toolbar.file_rename.tooltip,
+        image: "Edit alt text",
+      },
+      input_placeholder: {
+        ...en.formatting_toolbar.file_rename.input_placeholder,
+        image: "Describe this image for screen readers",
+      },
+    },
+  },
+};
 
 export default function Editor({
   initialMarkdown,
   initialBlocks,
+  imageStore,
   onChange,
   onReady,
 }: {
@@ -29,11 +63,36 @@ export default function Editor({
   initialMarkdown?: string;
   /** Draft blocks to load (resume flow); wins over initialMarkdown. */
   initialBlocks?: unknown[];
+  /** Where uploaded body images are kept until the publish form submits them
+   * (see ~/lib/inline-images). Absent = images can't be uploaded. */
+  imageStore?: InlineImageStore;
   /** Fires on every document change (user edits AND programmatic loads). */
   onChange?: () => void;
   onReady: (editor: BlockNoteEditor) => void;
 }) {
-  const editor = useCreateBlockNote();
+  // Announced politely and shown in print: an upload that fails has to say so
+  // where the writer is looking, not only in BlockNote's own error state.
+  const [status, setStatus] = useState<UploadStatus | null>(null);
+  // useCreateBlockNote builds the editor once; reading the store through a
+  // ref keeps the upload callback stable, because recreating the editor to
+  // pick up a new prop identity would drop the writer's document.
+  const storeRef = useRef(imageStore);
+  useEffect(() => {
+    storeRef.current = imageStore;
+  }, [imageStore]);
+
+  const editor = useCreateBlockNote({
+    dictionary: DICTIONARY,
+    uploadFile: createInlineImageUploader({
+      store: () => storeRef.current,
+      onStatus: setStatus,
+    }),
+    /** Uploaded-this-session images display from local bytes; everything else
+     * (a published post's images, an external URL) resolves as written. */
+    resolveFileUrl: async (url: string) =>
+      storeRef.current?.display(url) ?? url,
+  });
+
   // Initial content is applied exactly once per editor instance — a re-run
   // of the effect (e.g. a parent re-render changing a callback identity)
   // must never clobber what the writer has typed since.
@@ -66,7 +125,18 @@ export default function Editor({
   // on a dark page no matter how many tokens were overridden around it — the
   // component was never reading them.
   return (
-    <BlockNoteView editor={editor} onChange={onChange} theme={useEdition()} />
+    <>
+      <BlockNoteView editor={editor} onChange={onChange} theme={useEdition()} />
+      <p
+        aria-live="polite"
+        className={`mt-3 min-h-4 font-display text-xs leading-4 ${
+          status?.tone === "error" ? "text-spot" : "text-ink-soft"
+        }`}
+        role="status"
+      >
+        {status?.message ?? ""}
+      </p>
+    </>
   );
 }
 
