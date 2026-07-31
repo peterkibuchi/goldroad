@@ -388,6 +388,11 @@ export function DocumentArticle({
   // Owner decision #1: the dek is ALWAYS shown when set — no longer just a
   // no-body fallback — as its own line under the H1.
   const dek = doc.description?.trim() || null;
+  // The year of the piece, not of the render — a 2024 essay should not claim
+  // 2026 because someone opened it today.
+  const copyrightYear = new Date(
+    doc.publishedAt ?? Date.now(),
+  ).getUTCFullYear();
 
   return (
     <div className="min-h-screen bg-paper font-body text-ink">
@@ -594,8 +599,13 @@ export function DocumentArticle({
             surface a reader who might become a writer ever meets us on, so it
             points at /open rather than at a pitch. */}
         <footer className="mt-10 border-rule border-t pt-6">
+          {/* The writer's line leads, and it is a copyright line: their work,
+              their name, their reserved rights. Goldroad publishes it; we do
+              not own it, and the page should say so before it says anything
+              about us. */}
           <p className="font-display text-ink-soft/80 text-xs">
-            Published by its author on the open network.
+            © {copyrightYear} {publicationName ?? `@${ident}`}. All rights
+            reserved.
           </p>
           <p className="mt-1 font-display text-ink-soft/80 text-xs">
             <a

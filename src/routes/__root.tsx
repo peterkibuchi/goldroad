@@ -39,8 +39,9 @@ export const Route = createRootRoute({
  * chose the dark edition never sees a flash of the light one. Kept tiny and
  * dependency-free because it blocks paint by design.
  *
- * Only WRITER surfaces read this (see the `.writer-surface` scope in
- * styles.css) — marketing and reading pages ignore it entirely.
+ * Every surface Goldroad owns reads this (see the `.goldroad-surface` scope in
+ * styles.css). Publication reading pages deliberately do not — a writer's page
+ * follows the appearance they give it, not a reader's toggle.
  */
 const APPEARANCE_BOOTSTRAP = `(function(){try{var p=localStorage.getItem("gr-appearance");var d=p==="dark"||(p!=="light"&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(d)document.documentElement.dataset.theme="dark";}catch(e){}})();`;
 

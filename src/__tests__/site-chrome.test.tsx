@@ -22,14 +22,25 @@ describe("SiteHeader", () => {
     expect(screen.queryByRole("link", { name: /write/i })).toBeNull();
   });
 
-  it("marketing: shows the status note and no sign-in link", () => {
+  it("marketing: offers a way in", () => {
     render(<SiteHeader variant="marketing" />);
-    expect(screen.getByText(/opening soon/i)).toBeDefined();
-    // The marketing header intentionally carries no sign-in link.
-    expect(screen.queryByRole("link", { name: /sign in/i })).toBeNull();
+    // The door was deliberately absent while the product opened by invitation
+    // only. It is here now because people are being invited: a writer arriving
+    // from a DM, or anyone looking the project over, needs somewhere to go.
+    const signIn = screen.getByRole("link", { name: /sign in/i });
+    expect(signIn.getAttribute("href")).toBe("/write");
     expect(
       screen.getByRole("link", { name: /goldroad/i }).getAttribute("href"),
     ).toBe("/");
+  });
+
+  it("marketing: keeps the sign-in quiet, not the page's accent", () => {
+    render(<SiteHeader variant="marketing" />);
+    // The landing page spends its one accent on the founding-writers form.
+    // Someone who already has an account does not need to be sold to; they
+    // need to find the door.
+    const signIn = screen.getByRole("link", { name: /sign in/i });
+    expect(signIn.className).not.toMatch(/bg-spot|text-spot/);
   });
 });
 

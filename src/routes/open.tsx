@@ -71,7 +71,7 @@ const INLINE_LINK =
 
 export function OpenPage() {
   return (
-    <div className="flex min-h-screen flex-col bg-paper font-body text-ink">
+    <div className="goldroad-surface flex min-h-screen flex-col bg-paper font-body text-ink">
       <SiteHeader variant="marketing" />
 
       <main className="flex-1">
