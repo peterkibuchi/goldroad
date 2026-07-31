@@ -489,29 +489,43 @@ export function DocumentArticle({
           </div>
         )}
         <header className="mb-10 border-rule border-b pb-8">
-          {/* 32px flat, no responsive step. A headline set at display size
-              spent three lines on a long title and pushed the first sentence
-              off the screen; the piece should start above the fold. Leading
-              tightens as the size drops — 1.1 was set for a much larger face
-              and reads loose at this one. */}
-          <h1 className="text-balance font-semibold text-[2rem] text-ink leading-[1.15]">
+          {/* THE HEADER IS FURNITURE; THE PIECE IS PROSE. Two faces, and the
+              line between them is the point.
+
+              Everything here used to be one serif — title, dek and body — so
+              the header never separated from the reading matter and the dek
+              read as a greyed-out paragraph rather than as a standfirst. The
+              pairing that fixes it is the one the design system already
+              specifies: display face for mastheads, headings and labels, body
+              serif for prose. The title is a heading. It belongs in display.
+
+              The scale is stated as ratios against the 17px body, because
+              "proportional to the main text" is the actual requirement and
+              absolute pixels hide it:
+                title   2rem     ≈ 1.88× body
+                dek     1.1875rem ≈ 1.12× body — just above it, so it leads in
+                byline  0.875rem  ≈ 0.82× body
+              A monotonic descent, and the one number to nudge if the balance
+              still feels wrong is the dek's.
+
+              Negative tracking because display bold at 32px sets loose,
+              especially in the all-caps titles older texts carry. Well inside
+              the -0.04em floor. */}
+          <h1 className="text-balance font-bold font-display text-[2rem] text-ink leading-[1.15] tracking-[-0.02em]">
             {doc.title ?? "Untitled"}
           </h1>
-          {/* The dek is the WRITER'S sentence, so it is set in the body serif.
-              A previous pass put it in the display face to make a small size
-              look deliberate, which quietly moved the writer's own words into
-              Goldroad's interface voice — the one thing a reading page is not
-              supposed to do. The face carries the "this is prose, not chrome"
-              signal, which frees the size from having to.
+          {/* The dek belongs to the header block, not to the prose, so it
+              takes the header's face. An earlier pass set it in the body serif
+              on the argument that it is the writer's own sentence — true, but
+              it made the dek indistinguishable from the first paragraph, which
+              is worse: on a post whose opening line IS the description, the two
+              read as the same text printed twice.
 
-              16px: under the 17px body so it reads as an introduction rather
-              than competing with it, and clearly above the 14px byline beneath
-              it, so the header descends 32 → 16 → 14 instead of inverting.
               Roman, not italic — italic had become a default soft voice across
               the product rather than an emphasis, which costs it all meaning.
-              Softer ink and a shorter measure do the rest. */}
+              Softer ink and a shorter measure carry the subordination. */}
           {dek && (
-            <p className="mt-4 max-w-[62ch] text-base text-ink-soft leading-[1.6]">
+            <p className="mt-4 max-w-[52ch] font-display text-[1.1875rem] text-ink-soft leading-[1.45]">
               {dek}
             </p>
           )}
