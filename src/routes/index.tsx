@@ -632,21 +632,29 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
               </div>
             ))}
           </dl>
-          {/* The number, in the element this design system already uses for a
-              figure that carries an argument (see the 0% on /leaving-substack).
-              It was buried mid-sentence, which wasted the most specific and most
-              persuasive token on the page — and the caption is the part that
-              turns a cap into a reason. */}
-          <figure className="mt-14 border-ink border-l-2 pl-5">
-            <p className="font-black font-display text-5xl text-ink md:text-6xl">
-              25
-            </p>
-            <figcaption className="mt-3 max-w-[52ch] text-ink-soft text-sm leading-relaxed">
-              writers to start — and the reason is email. A new sending domain
-              has to earn its reputation slowly, so small groups are what keep
-              your newsletter out of spam later.
-            </figcaption>
-          </figure>
+          {/* The cap, as prose rather than a figure — and deliberately not the
+              deliverability reason it started as.
+
+              Three things were wrong with the earlier version. It led with OUR
+              constraint (a sending domain earning reputation), which a writer
+              has no reason to care about. It put the word "spam" one element
+              above the signup form, naming a fear at the exact moment the page
+              asks for trust — which is what the positive-framing rule exists to
+              prevent. And it spent the big-figure treatment, which this system
+              reserves for good news like the 0%, on a restriction.
+
+              The number stays, because specificity persuades and it is true.
+              What changed is which true reason we give: a group this size can
+              be looked after, which is the part that is about the reader. */}
+          <p className="mt-10 max-w-[56ch] text-pretty text-ink-soft text-lg leading-relaxed">
+            We're starting with{" "}
+            <strong className="font-display font-semibold text-ink">
+              25 writers
+            </strong>{" "}
+            — small enough that setting you up is a conversation rather than a
+            queue, and that the person answering your questions is the one
+            building the thing.
+          </p>
           <div className="mt-10 max-w-xl">
             <FoundingWritersForm />
           </div>
