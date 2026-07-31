@@ -18,6 +18,13 @@ const store = vi.hoisted(() => ({
 }));
 vi.mock("~/lib/drafts", () => store);
 
+/** The schedule store, mocked for the same reason: DELETE cancels a draft's
+ * schedule, and that call must be visible here without a live D1. */
+const schedules = vi.hoisted(() => ({
+  deleteSchedulesForDraft: vi.fn(),
+}));
+vi.mock("~/lib/scheduled-posts", () => schedules);
+
 import { MAX_DRAFT_BODY_BYTES } from "../lib/drafts-schema";
 import { signSession } from "../lib/session";
 import { Route } from "../routes/api.drafts";
@@ -72,6 +79,8 @@ async function call(
 
 beforeEach(() => {
   for (const fn of Object.values(store)) fn.mockReset();
+  schedules.deleteSchedulesForDraft.mockReset();
+  schedules.deleteSchedulesForDraft.mockResolvedValue([]);
 });
 
 describe("session gate", () => {
@@ -217,6 +226,43 @@ describe("POST — upsert", () => {
     expect(store.countDrafts).not.toHaveBeenCalled(); // cap is create-only
   });
 
+  it("stores the markdown projection alongside the blocks it came from", async () => {
+    // Publishing sends this exact string to the record's textContent, and a
+    // scheduled publish reads it hours later — the editor is the only thing
+    // that can produce it, so it travels with every save.
+    store.updateDraft.mockResolvedValue([{ id: ID, updatedAt: NOW }]);
+    const res = await call(
+      "POST",
+      "",
+      JSON.stringify({
+        id: ID,
+        title: "Hi",
+        content: [{ type: "paragraph" }],
+        markdown: "Hi\n\nSome words.",
+      }),
+    );
+    expect(res.status).toBe(200);
+    expect(store.updateDraft).toHaveBeenCalledWith(
+      expect.anything(),
+      DID,
+      ID,
+      expect.objectContaining({ markdown: "Hi\n\nSome words." }),
+    );
+  });
+
+  it("passes markdown through as UNDEFINED when a save omits it", async () => {
+    // Absent means "leave the stored projection alone", not "it's empty": a tab
+    // left open across a deploy must not blank the only copy a cron can
+    // publish. The store's own contract is pinned in drafts.test.ts.
+    store.updateDraft.mockResolvedValue([{ id: ID, updatedAt: NOW }]);
+    await call("POST", "", payload(ID));
+    const fields = store.updateDraft.mock.calls[0][3] as {
+      markdown?: string;
+    };
+    expect("markdown" in fields).toBe(true);
+    expect(fields.markdown).toBeUndefined();
+  });
+
   it("stores the subtitle alongside the blocks, never inside them", async () => {
     store.updateDraft.mockResolvedValue([{ id: ID, updatedAt: NOW }]);
     const res = await call(
@@ -281,6 +327,35 @@ describe("DELETE", () => {
     const res = await call("DELETE", `?id=${ID}`);
     expect(res.status).toBe(200);
     expect(store.deleteDraft).toHaveBeenCalledWith(expect.anything(), DID, ID);
+  });
+
+  it("cancels the draft's schedule in the same breath, scoped to the session DID", async () => {
+    // A schedule that outlived its draft is an instruction to publish nothing.
+    store.deleteDraft.mockResolvedValue([{ id: ID }]);
+    await call("DELETE", `?id=${ID}`);
+    expect(schedules.deleteSchedulesForDraft).toHaveBeenCalledWith(
+      expect.anything(),
+      DID,
+      ID,
+    );
+  });
+
+  it("still reports the delete when the schedule cleanup flakes", async () => {
+    // The draft is already gone; a failed cleanup must not tell the writer
+    // otherwise. The cron fails a schedule whose draft is missing, so the
+    // leftover row can only ever be loud, never a surprise publish.
+    store.deleteDraft.mockResolvedValue([{ id: ID }]);
+    schedules.deleteSchedulesForDraft.mockRejectedValue(new Error("d1 down"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect((await call("DELETE", `?id=${ID}`)).status).toBe(200);
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("never cancels a schedule for a draft it did not delete", async () => {
+    store.deleteDraft.mockResolvedValue([]);
+    expect((await call("DELETE", `?id=${ID}`)).status).toBe(404);
+    expect(schedules.deleteSchedulesForDraft).not.toHaveBeenCalled();
   });
 
   it("404s missing/foreign drafts and malformed ids", async () => {

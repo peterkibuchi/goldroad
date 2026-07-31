@@ -15,6 +15,12 @@
  *     — "not yours" and "doesn't exist" are the same 404, so the API never
  *     confirms another writer's draft ids.
  *
+ * A save carries TWO renderings of the same document: the block JSON (lossless,
+ * what the editor reloads) and its markdown projection (lossy, what publishing
+ * writes to the record and what a scheduled publish reads hours later). They
+ * are written together so they cannot drift; see `markdown` in ~/db/schema for
+ * why the projection has to be stored at all.
+ *
  * Every response is `cache-control: no-store`: drafts are private data and
  * must never sit in a shared or browser cache.
  *
@@ -46,6 +52,7 @@ import {
 import { readLiveSessionDid } from "~/lib/live-session";
 import { isCrossSite } from "~/lib/origin";
 import { privateJson } from "~/lib/private-json";
+import { deleteSchedulesForDraft } from "~/lib/scheduled-posts";
 import { env } from "cloudflare:workers";
 
 async function requireDid(request: Request): Promise<string | null> {
@@ -144,6 +151,10 @@ export const Route = createFileRoute("/api/drafts")({
             title: parsed.data.title,
             dek: parsed.data.dek,
             content,
+            // Absent = keep what's stored (see updateDraft): the projection is
+            // what a scheduled publish reads, so no save may blank it by
+            // omission.
+            markdown: parsed.data.markdown,
           });
           if (!row) return privateJson({ ok: false, error: "not_found" }, 404);
           return privateJson({
@@ -165,6 +176,7 @@ export const Route = createFileRoute("/api/drafts")({
           title: parsed.data.title,
           dek: parsed.data.dek,
           content,
+          markdown: parsed.data.markdown,
         });
         return privateJson(
           {
@@ -185,10 +197,20 @@ export const Route = createFileRoute("/api/drafts")({
         const id = new URL(request.url).searchParams.get("id") ?? "";
         if (!isDraftId(id))
           return privateJson({ ok: false, error: "not_found" }, 404);
-        const rows = await deleteDraft(drizzle(env.DB), did, id);
+        const db = drizzle(env.DB);
+        const rows = await deleteDraft(db, did, id);
         if (rows.length === 0) {
           return privateJson({ ok: false, error: "not_found" }, 404);
         }
+        // Deleting a draft IS cancelling its schedule: the row that survived
+        // would be an instruction to publish something that no longer exists,
+        // and it would fail loudly an hour later for something the writer did
+        // on purpose. Best-effort — the draft is already gone, and the cron
+        // fails a schedule whose draft is missing rather than publishing an
+        // empty post.
+        await deleteSchedulesForDraft(db, did, id).catch((err) => {
+          console.warn("schedule cleanup after draft delete failed", err);
+        });
         return privateJson({ ok: true });
       },
     },
