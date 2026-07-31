@@ -56,7 +56,7 @@ Package manager: **pnpm**. Path alias: `~/*` → `src/*` (see tsconfig).
 | Build | `pnpm build` |
 | Tests | `pnpm test` |
 | Cut a release | `pnpm release` (CalVer `vYYYY.MM.DD.NN`, zero-padded — GitHub sorts releases by tag *name*, so an unpadded counter puts `.9` above `.14`) |
-| DB migrations | `pnpm db:generate` → `pnpm db:migrate` (local) → `pnpm db:migrate:prod` |
+| DB migrations | `pnpm db:generate` → `pnpm db:migrate` (local) → `pnpm db:migrate:staging` → `pnpm db:migrate:prod`. **Apply before the deploy that needs the table**, and note every d1 command carries `--env` — the top-level binding is a self-hosting placeholder, so a command without it fails on a nonexistent database |
 | CF types after wrangler.jsonc changes | `pnpm cf:types` |
 
 **Before every commit:** `pnpm check`, `pnpm typecheck`, and `pnpm test` must pass.
