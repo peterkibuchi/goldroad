@@ -208,14 +208,16 @@ describe("DocumentArticle — end-of-post module", () => {
 describe("DocumentArticle — the close", () => {
   it("leads with the writer's fact and closes with one Goldroad line", () => {
     render(<DocumentArticle doc={baseDoc} ident="writer.example" />);
-    const close = screen.getByText(/all rights reserved/i).closest("footer");
+    const close = screen.getByText(/Goldroad — open-source/i).closest("footer");
     const lines = [...(close?.querySelectorAll("p") ?? [])].map(
       (p) => p.textContent ?? "",
     );
     expect(lines).toHaveLength(2);
-    // The writer's copyright leads — their work, their name, their reserved
-    // rights, stated before anything about us.
-    expect(lines[0]).toMatch(/^© \d{4} .+\. All rights reserved\.$/);
+    // The writer's line leads — year and publication, no rights claim. A
+    // notice grants nothing under Berne, and asserting "all rights reserved"
+    // would speak for a writer who may have chosen otherwise.
+    expect(lines[0]).toMatch(/^\d{4} · .+$/);
+    expect(lines[0]).not.toMatch(/all rights reserved/i);
     expect(lines[1]).toMatch(
       /^Goldroad — open-source, writer-owned publishing/,
     );
