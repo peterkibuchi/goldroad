@@ -172,6 +172,51 @@
   color: var(--color-spot-foreground);
 }
 
+/*
+ * THE READER'S OVERRIDE — when their eyes outrank the author's brand.
+ *
+ * The rule: following your system is not an opinion about somebody else's page,
+ * but choosing light or dark by hand is a statement about how you need to read.
+ * So `data-reader-edition` is set ONLY on an explicit choice (see the bootstrap
+ * in __root.tsx), and only then does a writer's theme give way. A reader who
+ * never touches the control still sees every author's colours, which is almost
+ * every reader — theming keeps working, and nobody light-sensitive is trapped
+ * inside a white page. Accessibility is not a thing to lose an argument about.
+ *
+ * The theme is DROPPED, never adjusted. Auto-darkening someone's chosen palette
+ * is what makes browser dark-mode hacks notorious — muddy, unpredictable, and a
+ * misrepresentation of their brand. Their colours or ours, never a hybrid.
+ *
+ * `!important` is load-bearing here rather than lazy: `themeStyle` puts the
+ * author's four colours in an INLINE style on this same element (they are
+ * per-author values, so they cannot live in a stylesheet), and an inline
+ * declaration beats any rule that isn't important. This is the one case the
+ * keyword exists for — a declared accessibility need overriding a preference.
+ */
+/* biome-ignore-start lint/complexity/noImportantStyles: the author's four
+   colours arrive as an INLINE style on this same element (they are per-author
+   values, so a stylesheet cannot hold them), and an inline declaration beats
+   any rule that is not important. Overriding it is the textbook case for the
+   keyword: a reader's declared accessibility need outranking a preference.
+   Scoped to one selector pair and nowhere else in the codebase. */
+[data-reader-edition] .writer-surface[data-writer-theme] {
+  --color-paper: oklch(1 0 0) !important;
+  --color-ink: oklch(0.2 0 0) !important;
+  --color-ink-soft: oklch(0.42 0 0) !important;
+  --color-rule: oklch(0.85 0 0) !important;
+  --color-spot: oklch(0.54 0.19 33) !important;
+  --color-spot-foreground: oklch(1 0 0) !important;
+}
+[data-theme="dark"][data-reader-edition] .writer-surface[data-writer-theme] {
+  --color-paper: oklch(0.21 0.006 80) !important;
+  --color-ink: oklch(0.93 0.005 80) !important;
+  --color-ink-soft: oklch(0.71 0.008 80) !important;
+  --color-rule: oklch(0.33 0.006 80) !important;
+  --color-spot: oklch(0.67 0.19 35) !important;
+  --color-spot-foreground: oklch(0.21 0.006 80) !important;
+}
+/* biome-ignore-end lint/complexity/noImportantStyles: end of the override */
+
 @custom-variant dark (&:is(.dark *));
 
 /* Focus is spot-colored everywhere (accessibility baseline).

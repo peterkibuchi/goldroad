@@ -44,7 +44,20 @@ export const Route = createRootRoute({
  * styles.css). Publication reading pages deliberately do not — a writer's page
  * follows the appearance they give it, not a reader's toggle.
  */
-const APPEARANCE_BOOTSTRAP = `(function(){try{var p=localStorage.getItem("${APPEARANCE_KEY}");var d=p==="dark"||(p!=="light"&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(d)document.documentElement.dataset.theme="dark";}catch(e){}})();`;
+/**
+ * Two attributes, and the difference between them is a product rule.
+ *
+ * `data-theme` is which edition to paint. `data-reader-edition` is present only
+ * when the reader CHOSE one explicitly, and it is what lets that choice
+ * override an author's theme.
+ *
+ * Following the system is not an opinion about somebody else's page; picking
+ * light or dark by hand is a statement about how you need to read. So a stored
+ * value overrides a writer's theme and an absent one does not — which keeps
+ * theming working by default for everyone who never touches the control, while
+ * never trapping a light-sensitive reader inside a white page.
+ */
+const APPEARANCE_BOOTSTRAP = `(function(){try{var p=localStorage.getItem("${APPEARANCE_KEY}");var e=document.documentElement;if(p==="dark"||p==="light")e.dataset.readerEdition=p;var d=p==="dark"||(p!=="light"&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(d)e.dataset.theme="dark";}catch(e){}})();`;
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   // Cookieless analytics; a no-op unless VITE_PUBLIC_POSTHOG_KEY is set.
