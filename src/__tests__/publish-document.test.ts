@@ -22,6 +22,9 @@ vi.mock("~/lib/drafts", () => drafts);
 const ledger = vi.hoisted(() => ({ setPublishedRkey: vi.fn() }));
 vi.mock("~/lib/import-store", () => ledger);
 
+const schedules = vi.hoisted(() => ({ deleteSchedulesForDraft: vi.fn() }));
+vi.mock("~/lib/scheduled-posts", () => schedules);
+
 import {
   publishStoredDraft,
   resolvePublicationSite,
@@ -96,6 +99,8 @@ beforeEach(() => {
   ]);
   drafts.deleteDraft.mockResolvedValue([{ id: DRAFT.id }]);
   ledger.setPublishedRkey.mockResolvedValue([]);
+  schedules.deleteSchedulesForDraft.mockReset();
+  schedules.deleteSchedulesForDraft.mockResolvedValue([]);
 });
 
 describe("resolvePublicationSite", () => {
@@ -214,9 +219,23 @@ describe("publishStoredDraft", () => {
     );
   });
 
+  it("clears the schedule too, so no tick reports a failure for a live post", async () => {
+    // A row that outlives its own published post is not harmless: the next tick
+    // finds the draft gone and writes "the draft no longer exists" onto a post
+    // the writer can already read.
+    const { rpc } = fakeRpc();
+    await publishStoredDraft(input(rpc));
+    expect(schedules.deleteSchedulesForDraft).toHaveBeenCalledWith(
+      expect.anything(),
+      DID,
+      DRAFT.id,
+    );
+  });
+
   it("still reports success when the write-backs flake — the record is live", async () => {
     ledger.setPublishedRkey.mockRejectedValue(new Error("d1 down"));
     drafts.deleteDraft.mockRejectedValue(new Error("d1 down"));
+    schedules.deleteSchedulesForDraft.mockRejectedValue(new Error("d1 down"));
     const quiet = vi.spyOn(console, "warn").mockImplementation(() => {});
     const { rpc } = fakeRpc();
     expect((await publishStoredDraft(input(rpc))).ok).toBe(true);

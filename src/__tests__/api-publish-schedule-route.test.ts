@@ -146,6 +146,11 @@ beforeEach(() => {
     ok: true,
     rkey: "3lyk73wxnok2f",
   });
+  // The shared core is mocked here; the interactive publish still calls its
+  // site resolution for real, so it needs an answer.
+  publishing.resolvePublicationSite.mockResolvedValue(
+    `at://${DID}/site.standard.publication/3lyk73wxnok2f`,
+  );
   atproto.resolveDidToHandle.mockResolvedValue("writer.example");
   atproto.resolveDidToPds.mockResolvedValue("https://pds.example.com");
 });
@@ -391,5 +396,30 @@ describe("intent=publish-now", () => {
   it("does restore the session — this one really does write a record", async () => {
     await call(fields);
     expect(restore).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("intent=document — pressing Publish on a post you had scheduled", () => {
+  it("clears the schedule with the draft, so no tick fails a live post", async () => {
+    // Publishing a scheduled draft by hand IS a decision to publish it. A
+    // surviving row would have the next tick find the draft gone and report a
+    // failure for a post the writer can already read.
+    atproto.listRecords.mockResolvedValue([]);
+    const res = await call({
+      title: "The long way round",
+      body: "Some words.",
+      draftId: DRAFT_ID,
+    });
+    expect(res.status).toBe(303);
+    expect(store.deleteDraft).toHaveBeenCalledWith(
+      expect.anything(),
+      DID,
+      DRAFT_ID,
+    );
+    expect(schedules.deleteSchedulesForDraft).toHaveBeenCalledWith(
+      expect.anything(),
+      DID,
+      DRAFT_ID,
+    );
   });
 });

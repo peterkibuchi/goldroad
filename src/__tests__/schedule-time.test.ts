@@ -134,7 +134,11 @@ describe("zoneOffsetForLocalInput — the browser's half of the conversion", () 
       ["2026-01-13T09:00", [2026, 0, 13, 9, 0]],
       ["2026-07-13T09:00", [2026, 6, 13, 9, 0]],
       ["2026-11-01T01:30", [2026, 10, 1, 1, 30]],
-      ["2027-03-14T02:30", [2027, 2, 14, 2, 30]],
+      // No spring-forward wall clock here on purpose: 02:30 on a US
+      // spring-forward date DOESN'T EXIST in those zones, so the runtime
+      // normalises it to 03:30 and reports the offset of a different instant.
+      // That is a property of nonexistent times, not of this conversion, and
+      // asserting it would make the suite pass or fail on the runner's zone.
     ] as const) {
       const offset = zoneOffsetForLocalInput(local);
       expect(isZoneOffset(offset)).toBe(true);

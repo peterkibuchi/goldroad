@@ -9,6 +9,15 @@
  *    self-healing on the next hour (the follower sample is capped and
  *    idempotent per day) or reported by CI. The pass is bounded — a handful of
  *    posts per tick — and says in its log line when it left a queue behind.
+ *
+ *    THE COST OF GOING FIRST, stated plainly: the tick's subrequest budget is
+ *    shared, so a full five publishes spend roughly half of it before anything
+ *    below starts, and an exhausted budget now lands on those jobs — including
+ *    the self-check that feeds the alert webhook. That trade is deliberate (a
+ *    missed self-check is one missed hour of a backstop whose primary is the
+ *    GitHub-Action canary; a missed publish is a writer's post going out late),
+ *    but it is a trade, and the per-tick cap is the dial to turn if the budget
+ *    ever actually bites.
  * 2. Purge expired oauth_kv rows (audit #7). `D1Store.get` only deletes an
  *    expired row when that exact key is read again, so abandoned authorize
  *    `state:` rows — every login started but never completed — accumulate

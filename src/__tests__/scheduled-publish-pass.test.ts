@@ -321,6 +321,25 @@ describe("nothing is stranded, and nothing accumulates", () => {
     expect(order).toEqual(["release", "due"]);
   });
 
+  it("a row whose bookkeeping throws does not cost the rows behind it", async () => {
+    // The whole point of the per-row try: a rejecting D1 write used to exit the
+    // loop, skipping every remaining due post for an hour.
+    const { store, calls } = fakeStore([row("a"), row("b"), row("c")]);
+    const published = store.published;
+    store.published = async (id, rkey, now) => {
+      if (id === "a") throw new Error("d1 write failed");
+      return published(id, rkey, now);
+    };
+    const result = await runScheduledPublishPass({
+      store,
+      publish: async () => ({ ok: true, rkey: "3lyk73wxnok2f" }),
+      now: NOW,
+    });
+    expect(result.errored).toBe(1);
+    expect(calls.published.map((p) => p.id)).toEqual(["b", "c"]);
+    expect(result.published).toBe(2);
+  });
+
   it("prunes finished rows even when the publishing half fell over", async () => {
     const { store, calls } = fakeStore([row("a")]);
     store.due = async () => {

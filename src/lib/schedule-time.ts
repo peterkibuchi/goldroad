@@ -30,6 +30,10 @@ const MAX_OFFSET_MINUTES = 840;
 
 const MS_PER_MINUTE = 60_000;
 
+/** The widest instant a Date can hold (ECMAScript time-value range). Past this,
+ * toISOString throws rather than answering. */
+const MAX_TIME_VALUE = 8.64e15;
+
 /** How far ahead a schedule must be to be worth accepting. The cron fires
  * hourly, so this is not "how soon it can publish" (that is the next tick) —
  * it is the line between a time the writer meant and a time that had already
@@ -89,7 +93,11 @@ export function utcMsToLocalInput(
   ms: number,
   offsetMinutes: number,
 ): string | null {
-  if (!Number.isFinite(ms) || !isZoneOffset(offsetMinutes)) return null;
+  // Bounded, not merely finite: toISOString THROWS outside the ECMAScript time
+  // range, and this function's contract — and the effect in SchedulePanel that
+  // calls it — is that a bad instant returns null.
+  if (!Number.isFinite(ms) || Math.abs(ms) > MAX_TIME_VALUE) return null;
+  if (!isZoneOffset(offsetMinutes)) return null;
   return new Date(ms - offsetMinutes * MS_PER_MINUTE)
     .toISOString()
     .slice(0, 16);

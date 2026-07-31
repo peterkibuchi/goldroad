@@ -670,8 +670,17 @@ export function SchedulePanel({
       return;
     }
     setBusy(true);
-    const draftId = await prepare();
-    setBusy(false);
+    let draftId: string | null = null;
+    try {
+      draftId = await prepare();
+    } catch (err) {
+      // A save can throw as well as fail (exporting the markdown is the
+      // editor's work, not ours) — either way the button has to come back and
+      // the writer has to be told, rather than left pressing a dead control.
+      console.warn("draft save before scheduling threw", err);
+    } finally {
+      setBusy(false);
+    }
     if (!draftId) {
       setError(ERROR_MESSAGES.schedule_save_failed);
       return;
