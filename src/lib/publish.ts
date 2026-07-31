@@ -10,6 +10,7 @@ import type * as SiteStandardPublication from "@atcute/standard-site/types/publi
 
 import type { StandardDocument, StandardPublication } from "~/lib/atproto";
 import { stripMarkdown } from "~/lib/feed";
+import { type BasicTheme, themeRecord } from "~/lib/theme";
 
 // TID: 13-char base32-sortable record key — 53-bit microsecond timestamp + 10-bit clock id.
 const TID_ALPHABET = "234567abcdefghijklmnopqrstuvwxyz";
@@ -255,6 +256,42 @@ export function buildPublicationRecord(
   else record.description = undefined;
   if (input.icon) record.icon = input.icon;
   else if (input.icon === null) record.icon = undefined;
+  return record;
+}
+
+/**
+ * Sets (or clears) the theme on an existing publication record, preserving
+ * every other field — the same "merge, never rebuild" rule
+ * `buildPublicationRecord` follows, for the same reason: this record may carry
+ * fields written by other apps on the shared lexicon, and a save here must not
+ * be a quiet delete for them.
+ *
+ * `theme: null` REMOVES `basicTheme`, which is how "use the defaults" is
+ * expressed in the writer's repo. Not a stored copy of our palette — an
+ * absence. A writer who reverts should look, to every other app reading their
+ * record, exactly like a writer who never set a theme.
+ *
+ * Takes the existing record because there is nowhere else for a theme to live:
+ * `site.standard.publication` embeds `basicTheme` rather than referencing it
+ * (see ~/lib/theme for the lexicon reading), so a theme write IS a publication
+ * write.
+ */
+export function withBasicTheme(
+  existing: StandardPublication,
+  theme: BasicTheme | null,
+): SiteStandardPublication.Main {
+  if (typeof existing.name !== "string" || existing.name.trim() === "")
+    throw new Error("publication has no name");
+  if (
+    typeof existing.url !== "string" ||
+    !/^https?:\/\/\S+$/.test(existing.url)
+  )
+    throw new Error("publication has no valid url");
+  const record = {
+    ...existing,
+    $type: "site.standard.publication",
+  } as SiteStandardPublication.Main;
+  record.basicTheme = theme ? themeRecord(theme) : undefined;
   return record;
 }
 
