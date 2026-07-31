@@ -20,6 +20,7 @@ import {
   rfc822Date,
   rssFeedXml,
 } from "~/lib/feed";
+import { markdownToHtml } from "~/lib/markdown-html";
 import { hiddenSubjects, recordAtUri } from "~/lib/moderation";
 import { CANONICAL_ORIGIN } from "~/lib/origin";
 import { composeDocumentUrl } from "~/lib/publish";
@@ -167,6 +168,12 @@ export const Route = createFileRoute("/@{$handle}/rss.xml")({
                     : typeof doc.textContent === "string"
                       ? plainTextExcerpt(doc.textContent)
                       : null,
+                // The full post, rendered the same way the page renders it.
+                // The text is already here — the record carries it — so an
+                // excerpt-only feed was withholding something it had, and a
+                // reader in a feed reader got less of the piece than a reader
+                // on the page.
+                content: markdownToHtml(doc.textContent),
               };
             });
 
