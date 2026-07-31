@@ -34,7 +34,12 @@
  * ~/lib/zip-safety so there is exactly one implementation of this defense
  * to keep correct.
  */
-import { detectPreview, guidHash, MAX_EXPORT_POSTS } from "~/lib/import";
+import {
+  comparePublishedAtDesc,
+  detectPreview,
+  guidHash,
+  MAX_EXPORT_POSTS,
+} from "~/lib/import";
 import { MAX_EXPORT_ZIP_BYTES } from "~/lib/import-formats";
 import {
   MAX_ENTRY_BYTES,
@@ -237,15 +242,7 @@ export function parseMediumExport(bytes: Uint8Array): ParsedMediumExport {
   }
 
   // Newest first, matching the Substack and feed pickers.
-  posts.sort((a, b) => {
-    const at = a.publishedAt
-      ? Date.parse(a.publishedAt)
-      : Number.NEGATIVE_INFINITY;
-    const bt = b.publishedAt
-      ? Date.parse(b.publishedAt)
-      : Number.NEGATIVE_INFINITY;
-    return bt - at;
-  });
+  posts.sort(comparePublishedAtDesc);
 
   return { posts, failures, skippedResponses, truncated };
 }

@@ -272,6 +272,54 @@ function skipLine(
   return { label, count };
 }
 
+/** The fields every format's parsed post already agrees on. What a format
+ * calls its own id, and where its provenance link comes from, is the part
+ * that genuinely differs — those arrive as functions below. */
+type ParsedPost = {
+  title: string;
+  publishedAt: string | null;
+  contentHtml: string;
+  preview: boolean;
+  publishedAtSource: boolean | null;
+};
+
+/**
+ * Parsed posts → the picker's ImportItem, for every format.
+ *
+ * The nine fields of an ImportItem were assembled four times, identically
+ * apart from two of them, in four adapters ~50 lines apart. That made adding
+ * a field to ImportItem a four-file edit with no test to catch the one you
+ * missed: the parser suites are per format and none of them run this
+ * assembly. `guidHash` is passed in rather than imported so the adapters keep
+ * their dynamic-import discipline — ~/lib/import pulls in a HTML parser, and
+ * nothing about this page's first load should.
+ */
+async function toImportItems<TPost extends ParsedPost>(
+  posts: TPost[],
+  derive: {
+    guid: (post: TPost) => string;
+    link: (post: TPost) => string | null;
+    guidHash: (guid: string) => Promise<string>;
+  },
+): Promise<ImportItem[]> {
+  return Promise.all(
+    posts.map(async (post): Promise<ImportItem> => {
+      const guid = derive.guid(post);
+      return {
+        guid,
+        guidHash: await derive.guidHash(guid),
+        link: derive.link(post),
+        title: post.title,
+        publishedAt: post.publishedAt,
+        contentHtml: post.contentHtml,
+        preview: post.preview,
+        alreadyImported: false,
+        unpublishedAtSource: post.publishedAtSource === false,
+      };
+    }),
+  );
+}
+
 async function parseSubstackFile(
   bytes: Uint8Array,
   hostInput: string,
@@ -290,22 +338,11 @@ async function parseSubstackFile(
   }
   if (parsed.posts.length === 0) return { code: "not_an_export" };
   const host = zip.normalizeHost(hostInput);
-  const items = await Promise.all(
-    parsed.posts.map(async (post): Promise<ImportItem> => {
-      const guid = zip.zipPostGuid(post.postId);
-      return {
-        guid,
-        guidHash: await zip.guidHash(guid),
-        link: zip.constructSourceUrl(host, post.slug),
-        title: post.title,
-        publishedAt: post.publishedAt,
-        contentHtml: post.contentHtml,
-        preview: post.preview,
-        alreadyImported: false,
-        unpublishedAtSource: post.publishedAtSource === false,
-      };
-    }),
-  );
+  const items = await toImportItems(parsed.posts, {
+    guid: (post) => zip.zipPostGuid(post.postId),
+    link: (post) => zip.constructSourceUrl(host, post.slug),
+    guidHash: zip.guidHash,
+  });
   return {
     format: "substack",
     sourceTitle: "Your Substack export",
@@ -337,22 +374,11 @@ async function parseMediumFile(
     };
   }
   if (parsed.posts.length === 0) return { code: "not_an_export" };
-  const items = await Promise.all(
-    parsed.posts.map(async (post): Promise<ImportItem> => {
-      const guid = medium.mediumPostGuid(post.fileSlug);
-      return {
-        guid,
-        guidHash: await medium.guidHash(guid),
-        link: post.link,
-        title: post.title,
-        publishedAt: post.publishedAt,
-        contentHtml: post.contentHtml,
-        preview: post.preview,
-        alreadyImported: false,
-        unpublishedAtSource: post.publishedAtSource === false,
-      };
-    }),
-  );
+  const items = await toImportItems(parsed.posts, {
+    guid: (post) => medium.mediumPostGuid(post.fileSlug),
+    link: (post) => post.link,
+    guidHash: medium.guidHash,
+  });
   return {
     format: "medium",
     sourceTitle: "Your Medium export",
@@ -379,22 +405,11 @@ async function parseGhostFile(
   const parsed = ghost.parseGhostExport(text);
   if (parsed.posts.length === 0) return { code: "not_a_ghost_export" };
   const host = ghost.normalizeHost(hostInput);
-  const items = await Promise.all(
-    parsed.posts.map(async (post): Promise<ImportItem> => {
-      const guid = ghost.ghostPostGuid(post.id);
-      return {
-        guid,
-        guidHash: await ghost.guidHash(guid),
-        link: ghost.constructGhostSourceUrl(host, post.slug),
-        title: post.title,
-        publishedAt: post.publishedAt,
-        contentHtml: post.contentHtml,
-        preview: post.preview,
-        alreadyImported: false,
-        unpublishedAtSource: post.publishedAtSource === false,
-      };
-    }),
-  );
+  const items = await toImportItems(parsed.posts, {
+    guid: (post) => ghost.ghostPostGuid(post.id),
+    link: (post) => ghost.constructGhostSourceUrl(host, post.slug),
+    guidHash: ghost.guidHash,
+  });
   return {
     format: "ghost",
     sourceTitle: "Your Ghost export",
@@ -418,22 +433,11 @@ async function parseWordPressFile(
   const parsed = wxr.parseWxrExport(text);
   if (parsed.malformed) return { code: "not_a_wxr_export" };
   if (parsed.posts.length === 0) return { code: "not_a_wxr_export" };
-  const items = await Promise.all(
-    parsed.posts.map(async (post): Promise<ImportItem> => {
-      const guid = wxr.wordpressPostGuid(post.id);
-      return {
-        guid,
-        guidHash: await wxr.guidHash(guid),
-        link: post.link,
-        title: post.title,
-        publishedAt: post.publishedAt,
-        contentHtml: post.contentHtml,
-        preview: post.preview,
-        alreadyImported: false,
-        unpublishedAtSource: post.publishedAtSource === false,
-      };
-    }),
-  );
+  const items = await toImportItems(parsed.posts, {
+    guid: (post) => wxr.wordpressPostGuid(post.id),
+    link: (post) => post.link,
+    guidHash: wxr.guidHash,
+  });
   const skipped = [
     ...(parsed.skipped.pages > 0
       ? [skipLine("pages", parsed.skipped.pages)]
