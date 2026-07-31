@@ -319,7 +319,7 @@ function LandingRoute() {
 
 export function Landing({ notice }: { notice?: "goodbye" } = {}) {
   return (
-    <div className="flex min-h-screen flex-col bg-paper font-body text-ink">
+    <div className="goldroad-surface flex min-h-screen flex-col bg-paper font-body text-ink">
       <SiteHeader variant="marketing" />
 
       {/* Post-account-deletion goodbye: search-param-driven, same pattern as

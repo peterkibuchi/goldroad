@@ -103,11 +103,22 @@ export function SiteHeader(props: MarketingHeaderProps) {
       <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-x-6 px-6 py-2 md:px-16">
         <Wordmark href="/" />
         {props.variant === "marketing" && (
-          // Marketing header carries no sign-in link while the product is
-          // still opening to its first writers by invitation.
-          <span className="ml-auto font-display font-semibold text-ink-soft text-sm">
-            Opening soon
-          </span>
+          // The way in. This was deliberately absent while the product opened
+          // to its first writers by invitation, on the reasoning that a door
+          // nobody could walk through was worse than no door. That reasoning
+          // expires the moment people are actually invited: writers arriving
+          // from a DM, and anyone who followed a link here to look the project
+          // over, both need somewhere to go.
+          //
+          // A quiet link, not a button. The page's one accent belongs to the
+          // founding-writers form — someone who already has an account does not
+          // need to be sold, they need to find the door.
+          <a
+            className="ml-auto font-display font-semibold text-ink-soft text-sm underline underline-offset-4 transition-colors hover:text-ink"
+            href="/write"
+          >
+            Sign in
+          </a>
         )}
       </div>
     </header>
@@ -208,7 +219,15 @@ function FooterLink({ label, href, external }: FooterLink) {
 function FooterBand({ links }: { links?: ReadonlyArray<FooterLink> }) {
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-wrap items-baseline justify-between gap-x-6 gap-y-2 px-6 py-5 font-display text-ink-soft text-xs md:px-16">
-      <span>Goldroad — writer-owned publishing on the open network</span>
+      {/* A copyright line the product can actually stand behind: Goldroad's own
+          marks and marketing are reserved; the SOFTWARE is AGPL and the
+          WRITING belongs to whoever wrote it. Saying "all rights reserved"
+          without that distinction would contradict the licence in the column
+          directly above it. */}
+      <span>
+        © {new Date().getUTCFullYear()} Goldroad. Software under AGPL-3.0;
+        writing belongs to its authors.
+      </span>
       {links && (
         <nav aria-label="Footer" className="flex flex-wrap gap-x-4 gap-y-1">
           {links.map((link) => (
@@ -602,10 +621,10 @@ function WriterChrome({
   children: React.ReactNode;
 }) {
   return (
-    // `writer-surface` scopes the dark register (see styles.css). It sits here
-    // and nowhere else on purpose: marketing stays ink-on-paper permanently,
-    // and a publication's own pages belong to its writer, not to our toggle.
-    <div className="writer-surface flex min-h-screen flex-col bg-paper font-body text-ink md:flex-row">
+    // `goldroad-surface` scopes the dark register (see styles.css) — every
+    // surface we own carries it. Publication reading pages deliberately do not:
+    // a writer's page follows the appearance they give it, not our toggle.
+    <div className="goldroad-surface flex min-h-screen flex-col bg-paper font-body text-ink md:flex-row">
       <WriterRail active={active} ident={ident} />
       <div className="flex min-w-0 flex-1 flex-col">
         <WriterTopStrip ident={ident} />
@@ -641,7 +660,7 @@ export function AppShell({
     );
   }
   return (
-    <div className="flex min-h-screen flex-col bg-paper font-body text-ink">
+    <div className="goldroad-surface flex min-h-screen flex-col bg-paper font-body text-ink">
       <SiteHeader {...header} />
       <div className="flex-1">{children}</div>
       <SiteFooter

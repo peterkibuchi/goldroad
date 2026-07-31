@@ -46,22 +46,56 @@
  *              at 5.46:1 — within a tenth of its light-mode 5.55:1. The accent
  *              keeps exactly the same job and the same legibility in both.
  *
- * SCOPE IS DELIBERATE. This applies to WRITER surfaces only, via the class
- * AppShell puts on its own wrapper. Marketing stays ink-on-paper permanently —
- * a broadsheet is printed once. Reading surfaces get no Goldroad-controlled
- * dark ever: the person whose surface it is decides how it looks, so a
- * publication's appearance belongs to its writer through the theming lexicon,
- * not to our toggle.
+ * SCOPE: every surface GOLDROAD owns — marketing, app chrome, the editor, the
+ * legal and /open pages. The line is ownership, not register.
+ *
+ * An earlier version stopped at writer surfaces on the argument that "a
+ * broadsheet is printed once." That was aesthetic purity paying for itself with
+ * someone else's eyes: a visitor whose system says dark — a grant reviewer at
+ * midnight, a writer following a link from a DM — got a full-white page from
+ * the one part of the product meant to make a first impression. Our own pages
+ * are ours to adapt.
+ *
+ * What stays out is PUBLICATION reading pages, and that exclusion is the
+ * principle rather than an omission: the person whose surface it is decides how
+ * it looks. A writer's page follows the appearance they give it through the
+ * theming lexicon, never our toggle. We do not get to restyle someone else's
+ * publication because a reader's laptop asked us to.
  *
  * If any surface ever needs a `dark:` utility, that is a hard-coded-colour bug
  * to fix at the source, not a case to special-case here.
  */
-[data-theme="dark"] .writer-surface {
+[data-theme="dark"] .goldroad-surface {
   --color-paper: oklch(0.21 0.006 80);
   --color-ink: oklch(0.93 0.005 80);
   --color-ink-soft: oklch(0.71 0.008 80);
   --color-rule: oklch(0.33 0.006 80);
   --color-spot: oklch(0.67 0.19 35);
+
+  /* The shadcn surface tokens have to come along. They are declared on :root
+     with light literals, and anything shadcn-derived — the editor's menus and
+     its own editing surface among them — reads THESE, not ours. Overriding the
+     five Goldroad tokens alone left a white editor box sitting on a dark page:
+     the exact "hard-coded colour is a bug" case, arriving through a
+     third-party stylesheet rather than our own. Derived, never re-picked, so
+     the two palettes cannot drift. */
+  --background: var(--color-paper);
+  --foreground: var(--color-ink);
+  --card: var(--color-paper);
+  --card-foreground: var(--color-ink);
+  --popover: var(--color-paper);
+  --popover-foreground: var(--color-ink);
+  --primary: var(--color-ink);
+  --primary-foreground: var(--color-paper);
+  --secondary: color-mix(in oklch, var(--color-ink) 10%, var(--color-paper));
+  --secondary-foreground: var(--color-ink);
+  --muted: color-mix(in oklch, var(--color-ink) 10%, var(--color-paper));
+  --muted-foreground: var(--color-ink-soft);
+  --accent: color-mix(in oklch, var(--color-ink) 10%, var(--color-paper));
+  --accent-foreground: var(--color-ink);
+  --border: var(--color-rule);
+  --input: var(--color-rule);
+  --ring: var(--color-spot);
 }
 
 @custom-variant dark (&:is(.dark *));
@@ -107,9 +141,9 @@
   --popover-foreground: var(--color-ink);
   --primary: var(--color-ink);
   --primary-foreground: var(--color-paper);
-  --accent: oklch(0.955 0 0);
+  --accent: color-mix(in oklch, var(--color-ink) 6%, var(--color-paper));
   --accent-foreground: var(--color-ink);
-  --muted: oklch(0.955 0 0);
+  --muted: color-mix(in oklch, var(--color-ink) 6%, var(--color-paper));
   --muted-foreground: var(--color-ink-soft);
   --border: var(--color-rule);
   --input: var(--color-rule);

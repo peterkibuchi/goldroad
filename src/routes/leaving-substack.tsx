@@ -154,7 +154,7 @@ function ComparisonTable() {
 
 export function LeavingSubstack() {
   return (
-    <div className="flex min-h-screen flex-col bg-paper font-body text-ink">
+    <div className="goldroad-surface flex min-h-screen flex-col bg-paper font-body text-ink">
       <SiteHeader variant="marketing" />
 
       <main className="flex-1">

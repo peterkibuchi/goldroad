@@ -208,14 +208,14 @@ describe("DocumentArticle — end-of-post module", () => {
 describe("DocumentArticle — the close", () => {
   it("leads with the writer's fact and closes with one Goldroad line", () => {
     render(<DocumentArticle doc={baseDoc} ident="writer.example" />);
-    const close = screen
-      .getByText(/published by its author/i)
-      .closest("footer");
+    const close = screen.getByText(/all rights reserved/i).closest("footer");
     const lines = [...(close?.querySelectorAll("p") ?? [])].map(
       (p) => p.textContent ?? "",
     );
     expect(lines).toHaveLength(2);
-    expect(lines[0]).toMatch(/^Published by its author on the open network\.$/);
+    // The writer's copyright leads — their work, their name, their reserved
+    // rights, stated before anything about us.
+    expect(lines[0]).toMatch(/^© \d{4} .+\. All rights reserved\.$/);
     expect(lines[1]).toMatch(
       /^Goldroad — open-source, writer-owned publishing/,
     );
