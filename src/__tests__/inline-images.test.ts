@@ -9,6 +9,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createInlineImageStore,
   createInlineImageUploader,
+  downscaleNotice,
+  formatBytes,
   hasProxiedImages,
   imagesMissingAltText,
   type UploadStatus,
@@ -108,6 +110,8 @@ describe("the editor's uploadFile handler", () => {
       store: () => store,
       onStatus: (status) => statuses.push(status),
       upload: async () => ({ url: URL_PATH, blob: BLOB }),
+      // Default to a no-op downscale so the upload tests aren't testing it.
+      prepare: async (file: File) => file,
       previewUrl: () => "blob:local-1",
       ...over,
     });
@@ -151,12 +155,95 @@ describe("the editor's uploadFile handler", () => {
     expect(store.toField()).toBe(""); // nothing half-recorded
   });
 
+  it("shrinks an over-cap image, uploads the SHRUNK bytes, and says what it did", async () => {
+    const big = new File([new Uint8Array(64)], "shot.png", {
+      type: "image/png",
+    });
+    // A 4 MB screenshot: the ordinary case, not the edge case.
+    Object.defineProperty(big, "size", { value: 4_200_000 });
+    const small = new File([new Uint8Array(8)], "shot.jpg", {
+      type: "image/jpeg",
+    });
+    Object.defineProperty(small, "size", { value: 780_000 });
+
+    const upload = vi.fn(async () => ({ url: URL_PATH, blob: BLOB }));
+    const { handler, statuses } = uploader({
+      upload,
+      prepare: async () => small,
+    });
+
+    expect(await handler(big)).toEqual({ props: { url: URL_PATH } });
+    // The original must never be what goes over the wire — the server caps
+    // at 1 MB and would refuse it.
+    expect(upload).toHaveBeenCalledWith(small);
+    expect(statuses.at(-1)?.tone).toBe("info");
+    expect(statuses.at(-1)?.message).toMatch(
+      /Shrank that image from 4\.2 MB to 780 KB so it fits the 1 MB limit\./,
+    );
+    expect(statuses.at(-1)?.message).toMatch(/alt text/);
+  });
+
+  it("stays quiet about a shrink when nothing was actually shrunk", async () => {
+    const { handler, statuses } = uploader();
+    await handler(png());
+    expect(statuses.at(-1)?.message).not.toMatch(/Shrank/);
+  });
+
+  it("reports an image it cannot decode or compress, and uploads nothing", async () => {
+    const upload = vi.fn();
+    const { handler, store, statuses } = uploader({
+      upload,
+      prepare: async () => {
+        throw new Error("could not compress image under the size limit");
+      },
+    });
+
+    // Never a silent drop and never a rejection: BlockNote awaits this
+    // uncaught, so the writer has to be told in the editor.
+    await expect(handler(png())).resolves.toEqual({});
+    expect(upload).not.toHaveBeenCalled();
+    expect(store.toField()).toBe("");
+    expect(statuses.at(-1)).toEqual({
+      tone: "error",
+      message: expect.stringContaining("couldn't be read or shrunk under 1 MB"),
+    });
+  });
+
+  it("accepts a type the server refuses but the downscale can convert", async () => {
+    const heic = new File([new Uint8Array(8)], "IMG_1.heic", {
+      type: "image/heic",
+    });
+    const jpeg = new File([new Uint8Array(8)], "IMG_1.jpg", {
+      type: "image/jpeg",
+    });
+    const upload = vi.fn(async () => ({ url: URL_PATH, blob: BLOB }));
+    const { handler } = uploader({ upload, prepare: async () => jpeg });
+
+    expect(await handler(heic)).toEqual({ props: { url: URL_PATH } });
+    expect(upload).toHaveBeenCalledWith(jpeg);
+  });
+
   it("says so rather than uploading when there is no store", async () => {
     const upload = vi.fn();
     const { handler, statuses } = uploader({ store: () => undefined, upload });
     expect(await handler(png())).toEqual({});
     expect(upload).not.toHaveBeenCalled();
     expect(statuses.at(-1)?.tone).toBe("error");
+  });
+});
+
+describe("downscaleNotice", () => {
+  it("states the before and after, in units a writer reads", () => {
+    expect(downscaleNotice(4_200_000, 780_000)).toBe(
+      "Shrank that image from 4.2 MB to 780 KB so it fits the 1 MB limit.",
+    );
+    expect(formatBytes(1_500_000)).toBe("1.5 MB");
+    expect(formatBytes(900)).toBe("1 KB"); // never "0 KB"
+  });
+
+  it("is silent when the file came back the same size or larger", () => {
+    expect(downscaleNotice(900_000, 900_000)).toBeNull();
+    expect(downscaleNotice(900_000, 950_000)).toBeNull();
   });
 });
 
