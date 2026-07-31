@@ -62,6 +62,7 @@ export function insertDraft(
     dek: string;
     content: string;
     markdown?: string;
+    inlineImages?: string;
   },
 ) {
   return db
@@ -75,11 +76,13 @@ export function insertDraft(
  * Every writable field is passed on every save (the editor always knows all of
  * them), so a cleared subtitle clears the column.
  *
- * `markdown` is the exception, and deliberately so: UNDEFINED LEAVES THE STORED
- * PROJECTION ALONE. It is the only copy of a document a cron can publish
- * (~/db/schema), so a caller that simply didn't send one must not be able to
- * blank it — writing "" there would turn a scheduled post into an empty one.
- * An explicit "" still clears it, which is what an emptied editor sends.
+ * `markdown` and `inlineImages` are the exceptions, and deliberately so:
+ * UNDEFINED LEAVES THE STORED VALUE ALONE. Between them they are the only copy
+ * of a document a cron can publish (~/db/schema), so a caller that simply
+ * didn't send one must not be able to blank it — writing "" over the markdown
+ * would turn a scheduled post into an empty one, and over the image references
+ * would publish a post whose own pictures are broken. An explicit "" still
+ * clears either, which is what an emptied editor sends.
  */
 export function updateDraft(
   db: DrizzleD1,
@@ -90,14 +93,16 @@ export function updateDraft(
     dek: string;
     content: string;
     markdown?: string;
+    inlineImages?: string;
   },
 ) {
-  const { markdown, ...always } = fields;
+  const { markdown, inlineImages, ...always } = fields;
   return db
     .update(drafts)
     .set({
       ...always,
       ...(markdown === undefined ? {} : { markdown }),
+      ...(inlineImages === undefined ? {} : { inlineImages }),
       updatedAt: new Date(),
     })
     .where(and(eq(drafts.id, id), eq(drafts.did, did)))

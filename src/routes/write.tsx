@@ -792,6 +792,11 @@ function postDraft(payload: {
    * scheduled publish reads hours from now, and only the editor can produce
    * it: see `markdown` in ~/db/schema. */
   markdown: string;
+  /** The body images' blob references, when THIS session uploaded any. Omitted
+   * otherwise, which leaves whatever is stored intact — the store is per-mount,
+   * so a resumed session has an empty one and must not blank the references a
+   * scheduled publish will need. */
+  inlineImages?: string;
 }): Promise<Response> {
   const body = JSON.stringify(payload);
   return fetch("/api/drafts", {
@@ -918,6 +923,8 @@ export function Compose({
     const dek = dekRef.current?.value ?? "";
     const blocks = editor.document;
     const markdown = editor.blocksToMarkdownLossy(blocks);
+    // Only when this session actually uploaded something — see postDraft.
+    const inlineImages = imageStore.size > 0 ? imageStore.toField() : undefined;
     // A subtitle alone is worth a draft row too — it's words the writer typed.
     if (
       !draftIdRef.current &&
@@ -937,6 +944,7 @@ export function Compose({
         dek,
         content: blocks,
         markdown,
+        inlineImages,
       });
       if (res.status === 404 && draftIdRef.current && !publishingRef.current) {
         // The draft was deleted elsewhere (another tab, the dashboard) —
@@ -944,7 +952,13 @@ export function Compose({
         // publish: there the deletion IS the completion, and recreating
         // would resurrect the just-published draft.
         draftIdRef.current = null;
-        res = await postDraft({ title, dek, content: blocks, markdown });
+        res = await postDraft({
+          title,
+          dek,
+          content: blocks,
+          markdown,
+          inlineImages,
+        });
       }
       if (res.ok) {
         const data = (await res.json()) as { draft?: { id?: string } };

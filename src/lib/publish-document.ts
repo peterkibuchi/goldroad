@@ -25,6 +25,7 @@ import {
   buildPublicationRecord,
   generateTid,
   isOwnPublicationUrl,
+  parseInlineImagesField,
   toRecordInput,
 } from "~/lib/publish";
 
@@ -93,6 +94,8 @@ export type StoredDraft = {
   dek: string;
   /** The markdown projection saved with the blocks (~/db/schema). */
   markdown: string;
+  /** The body images' blob references, saved with that projection. */
+  inlineImages: string;
 };
 
 /**
@@ -121,11 +124,12 @@ function isTransientStatus(status: number): boolean {
 /**
  * Publishes a stored draft as a `site.standard.document` in the writer's repo.
  *
- * NO COVER IMAGE: a cover is a multipart upload from the browser, and a blob
- * uploaded now but referenced by a record hours from now is a blob the PDS is
- * free to reclaim in between. Rather than build on that, a scheduled post
- * publishes text and the writer adds a cover by editing the post afterwards —
- * which is stated where they schedule, not discovered afterwards.
+ * NO COVER IMAGE: a cover is a multipart upload from the browser, and there is
+ * no browser here. A scheduled post publishes text and the writer adds a cover
+ * by editing the post afterwards — which is stated where they schedule, not
+ * discovered afterwards. BODY images are different and are carried: they were
+ * uploaded to the writer's repo while they wrote, and their references travel
+ * with the draft precisely so this can reference them.
  *
  * The two write-backs at the end are best-effort by the same reasoning the
  * interactive path uses: the record is already live in the writer's repo, so a
@@ -171,6 +175,12 @@ export async function publishStoredDraft(input: {
       dek: draft.dek,
       site,
       path: `/${rkey}`,
+      // The body's own images. A PDS only serves a blob some record references,
+      // so publishing without these would produce a post whose pictures are
+      // broken — and the browser's per-session store of them is long gone by
+      // the time a cron runs. The record builder keeps only the blobs the body
+      // still references, and only if they validate.
+      inlineImageSources: parseInlineImagesField(draft.inlineImages),
     });
   } catch (err) {
     console.warn("scheduled record build refused", err);

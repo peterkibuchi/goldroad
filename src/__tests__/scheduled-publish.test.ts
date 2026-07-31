@@ -59,6 +59,7 @@ const draftRow = {
   dek: "",
   content: "[]",
   markdown: "Some words.",
+  inlineImages: "",
   createdAt: new Date(),
   updatedAt: new Date(),
 };

@@ -15,11 +15,12 @@
  *     — "not yours" and "doesn't exist" are the same 404, so the API never
  *     confirms another writer's draft ids.
  *
- * A save carries TWO renderings of the same document: the block JSON (lossless,
- * what the editor reloads) and its markdown projection (lossy, what publishing
- * writes to the record and what a scheduled publish reads hours later). They
- * are written together so they cannot drift; see `markdown` in ~/db/schema for
- * why the projection has to be stored at all.
+ * A save carries TWO renderings of the same document — the block JSON
+ * (lossless, what the editor reloads) and its markdown projection (lossy, what
+ * publishing writes to the record and what a scheduled publish reads hours
+ * later) — plus the blob references the projection's images need. All of it is
+ * written in one statement so none of it can drift; see `markdown` and
+ * `inline_images` in ~/db/schema for why they have to be stored at all.
  *
  * Every response is `cache-control: no-store`: drafts are private data and
  * must never sit in a shared or browser cache.
@@ -155,6 +156,7 @@ export const Route = createFileRoute("/api/drafts")({
             // what a scheduled publish reads, so no save may blank it by
             // omission.
             markdown: parsed.data.markdown,
+            inlineImages: parsed.data.inlineImages,
           });
           if (!row) return privateJson({ ok: false, error: "not_found" }, 404);
           return privateJson({
@@ -177,6 +179,7 @@ export const Route = createFileRoute("/api/drafts")({
           dek: parsed.data.dek,
           content,
           markdown: parsed.data.markdown,
+          inlineImages: parsed.data.inlineImages,
         });
         return privateJson(
           {
