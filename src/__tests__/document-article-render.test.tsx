@@ -280,7 +280,7 @@ describe("DocumentArticle — the header descends", () => {
     // Against a 17px (1.0625rem) body: title 2rem ~1.88x, dek 1.1875rem
     // ~1.12x — just above the body so it leads in — byline 0.875rem ~0.82x.
     expect(container.querySelector("h1")?.className).toContain("text-[2rem]");
-    expect(dek.className).toContain("text-[1.1875rem]");
+    expect(dek.className).toContain("text-[0.9375rem]");
     // Scoped to the header: the handle also appears in the colophon.
     const byline = container
       .querySelector("header")
@@ -288,10 +288,13 @@ describe("DocumentArticle — the header descends", () => {
     expect(byline?.closest("div")?.className).toContain("text-sm");
   });
 
-  it("holds the dek to a readable measure", () => {
+  it("runs the dek the full column width, aligned with the title", () => {
+    // It used to be capped at 52ch. The title and the rule beneath both run the
+    // full column, so a dek stopping short of them read as a mistake rather
+    // than a choice — and the column is already the measure.
     withDek();
-    expect(screen.getByText("A one-sentence hook.").className).toContain(
-      "max-w-[52ch]",
+    expect(screen.getByText("A one-sentence hook.").className).not.toContain(
+      "max-w-",
     );
   });
 });
