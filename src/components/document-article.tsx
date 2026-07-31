@@ -540,11 +540,13 @@ export function DocumentArticle({
               The scale is stated as ratios against the 17px body, because
               "proportional to the main text" is the actual requirement and
               absolute pixels hide it:
-                title   2rem     ≈ 1.88× body
-                dek     1.1875rem ≈ 1.12× body — just above it, so it leads in
+                title   2rem      ≈ 1.88× body
+                dek     0.9375rem ≈ 0.88× body
                 byline  0.875rem  ≈ 0.82× body
-              A monotonic descent, and the one number to nudge if the balance
-              still feels wrong is the dek's.
+              Still a monotonic descent — 32 / 15 / 14 — with the dek now just
+              under the body rather than just over it. Below body size it can
+              only read as a standfirst if the FACE distinguishes it, which is
+              the display/serif pairing's other job.
 
               Negative tracking because display bold at 32px sets loose,
               especially in the all-caps titles older texts carry. Well inside
@@ -561,9 +563,16 @@ export function DocumentArticle({
 
               Roman, not italic — italic had become a default soft voice across
               the product rather than an emphasis, which costs it all meaning.
-              Softer ink and a shorter measure carry the subordination. */}
+              Softer ink and the smaller size carry the subordination.
+
+              Full column width, no measure cap. It had one, on the reasoning
+              that a standfirst wants a shorter line — but the title and the
+              rule beneath both run the full column, so a dek stopping short of
+              them read as a mistake rather than as a choice. The column is
+              already the measure; capping inside it just breaks the left-edge
+              alignment the header depends on. */}
           {dek && (
-            <p className="mt-4 max-w-[52ch] font-display text-[1.1875rem] text-ink-soft leading-[1.45]">
+            <p className="mt-4 font-display text-[0.9375rem] text-ink-soft leading-[1.55]">
               {dek}
             </p>
           )}
