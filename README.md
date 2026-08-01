@@ -39,9 +39,13 @@ permanently.
   landing as private drafts
 - Read the conversation: replies to a post's Bluesky announcement render under the post
   itself, so the network is the comment section
+- Schedule a post for later; the queue says plainly whether it went out, and why not
+- Set your publication's colours — stored in your own record, so other apps on the
+  network render your page in them too
+- Readers can subscribe to a publication, and choose light or dark for themselves
 - Writer stats (followers over time, per-post engagement), honest about being approximate
 - Export everything, or delete your account outright
-- A 27-check production canary, 1,274 tests, and an adversarially-reviewed pipeline
+- A 27-check production canary and an adversarially-reviewed pipeline
 
 Newsletters, reader payments, custom domains, our own extension lexicon
 and continuous mirroring are **not** built yet — [`docs/PRODUCT.md`](docs/PRODUCT.md)
@@ -50,10 +54,16 @@ lists exactly what's shipped and what isn't. Self-hosting is documented
 
 ## How it's checked
 
-1,107 tests across 90 files (`pnpm test`), run alongside lint and typecheck on every
-pull request. An hourly Workers cron re-checks core invariants against the live origin
-and the freshness of the nightly off-platform database export, alerting to a webhook
-when either slips (`src/lib/scheduled.ts`).
+`pnpm gate` is the whole ladder behind one exit code — lint with warnings fatal, then
+typecheck, then the test suite — and it runs on every pull request. The suite leans on
+behaviour rather than implementation: what a handler writes and in what order, what it
+leaves alone when a step fails, and the honesty rules (an absent number is never
+rendered as a zero).
+
+An hourly Workers cron re-checks core invariants against the live origin and the
+freshness of the nightly off-platform database export. If you self-host, set
+`WEBHOOK_URL` and it posts failures there; without it the check still runs and logs,
+which is quieter than you probably want (`src/lib/scheduled.ts`).
 
 ## Stack
 
