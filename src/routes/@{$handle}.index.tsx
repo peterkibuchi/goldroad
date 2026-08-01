@@ -330,7 +330,7 @@ export function PublicationView({
                   came down to 32px, and a masthead shouting over the headlines
                   beneath it inverts what the page is for). Negative tracking
                   for the same reason the post title takes it. */}
-              <h1 className="text-balance font-bold font-display text-[2.25rem] text-ink leading-[1.1] tracking-[-0.02em]">
+              <h1 className="wrap-anywhere text-balance font-bold font-display text-[2.25rem] text-ink leading-[1.1] tracking-[-0.02em]">
                 {publication?.name ?? ident}
               </h1>
               <p className="mt-3 font-display text-ink-soft text-sm tracking-wide">

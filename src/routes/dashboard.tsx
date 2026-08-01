@@ -743,7 +743,12 @@ export function PostsManager({
       <div className="mt-8 border-rule border-b">
         <div
           aria-label="Post lists"
-          className="flex gap-6"
+          // Scrolls rather than shrinks at 320: three tabs with their counts
+          // min-content to ~266px and flex items don't shrink below that, so a
+          // fixed row pushed the whole document wider than the phone. Only
+          // visible once a writer has queued something — the Scheduled tab is
+          // conditional, so a two-tab account fits and this shipped looking fine.
+          className="flex gap-4 overflow-x-auto sm:gap-6"
           onKeyDown={handleTabKeys}
           role="tablist"
         >
