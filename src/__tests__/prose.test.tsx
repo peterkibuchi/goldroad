@@ -65,4 +65,28 @@ describe("Prose", () => {
     const link = container.querySelector("a");
     expect(link?.getAttribute("href") ?? "").not.toContain("javascript:");
   });
+
+  /**
+   * This surface renders documents from anybody's PDS, where a bare URL, a DID
+   * or an `at://` URI is the subject matter rather than an edge case — and none
+   * of those carry a break opportunity. Without a wrap rule the page went 186px
+   * wider than a 320 viewport, and 131px wider than a 375 one, so it was not
+   * even a smallest-phone problem.
+   *
+   * Asserted on the container because that is what makes it total: it covers
+   * paragraphs, list items, links, inline code and stray root text nodes at
+   * once, where per-renderer classes would each have to remember. `<pre>` is
+   * excluded on purpose — it scrolls instead, which is right for code.
+   */
+  it("lets unbreakable strings wrap instead of widening the page", () => {
+    const { container } = render(
+      <Prose
+        markdown={
+          "at://did:plc:aaaaaaaaaaaaaaaaaaaaaaaa/site.standard.document/3lyk73wxnok2f"
+        }
+      />,
+    );
+    const root = container.querySelector(".gr-prose");
+    expect(root?.className).toContain("wrap-anywhere");
+  });
 });
