@@ -18,3 +18,4 @@ todos.json
 slop/*
 !slop/README.md
 .claude/worktrees/
+.agents/evidence/
