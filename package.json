@@ -32,7 +32,7 @@
     "db:migrate:staging": "wrangler d1 migrations apply goldroad-db-staging --remote --env staging"
   },
   "dependencies": {
-    "@atcute/atproto": "^4.0.3",
+    "@atcute/atproto": "^4.0.4",
     "@atcute/client": "^5.1.1",
     "@atcute/identity-resolver": "^2.0.1",
     "@atcute/lexicons": "^2.0.3",
