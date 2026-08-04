@@ -93,6 +93,6 @@
     "vitest": "^4.1.10",
     "wrangler": "^4.118.0"
   },
-  "packageManager": "pnpm@11.18.0",
+  "packageManager": "pnpm@11.20.0",
   "license": "AGPL-3.0-only"
 }
