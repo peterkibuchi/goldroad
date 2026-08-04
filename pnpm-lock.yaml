@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@atcute/atproto':
-        specifier: ^4.0.3
-        version: 4.0.3(@atcute/lexicons@2.0.3)
+        specifier: ^4.0.4
+        version: 4.0.4(@atcute/lexicons@2.0.3)
       '@atcute/client':
         specifier: ^5.1.1
         version: 5.1.1(@atcute/lexicons@2.0.3)(typescript@7.0.2)
@@ -194,8 +194,8 @@ packages:
     resolution: {integrity: sha512-UJLfKXBhrc8i1vH2eJXuYQMwlsLKWFw3O+CPqXSuVEiikeAim3UgrfWX0k4tA/X8cRFM8iZ7OaqBokFGbYusdg==}
     engines: {node: ^22.13.0 || >=24.0.0}
 
-  '@atcute/atproto@4.0.3':
-    resolution: {integrity: sha512-BNylfO7nK0yYBpSpnGhOYgrJTeZWrXHPrb6tOQmp9A3Am0epctIWm6/5lPC4ZNPHpUbwr5w/LzH/v7kjAoKEDg==}
+  '@atcute/atproto@4.0.4':
+    resolution: {integrity: sha512-aEp5wQVPVbZcFJUwoi54tyT+ehRI/xtPe9T0zIvcryHAVXF/zxHtNboM+htbZLOAGsDFsqzgCyxph0Bafw7L8w==}
     peerDependencies:
       '@atcute/lexicons': ^2.0.0
 
@@ -4470,7 +4470,7 @@ snapshots:
       is-potential-custom-element-name: 1.0.1
       lru-cache: 11.5.2
 
-  '@atcute/atproto@4.0.3(@atcute/lexicons@2.0.3)':
+  '@atcute/atproto@4.0.4(@atcute/lexicons@2.0.3)':
     dependencies:
       '@atcute/lexicons': 2.0.3
 
@@ -4549,7 +4549,7 @@ snapshots:
 
   '@atcute/standard-site@2.0.2(@atcute/lexicons@2.0.3)':
     dependencies:
-      '@atcute/atproto': 4.0.3(@atcute/lexicons@2.0.3)
+      '@atcute/atproto': 4.0.4(@atcute/lexicons@2.0.3)
       '@atcute/lexicons': 2.0.3
 
   '@atcute/uint8array@1.1.5': {}
