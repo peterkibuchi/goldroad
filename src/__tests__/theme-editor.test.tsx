@@ -450,3 +450,14 @@ describe("ThemeEditor — accessibility", () => {
     expect((save as HTMLButtonElement).disabled).toBe(false);
   });
 });
+
+describe("theme editor — the swatches are the only target", () => {
+  it("gives every colour picker a 44px hit area", () => {
+    render(<ThemeEditor publicationName="The Long Way" theme={savedTheme} />);
+    // The native picker carries its own hex entry and eyedropper, so there is no
+    // second field beside it, and the label is a ~20px run of text that cannot
+    // rescue a 40px swatch. Class string, for want of layout in jsdom.
+    for (const field of THEME_FIELDS)
+      expect(colourInput(field).className, field).toContain("size-11");
+  });
+});

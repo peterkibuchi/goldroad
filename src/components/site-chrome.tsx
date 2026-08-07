@@ -89,7 +89,9 @@ function Wordmark({
       {showBeta && (
         // Product-phase label, not infrastructure: remove this one element
         // at GA — releases keep flowing through the same channels regardless.
-        <span className="border border-ink-soft px-1.5 py-0.5 font-semibold text-[0.6rem] text-ink-soft uppercase tracking-[0.12em]">
+        // 11.2px is the floor for the chip convention: 9.6px uppercase sits
+        // under every platform's legibility guidance, tracking or no tracking.
+        <span className="border border-ink-soft px-1.5 py-0.5 font-semibold text-[0.7rem] text-ink-soft uppercase tracking-[0.12em]">
           beta
         </span>
       )}
@@ -161,7 +163,9 @@ function MarketingSignIn() {
   }, []);
   return (
     <a
-      className="font-display font-semibold text-ink-soft text-sm underline underline-offset-4 transition-colors hover:text-ink"
+      // A quiet link that is still a real target: this is the only way into
+      // the product from the homepage, and it was a 20px-tall run of text.
+      className="inline-flex min-h-11 items-center font-display font-semibold text-ink-soft text-sm underline underline-offset-4 transition-colors hover:text-ink"
       href={signedIn ? "/home" : "/write?returnTo=%2Fhome"}
     >
       {signedIn ? "Your publication" : "Sign in"}
@@ -193,7 +197,10 @@ function AppearanceToggle() {
       aria-label={
         dark ? "Switch to the light edition" : "Switch to the dark edition"
       }
-      className="inline-flex min-h-9 cursor-pointer items-center font-display text-ink-soft text-sm transition-colors hover:text-ink"
+      // 44px both ways. "Dark" is 34px of text, so the width comes from
+      // padding, and the negative margin keeps the header's own gap rhythm
+      // rather than letting the hit area push its neighbours around.
+      className="-mx-2 inline-flex min-h-11 cursor-pointer items-center px-2 font-display text-ink-soft text-sm transition-colors hover:text-ink"
       onClick={toggle}
       type="button"
     >
@@ -265,7 +272,18 @@ const COMPACT_LINKS: ReadonlyArray<FooterLink> = [
   { href: "/policies", label: "Policies" },
 ];
 
-const FOOTER_LINK_CLASS = "transition-colors hover:text-ink";
+/**
+ * Footer links were 15–20px tall on every surface in the app, stacked 4–8px
+ * apart — the smallest targets we shipped, and there are eleven of them.
+ *
+ * The 44px floor is spent at base only, and handed back at `sm:`. Pointer
+ * width is the wrong thing to switch on in principle, but a footer band is a
+ * single row of text links: making it 44px tall at every width grows the band
+ * by 24px on desktop, which is a real layout cost paid for a target no mouse
+ * ever misses. The phone gets the floor; the desktop keeps its rhythm.
+ */
+const FOOTER_LINK_CLASS =
+  "inline-flex min-h-11 items-center transition-colors hover:text-ink sm:min-h-0";
 
 function FooterLink({ label, href, external }: FooterLink) {
   if (external) {
@@ -345,7 +363,10 @@ export function SiteFooter({
               </p>
               <nav
                 aria-label={heading}
-                className="mt-3 flex flex-col items-start gap-y-2 font-display text-ink-soft text-sm"
+                // No row gap at base: the links' own 44px height supplies the
+                // rhythm there, and 8px on top of it would space three short
+                // columns like a page of body text.
+                className="mt-3 flex flex-col items-start font-display text-ink-soft text-sm sm:gap-y-2"
               >
                 {links.map((link) => (
                   <FooterLink key={link.href} {...link} />
@@ -497,7 +518,7 @@ function SoonRow({ label, Icon }: { label: string; Icon: NavIcon }) {
       {label}
       {/* Same hairline chip as the wordmark's phase label — one chip
           convention in this chrome, not two. */}
-      <span className="ml-auto border border-ink-soft px-1.5 py-0.5 font-semibold text-[0.6rem] uppercase tracking-[0.12em]">
+      <span className="ml-auto border border-ink-soft px-1.5 py-0.5 font-semibold text-[0.7rem] uppercase tracking-[0.12em]">
         Soon
       </span>
     </span>
@@ -532,16 +553,21 @@ function RailIdentity({ ident }: { ident: string }) {
         >
           {ident}
         </span>
+        {/* The rail is `md:` and up, which includes a portrait tablet — a touch
+            device. These two were 24px tall here while the mobile strip gave
+            the same pair 44px. Full height plus a negative margin, the dense-row
+            idiom from docs/DESIGN.md: the target clears 44px and the cluster's
+            own height doesn't move. */}
         <div className="flex gap-3">
           <a
-            className="inline-flex min-h-6 items-center font-display text-ink-soft text-xs underline underline-offset-2 transition-colors hover:text-ink"
+            className="-my-2 inline-flex min-h-11 items-center font-display text-ink-soft text-xs underline underline-offset-2 transition-colors hover:text-ink"
             href={`/@${encodeURIComponent(ident)}`}
           >
             Public page
           </a>
           <form action="/logout" method="post">
             <button
-              className="inline-flex min-h-6 cursor-pointer items-center font-display text-ink-soft text-xs underline underline-offset-2 transition-colors hover:text-ink"
+              className="-my-2 inline-flex min-h-11 cursor-pointer items-center font-display text-ink-soft text-xs underline underline-offset-2 transition-colors hover:text-ink"
               type="submit"
             >
               Sign out
@@ -660,7 +686,10 @@ function WriterTabBar({ active }: { active?: WriterNavItem }) {
             className={cn(
               // Same active vocabulary as the rail: a solid ink rule on the
               // leading edge. The accent is spent once, on the action.
-              "flex min-h-11 flex-1 flex-col items-center gap-0.5 border-transparent border-t-2 px-1 py-2 font-display font-semibold text-[0.68rem] focus-visible:-outline-offset-2",
+              // 12px, not 10.88px: at 320 each tab is 64px wide and the longest
+              // label ("Settings") measures 49px at 12px, so the smaller size
+              // bought nothing and cost legibility in the app's primary nav.
+              "flex min-h-11 flex-1 flex-col items-center gap-0.5 border-transparent border-t-2 px-1 py-2 font-display font-semibold text-xs focus-visible:-outline-offset-2",
               isAction && "bg-spot font-bold text-paper",
               !isAction &&
                 (isActive ? "border-ink font-bold text-ink" : "text-ink-soft"),
