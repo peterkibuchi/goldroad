@@ -165,8 +165,11 @@ export function PostTable({
         action={
           <label className="flex items-center gap-2 font-display text-ink-soft text-xs sm:hidden">
             Sort by
+            {/* 16px, not 12px: iOS Safari zooms the whole page in when a
+                focused control computes under 16px and never zooms back out.
+                No `sm:` step down — this select only exists below 640px. */}
             <select
-              className="min-h-9 border border-ink bg-paper px-2 font-display text-ink text-xs"
+              className="min-h-9 border border-ink bg-paper px-2 font-display text-base text-ink"
               onChange={(event) => {
                 const [key, dir] = event.target.value.split(":");
                 onSortChange(key as SortKey, dir as SortDirection);

@@ -369,8 +369,12 @@ export function PublicationView({
             <label className="flex items-center gap-2 text-ink-soft">
               <SearchIcon className="h-4 w-4 shrink-0" />
               <span className="sr-only">Search posts</span>
+              {/* 16px at base, 14px from `sm:` up. iOS Safari zooms the page
+                  in on a focused control under 16px and never zooms back out,
+                  and this is a public page: searching the archive is often a
+                  phone visitor's first interaction with it. */}
               <input
-                className="w-28 bg-transparent font-display text-ink text-sm placeholder:text-ink-soft/60 focus:w-48 focus:outline-none"
+                className="w-28 bg-transparent font-display text-base text-ink placeholder:text-ink-soft/60 focus:w-48 focus:outline-none sm:text-sm"
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search posts"
                 style={{ transition: "width 150ms ease" }}

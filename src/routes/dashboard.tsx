@@ -799,8 +799,12 @@ export function PostsManager({
           <label className="flex min-h-9 items-center gap-2 border-rule border-b pb-1 text-ink-soft focus-within:border-ink">
             <SearchIcon className="h-4 w-4 shrink-0" />
             <span className="sr-only">Search your posts by title</span>
+            {/* 16px at base, the denser 14px from `sm:` up: iOS Safari zooms
+                the page in when a focused control computes under 16px and
+                never zooms back out, which would leave a writer tapping
+                Search on a zoomed, horizontally-panning posts manager. */}
             <input
-              className="w-40 bg-transparent font-display text-ink text-sm placeholder:text-ink-soft/60 focus:outline-none sm:w-56"
+              className="w-40 bg-transparent font-display text-base text-ink placeholder:text-ink-soft/60 focus:outline-none sm:w-56 sm:text-sm"
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search titles"
               type="search"
@@ -810,8 +814,9 @@ export function PostsManager({
           <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
             <label className="flex min-h-9 items-center gap-2 font-display text-ink-soft text-sm">
               <span>Sort</span>
+              {/* Same 16px floor as the search field above. */}
               <select
-                className="cursor-pointer border-rule border-b bg-transparent pb-1 font-display text-ink text-sm focus:outline-none"
+                className="cursor-pointer border-rule border-b bg-transparent pb-1 font-display text-base text-ink focus:outline-none sm:text-sm"
                 onChange={(event) => setSort(event.target.value as PostSort)}
                 value={sort}
               >
