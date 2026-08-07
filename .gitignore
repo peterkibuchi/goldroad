@@ -17,5 +17,11 @@ todos.json
 # slop quarantine — throwaway verification code, never shipped
 slop/*
 !slop/README.md
-.claude/worktrees/
+.claude/
+# Local agent configuration is personal to whoever is working, not a project
+# convention: plugin choices, skills and worktrees differ per machine and per
+# person. It also has no contributor value here — the gate is `pnpm gate` and
+# that is documented in AGENTS.md and the README. Keeping it out avoids a
+# public repo describing a private workspace, which is how a hardcoded path
+# into a checkout beside this one reached this tree once already.
 .agents/evidence/
