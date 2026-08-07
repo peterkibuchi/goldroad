@@ -8,6 +8,10 @@
  * Referenced by wrangler.jsonc `main` (was the package default
  * "@tanstack/react-start/server-entry", which this wraps).
  */
+
+/** Stamped by vite.config.ts from WORKERS_CI_COMMIT_SHA; "dev" off CI. */
+declare const __BUILD_SHA__: string;
+
 import handler, { createServerEntry } from "@tanstack/react-start/server-entry";
 
 import { withExceptionCapture } from "~/lib/error-tracking";
@@ -39,7 +43,7 @@ const entry = createServerEntry({
     );
     // Security-header baseline on HTML documents (audit #4). Applied after the
     // cache so policy changes take effect on already-cached pages immediately.
-    return withSecurityHeaders(response, CSP);
+    return withSecurityHeaders(response, CSP, __BUILD_SHA__);
   },
 });
 

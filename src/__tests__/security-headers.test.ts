@@ -107,3 +107,47 @@ describe("withSecurityHeaders", () => {
     expect(await res.text()).toBe("<!doctype html>");
   });
 });
+
+/**
+ * The deploy-freshness stamp. Production once served a week-old build while
+ * every health check passed — the site worked, it was merely old — because
+ * nothing served said which commit it was. This header is how a check tells
+ * "up" from "current".
+ */
+describe("x-goldroad-version", () => {
+  it("stamps the build onto a document", () => {
+    const res = withSecurityHeaders(html(), null, "abc123");
+    expect(res.headers.get("x-goldroad-version")).toBe("abc123");
+  });
+
+  it("omits the header when no build is given", () => {
+    const res = withSecurityHeaders(html(), null);
+    expect(res.headers.get("x-goldroad-version")).toBeNull();
+  });
+
+  /**
+   * The reason this lives inside this function rather than at the call site.
+   * Non-HTML responses are returned AS THEY CAME, and a handler or cache
+   * response may carry immutable headers — so setting a header on the result
+   * would throw on every API, feed and image request. Passing the value in
+   * keeps the write inside the one branch that reconstructs.
+   */
+  it("does not touch a non-HTML response, even an immutable one", () => {
+    const immutable = new Response("{}", {
+      headers: new Headers({ "content-type": "application/json" }),
+    });
+    Object.defineProperty(immutable.headers, "set", {
+      value: () => {
+        throw new TypeError("immutable headers");
+      },
+    });
+    expect(() =>
+      withSecurityHeaders(immutable, buildContentSecurityPolicy(), "abc123"),
+    ).not.toThrow();
+    expect(
+      withSecurityHeaders(immutable, null, "abc123").headers.get(
+        "x-goldroad-version",
+      ),
+    ).toBeNull();
+  });
+});
