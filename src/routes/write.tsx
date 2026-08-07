@@ -717,8 +717,11 @@ export function SchedulePanel({
           >
             {existing ? "Change the time" : "Schedule for later"}
           </label>
+          {/* 16px at base, 14px from `sm:` up: iOS Safari zooms the page in on
+              a focused control under 16px and never zooms back out — and this
+              one opens a date picker, so the zoom lands mid-decision. */}
           <input
-            className="min-h-11 border border-rule bg-paper px-3 font-display text-ink text-sm focus-visible:border-spot focus-visible:outline-none"
+            className="min-h-11 border border-rule bg-paper px-3 font-display text-base text-ink focus-visible:border-spot focus-visible:outline-none sm:text-sm"
             id="dueAtLocal"
             min={min}
             name="dueAtLocal"
