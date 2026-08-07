@@ -147,12 +147,18 @@ export const Route = createFileRoute("/@{$handle}/")({
     return {
       meta: [
         { title },
-        ...(publication?.description
-          ? [
-              { name: "description", content: publication.description },
-              { property: "og:description", content: publication.description },
-            ]
-          : []),
+        // A description always, so a shared archive link is never a bare title.
+        // Most publications carry one; records written by other apps often do
+        // not, and that is the common case here because these pages render ANY
+        // atproto author. The fallback matches the feed's own wording.
+        ...(() => {
+          const description =
+            publication?.description?.trim() || `Writing by @${ident}`;
+          return [
+            { name: "description", content: description },
+            { property: "og:description", content: description },
+          ];
+        })(),
         { property: "og:title", content: title },
         { property: "og:type", content: "website" },
         ...(canonicalUrl
