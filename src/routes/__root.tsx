@@ -32,14 +32,13 @@ export const Route = createRootRoute({
       // for the title and description but needs this one for the card TYPE, and
       // its default is a small square thumbnail.
       { property: "og:site_name", content: "Goldroad" },
+      // Only the image itself is defaulted here. Dimensions and alt text
+      // deliberately are NOT: a page that supplies its own og:image — a post
+      // with a cover — overrides this tag but cannot remove sibling ones, so
+      // inherited width/height/alt would describe the wrong picture and the alt
+      // would announce Goldroad on somebody's essay. Whoever knows the image
+      // describes it; see the marketing pages and the document head.
       { property: "og:image", content: `${CANONICAL_ORIGIN}/og.png` },
-      { property: "og:image:width", content: "1200" },
-      { property: "og:image:height", content: "630" },
-      {
-        property: "og:image:alt",
-        content:
-          "Goldroad — writer-owned publishing. Your posts, your readers, your name, in an account you control.",
-      },
       { name: "twitter:card", content: "summary_large_image" },
       // Status-bar and splash colour, per edition. iOS 26 opens ANY site added
       // to the Home Screen as a standalone app by default — with or without a
