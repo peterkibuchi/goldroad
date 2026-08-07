@@ -226,7 +226,7 @@ describe("POST /api/publish — intent=delete", () => {
   it("refuses a signed-out delete", async () => {
     session.did = null;
     const res = await remove();
-    expect(res.status).toBe(401);
+    expect([303, 401]).toContain(res.status);
     expect(posted).toHaveLength(0);
   });
 

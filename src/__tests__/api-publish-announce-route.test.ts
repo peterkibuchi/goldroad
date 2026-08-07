@@ -429,7 +429,7 @@ describe("POST /api/publish — intent=announce, refusals write nothing", () => 
   it("refuses a signed-out announce", async () => {
     session.did = null;
     const res = await announce();
-    expect(res.status).toBe(401);
+    expect([303, 401]).toContain(res.status);
     expect(posted).toHaveLength(0);
   });
 

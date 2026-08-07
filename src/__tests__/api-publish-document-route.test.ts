@@ -712,8 +712,13 @@ describe("POST /api/publish — intent=document, refusals write nothing", () => 
   it("refuses a signed-out publish", async () => {
     session.did = null;
     const res = await publish();
-    expect(res.status).toBe(401);
+    // The security property is that nothing was written. The SHAPE is a 303
+    // rather than a bare 401 because this is a full-page form POST: replying
+    // text/plain navigated the writer off the editor and took the composed
+    // post with it.
     expect(posted).toHaveLength(0);
+    expect(res.status).toBe(303);
+    expect(res.headers.get("location")).toBe("/write?error=session_expired");
   });
 
   it("sends a dead session to sign-in and clears the cookies behind it", async () => {
