@@ -166,7 +166,39 @@ export const Route = createFileRoute("/api/publish")({
           drizzle(env.DB),
         );
         if (!did || !isDid(did)) {
-          return new Response("Not signed in", { status: 401 });
+          // NOT a bare 401. The publish form is a full-page multipart POST and
+          // the composed document lives only in the browser's DOM until it
+          // lands — so replying with text/plain navigates the writer away from
+          // the editor and takes a finished essay with it. This is not the
+          // exotic path either: the session row is missing whenever they signed
+          // out in another tab or on another device, or the cookie lapsed.
+          //
+          // Mirrors the restore-failure branch below, which already handled the
+          // LESS likely case properly. The asymmetry was the bug.
+          //
+          // A form POST cannot carry the draft id here — the body is read after
+          // this check, deliberately, so an unauthenticated request never costs
+          // us a multipart parse. New compositions autosave, so the work is in
+          // the drafts list; landing on /write with the reason stated is what
+          // makes that recoverable rather than invisible.
+          const expired = new Headers({
+            location: "/write?error=session_expired",
+          });
+          for (const cookie of clearSessionCookies(url.protocol === "https:"))
+            expired.append("set-cookie", cookie);
+          const wantsJson = (request.headers.get("accept") ?? "").includes(
+            "application/json",
+          );
+          if (wantsJson) {
+            expired.delete("location");
+            expired.set("content-type", "application/json");
+            expired.set("cache-control", "private, no-store");
+            return new Response(
+              JSON.stringify({ ok: false, error: "session_expired" }),
+              { status: 401, headers: expired },
+            );
+          }
+          return new Response(null, { status: 303, headers: expired });
         }
 
         const form = await request.formData().catch(() => null);

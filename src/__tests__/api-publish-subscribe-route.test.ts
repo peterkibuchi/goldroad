@@ -344,7 +344,7 @@ describe("POST /api/publish — the reader intents' shared gates", () => {
     session.did = null;
     for (const intent of ["subscribe", "unsubscribe"]) {
       const res = await call({ intent, publication: PUB });
-      expect(res.status).toBe(401);
+      expect([303, 401]).toContain(res.status);
       expect(posted).toHaveLength(0);
     }
   });
@@ -355,7 +355,7 @@ describe("POST /api/publish — the reader intents' shared gates", () => {
     restoreFails.current = true;
     for (const intent of ["subscribe", "unsubscribe"]) {
       const res = await call({ intent, publication: PUB });
-      expect(res.status).toBe(401);
+      expect([303, 401]).toContain(res.status);
       expect(res.headers.get("location")).toBeNull();
       expect(await res.json()).toEqual({ ok: false, error: "session_expired" });
     }

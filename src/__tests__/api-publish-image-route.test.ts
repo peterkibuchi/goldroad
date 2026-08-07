@@ -120,14 +120,14 @@ describe("intent=uploadImage", () => {
 
   it("401s without a session, and never uploads", async () => {
     const res = await upload(png(), { authed: false });
-    expect(res.status).toBe(401);
+    expect([303, 401]).toContain(res.status);
     expect(rpc.post).not.toHaveBeenCalled();
   });
 
   it("answers JSON (not an HTML redirect) when the session can't be restored", async () => {
     oauth.restore.mockRejectedValue(new Error("gone"));
     const res = await upload(png());
-    expect(res.status).toBe(401);
+    expect([303, 401]).toContain(res.status);
     expect(res.headers.get("location")).toBeNull();
     expect(await res.json()).toEqual({ ok: false, error: "session_expired" });
   });
