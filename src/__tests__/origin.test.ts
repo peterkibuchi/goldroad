@@ -155,6 +155,26 @@ describe("canonicalRedirect", () => {
     expect(redirectFor("https://trygoldroad.com/write?edit=3abc")).toBeNull();
   });
 
+  /**
+   * `www` is the one non-canonical host a reader types by hand or inherits from
+   * a pasted link, and this function has always handled it — what it lacked was
+   * a Worker route, so Cloudflare matched nothing and answered its own 404
+   * before the request could reach us. The route lives in wrangler.jsonc; this
+   * pins the half that decides where it goes, including that the path and query
+   * survive, because a bare redirect to the homepage loses the reader.
+   */
+  it("301s www to the apex, keeping the path and query", () => {
+    expect(redirectFor("https://www.trygoldroad.com/")?.status).toBe(301);
+    expect(
+      redirectFor("https://www.trygoldroad.com/")?.headers.get("location"),
+    ).toBe("https://trygoldroad.com/");
+    expect(
+      redirectFor(
+        "https://www.trygoldroad.com/@writer.example/3lyk73wxnok2f?utm=x",
+      )?.headers.get("location"),
+    ).toBe("https://trygoldroad.com/@writer.example/3lyk73wxnok2f?utm=x");
+  });
+
   it("serves dev loopback untouched", () => {
     expect(redirectFor("http://127.0.0.1:3000/")).toBeNull();
     expect(redirectFor("http://localhost:3000/dashboard")).toBeNull();

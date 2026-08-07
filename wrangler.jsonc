@@ -83,8 +83,14 @@
       "name": "goldroad",
       "workers_dev": true,
       "preview_urls": true,
+      // Both hostnames are routed on purpose. `www` resolves at the edge
+      // already, so without a route here Cloudflare matched nothing and served
+      // its own 404 — the request never reached the Worker, and every shared
+      // link carrying `www.` was dead. With the route, `canonicalRedirect`
+      // (~/lib/origin) 301s it to the apex like any other non-canonical host.
       "routes": [
-        { "pattern": "trygoldroad.com/*", "zone_name": "trygoldroad.com" }
+        { "pattern": "trygoldroad.com/*", "zone_name": "trygoldroad.com" },
+        { "pattern": "www.trygoldroad.com/*", "zone_name": "trygoldroad.com" }
       ],
       "observability": {
         "enabled": true,
