@@ -6,9 +6,13 @@
   ],
   "packageRules": [
     {
-      "description": "TanStack packages move together or not at all. react-start adds the `server` route option to react-router's own types by declaration merging, so bumping one without the other resolves two copies of router-core: the augmentation lands on the copy react-start pulled in, while the route files resolve the copy react-router pulled in, and every server route stops typechecking with 'server does not exist'. Nothing is wrong with the code when this happens, which is what makes it expensive to diagnose. Grouping them makes the partial bump unrepresentable.",
-      "groupName": "tanstack",
-      "matchPackageNames": ["@tanstack/**"]
+      "description": "react-router, react-start and router-devtools bump together. react-start adds the `server` route option to react-router's types by declaration merging across package boundaries, and the two ship on separate version lines, so they can drift. When they do, the lockfile holds the pinned react-router while react-start's transitive requirement pulls a second, newer router-core: the augmentation merges into one copy and the route files resolve the other, and every server route stops typechecking with 'server does not exist'. The code is correct throughout, which is what makes it expensive to diagnose. Scoped to the coupled packages on purpose — react-table and the standalone devtools are independent and keep their own PRs.",
+      "groupName": "tanstack router + start",
+      "matchPackageNames": [
+        "@tanstack/react-router",
+        "@tanstack/react-start",
+        "@tanstack/react-router-devtools"
+      ]
     }
   ]
 }
