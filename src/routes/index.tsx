@@ -59,7 +59,9 @@ export const Route = createFileRoute("/")({
  */
 export const HERO_HEADLINES = {
   control: "Publish where your readers already are.",
-  challenger: "Your publication. Your domain. Your readers. 0% taken.",
+  // NOT "your domain" — custom domains are not built, and a variant nobody has
+  // rendered yet is exactly where a false claim hides until the day it ships.
+  challenger: "Your publication. Your readers. Your name. 0% taken.",
 } as const;
 
 const STEPS = [

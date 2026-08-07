@@ -55,8 +55,18 @@ const ROWS: Row[] = [
   },
   {
     label: "Where readers find you",
-    goldroad: "Native cards in the Bluesky timeline",
+    goldroad: "Enhanced cards in the Bluesky timeline",
     substack: "Substack's app and recommendations",
+  },
+  {
+    label: "Ads in your newsletter",
+    goldroad: "None. Not now, not at scale, not ever",
+    substack: "Sponsorships, since June 2026",
+  },
+  {
+    label: "Your comment section",
+    goldroad: "A Bluesky thread — public, and it travels",
+    substack: "Comments inside Substack",
   },
   {
     label: "Your identity",
@@ -197,6 +207,18 @@ export function LeavingSubstack() {
               paying — through the same Stripe account they use today. Substack
               takes 10% of what readers pay you. Our cut will be 0% —
               permanently, not a launch promotion.
+            </p>
+            {/* The contrast that did not exist when this page was written. In
+                June 2026 Substack began selling sponsorships into newsletters —
+                opt-in, bestsellers first, no cut during the pilot. Stated as
+                the fact it is rather than as an accusation: the argument is
+                stronger when the reader draws the conclusion, and overstating
+                a competitor is how a comparison page loses its credibility. */}
+            <p className="mt-5 max-w-[54ch] text-pretty font-body text-ink-soft text-lg md:text-xl">
+              In June 2026 Substack started selling sponsorships into writers'
+              newsletters. We won't — not now, not at scale, not later. What
+              your readers get from us is your writing, and nothing else in the
+              envelope.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3">
               <CtaLink href="/#join">Join the founding writers</CtaLink>

@@ -48,6 +48,10 @@ const FALSE_CLAIMS: ReadonlyArray<{ phrase: string; why: string }> = [
     why: "no subscriber list exists to export (corrected 2026-07-31)",
   },
   {
+    phrase: "Your domain.",
+    why: "custom domains are not built; the phrase sat in an unrendered A/B variant, which is exactly where a false claim waits until someone ships it (corrected 2026-08-07)",
+  },
+  {
     phrase: "is either your invite",
     why: "there is no invite gate — the header's sign-in link opens the product to anyone with a Bluesky account, so this told writers to wait for a door that was already open (corrected 2026-08-01)",
   },
