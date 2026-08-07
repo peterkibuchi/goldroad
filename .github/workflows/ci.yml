@@ -106,6 +106,42 @@ jobs:
       - name: Run tests
         run: pnpm test
 
-# NOTE: no `build` job here on purpose — Workers Builds compiles every push
-# (staging deploys) and every PR (preview versions); a second build on GitHub
-# runners duplicates it for zero signal.
+  # Workers Builds also compiles every push and PR, so this looks like a
+  # duplicate — and while that check was REQUIRED, it was one, which is why this
+  # job did not exist. That stopped being true: Workers Builds does not report at
+  # all on PRs that touch no source, so as a required check it blocked those
+  # forever, and it had to be dropped to advisory. Dropping it left nothing
+  # required standing between a broken build and the merge button.
+  #
+  # This job exists to be that thing. It is a GitHub Actions job on a workflow
+  # with no path filter, so it reports on EVERY pull request — which is the
+  # single property Workers Builds could not offer. The duplicated minute is the
+  # price of a check that always answers.
+  #
+  # It also catches a class the other three cannot. Lint, typecheck and tests all
+  # pass while a stylesheet imports a package that is no longer installed; only a
+  # build resolves that, and it has already happened here once.
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6.0.10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24.19.0
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Copy `.env.example` files to `.env`
+        shell: bash
+        run: find . -type f -name ".env.example" -exec sh -c 'cp "$1" "${1%.*}"' _ {} \;
+
+      - name: Build
+        run: pnpm build
