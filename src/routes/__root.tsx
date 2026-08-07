@@ -22,12 +22,31 @@ export const Route = createRootRoute({
       {
         title: env.VITE_APP_TITLE ?? "Goldroad",
       },
+      // Status-bar and splash colour, per edition. iOS 26 opens ANY site added
+      // to the Home Screen as a standalone app by default — with or without a
+      // manifest — so a reader who saved us before this existed got a chromeless
+      // window themed black by a Create-React-App default nobody chose. These
+      // two make that window ours: paper in the light edition, the black-stock
+      // near-black in the dark one, matching the palette in styles.css.
+      {
+        name: "theme-color",
+        media: "(prefers-color-scheme: light)",
+        content: "#ffffff",
+      },
+      {
+        name: "theme-color",
+        media: "(prefers-color-scheme: dark)",
+        content: "#1a1815",
+      },
     ],
     links: [
       {
         rel: "stylesheet",
         href: appCss,
       },
+      { rel: "manifest", href: "/manifest.json" },
+      // iOS ignores the manifest's icons for the Home Screen and looks for this.
+      { rel: "apple-touch-icon", href: "/logo192.png" },
     ],
   }),
   notFoundComponent: NotFoundPage,
