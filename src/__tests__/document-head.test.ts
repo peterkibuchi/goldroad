@@ -169,8 +169,15 @@ describe("documentHead — JSON-LD Article script", () => {
     const { scripts } = documentHead(loaderData);
     expect(scripts).toHaveLength(1);
     const script = scripts?.[0];
-    expect(script?.tag).toBe("script");
-    expect(script?.attrs).toEqual({ type: "application/ld+json" });
+    // FLAT props, as this router renders them. The previous shape here was
+    // `{ tag, attrs, children }`, which the router spread onto the element as
+    // literal attributes — so the tag shipped without `type`, browsers parsed
+    // the JSON-LD as JavaScript and threw on every document page, and search
+    // engines saw no structured data at all. This test asserted that broken
+    // object and passed, which is the lesson: assert what reaches the browser.
+    expect(script?.type).toBe("application/ld+json");
+    expect(script).not.toHaveProperty("tag");
+    expect(script).not.toHaveProperty("attrs");
     const jsonLd = JSON.parse(script?.children ?? "{}");
     expect(jsonLd).toMatchObject({
       "@type": "Article",

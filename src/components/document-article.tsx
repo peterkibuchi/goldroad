@@ -282,10 +282,17 @@ export function documentHead(
     // OpenGraph tags. See ~/lib/json-ld for the escaping rationale: this is
     // the one narrow, justified exception to "no dangerouslySetInnerHTML"
     // in this codebase, and it carries zero literal `<` after escaping.
+    // Flat script props, NOT { tag, attrs, children }. This router types head
+    // scripts as plain <script> props, so the nested shape spread `tag` and
+    // `attrs` onto the element as literal attributes and dropped the real ones:
+    // the rendered tag lost `type="application/ld+json"`, which made the browser
+    // treat the JSON-LD as JavaScript and throw a SyntaxError on every document
+    // page — while search engines, which only read that type, saw no structured
+    // data at all. The tests asserted the returned object rather than the
+    // rendered HTML, which is precisely why a green suite missed it.
     scripts: [
       {
-        tag: "script",
-        attrs: { type: "application/ld+json" },
+        type: "application/ld+json",
         children: jsonLdScriptContent(
           buildArticleJsonLd({
             headline: doc.title ?? "Untitled",
