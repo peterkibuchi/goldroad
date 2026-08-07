@@ -121,12 +121,29 @@ const ROWS: Row[] = [
   },
 ];
 
-/** Honest "not shipped yet" marker for roadmap rows — no vaporware. */
+/** Honest "not shipped yet" marker for roadmap rows — no vaporware. Sized to
+ * the chrome's chip floor (11.2px); 10.4px uppercase was under it. */
 function RoadmapTag() {
   return (
-    <span className="mt-1 inline-block border border-ink-soft px-1.5 py-0.5 font-display font-semibold text-[0.65rem] text-ink-soft uppercase tracking-[0.08em]">
+    <span className="mt-1 inline-block border border-ink-soft px-1.5 py-0.5 font-display font-semibold text-[0.7rem] text-ink-soft uppercase tracking-[0.08em]">
       On the roadmap
     </span>
+  );
+}
+
+/** The Goldroad side of a row, tag and all — one definition, so the table and
+ * the stacked list can never disagree about which capabilities are shipped. */
+function GoldroadValue({ row }: { row: Row }) {
+  return (
+    <>
+      {row.goldroad}
+      {row.roadmap && (
+        <>
+          <br />
+          <RoadmapTag />
+        </>
+      )}
+    </>
   );
 }
 
@@ -135,7 +152,10 @@ function ComparisonTable() {
   const head =
     "border-ink border-b-2 p-3 font-bold font-display text-xs uppercase tracking-[0.08em]";
   return (
-    <div className="mt-10 overflow-x-auto">
+    // The scroller — not just the table — is what hides below 640px: it carries
+    // the top margin, so leaving it in place with an invisible table inside
+    // would open 40px of dead space above the stacked list.
+    <div className="mt-10 hidden overflow-x-auto sm:block">
       <table className="w-full min-w-[36rem] border-collapse border-2 border-ink text-left text-sm">
         <caption className="sr-only">
           Goldroad and Substack compared, line by line.
@@ -163,13 +183,7 @@ function ComparisonTable() {
                 {row.label}
               </th>
               <td className={`${cell} text-ink`}>
-                {row.goldroad}
-                {row.roadmap && (
-                  <>
-                    <br />
-                    <RoadmapTag />
-                  </>
-                )}
+                <GoldroadValue row={row} />
               </td>
               <td className={`${cell} text-ink-soft`}>{row.substack}</td>
             </tr>
@@ -177,6 +191,56 @@ function ComparisonTable() {
         </tbody>
       </table>
     </div>
+  );
+}
+
+/**
+ * The same comparison, stacked, below 640px.
+ *
+ * A 576px table in a 272px window showed 47% of itself: the whole Substack
+ * column sat off-screen, the header didn't stick, and nothing on screen said
+ * there was more to the right. On the page whose entire argument IS the
+ * comparison, half the argument was missing. Same rows, one block each — the
+ * pattern `PostTable` already uses for the stats grid.
+ *
+ * The side labels stay ink. Twelve vermillion "Goldroad" markers would spend
+ * the page's one accent twelve times over, so the two sides are told apart by
+ * weight and colour depth, the way the table's own cells already are.
+ */
+function ComparisonList() {
+  const side =
+    "font-bold font-display text-ink-soft text-xs uppercase tracking-[0.08em]";
+  return (
+    <dl
+      // The table's caption below 640px, where the table itself is gone.
+      aria-label="Goldroad and Substack compared, line by line."
+      className="mt-10 border-ink border-t-2 sm:hidden"
+    >
+      {ROWS.map((row) => (
+        <div className="border-rule border-b py-4" key={row.label}>
+          <dt className="font-bold font-display text-ink text-sm">
+            {row.label}
+          </dt>
+          <dd className="mt-2.5 text-ink text-sm">
+            <span className={`block ${side}`}>Goldroad</span>
+            <GoldroadValue row={row} />
+          </dd>
+          <dd className="mt-2.5 text-ink-soft text-sm">
+            <span className={`block ${side}`}>Substack</span>
+            {row.substack}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function Comparison() {
+  return (
+    <>
+      <ComparisonTable />
+      <ComparisonList />
+    </>
   );
 }
 
@@ -241,7 +305,7 @@ export function LeavingSubstack() {
             Some of this is built and working today. Some of it isn't yet, and
             those rows say so — they're the ones worth reading closely.
           </p>
-          <ComparisonTable />
+          <Comparison />
           <p className="mt-8 max-w-[58ch] border-rule border-t pt-4 font-display text-ink-soft text-sm leading-normal">
             Every row above is either something you can test today or something
             marked as not built yet — and the code behind both is public.{" "}
