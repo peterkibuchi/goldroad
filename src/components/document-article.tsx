@@ -260,7 +260,18 @@ export function documentHead(
       ...(canonicalUrl ? [{ property: "og:url", content: canonicalUrl }] : []),
       // og:image must be absolute — minted from the canonical origin
       // (never the request origin), served through our own /img proxy.
-      ...(imageUrl ? [{ property: "og:image", content: imageUrl }] : []),
+      // The alt travels with the image. Without it the root's default would be
+      // inherited and a reader's assistive tech would hear a description of
+      // Goldroad on somebody else's essay.
+      ...(imageUrl
+        ? [
+            { property: "og:image", content: imageUrl },
+            {
+              property: "og:image:alt",
+              content: `Cover image for "${doc.title ?? "Untitled"}"`,
+            },
+          ]
+        : []),
     ],
     links: [
       ...(canonicalUrl && !isMirror
