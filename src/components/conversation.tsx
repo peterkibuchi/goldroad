@@ -75,7 +75,10 @@ function ReplyRow({ reply }: { reply: Reply }) {
           do NOT resolve the record's facets into links — auto-linkifying a
           stranger's URLs on someone else's reading page is not ours to do.
           `whitespace-pre-line` keeps the author's own line breaks. */}
-      <p className="mt-2 whitespace-pre-line text-base text-ink leading-relaxed">
+      {/* `wrap-anywhere` for the same reason the writer's prose has it: reply
+          text is arbitrary third-party content, and an unbroken URL in it was
+          reaching the right gutter at 320. */}
+      <p className="wrap-anywhere mt-2 whitespace-pre-line text-base text-ink leading-relaxed">
         {reply.text}
       </p>
       <p className="mt-2 font-display text-ink-soft text-xs">
