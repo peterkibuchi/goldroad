@@ -146,6 +146,13 @@ export function SiteHeader(props: MarketingHeaderProps) {
  * "Sign in" is the honest default for the uncached first frame: a signed-out
  * visitor is the common case on these pages, and a signed-in writer sees the
  * correction immediately.
+ *
+ * WHERE IT LETS YOU OUT. `/write` hosts the sign-in form as well as the editor,
+ * and its own `returnTo` defaults to the editor — right for someone who went to
+ * /write meaning to write. It is the wrong default for THIS link, which says
+ * "Sign in": clicking it asks to get into your account, not to start a blank
+ * post, and a returning writer who lands in an empty composer has to navigate
+ * again before seeing anything they own. So this one asks for /home explicitly.
  */
 function MarketingSignIn() {
   const [signedIn, setSignedIn] = useState(false);
@@ -155,7 +162,7 @@ function MarketingSignIn() {
   return (
     <a
       className="font-display font-semibold text-ink-soft text-sm underline underline-offset-4 transition-colors hover:text-ink"
-      href={signedIn ? "/home" : "/write"}
+      href={signedIn ? "/home" : "/write?returnTo=%2Fhome"}
     >
       {signedIn ? "Your publication" : "Sign in"}
     </a>

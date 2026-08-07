@@ -11,6 +11,29 @@ import {
 // No vitest globals in this repo — RTL auto-cleanup doesn't run; do it by hand.
 afterEach(cleanup);
 
+describe("SiteHeader — where the sign-in link lets you out", () => {
+  /**
+   * `/write` hosts the sign-in form as well as the editor, and its own
+   * `returnTo` defaults to the editor. That is right for someone who navigated
+   * to /write meaning to write, and wrong for a link labelled "Sign in": a
+   * returning writer who clicks it should land on something they own, not in an
+   * empty composer they then have to navigate away from.
+   */
+  it("carries a returnTo so signing in lands on /home, not the editor", () => {
+    render(<SiteHeader variant="marketing" />);
+    const href = screen
+      .getByRole("link", { name: /sign in/i })
+      .getAttribute("href");
+    expect(href).toContain("returnTo");
+    // Decoded, the destination is the writer's overview.
+    const target = new URL(
+      href ?? "",
+      "https://trygoldroad.com",
+    ).searchParams.get("returnTo");
+    expect(target).toBe("/home");
+  });
+});
+
 describe("SiteHeader", () => {
   it("signed-out: sends the wordmark home and exposes no /write path", () => {
     render(<SiteHeader variant="signed-out" />);
@@ -28,7 +51,9 @@ describe("SiteHeader", () => {
     // only. It is here now because people are being invited: a writer arriving
     // from a DM, or anyone looking the project over, needs somewhere to go.
     const signIn = screen.getByRole("link", { name: /sign in/i });
-    expect(signIn.getAttribute("href")).toBe("/write");
+    // Points at the surface that hosts the sign-in form; the destination it
+    // asks to be returned to is pinned separately above.
+    expect(signIn.getAttribute("href")).toContain("/write");
     expect(
       screen.getByRole("link", { name: /goldroad/i }).getAttribute("href"),
     ).toBe("/");
@@ -51,7 +76,7 @@ describe("SiteHeader", () => {
     // pages — and the client corrects it when the presence flag says otherwise.
     expect(
       screen.getByRole("link", { name: /sign in/i }).getAttribute("href"),
-    ).toBe("/write");
+    ).toContain("/write");
   });
 
   it("marketing: keeps the sign-in quiet, not the page's accent", () => {
