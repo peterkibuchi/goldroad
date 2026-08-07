@@ -78,6 +78,23 @@ export function buildContentSecurityPolicy(
 export function withSecurityHeaders(
   response: Response,
   csp: string | null,
+  /**
+   * The commit this bundle was built from, surfaced as `x-goldroad-version`.
+   *
+   * It rides along here rather than being set by the caller because this is the
+   * one place a response is already reconstructed with mutable headers — the
+   * early return below hands back the ORIGINAL response, whose headers may be
+   * immutable, so setting a header on the result of this function throws on
+   * every non-HTML request.
+   *
+   * HTML-only is deliberate and sufficient: the point is to let a health check
+   * tell "the site is up" apart from "the site is current", and it asks for a
+   * page. A deploy pipeline can build, upload a version and then fail to
+   * promote it, leaving production serving last week's code while every check
+   * passes because the site genuinely works — it is merely old. That happened
+   * here, and went unnoticed for a week.
+   */
+  buildSha?: string,
 ): Response {
   const type = response.headers.get("content-type") ?? "";
   if (!type.includes("text/html")) return response;
@@ -90,5 +107,6 @@ export function withSecurityHeaders(
   h.set("referrer-policy", "strict-origin-when-cross-origin");
   h.set("cross-origin-opener-policy", "same-origin");
   if (csp) h.set("content-security-policy", csp);
+  if (buildSha) h.set("x-goldroad-version", buildSha);
   return res;
 }
