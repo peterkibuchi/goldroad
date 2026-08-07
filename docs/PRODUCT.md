@@ -24,7 +24,11 @@ a tradeoff that was previously unavoidable.
 
 1. **Writers already on Bluesky going long-form.** They have an atproto identity and an
    audience; they need a publication, not another social network. Distribution comes free
-   by construction — `standard.site` records render as native cards in the timeline.
+   by construction — Bluesky detects `standard.site` records on a shared URL and
+   renders an *enhanced* link card from them. Worth stating precisely: it is card
+   enrichment, not native long-form rendering, and every app emitting the shared
+   lexicon gets it. The differentiator is what the record makes portable, not the
+   card.
 2. **Writers leaving a subscription platform.** Higher stakes: their livelihood rides on
    the migration. They arrive through `/leaving-substack` and the import tools, and they
    are the reason the money machinery has to be boring and correct before it ships.
