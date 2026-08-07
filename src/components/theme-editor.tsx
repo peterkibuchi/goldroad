@@ -276,10 +276,12 @@ export function ThemeEditor({
             <div className="flex items-center gap-3" key={field}>
               {/* The native picker is the whole control: it carries its own
                   hex entry and eyedropper on every platform we support, so
-                  there is no second field to keep in sync. */}
+                  there is no second field to keep in sync. Which also makes it
+                  the only target — the label beside it opens the picker but is
+                  a ~20px run of text, so the swatch itself has to clear 44px. */}
               <input
                 aria-describedby={`${field}-help`}
-                className="h-10 w-10 shrink-0 cursor-pointer border border-rule bg-paper p-1"
+                className="size-11 shrink-0 cursor-pointer border border-rule bg-paper p-1"
                 id={field}
                 name={field}
                 onChange={(event) =>

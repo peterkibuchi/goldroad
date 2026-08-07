@@ -544,6 +544,61 @@ describe("AppShell — signed-in (command rail)", () => {
   });
 });
 
+/**
+ * Touch targets on the chrome, which is where the smallest ones were.
+ *
+ * docs/DESIGN.md: 44px (`min-h-11`), or `min-h-9` plus a negative margin inside
+ * a dense row. Footer links were 15–20px tall on every surface in the app,
+ * stacked 4–8px apart; the marketing header's way in was a 20px run of text; the
+ * rail's identity links were 24px from 768px up, which includes a portrait
+ * tablet. Class strings, because jsdom lays nothing out — the token is the only
+ * thing there is to hold, and it is the thing that regressed.
+ */
+describe("chrome touch targets", () => {
+  it("marketing header: both controls clear 44px", () => {
+    render(<SiteHeader variant="marketing" />);
+    const signIn = screen.getByRole("link", { name: /sign in/i });
+    const appearance = screen.getByRole("button", {
+      name: /switch to the (dark|light) edition/i,
+    });
+    expect(signIn.className).toContain("min-h-11");
+    expect(appearance.className).toContain("min-h-11");
+    // "Dark" is 34px of text, so the width comes from padding — pulled back out
+    // with a negative margin so the hit area doesn't move its neighbours.
+    expect(appearance.className).toContain("px-2");
+    expect(appearance.className).toContain("-mx-2");
+  });
+
+  it("footer links: the floor at base, the desktop rhythm back at sm", () => {
+    render(<SiteFooter variant="marketing" />);
+    const links = screen.getAllByRole("link");
+    expect(links.length).toBeGreaterThan(5);
+    for (const link of links) {
+      expect(link.className, link.textContent ?? "").toContain("min-h-11");
+      // A footer band is one row of text links: 44px at every width grows it by
+      // 24px on desktop, for a target no mouse ever misses.
+      expect(link.className, link.textContent ?? "").toContain("sm:min-h-0");
+    }
+  });
+
+  it("rail identity: the same targets the mobile strip already gave them", () => {
+    render(
+      <AppShell header={{ ident: "writer.bsky.social", variant: "signed-in" }}>
+        <p>content</p>
+      </AppShell>,
+    );
+    const targets = [
+      ...screen.getAllByRole("link", { name: "Public page" }),
+      ...screen.getAllByRole("button", { name: /sign out/i }),
+    ];
+    // Two frames render — the rail and the mobile top strip — and both pairs
+    // count. The rail's carry a negative margin instead of growing the cluster.
+    expect(targets).toHaveLength(4);
+    for (const target of targets)
+      expect(target.className, target.textContent ?? "").toContain("min-h-11");
+  });
+});
+
 describe("system pages", () => {
   it("404 names itself and routes back to the front page", () => {
     render(<NotFoundPage />);

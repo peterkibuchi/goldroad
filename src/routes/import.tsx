@@ -947,7 +947,7 @@ export function SourcePicker({
 
 function Badge({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-block border border-ink-soft px-1.5 py-0.5 font-display font-semibold text-[0.65rem] text-ink-soft uppercase tracking-[0.08em]">
+    <span className="inline-block border border-ink-soft px-1.5 py-0.5 font-display font-semibold text-[0.7rem] text-ink-soft uppercase tracking-[0.08em]">
       {children}
     </span>
   );
