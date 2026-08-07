@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import { env } from "#/env";
 import { ErrorPage, NotFoundPage } from "~/components/system-pages";
 import { APPEARANCE_KEY } from "~/lib/appearance";
+import { CANONICAL_ORIGIN } from "~/lib/origin";
 import { initPostHog } from "~/lib/posthog";
 import appCss from "../styles.css?url";
 
@@ -22,6 +23,24 @@ export const Route = createRootRoute({
       {
         title: env.VITE_APP_TITLE ?? "Goldroad",
       },
+      // The default social card, inherited by every page that does not set its
+      // own. Without og:image a shared link renders as a bare text card on
+      // Bluesky, X, LinkedIn, Slack and iMessage — which would have made every
+      // launch post a live demonstration of the opposite of the pitch, since
+      // the landing hero argues that Goldroad posts arrive as rich cards rather
+      // than naked links. twitter:card is separate on purpose: X reads og: tags
+      // for the title and description but needs this one for the card TYPE, and
+      // its default is a small square thumbnail.
+      { property: "og:site_name", content: "Goldroad" },
+      { property: "og:image", content: `${CANONICAL_ORIGIN}/og.png` },
+      { property: "og:image:width", content: "1200" },
+      { property: "og:image:height", content: "630" },
+      {
+        property: "og:image:alt",
+        content:
+          "Goldroad — writer-owned publishing. Your posts, your readers, your name, in an account you control.",
+      },
+      { name: "twitter:card", content: "summary_large_image" },
       // Status-bar and splash colour, per edition. iOS 26 opens ANY site added
       // to the Home Screen as a standalone app by default — with or without a
       // manifest — so a reader who saved us before this existed got a chromeless
