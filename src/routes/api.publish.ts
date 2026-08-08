@@ -435,9 +435,16 @@ async function publishDocument({
    * with neither, which is a blank editor — the words survive in the autosaved
    * draft, but the writer has no way to see that and every reason to assume
    * the opposite.
+   *
+   * Only a WELL-FORMED rkey counts as an edit. /write's validator drops an
+   * `?edit=` it cannot parse, so redirecting with a malformed one produces the
+   * very blank editor this exists to prevent — and silently discards a
+   * perfectly good draft id that was sitting right there.
    */
   const reject = (error: string): Response =>
-    editRkey ? backToWrite(error, editRkey) : backToDraft(draftId, error);
+    TID_RE.test(editRkey)
+      ? backToWrite(error, editRkey)
+      : backToDraft(draftId, error);
 
   if (!title) return reject("missing_title");
   if (

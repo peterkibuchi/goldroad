@@ -827,5 +827,21 @@ describe("POST /api/publish — intent=document, a refusal hands the words back"
   it("ignores a draft id that is not one", async () => {
     const res = await publish({ title: "  ", draftId: "../../etc/passwd" });
     expect(draftOf(res)).toBeNull();
+    // And nothing of it reaches the header it was refused from.
+    expect(res.headers.get("location") ?? "").not.toContain("passwd");
+  });
+
+  it("falls back to the draft when the edit key is malformed", async () => {
+    // /write drops an `?edit=` it cannot parse, so treating any non-empty rkey
+    // as an edit target spends the redirect on a key that will be thrown away
+    // — landing the writer on the blank editor while a usable draft id was
+    // sitting in the same request.
+    const res = await publish({
+      title: "  ",
+      rkey: "not-a-tid",
+      draftId: DRAFT_ID,
+    });
+    expect(location(res).searchParams.get("edit")).toBeNull();
+    expect(draftOf(res)).toBe(DRAFT_ID);
   });
 });
