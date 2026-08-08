@@ -28,6 +28,7 @@ import {
 } from "~/lib/inline-images";
 import { readLiveSessionDid } from "~/lib/live-session";
 import {
+  MAX_BODY_LENGTH,
   MAX_DEK_LENGTH,
   RECOMMENDED_DEK_LENGTH,
   TID_RE,
@@ -67,7 +68,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   signin_failed: "Sign-in didn't complete. Try again.",
   session_expired: "Your session expired — sign in again.",
   missing_title: "Give it a title before publishing.",
-  too_long: "That draft is too long for a single post right now.",
+  too_long:
+    "That's longer than one post can hold — the limit is about 100,000 characters. Nothing here is lost: trim it down, or split it into two posts.",
   not_found: "That post couldn't be loaded, so you're starting a new one.",
   not_editable:
     "That post was written in another app with a rich content format Goldroad can't edit yet — edit it where it was written.",
@@ -837,12 +839,21 @@ export function Compose({
   draft,
   resumed,
   error,
+  draftError,
   unscheduled,
   reconnectHandle,
 }: {
   draft: Draft | null;
   resumed: ResumedDraft | null;
   error: string | undefined;
+  /**
+   * Trouble loading the draft named by `?draft=`, reported ALONGSIDE `error`
+   * rather than behind it. A refused publish now redirects here carrying both
+   * — and the case where the row it points at has since vanished is exactly
+   * the one the writer most needs told, so letting the publish error win would
+   * silence the more important of the two.
+   */
+  draftError?: string | undefined;
   /** A schedule was just cancelled — confirmed in words, not by absence. */
   unscheduled?: boolean;
   /** Handle for the one-click re-connect form on scope errors. */
@@ -854,6 +865,21 @@ export function Compose({
   // fills it, the publish form submits it (the record must reference every
   // blob it uses — see ~/lib/inline-images).
   const [imageStore] = useState(createInlineImageStore);
+  /**
+   * Publish has been pressed and the form has not navigated yet. `publishingRef`
+   * already made a second press a no-op, but silently: the click handler
+   * suppresses the native submit and returns, so the writer saw nothing happen
+   * and pressed again. The window used to be a microtask; it now spans a draft
+   * flush, which is a real network round-trip on a possibly very long post.
+   */
+  const [submitting, setSubmitting] = useState(false);
+  /**
+   * A refusal we can make without navigating. Everything the server refuses
+   * costs a full-page redirect, which is affordable only because the words are
+   * safe in the draft row — so the one refusal the draft row CANNOT hold has
+   * to be caught here instead.
+   */
+  const [localError, setLocalError] = useState<string | undefined>(undefined);
   // Re-rendered only when the count actually changes, so counting on every
   // keystroke costs nothing (React bails out on an identical value).
   const [missingAlt, setMissingAlt] = useState(0);
@@ -874,6 +900,10 @@ export function Compose({
   const draftIdInputRef = useRef<HTMLInputElement>(null);
   const imagesInputRef = useRef<HTMLInputElement>(null);
   const editing = draft !== null;
+  // Two words for one button, kept out of the JSX so the label stays a single
+  // readable expression rather than a nested ternary.
+  const primaryLabel = editing ? "Save changes" : "Publish";
+  const primaryBusyLabel = editing ? "Saving…" : "Publishing…";
   /** Display host for the mirror-adoption notice ("writer.substack.com"). */
   let mirrorHost: string | null = null;
   if (draft?.mirror?.sourceUrl) {
@@ -936,9 +966,11 @@ export function Compose({
    * `force` ignores the dirty flag, which the scheduling flow needs: a writer
    * can resume a draft, change nothing, and schedule it, and the stored row
    * still has to match what is on screen (an older draft may predate the
-   * markdown projection entirely). Publishing forces too, for the same reason
-   * one step removed: a rejected publish now lands back on this draft, so the
-   * stored row is what the writer gets back.
+   * markdown projection entirely). Publishing forces for the same reason one
+   * step removed — a rejected publish lands back on this draft, so the stored
+   * row is what the writer gets handed back — but only when there is something
+   * to flush: an untouched draft is already current, and the publish carries
+   * the words regardless.
    */
   async function runSave(force = false): Promise<string | null> {
     if (editing || savingRef.current) return null;
@@ -972,11 +1004,22 @@ export function Compose({
         markdown,
         inlineImages,
       });
-      if (res.status === 404 && draftIdRef.current && !publishingRef.current) {
-        // The draft was deleted elsewhere (another tab, the dashboard) —
-        // recreate it rather than lose what's on screen. Never during a
-        // publish: there the deletion IS the completion, and recreating
-        // would resurrect the just-published draft.
+      if (
+        res.status === 404 &&
+        draftIdRef.current &&
+        (force || !publishingRef.current)
+      ) {
+        // The draft was deleted elsewhere (another tab, the dashboard, a
+        // scheduled publish that fired) — recreate it rather than lose what's
+        // on screen.
+        //
+        // The exception is an UNFORCED save arriving during a publish: there
+        // the deletion IS the completion, and recreating would resurrect the
+        // draft the publish just consumed. A forced save is the opposite case
+        // — it runs BEFORE the form is submitted, so the server has seen
+        // nothing yet and a 404 can only mean someone else removed the row.
+        // Refusing to recreate there would drop the words this flush exists
+        // to preserve.
         draftIdRef.current = null;
         res = await postDraft({
           title,
@@ -1100,12 +1143,33 @@ export function Compose({
     event.preventDefault();
     if (!editor || !bodyRef.current || coverBusy || publishingRef.current)
       return;
+
+    // Refuse an over-length body HERE, before anything navigates. The server
+    // refuses it too, but by then the only copy of these words is this DOM:
+    // the draft row cannot hold them either (its markdown column shares this
+    // exact cap), so the flush below is guaranteed to fail and the redirect
+    // would hand back the last version that DID fit — silently older, and
+    // presented as if it were the post. Staying put keeps every word on screen
+    // where the writer can cut it down.
+    const markdown = editor.blocksToMarkdownLossy(editor.document);
+    if (markdown.length > MAX_BODY_LENGTH) {
+      setLocalError("too_long");
+      return;
+    }
+    setLocalError(undefined);
+
     // Publishing supersedes autosave: stop the timer and hand the draft id to
     // the server, which removes the completed draft after the record lands.
     publishingRef.current = true;
+    setSubmitting(true);
     clearSaveTimer();
     const form = event.currentTarget;
     const submit = () => {
+      // A flush that landed saved-and-dirty re-arms the debounce in runSave's
+      // finally. Harmless today only because the timer's own save is unforced
+      // and would bail on publishingRef — clear it rather than leave a live
+      // timer racing a navigation on that technicality.
+      clearSaveTimer();
       if (draftIdInputRef.current)
         draftIdInputRef.current.value = draftIdRef.current ?? "";
       if (bodyRef.current)
@@ -1146,7 +1210,8 @@ export function Compose({
 
   return (
     <main className="mx-auto w-full max-w-2xl px-6 py-10">
-      <ErrorNotice code={error} />
+      <ErrorNotice code={localError ?? error} />
+      {draftError !== error && <ErrorNotice code={draftError} />}
       {unscheduled && (
         <Notice tone="info">
           Schedule cancelled — this is a draft again, and nothing will publish
@@ -1309,11 +1374,11 @@ export function Compose({
         <div className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-3 border-rule border-t pt-6">
           <button
             className="min-h-11 cursor-pointer bg-ink px-8 py-2.5 font-bold font-display text-base text-paper transition-colors hover:bg-spot disabled:cursor-default disabled:opacity-40"
-            disabled={!editor || coverBusy}
+            disabled={!editor || coverBusy || submitting}
             form="publish-form"
             type="submit"
           >
-            {editing ? "Save changes" : "Publish"}
+            {submitting ? primaryBusyLabel : primaryLabel}
           </button>
           <p className="font-display text-ink-soft text-xs leading-relaxed">
             {editing
@@ -1326,7 +1391,7 @@ export function Compose({
             date picker there would imply otherwise. */}
         {!editing && (
           <SchedulePanel
-            disabled={!editor || coverBusy}
+            disabled={!editor || coverBusy || submitting}
             draftId={resumed?.id ?? null}
             existing={resumed?.schedule ?? null}
             prepare={prepareForSchedule}
@@ -1363,7 +1428,8 @@ function WritePage() {
           duplicate posts). */}
       <Compose
         draft={draft}
-        error={error ?? draftError}
+        draftError={draftError}
+        error={error}
         key={draft?.rkey ?? resumed?.id ?? "new"}
         reconnectHandle={viewer.handle}
         resumed={resumed}
