@@ -52,6 +52,15 @@ export const hiddenContent = sqliteTable("hidden_content", {
  * for follow-up. Same anti-abuse posture as the waitlist: honeypot + validation
  * (a Turnstile token verification point is left for the owner). A human triages
  * these against the hidden_content list.
+ *
+ * `notified_at` is the alert watermark (~/lib/reports): stamped only once the
+ * hourly cron's alert POST has actually succeeded, so a dropped webhook leaves
+ * the row unnotified and the next tick retries it. A column rather than a
+ * `created_at > now - 1h` window because a window double-alerts on an early
+ * tick and silently drops reports on a missed one. Rows that predate the column
+ * stay NULL and alert once on the first tick after deploy — a duplicate ping
+ * about a report already triaged is cheap; a takedown nobody was told about is
+ * the thing this exists to prevent.
  */
 /**
  * Writer drafts. Drafts are PRIVATE, so they stay server-side in our D1,
@@ -342,4 +351,5 @@ export const reports = sqliteTable("reports", {
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),
+  notifiedAt: integer("notified_at", { mode: "timestamp" }),
 });

@@ -61,9 +61,10 @@ leaves alone when a step fails, and the honesty rules (an absent number is never
 rendered as a zero).
 
 An hourly Workers cron re-checks core invariants against the live origin and the
-freshness of the nightly off-platform database export. If you self-host, set
-`WEBHOOK_URL` and it posts failures there; without it the check still runs and logs,
-which is quieter than you probably want (`src/lib/scheduled.ts`).
+freshness of the nightly off-platform database export, and tells a human about abuse
+reports nobody has triaged yet. If you self-host, set `WEBHOOK_URL` and it posts there;
+without it the checks still run and log, which is quieter than you probably want
+(`src/lib/scheduled.ts`).
 
 ## Stack
 

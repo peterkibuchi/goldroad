@@ -31,9 +31,10 @@
   "main": "src/server.ts",
   // ONE hourly cron (free tier: ≤5 triggers/account) multiplexing every
   // scheduled job: publish due scheduled posts, purge expired oauth_kv state
-  // rows, sample follower counts, check the backup heartbeat, and self-check
-  // core invariants — alerting via the optional WEBHOOK_URL secret. Adding a
-  // job means adding it to the handler, NOT adding a trigger.
+  // rows, sample follower counts, check the backup heartbeat, alert on new
+  // abuse reports, and self-check core invariants — alerting via the optional
+  // WEBHOOK_URL secret. Adding a job means adding it to the handler, NOT
+  // adding a trigger.
   // Handler: scheduled() in src/server.ts → runScheduled() in ~/lib/scheduled.
   "triggers": {
     "crons": ["0 * * * *"]
