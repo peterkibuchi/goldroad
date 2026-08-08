@@ -1,5 +1,5 @@
 /**
- * Workers Cron body (free tier: up to 5 triggers/account). FIVE jobs, run
+ * Workers Cron body (free tier: up to 5 triggers/account). SIX jobs, run
  * hourly from ONE trigger:
  *
  * 1. Publish scheduled posts that are due (~/lib/scheduled-posts). It runs
@@ -34,7 +34,14 @@
  *    self-report: a backup job that has silently stopped looks exactly like one
  *    that is working, so the cron watches the heartbeat CI stamps and folds any
  *    complaint into the same alert path as the self-check below.
- * 5. A self-check of core invariants (audit #6). Logs are on but nobody is
+ * 5. Alert on abuse reports nobody has been told about (~/lib/reports). It
+ *    belongs here and not inline in /api/report because that endpoint is
+ *    unauthenticated: an inline webhook would let anyone turn a spam flood into
+ *    an alert flood. Batching bounds the alert volume by this cron instead. It
+ *    runs ahead of the self-check because a takedown request going unread is a
+ *    legal exposure, while a missed self-check hour is a backstop whose primary
+ *    is the GitHub-Action canary.
+ * 6. A self-check of core invariants (audit #6). Logs are on but nobody is
  *    paged; this POSTs failures to WEBHOOK_URL if that secret is set, and is a
  *    silent no-op otherwise. The GitHub-Action canary remains the primary
  *    alerting path — this is a cheap always-on backstop.
@@ -50,6 +57,7 @@ import {
   type SnapshotPassResult,
 } from "~/lib/follower-snapshots";
 import { CANONICAL_ORIGIN } from "~/lib/origin";
+import { d1ReportStore, runReportAlertPass } from "~/lib/reports";
 import {
   d1ScheduledPostStore,
   runScheduledPublishPass,
@@ -150,9 +158,9 @@ function snapshotFailures(result: SnapshotPassResult): string[] {
 }
 
 /** The cron handler body: publish what's due, purge, sample follower counts,
- * check the backup heartbeat, self-check, alert. Never throws (a cron that
- * throws just retries; we'd rather log and move on), and each job is
- * independent — a failure in one still leaves the others run. */
+ * check the backup heartbeat, alert on new abuse reports, self-check, alert.
+ * Never throws (a cron that throws just retries; we'd rather log and move on),
+ * and each job is independent — a failure in one still leaves the others run. */
 export async function runScheduled(env: CronEnv): Promise<void> {
   const db = drizzle(env.DB);
   // Scheduled posts first — the one job whose lateness a reader can see. The
@@ -182,6 +190,21 @@ export async function runScheduled(env: CronEnv): Promise<void> {
   // site can't crowd out the cheapest job in the pass.
   const backup = await runBackupCheck({ store: d1BackupStore(db) });
   console.log("backup check", backup);
+  // Abuse reports go out on their own POST rather than joining the failure list
+  // below: a takedown request is a queue item to work through, not an invariant
+  // that broke, and it must not be suppressed by the "only alert if something
+  // is wrong" rule the self-check path applies. Guarded like the purge above —
+  // the pass is written never to throw, and the belt-and-braces catch keeps a
+  // surprise inside it from costing the self-check its hour.
+  try {
+    const alerted = await runReportAlertPass({
+      store: d1ReportStore(db),
+      webhook: env.WEBHOOK_URL,
+    });
+    console.log("abuse report alert pass", alerted);
+  } catch (err) {
+    console.error("abuse report alert pass failed", err);
+  }
   // A stale backup is a real invariant failure, so it rides the self-check's
   // alert path rather than getting a second, parallel one.
   const failures = [

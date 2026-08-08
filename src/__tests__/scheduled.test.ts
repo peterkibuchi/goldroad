@@ -43,6 +43,17 @@ const backup = vi.hoisted(() => ({
 }));
 vi.mock("~/lib/backup", () => backup);
 
+const reports = vi.hoisted(() => ({
+  d1ReportStore: vi.fn(() => ({ reportStore: true })),
+  runReportAlertPass: vi.fn(async () => ({
+    found: 0,
+    sent: false,
+    notified: 0,
+    capped: false,
+  })),
+}));
+vi.mock("~/lib/reports", () => reports);
+
 import {
   purgeExpiredOauthKv,
   reportFailures,
@@ -64,6 +75,13 @@ beforeEach(() => {
   });
   backup.d1BackupStore.mockReturnValue({ backupStore: true });
   backup.runBackupCheck.mockResolvedValue({ failures: [], pruned: true });
+  reports.d1ReportStore.mockReturnValue({ reportStore: true });
+  reports.runReportAlertPass.mockResolvedValue({
+    found: 0,
+    sent: false,
+    notified: 0,
+    capped: false,
+  });
   scheduledPosts.d1ScheduledPostStore.mockReturnValue({ scheduleStore: true });
   scheduledPublish.cronPublisher.mockReturnValue({ publisher: true });
   scheduledPosts.runScheduledPublishPass.mockResolvedValue({
@@ -139,7 +157,7 @@ describe("selfCheck — core invariants (audit #6)", () => {
   });
 });
 
-describe("runScheduled — five jobs, one hourly trigger, none able to sink another", () => {
+describe("runScheduled — six jobs, one hourly trigger, none able to sink another", () => {
   function healthyOrigin() {
     vi.stubGlobal(
       "fetch",
@@ -330,6 +348,51 @@ describe("runScheduled — five jobs, one hourly trigger, none able to sink anot
 
     const urls = spy.mock.calls.map((call) => String(call[0]));
     expect(urls.some((u) => u.includes("hook.example"))).toBe(false);
+  });
+
+  it("hands the abuse-report pass its store and the alert webhook", async () => {
+    healthyOrigin();
+    quiet();
+
+    await runScheduled(envWithHook());
+
+    expect(reports.d1ReportStore).toHaveBeenCalledTimes(1);
+    expect(reports.runReportAlertPass).toHaveBeenCalledWith({
+      store: { reportStore: true },
+      webhook: "https://hook.example",
+    });
+  });
+
+  it("still self-checks and alerts when the abuse-report pass throws", async () => {
+    // That pass is written never to throw; this guards it anyway, because a
+    // surprise inside it must not cost the jobs after it their hour.
+    const posts: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes("hook.example")) {
+          posts.push(String(init?.body));
+          return new Response(null);
+        }
+        return url.includes("client-metadata")
+          ? Response.json({
+              client_id: "https://trygoldroad.com/oauth/client-metadata.json",
+            })
+          : new Response("<html>Goldroad</html>");
+      }),
+    );
+    quiet();
+    reports.runReportAlertPass.mockRejectedValue(new Error("D1 exploded"));
+    backup.runBackupCheck.mockResolvedValue({
+      failures: ["newest backup is 73h old (max 48h)"],
+      pruned: true,
+    });
+
+    await runScheduled(envWithHook());
+
+    expect(posts).toHaveLength(1);
+    expect(posts[0]).toContain("73h old");
   });
 });
 
