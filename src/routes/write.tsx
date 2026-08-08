@@ -30,6 +30,7 @@ import { readLiveSessionDid } from "~/lib/live-session";
 import {
   MAX_BODY_LENGTH,
   MAX_DEK_LENGTH,
+  parseInlineImagesField,
   RECOMMENDED_DEK_LENGTH,
   TID_RE,
   writerDek,
@@ -122,6 +123,18 @@ type ResumedDraft = {
    * serializable); the client parses it and falls back to an empty editor
    * when it's unreadable. */
   blocksJson: string;
+  /**
+   * The blob references for body images already uploaded for this draft, as
+   * the publish form's `images` field stores them.
+   *
+   * Carried because the image store is per-mount: a resumed draft that uploads
+   * nothing this session would otherwise submit an EMPTY field, the record
+   * would reference none of its own pictures, and the PDS would reclaim them —
+   * a post published with permanently broken images. The cron publisher reads
+   * this same column for the same reason; the browser was the one path that
+   * didn't.
+   */
+  inlineImages: string;
   /** This draft came in through a feed/archive import, so publishing it will
    * copy its remote body images into the writer's own repo. */
   imported: boolean;
@@ -188,6 +201,7 @@ const getWriteContext = createServerFn({ method: "GET" })
             title: row.title,
             dek: row.dek,
             blocksJson: row.content,
+            inlineImages: row.inlineImages,
             imported: importRow !== undefined,
             schedule: pending
               ? { id: pending.id, dueAt: pending.dueAt.toISOString() }
@@ -864,7 +878,14 @@ export function Compose({
   // Body images uploaded during this session. One store per mount: the editor
   // fills it, the publish form submits it (the record must reference every
   // blob it uses — see ~/lib/inline-images).
-  const [imageStore] = useState(createInlineImageStore);
+  // Seeded from the draft's stored references, so a resumed session that
+  // uploads nothing still publishes a record that points at its own pictures.
+  const [imageStore] = useState(() => {
+    const store = createInlineImageStore();
+    if (resumed?.inlineImages)
+      store.adopt(parseInlineImagesField(resumed.inlineImages));
+    return store;
+  });
   /**
    * Publish has been pressed and the form has not navigated yet. `publishingRef`
    * already made a second press a no-op, but silently: the click handler

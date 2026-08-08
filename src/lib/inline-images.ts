@@ -132,6 +132,25 @@ export function createInlineImageStore() {
       blobs.set(uploaded.url, uploaded.blob);
       if (previewUrl) previews.set(uploaded.url, previewUrl);
     },
+    /**
+     * Take on the blobs a previous session already uploaded for this draft.
+     *
+     * The store is per-mount, so without this a resumed draft submits an empty
+     * `images` field and the record references none of its own pictures — the
+     * PDS then reclaims them, and the post goes live with images that can
+     * never come back. Keyed by cid rather than by url because that is what
+     * the stored form carries and what the server matches on; a re-upload of
+     * the same bytes therefore collapses onto one entry instead of two.
+     */
+    adopt(stored: readonly unknown[]) {
+      for (const blob of stored) {
+        const cid =
+          typeof blob === "object" && blob !== null
+            ? (blob as { ref?: { $link?: unknown } }).ref?.$link
+            : undefined;
+        if (typeof cid === "string" && !blobs.has(cid)) blobs.set(cid, blob);
+      }
+    },
     /** What the editor should DISPLAY for a stored URL. */
     display(url: string): string {
       return previews.get(url) ?? url;

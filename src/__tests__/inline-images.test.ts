@@ -98,6 +98,41 @@ describe("the session store", () => {
       "/img/did%3Aplc%3Aother/x",
     );
   });
+
+  /**
+   * The store lives for one mount. A writer who resumes a draft, changes a
+   * word and publishes uploads nothing — so without adoption the `images`
+   * field goes up empty, the record references none of its own pictures, and
+   * the PDS reclaims blobs nothing points at. The post is then live with
+   * images that cannot be restored.
+   */
+  it("adopts the blobs a previous session uploaded for this draft", () => {
+    const store = createInlineImageStore();
+    store.adopt([BLOB]);
+    expect(JSON.parse(store.toField())).toEqual([BLOB]);
+    expect(store.size).toBe(1);
+  });
+
+  it("does not duplicate an adopted blob that is re-uploaded", () => {
+    const store = createInlineImageStore();
+    store.adopt([BLOB]);
+    store.adopt([BLOB]);
+    expect(JSON.parse(store.toField())).toEqual([BLOB]);
+  });
+
+  it("ignores stored entries that carry no blob reference", () => {
+    const store = createInlineImageStore();
+    store.adopt([null, "junk", {}, { ref: {} }, { ref: { $link: 7 } }]);
+    expect(store.toField()).toBe("");
+  });
+
+  it("keeps this session's uploads alongside the adopted ones", () => {
+    const store = createInlineImageStore();
+    store.adopt([BLOB]);
+    const fresh = { ...BLOB, ref: { $link: "bafyfresh" } };
+    store.remember({ url: "/img/did/bafyfresh", blob: fresh });
+    expect(JSON.parse(store.toField())).toHaveLength(2);
+  });
 });
 
 describe("the editor's uploadFile handler", () => {
