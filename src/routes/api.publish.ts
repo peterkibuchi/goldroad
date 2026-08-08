@@ -427,13 +427,25 @@ async function publishDocument({
   // exactly as it was: the first ~300 characters of the body.
   const dek = String(form.get("dek") ?? "").trim();
   const editRkey = String(form.get("rkey") ?? "");
-  if (!title) return backToWrite("missing_title", editRkey || undefined);
+  const draftId = String(form.get("draftId") ?? "");
+
+  /**
+   * Send a rejected publish back to wherever the writer's words still are: an
+   * edit resumes by rkey, a new composition by draft id. Both beat `/write`
+   * with neither, which is a blank editor — the words survive in the autosaved
+   * draft, but the writer has no way to see that and every reason to assume
+   * the opposite.
+   */
+  const reject = (error: string): Response =>
+    editRkey ? backToWrite(error, editRkey) : backToDraft(draftId, error);
+
+  if (!title) return reject("missing_title");
   if (
     title.length > MAX_TITLE_LENGTH ||
     body.length > MAX_BODY_LENGTH ||
     dek.length > MAX_DEK_LENGTH
   )
-    return backToWrite("too_long", editRkey || undefined);
+    return reject("too_long");
 
   // Blobs the editor uploaded for this draft's body images (intent=uploadImage
   // handed them back). Untrusted: the record builders keep only the ones the
@@ -451,22 +463,16 @@ async function publishDocument({
   const removeCover = form.get("removeCover") === "1";
   let coverBlob: CoverImageBlob | undefined;
   if (coverFile instanceof File && coverFile.size > 0) {
-    if (!isAllowedImageMime(coverFile.type))
-      return backToWrite("cover_type", editRkey || undefined);
-    if (coverFile.size > MAX_IMAGE_BLOB_BYTES)
-      return backToWrite("cover_too_large", editRkey || undefined);
+    if (!isAllowedImageMime(coverFile.type)) return reject("cover_type");
+    if (coverFile.size > MAX_IMAGE_BLOB_BYTES) return reject("cover_too_large");
     const uploaded = await rpc.post("com.atproto.repo.uploadBlob", {
       headers: { "content-type": coverFile.type },
       input: coverFile,
     });
     if (!uploaded.ok) {
-      if (isInsufficientScope(uploaded))
-        return backToWrite("cover_scope", editRkey || undefined);
+      if (isInsufficientScope(uploaded)) return reject("cover_scope");
       console.error("uploadBlob failed", uploaded.status, uploaded.data);
-      return backToWrite(
-        `publish_failed:${uploaded.data.error}`,
-        editRkey || undefined,
-      );
+      return reject(`publish_failed:${uploaded.data.error}`);
     }
     coverBlob = uploaded.data.blob;
   }
@@ -536,7 +542,6 @@ async function publishDocument({
   // imported posts publish with their original date). Read is best-effort:
   // if D1 flakes, the post publishes as a normal now-dated post rather than
   // failing the writer's publish.
-  const draftId = String(form.get("draftId") ?? "");
   const [importRow] = isDraftId(draftId)
     ? await selectImportItemByDraft(drizzle(env.DB), did, draftId).catch(
         () => [],
@@ -624,7 +629,7 @@ async function publishDocument({
   // @atcute/client does not throw on XRPC errors — check ok explicitly.
   if (!res.ok) {
     console.error("createRecord failed", res.status, res.data);
-    return backToWrite(`publish_failed:${res.data.error}`);
+    return reject(`publish_failed:${res.data.error}`);
   }
 
   // Import ledger write-back: record the rkey this item published under —

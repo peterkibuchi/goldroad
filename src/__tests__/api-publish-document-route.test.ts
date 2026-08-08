@@ -732,3 +732,100 @@ describe("POST /api/publish — intent=document, refusals write nothing", () => 
     expect(posted).toHaveLength(0);
   });
 });
+
+/**
+ * Every refusal above already leaves the words intact in D1. That is not the
+ * same as the writer getting them back: a refusal that redirects to bare
+ * `/write` opens an EMPTY editor, and the writer — who has no way to know a
+ * draft row survived — reasonably concludes the post is gone. "Saved, and no
+ * comfort at all."
+ *
+ * So the redirect has to name where the words are. An edit resumes by rkey (a
+ * published record); a new composition resumes by draft id.
+ */
+describe("POST /api/publish — intent=document, a refusal hands the words back", () => {
+  const draftOf = (res: Response) => location(res).searchParams.get("draft");
+
+  it("returns a new composition to its draft, not to a blank editor", async () => {
+    const res = await publish({ title: "  ", draftId: DRAFT_ID });
+    expect(errorFrom(res)).toBe("missing_title");
+    expect(draftOf(res)).toBe(DRAFT_ID);
+  });
+
+  it("returns the draft when the post is over the record's limits", async () => {
+    const res = await publish({
+      body: "b".repeat(MAX_BODY_LENGTH + 1),
+      draftId: DRAFT_ID,
+    });
+    expect(errorFrom(res)).toBe("too_long");
+    expect(draftOf(res)).toBe(DRAFT_ID);
+  });
+
+  it("returns the draft when the cover is refused", async () => {
+    const svg = new File([new Uint8Array(8)], "cover.svg", {
+      type: "image/svg+xml",
+    });
+    const res = await publish({ draftId: DRAFT_ID, cover: svg });
+    expect(errorFrom(res)).toBe("cover_type");
+    expect(draftOf(res)).toBe(DRAFT_ID);
+  });
+
+  it("returns the draft when the cover upload itself fails", async () => {
+    replies.set("com.atproto.repo.uploadBlob", {
+      ok: false,
+      status: 502,
+      data: { error: "UpstreamFailure" },
+    });
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await publish({ draftId: DRAFT_ID, cover: png() });
+    quiet.mockRestore();
+    expect(errorFrom(res)).toBe("publish_failed:UpstreamFailure");
+    expect(draftOf(res)).toBe(DRAFT_ID);
+  });
+
+  // The worst of the set before this change: the record write is the failure a
+  // writer is most likely to actually hit, it happens after they have watched
+  // the button spin, and it dropped every parameter it had.
+  it("returns the draft when the record write fails", async () => {
+    replies.set("com.atproto.repo.createRecord", {
+      ok: false,
+      status: 502,
+      data: { error: "UpstreamFailure" },
+    });
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await publish({ draftId: DRAFT_ID });
+    quiet.mockRestore();
+    expect(errorFrom(res)).toBe("publish_failed:UpstreamFailure");
+    expect(draftOf(res)).toBe(DRAFT_ID);
+    // And the row it points at is still there to be resumed.
+    expect(drafts.deleteDraft).not.toHaveBeenCalled();
+  });
+
+  it("prefers the edit when a rejected publish carries both", async () => {
+    // An edit's words live in the published record, which the editor reloads
+    // by rkey. Sending it to ?draft= as well would offer two sources of truth
+    // for one post and let the stale one win.
+    const res = await publish({
+      title: "",
+      rkey: "3lyk7wxnok2fb",
+      draftId: DRAFT_ID,
+    });
+    expect(location(res).searchParams.get("edit")).toBe("3lyk7wxnok2fb");
+    expect(draftOf(res)).toBeNull();
+  });
+
+  it("adds no draft parameter when there is no draft to point at", async () => {
+    // A post composed and published faster than the first autosave has no row.
+    // The blank editor is then the honest answer — inventing a ?draft= for a
+    // row that does not exist would send the writer to a "that draft is gone"
+    // page, which is worse than the truth.
+    const res = await publish({ title: "  " });
+    expect(errorFrom(res)).toBe("missing_title");
+    expect(draftOf(res)).toBeNull();
+  });
+
+  it("ignores a draft id that is not one", async () => {
+    const res = await publish({ title: "  ", draftId: "../../etc/passwd" });
+    expect(draftOf(res)).toBeNull();
+  });
+});
