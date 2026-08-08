@@ -284,6 +284,7 @@ describe("/write — publishing flushes the draft first", () => {
           title: "Resumed",
           dek: "",
           blocksJson: "[]",
+          inlineImages: "",
           schedule: null,
           imported: false,
         }}
@@ -420,6 +421,51 @@ describe("/write — a post too long to store is refused without navigating", ()
     markdown.current = "trimmed";
     fireEvent.click(publish);
     await waitFor(() => expect(submitSpy).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe("/write — resuming a draft keeps the images it already uploaded", () => {
+  const STORED_BLOB = {
+    $type: "blob",
+    ref: { $link: "bafkreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+    mimeType: "image/png",
+    size: 900,
+  };
+
+  it("submits the stored blob references when this session uploaded none", async () => {
+    const submitSpy = vi
+      .spyOn(HTMLFormElement.prototype, "submit")
+      .mockImplementation(() => {});
+    render(
+      <Compose
+        draft={null}
+        error={undefined}
+        reconnectHandle={null}
+        resumed={{
+          id: "12121212-3434-4565-8787-909090909090",
+          title: "Illustrated",
+          dek: "",
+          blocksJson: "[]",
+          inlineImages: JSON.stringify([STORED_BLOB]),
+          schedule: null,
+          imported: false,
+        }}
+      />,
+    );
+    await screen.findByRole("button", { name: "+" });
+    const publish = screen.getByRole("button", { name: "Publish" });
+    await waitFor(() => expect(publish.hasAttribute("disabled")).toBe(false));
+    fireEvent.click(publish);
+    await waitFor(() => expect(submitSpy).toHaveBeenCalledTimes(1));
+
+    // An empty field here is a record that references none of its own
+    // pictures — which is a publish that succeeds and quietly breaks them,
+    // because the PDS reclaims blobs nothing points at.
+    const field = document.querySelector<HTMLInputElement>(
+      "#publish-form input[name='images']",
+    );
+    expect(JSON.parse(field?.value ?? "[]")).toEqual([STORED_BLOB]);
+    submitSpy.mockRestore();
   });
 });
 
