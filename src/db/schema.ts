@@ -47,22 +47,6 @@ export const hiddenContent = sqliteTable("hidden_content", {
 });
 
 /**
- * Abuse reports from the public "Report" link (moderation kit, audit #1).
- * `url` is the reported page, `reason` the reporter's note, `email` optional
- * for follow-up. Same anti-abuse posture as the waitlist: honeypot + validation
- * (a Turnstile token verification point is left for the owner). A human triages
- * these against the hidden_content list.
- *
- * `notified_at` is the alert watermark (~/lib/reports): stamped only once the
- * hourly cron's alert POST has actually succeeded, so a dropped webhook leaves
- * the row unnotified and the next tick retries it. A column rather than a
- * `created_at > now - 1h` window because a window double-alerts on an early
- * tick and silently drops reports on a missed one. Rows that predate the column
- * stay NULL and alert once on the first tick after deploy — a duplicate ping
- * about a report already triaged is cheap; a takedown nobody was told about is
- * the thing this exists to prevent.
- */
-/**
  * Writer drafts. Drafts are PRIVATE, so they stay server-side in our D1,
  * keyed to the writer's DID — never in the writer's atproto repo, where any
  * record is public the moment it exists. Only publishing (via /api/publish)
@@ -343,13 +327,44 @@ export const backupRuns = sqliteTable(
   (table) => [index("backup_runs_at_idx").on(table.at)],
 );
 
-export const reports = sqliteTable("reports", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  url: text("url").notNull(),
-  reason: text("reason").notNull(),
-  email: text("email"),
-  createdAt: integer("created_at", { mode: "timestamp" })
-    .notNull()
-    .$defaultFn(() => new Date()),
-  notifiedAt: integer("notified_at", { mode: "timestamp" }),
-});
+/**
+ * Abuse reports from the public "Report" link (moderation kit, audit #1).
+ * `url` is the reported page, `reason` the reporter's note, `email` optional
+ * for follow-up. Same anti-abuse posture as the waitlist: honeypot + validation
+ * (a Turnstile token verification point is left for the owner). A human triages
+ * these against the hidden_content list.
+ *
+ * `notified_at` is the alert watermark (~/lib/reports): stamped only once the
+ * hourly cron's alert POST has actually succeeded, so a dropped webhook leaves
+ * the row unnotified and the next tick retries it. A column rather than a
+ * `created_at > now - 1h` window because a window double-alerts on an early
+ * tick and silently drops reports on a missed one. Rows that predate the column
+ * stay NULL and alert once on the first tick after deploy — a duplicate ping
+ * about a report already triaged is cheap; a takedown nobody was told about is
+ * the thing this exists to prevent.
+ */
+export const reports = sqliteTable(
+  "reports",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    url: text("url").notNull(),
+    reason: text("reason").notNull(),
+    email: text("email"),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    notifiedAt: integer("notified_at", { mode: "timestamp" }),
+  },
+  // PARTIAL, on the alert pass's exact query: "oldest not yet notified".
+  // This table is the only one an anonymous endpoint can grow without bound,
+  // it has no purge job, and it never shrinks once rows are stamped — so an
+  // unindexed hourly `WHERE notified_at IS NULL ORDER BY created_at` scans and
+  // sorts the whole thing every tick, and the read quota it costs grows with
+  // total reports ever filed. The partial predicate keeps the index the size
+  // of the OUTSTANDING queue instead, which is the number that stays small.
+  (table) => [
+    index("reports_unnotified_idx")
+      .on(table.createdAt)
+      .where(sql`${table.notifiedAt} is null`),
+  ],
+);

@@ -60,7 +60,7 @@ before OAuth works.
    |--------|----------|------------|
    | `COOKIE_SECRET` | yes | HMAC key for the session-cookie signature. Generate with `openssl rand -hex 32`. |
    | `OAUTH_PRIVATE_KEY_JWK` | yes (prod) | ES256 private JWK for `private_key_jwt` client assertions — your instance's OAuth key. Generate it per the comment in `.dev.vars.example`. |
-   | `WEBHOOK_URL` | optional | Alert webhook for the hourly cron: self-check failures, and new abuse reports awaiting triage. Absent = silent no-op (reports stay queued, unnotified, and go out whole once it is set). |
+   | `WEBHOOK_URL` | optional | Alert webhook for the hourly cron: self-check failures, and new abuse reports awaiting triage. Absent = silent no-op: reports stay queued and unnotified, and once it is set the backlog goes out oldest-first at up to 50 per hourly tick. |
 
    Set each as a Worker secret, e.g.:
 

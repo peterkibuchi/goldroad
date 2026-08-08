@@ -50,6 +50,7 @@ const reports = vi.hoisted(() => ({
     sent: false,
     notified: 0,
     capped: false,
+    failures: [] as string[],
   })),
 }));
 vi.mock("~/lib/reports", () => reports);
@@ -81,6 +82,7 @@ beforeEach(() => {
     sent: false,
     notified: 0,
     capped: false,
+    failures: [],
   });
   scheduledPosts.d1ScheduledPostStore.mockReturnValue({ scheduleStore: true });
   scheduledPublish.cronPublisher.mockReturnValue({ publisher: true });
@@ -361,6 +363,44 @@ describe("runScheduled — six jobs, one hourly trigger, none able to sink anoth
       store: { reportStore: true },
       webhook: "https://hook.example",
     });
+  });
+
+  it("pages the operator when the abuse-report pass cannot do its job", async () => {
+    // The failure this exists for is the migration not being applied: the read
+    // throws, and the pass's own result is then indistinguishable from a
+    // healthy quiet hour. Abuse alerting would be dead with silence as its only
+    // symptom — so its failures have to ride the channel that already exists.
+    const posts: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes("hook.example")) {
+          posts.push(String(init?.body));
+          return new Response(null, { status: 204 });
+        }
+        return url.includes("client-metadata")
+          ? Response.json({
+              client_id: "https://trygoldroad.com/oauth/client-metadata.json",
+            })
+          : new Response("<html>Goldroad</html>");
+      }),
+    );
+    quiet();
+    reports.runReportAlertPass.mockResolvedValue({
+      found: 0,
+      sent: false,
+      notified: 0,
+      capped: false,
+      failures: ["abuse reports could not be read for alerting"],
+    });
+
+    await runScheduled(envWithHook());
+
+    expect(posts).toHaveLength(1);
+    expect(posts[0]).toContain("could not be read");
+    // On the same payload the self-check uses, so one receiver sees both.
+    expect(JSON.parse(posts[0]).kind).toBe("self-check");
   });
 
   it("still self-checks and alerts when the abuse-report pass throws", async () => {

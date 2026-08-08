@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildReportAlert,
   MAX_ALERT_REASON_CHARS,
+  MAX_ALERT_URL_CHARS,
   MAX_REPORTS_PER_ALERT,
   markReportsNotified,
   type PendingReport,
@@ -271,6 +272,7 @@ describe("runReportAlertPass — the stamp follows the POST, never precedes it",
       sent: false,
       notified: 0,
       capped: false,
+      failures: [],
     });
     expect(calls).toHaveLength(0);
     expect(unnotifiedIds(rows)).toEqual([]);
@@ -307,6 +309,7 @@ describe("runReportAlertPass — the stamp follows the POST, never precedes it",
       sent: true,
       notified: 3,
       capped: false,
+      failures: [],
     });
     expect(sentAlert(calls).reports.map((r) => r.id)).toEqual([1, 2, 3]);
     expect(unnotifiedIds(rows)).toEqual([]);
@@ -371,6 +374,7 @@ describe("runReportAlertPass — the stamp follows the POST, never precedes it",
       sent: true,
       notified: 2,
       capped: false,
+      failures: [],
     });
     expect(sentAlert(calls).reports.map((r) => r.id)).toEqual([1, 2]);
     expect(unnotifiedIds(rows)).toEqual([]);
@@ -417,13 +421,45 @@ describe("runReportAlertPass — the stamp follows the POST, never precedes it",
       now: NOW,
     });
 
-    expect(result).toEqual({
-      found: 0,
-      sent: false,
-      notified: 0,
-      capped: false,
-    });
     expect(calls).toHaveLength(0);
+    // The point of the test, and what it previously asserted the OPPOSITE of:
+    // an all-zero result is exactly what a healthy idle tick returns, so a
+    // read failure that returns one is abuse alerting dying in silence. It has
+    // to carry something a human will be shown.
+    expect(result.failures).toHaveLength(1);
+    expect(result.failures[0]).toMatch(/could not be read/);
+    expect(result.found).toBe(0);
+    expect(result.sent).toBe(false);
+  });
+
+  it("says nothing extra on a healthy tick with no reports", async () => {
+    // The other half of the pair above: silence here is the truth, so this is
+    // what makes the failure case's `failures` entry meaningful.
+    const { store } = memoryStore([]);
+    const { fetcher } = webhookSpy();
+    const result = await runReportAlertPass({
+      store,
+      webhook: HOOK,
+      fetcher,
+      now: NOW,
+    });
+    expect(result.failures).toEqual([]);
+  });
+
+  it("reports a webhook rejection to the operator rather than only the log", async () => {
+    // A rejected batch stays unnotified and retries — correct, but the queue
+    // is oldest-first, so a batch that keeps failing holds up every report
+    // behind it. Survivable while it is loud; indefinite while it is not.
+    const { rows, store } = memoryStore([row(1)]);
+    const result = await runReportAlertPass({
+      store,
+      webhook: HOOK,
+      fetcher: async () => new Response("no", { status: 413 }),
+      now: NOW,
+    });
+    expect(result.sent).toBe(false);
+    expect(unnotifiedIds(rows)).toEqual([1]);
+    expect(result.failures[0]).toMatch(/413/);
   });
 
   it("respects the batch cap and rolls the rest to the next pass", async () => {
@@ -442,7 +478,13 @@ describe("runReportAlertPass — the stamp follows the POST, never precedes it",
       cap: 3,
     });
 
-    expect(first).toEqual({ found: 3, sent: true, notified: 3, capped: true });
+    expect(first).toEqual({
+      found: 3,
+      sent: true,
+      notified: 3,
+      capped: true,
+      failures: [],
+    });
     const alert = sentAlert(calls);
     expect(alert.count).toBe(3);
     expect(alert.reports.map((r) => r.id)).toEqual([1, 2, 3]);
@@ -458,6 +500,47 @@ describe("runReportAlertPass — the stamp follows the POST, never precedes it",
 
     expect(second.notified).toBe(3);
     expect(unnotifiedIds(rows)).toEqual([7]);
+  });
+
+  /**
+   * The cap alone does NOT bound the payload — that was the gap. `url` is
+   * validated only for length (2,048) and never as a URL, so it is 2 KB of
+   * attacker-chosen text from an anonymous endpoint, and fifty unclipped ones
+   * are 100 KB before a single note.
+   *
+   * Size was the smaller half. A body the webhook rejects is never delivered,
+   * so nothing is stamped, so the same oldest fifty are read again next tick —
+   * and the queue is oldest-first, so every genuine takedown filed afterwards
+   * waits behind a batch that can never drain. Fifty requests, permanent block.
+   */
+  it("stays small even when every field is filled to its validation limit", () => {
+    const worst = Array.from({ length: MAX_REPORTS_PER_ALERT }, (_, i) => ({
+      id: i + 1,
+      // The exact caps ~/lib/report-schema admits.
+      url: "u".repeat(2048),
+      reason: "r".repeat(2000),
+    }));
+    const body = JSON.stringify(buildReportAlert(worst, NOW, true));
+    expect(body.length).toBeLessThan(50_000);
+    // And the clipping is real, not incidentally short input.
+    const alert = buildReportAlert(worst, NOW, true);
+    expect(alert.reports[0].url.length).toBe(MAX_ALERT_URL_CHARS + 1);
+    expect(alert.reports[0].reason.length).toBe(MAX_ALERT_REASON_CHARS + 1);
+  });
+
+  it("tells the operator when more are waiting behind this batch", async () => {
+    // Otherwise every hour looks identical whether 50 or 50,000 are queued,
+    // and `count` cannot say — it is always exactly the cap.
+    const { store } = memoryStore(Array.from({ length: 5 }, (_, i) => row(i)));
+    const { calls, fetcher } = webhookSpy();
+    await runReportAlertPass({
+      store,
+      webhook: HOOK,
+      fetcher,
+      now: NOW,
+      cap: 2,
+    });
+    expect(sentAlert(calls).more).toBe(true);
   });
 
   it("never puts the reporter's email on the wire", async () => {

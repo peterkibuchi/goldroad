@@ -56,7 +56,7 @@ export function PrivacyPage() {
         <LegalList
           items={[
             "Waitlist email — only if you enter it. It's stored in our database to tell you when Goldroad opens, and nowhere else.",
-            "Abuse reports — if you use the report form we store the URL you reported and the note you wrote, plus your email if you chose to leave one, so a human can triage it and follow up with you.",
+            "Abuse reports — if you use the report form we store the URL you reported and the note you wrote, plus your email if you chose to leave one, so a human can triage it and follow up with you. So that reports don't sit unread, the URL and the note are also sent to the private channel we use for operational alerts; your email is never included in that.",
             "Product analytics via PostHog, running cookieless (in-memory): no cookies, no localStorage, no cross-site tracking, and no consent banner needed. Events carry which environment they came from, never your email or personal details.",
             "Sign-in details: when you connect a Bluesky / atproto account, we act on your decentralized identifier (DID). Access tokens stay on our server; we never see or store your password.",
             "Standard server logs (via Cloudflare) — request metadata like IP and user agent, kept briefly for security and debugging.",
@@ -114,7 +114,7 @@ export function PrivacyPage() {
         <LegalList
           items={[
             "Waitlist email: kept until you ask us to remove it, or until the waitlist is retired. Deleting a Goldroad account does not remove it — see Your rights above.",
-            "Abuse reports: the report, and any email left with it, kept while we may still need it for moderation and appeals, then discarded — or sooner if you ask.",
+            "Abuse reports: the report, and any email left with it, kept while we may still need it for moderation and appeals, then discarded — or sooner if you ask. The alert copy described above lives in that channel's own history, so removing a report here doesn't reach back into it.",
             "Analytics: aggregated, not tied to your identity.",
             "Drafts and import history: kept until you delete them (Settings → Your data) or delete your account, which removes both immediately.",
             "Follower counts: while you have an account we record your public Bluesky follower count once a day, so you can see your own growth over time — Bluesky only reports today's number, and the past can't be recovered later. It's in your data export, and deleting your account deletes it.",
