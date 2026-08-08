@@ -21,6 +21,12 @@ import {
 // The editor therefore must never be a descendant of the publish <form>.
 // The mock stands in for BlockNote with exactly that hazard: a type-less
 // button rendered where the editor mounts.
+// What the fake editor projects to markdown. Mutable so a test can make the
+// document longer than a post is allowed to be — the client-side length
+// refusal is the one refusal that must never reach the server, because the
+// draft row shares the cap and so cannot hold the words while we redirect.
+const markdown = vi.hoisted(() => ({ current: "body text" }));
+
 vi.mock("~/components/editor", async () => {
   const { useEffect } = await import("react");
   // One STABLE instance, like the real useCreateBlockNote: onReady fires per
@@ -28,7 +34,7 @@ vi.mock("~/components/editor", async () => {
   // (a fresh object each run would loop the update cycle forever).
   const fakeEditor = {
     document: [],
-    blocksToMarkdownLossy: () => "body text",
+    blocksToMarkdownLossy: () => markdown.current,
   };
   return {
     default: function FakeEditor({
@@ -49,6 +55,7 @@ vi.mock("~/components/editor", async () => {
   };
 });
 
+import { MAX_BODY_LENGTH } from "../lib/publish";
 // write.tsx is a route file: it reads Workers bindings at module scope — the
 // `cloudflare:workers` alias in vitest.config.ts stubs them for this import.
 import { Compose } from "../routes/write";
@@ -217,7 +224,11 @@ describe("/write — publishing flushes the draft first", () => {
   });
 
   it("publishes anyway when the flush fails", async () => {
-    vi.stubGlobal("fetch", () => Promise.reject(new Error("offline")));
+    const attempted: string[] = [];
+    vi.stubGlobal("fetch", (input: RequestInfo | URL) => {
+      attempted.push(String(input));
+      return Promise.reject(new Error("offline"));
+    });
     render(
       <Compose
         draft={null}
@@ -236,5 +247,215 @@ describe("/write — publishing flushes the draft first", () => {
     // The words ride the form body regardless. Refusing to publish because a
     // draft write flaked would trade a working publish for a better fallback.
     await waitFor(() => expect(calls).toContain("submit"));
+    // And the flush was genuinely attempted — without this the test passes on
+    // any build that never flushes at all.
+    expect(attempted.some((u) => u.startsWith("/api/drafts"))).toBe(true);
+  });
+
+  it("recreates a draft deleted elsewhere instead of publishing past it", async () => {
+    // Another tab (or a scheduled publish) removed the row while this editor
+    // had it open. The flush 404s. Recreating is the only thing that keeps a
+    // refused publish able to hand the words back — and the guard that used to
+    // suppress it during a publish was written for the OPPOSITE case, a late
+    // autosave arriving after the server deleted the completed draft.
+    const posted: string[] = [];
+    let first = true;
+    vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
+      posted.push(String(init?.body ?? ""));
+      calls.push(`fetch:${String(input)}`);
+      if (first) {
+        first = false;
+        return Promise.resolve(new Response("{}", { status: 404 }));
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({ draft: { id: FRESH_DRAFT_ID } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    });
+    render(
+      <Compose
+        draft={null}
+        error={undefined}
+        reconnectHandle={null}
+        resumed={{
+          id: "12121212-3434-4565-8787-909090909090",
+          title: "Resumed",
+          dek: "",
+          blocksJson: "[]",
+          schedule: null,
+          imported: false,
+        }}
+      />,
+    );
+    await screen.findByRole("button", { name: "+" });
+    const publish = screen.getByRole("button", { name: "Publish" });
+    await waitFor(() => expect(publish.hasAttribute("disabled")).toBe(false));
+    fireEvent.change(screen.getByLabelText("Title"), {
+      target: { value: "Resumed, revised" },
+    });
+    fireEvent.click(publish);
+    await waitFor(() => expect(calls).toContain("submit"));
+    // Two saves: the one that 404'd, then a create with no id.
+    expect(posted).toHaveLength(2);
+    expect(JSON.parse(posted[1]).id).toBeUndefined();
+    // And the publish carries the recreated row, not the dead one.
+    const field = document.querySelector<HTMLInputElement>(
+      "#publish-form input[name='draftId']",
+    );
+    expect(field?.value).toBe(FRESH_DRAFT_ID);
+  });
+
+  it("disables Publish while the flush is in flight", async () => {
+    let release: (() => void) | undefined;
+    vi.stubGlobal("fetch", () => {
+      calls.push("fetch:/api/drafts");
+      return new Promise<Response>((resolve) => {
+        release = () =>
+          resolve(
+            new Response(JSON.stringify({ draft: { id: FRESH_DRAFT_ID } }), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            }),
+          );
+      });
+    });
+    render(
+      <Compose
+        draft={null}
+        error={undefined}
+        reconnectHandle={null}
+        resumed={null}
+      />,
+    );
+    await screen.findByRole("button", { name: "+" });
+    const publish = screen.getByRole("button", { name: "Publish" });
+    await waitFor(() => expect(publish.hasAttribute("disabled")).toBe(false));
+    fireEvent.change(screen.getByLabelText("Title"), {
+      target: { value: "A title" },
+    });
+    fireEvent.click(publish);
+    // The press used to leave the button untouched for the whole round-trip,
+    // so a second press did nothing and looked like the first had too.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Publishing…" })).toBeTruthy(),
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "Publishing…" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    release?.();
+    await waitFor(() => expect(calls).toContain("submit"));
+  });
+});
+
+describe("/write — a post too long to store is refused without navigating", () => {
+  let submitSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    markdown.current = "body text";
+    submitSpy = vi
+      .spyOn(HTMLFormElement.prototype, "submit")
+      .mockImplementation(() => {});
+    vi.stubGlobal("fetch", () =>
+      Promise.resolve(new Response("{}", { status: 200 })),
+    );
+    return () => {
+      markdown.current = "body text";
+      submitSpy.mockRestore();
+      vi.unstubAllGlobals();
+    };
+  });
+
+  it("keeps the writer on the page with every word still on screen", async () => {
+    markdown.current = "x".repeat(MAX_BODY_LENGTH + 1);
+    render(
+      <Compose
+        draft={null}
+        error={undefined}
+        reconnectHandle={null}
+        resumed={null}
+      />,
+    );
+    await screen.findByRole("button", { name: "+" });
+    const publish = screen.getByRole("button", { name: "Publish" });
+    await waitFor(() => expect(publish.hasAttribute("disabled")).toBe(false));
+    fireEvent.change(screen.getByLabelText("Title"), {
+      target: { value: "A very long post" },
+    });
+    fireEvent.click(publish);
+
+    // The server refuses this too — but its refusal costs a full-page redirect
+    // to the draft row, and the row's markdown column shares this exact cap.
+    // So the flush cannot have succeeded, and the redirect would hand back the
+    // last version that fit while looking like recovery.
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+    expect(screen.getByRole("alert").textContent).toContain("longer than one");
+    expect(submitSpy).not.toHaveBeenCalled();
+    // Still usable: this is a correctable mistake, not a dead end.
+    expect(publish.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("publishes once the post is back under the limit", async () => {
+    markdown.current = "x".repeat(MAX_BODY_LENGTH + 1);
+    render(
+      <Compose
+        draft={null}
+        error={undefined}
+        reconnectHandle={null}
+        resumed={null}
+      />,
+    );
+    await screen.findByRole("button", { name: "+" });
+    const publish = screen.getByRole("button", { name: "Publish" });
+    await waitFor(() => expect(publish.hasAttribute("disabled")).toBe(false));
+    fireEvent.change(screen.getByLabelText("Title"), {
+      target: { value: "A very long post" },
+    });
+    fireEvent.click(publish);
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+
+    markdown.current = "trimmed";
+    fireEvent.click(publish);
+    await waitFor(() => expect(submitSpy).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe("/write — a dead draft pointer is not hidden by the publish error", () => {
+  it("shows both notices when the resumed draft has gone missing", async () => {
+    // A refused publish redirects with BOTH an error and a ?draft= — so when
+    // that row has since been deleted, the writer is looking at an empty
+    // editor for a reason that only the draft notice explains. Letting the
+    // publish error alone win says "try again" over a page with nothing to
+    // try again with.
+    render(
+      <Compose
+        draft={null}
+        draftError="draft_not_found"
+        error="publish_failed:UpstreamFailure"
+        reconnectHandle={null}
+        resumed={null}
+      />,
+    );
+    await screen.findByRole("button", { name: "+" });
+    const alerts = screen.getAllByRole("alert").map((n) => n.textContent ?? "");
+    expect(alerts.some((t) => t.includes("Publishing failed"))).toBe(true);
+    expect(alerts.some((t) => t.includes("isn't in your drafts"))).toBe(true);
+  });
+
+  it("does not print the same notice twice", async () => {
+    render(
+      <Compose
+        draft={null}
+        draftError="not_found"
+        error="not_found"
+        reconnectHandle={null}
+        resumed={null}
+      />,
+    );
+    await screen.findByRole("button", { name: "+" });
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
   });
 });

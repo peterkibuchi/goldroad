@@ -353,7 +353,10 @@ describe("inventory: every resting accent on a signed-in surface is a named exce
    * live inside route components that aren't exported.
    */
   const PRIMARIES: Array<[string, string]> = [
-    ["routes/write.tsx", '{editing ? "Save changes" : "Publish"}'],
+    // Same anchoring principle as settings.tsx below: the label's words now
+    // live in consts (the button also has a busy state), so this follows the
+    // expression that renders it rather than the branch that picks the word.
+    ["routes/write.tsx", "{submitting ? primaryBusyLabel : primaryLabel}"],
     // Anchored on the ternary's tail rather than the whole expression: the
     // CONDITION on that label is free to change (it already has, to cover a
     // publication we couldn't read), and what this test cares about is the
