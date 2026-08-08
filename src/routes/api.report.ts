@@ -23,8 +23,15 @@ const bad = () =>
  * Anti-abuse: body cap + honeypot always; a Turnstile check additionally
  * gates the insert when the TURNSTILE_SECRET Worker secret is set (see
  * ~/lib/turnstile — absent secret means passthrough, i.e. the pre-Turnstile
- * behavior). REMAINING OWNER ACTION: this endpoint still has no server-side
- * rate limit — add the single free CF rate-limit rule on this path.
+ * behavior). Request rate is bounded at the edge rather than here: a WAF rule
+ * covers `/api/*` per IP, which is the right layer for it — an anonymous flood
+ * should cost us nothing to refuse, and refusing it inside the Worker means
+ * having already paid for the Worker.
+ *
+ * What the edge rule does NOT bound is how much a report can COST downstream
+ * once accepted, since a flood well under the rate limit still fills the table.
+ * That is why the alert path caps its batch and clips both fields it forwards
+ * (~/lib/reports) rather than trusting the limit in front of it.
  */
 export const Route = createFileRoute("/api/report")({
   server: {
