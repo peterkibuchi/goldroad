@@ -47,6 +47,24 @@ export const MAX_REPORTS_PER_ALERT = 50;
  * report. The alert is a pointer to the queue, not a copy of it. */
 export const MAX_ALERT_REASON_CHARS = 280;
 
+/**
+ * And the same for the reported URL, for a sharper reason: `url` is validated
+ * only for LENGTH (2,048 in ~/lib/report-schema), never as a URL, so it is 2 KB
+ * of arbitrary text arriving from an anonymous endpoint. Unclipped it is the
+ * larger half of the payload — fifty of them is 100 KB before a single note,
+ * and characters that expand under JSON escaping multiply that.
+ *
+ * Size was the smaller half of the problem. A body the webhook rejects is never
+ * delivered, so nothing is stamped, so the SAME oldest fifty are read again
+ * next tick — and the queue is oldest-first, so every genuine takedown filed
+ * afterwards waits behind a batch that can never drain. Fifty anonymous
+ * requests would buy a permanent block on the alerting this file exists to
+ * provide. Clipping both fields keeps the batch a bounded size no matter what
+ * is in the table; `reportFailures` makes a stuck queue loud rather than
+ * silent.
+ */
+export const MAX_ALERT_URL_CHARS = 300;
+
 /** Where a human goes to read the full report, including the reporter's email.
  * There is no admin UI yet (same as `hidden_content`), so this names the table
  * rather than a URL. */
@@ -111,6 +129,8 @@ export type ReportAlert = {
   kind: "abuse-reports";
   count: number;
   reports: PendingReport[];
+  /** This batch filled its cap — more are waiting behind it. */
+  more: boolean;
   triage: string;
   at: string;
 };
@@ -133,6 +153,7 @@ function clip(text: string, max: number): string {
 export function buildReportAlert(
   pending: readonly PendingReport[],
   now: number = Date.now(),
+  capped = false,
 ): ReportAlert {
   return {
     source: "goldroad-cron",
@@ -140,9 +161,13 @@ export function buildReportAlert(
     count: pending.length,
     reports: pending.map((row) => ({
       id: row.id,
-      url: row.url,
+      url: clip(row.url, MAX_ALERT_URL_CHARS),
       reason: clip(row.reason, MAX_ALERT_REASON_CHARS),
     })),
+    // Whether this batch filled its cap, so an operator whose only window on
+    // the queue is this message can tell "five reports came in" from "the
+    // backlog is draining fifty an hour and growing".
+    more: capped,
     triage: TRIAGE_HINT,
     at: new Date(now).toISOString(),
   };
@@ -162,6 +187,19 @@ export type ReportAlertResult = {
   /** The read filled its batch, so there may be more waiting for the next
    * tick. */
   capped: boolean;
+  /**
+   * Something went wrong badly enough that a human has to hear about it, in the
+   * words they will read.
+   *
+   * This is the whole difference between a quiet failure and a loud one. A read
+   * that throws — the migration not applied being the likeliest cause — used to
+   * return the same all-zero result as a healthy idle tick, so abuse alerting
+   * could be dead for weeks and its only symptom would be silence, which is
+   * exactly what "no reports came in" looks like. These strings join the cron's
+   * existing failure list, so the operator hears about it on the one channel
+   * they already watch.
+   */
+  failures: string[];
 };
 
 /**
@@ -199,15 +237,18 @@ export async function runReportAlertPass(opts: {
     sent: false,
     notified: 0,
     capped: false,
+    failures: [],
   };
 
   let pending: PendingReport[];
   try {
     pending = await store.unnotified(cap);
   } catch (err) {
-    // Likeliest cause is the migration not having been applied. Reported, not
-    // swallowed — "no reports" and "cannot read reports" must not look alike.
+    // Likeliest cause is the migration not having been applied yet. This has to
+    // reach a human: "cannot read reports" and "no reports" are the same
+    // all-zero result otherwise, and one of them means abuse alerting is down.
     console.error("unnotified report read failed", err);
+    result.failures.push("abuse reports could not be read for alerting");
     return result;
   }
 
@@ -218,6 +259,8 @@ export async function runReportAlertPass(opts: {
     console.warn(`abuse-report alert filled its batch of ${cap} this tick`);
 
   if (!webhook) {
+    // Not a failure — it is the documented posture with no webhook configured,
+    // and there is nowhere to report it to anyway.
     console.warn(
       `${pending.length} unnotified abuse report(s), no WEBHOOK_URL set`,
     );
@@ -228,17 +271,25 @@ export async function runReportAlertPass(opts: {
     const res = await fetcher(webhook, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(buildReportAlert(pending, now)),
+      body: JSON.stringify(buildReportAlert(pending, now, result.capped)),
       signal: AbortSignal.timeout(ALERT_TIMEOUT_MS),
     });
     // `res.ok`, not merely "didn't throw": a 4xx/5xx from the webhook is a
     // message nobody received, and stamping on it would lose the report.
     if (!res.ok) {
       console.error("abuse-report alert POST ->", res.status);
+      // Reported through the self-check's list as well as here. The rows stay
+      // unnotified and retry next tick, which is right — but the queue is
+      // oldest-first, so a batch that keeps failing holds up everything behind
+      // it. That is survivable while it is LOUD and indefinite while it is not.
+      result.failures.push(
+        `abuse-report alert rejected by the webhook (${res.status})`,
+      );
       return result;
     }
   } catch (err) {
     console.error("abuse-report alert POST failed", err);
+    result.failures.push("abuse-report alert could not be delivered");
     return result;
   }
   result.sent = true;
@@ -248,7 +299,11 @@ export async function runReportAlertPass(opts: {
     await store.markNotified(ids, new Date(now));
     result.notified = pending.length;
   } catch (err) {
+    // The alert WAS delivered, so nothing is lost — these reports simply go out
+    // again next tick. Worth saying out loud because a watermark that never
+    // lands means every hour repeats the same alert forever.
     console.error("report watermark update failed", err);
+    result.failures.push("abuse-report watermark could not be recorded");
   }
 
   return result;

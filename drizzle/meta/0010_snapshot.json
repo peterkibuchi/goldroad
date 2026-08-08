@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "b2b58faa-3cd9-47a6-922d-8f01b04d2d3b",
+  "id": "6d3e813f-c060-4caf-a1e8-521806f8c8e9",
   "prevId": "351796cf-3d30-4dd6-8899-5dba5dc15fdf",
   "tables": {
     "backup_runs": {
@@ -429,7 +429,14 @@
           "autoincrement": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "reports_unnotified_idx": {
+          "name": "reports_unnotified_idx",
+          "columns": ["created_at"],
+          "isUnique": false,
+          "where": "\"reports\".\"notified_at\" is null"
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},

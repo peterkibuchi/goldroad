@@ -121,6 +121,10 @@ export async function reportFailures(
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       source: "goldroad-cron",
+      // Two different things now post to this one webhook. Without a
+      // discriminator on BOTH, anything routing on `kind` gets `undefined` for
+      // these and has to sniff for a `failures` key to tell them apart.
+      kind: "self-check",
       failures,
       at: new Date().toISOString(),
     }),
@@ -179,6 +183,31 @@ export async function runScheduled(env: CronEnv): Promise<void> {
   } catch (err) {
     console.error("oauth_kv purge failed", err);
   }
+  // Abuse reports go out on their own POST rather than joining the failure list
+  // below: a takedown request is a queue item to work through, not an invariant
+  // that broke, and it must not be suppressed by the "only alert if something
+  // is wrong" rule the self-check applies. Its FAILURES do join that list.
+  //
+  // Placed ahead of the follower sampling deliberately. That pass issues up to
+  // fifty outbound fetches, and a Worker invocation gets fifty subrequests in
+  // total on the free plan — so leaving this behind it means the one job ranked
+  // as legal exposure is the one starved first, on exactly the busy ticks where
+  // reports are most likely. Sampling is a day's data point and self-heals next
+  // hour; an unheard takedown does not.
+  //
+  // Guarded like the purge above: the pass is written never to throw, and the
+  // belt-and-braces catch keeps a surprise inside it from costing the rest.
+  let reported = { failures: [] as string[] };
+  try {
+    reported = await runReportAlertPass({
+      store: d1ReportStore(db),
+      webhook: env.WEBHOOK_URL,
+    });
+    console.log("abuse report alert pass", reported);
+  } catch (err) {
+    console.error("abuse report alert pass failed", err);
+    reported = { failures: ["abuse-report alert pass threw"] };
+  }
   // Follower counts are point-in-time only upstream, so a day that isn't
   // sampled can never be recovered — this runs before the self-check, which
   // makes network calls to our own origin, so a slow site can't crowd it out.
@@ -190,27 +219,13 @@ export async function runScheduled(env: CronEnv): Promise<void> {
   // site can't crowd out the cheapest job in the pass.
   const backup = await runBackupCheck({ store: d1BackupStore(db) });
   console.log("backup check", backup);
-  // Abuse reports go out on their own POST rather than joining the failure list
-  // below: a takedown request is a queue item to work through, not an invariant
-  // that broke, and it must not be suppressed by the "only alert if something
-  // is wrong" rule the self-check path applies. Guarded like the purge above —
-  // the pass is written never to throw, and the belt-and-braces catch keeps a
-  // surprise inside it from costing the self-check its hour.
-  try {
-    const alerted = await runReportAlertPass({
-      store: d1ReportStore(db),
-      webhook: env.WEBHOOK_URL,
-    });
-    console.log("abuse report alert pass", alerted);
-  } catch (err) {
-    console.error("abuse report alert pass failed", err);
-  }
   // A stale backup is a real invariant failure, so it rides the self-check's
   // alert path rather than getting a second, parallel one.
   const failures = [
     ...(await selfCheck()),
     ...backup.failures,
     ...snapshotFailures(snapshots),
+    ...reported.failures,
   ];
   if (failures.length > 0) console.error("cron self-check failures", failures);
   await reportFailures(env.WEBHOOK_URL, failures);
