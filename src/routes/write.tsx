@@ -936,8 +936,9 @@ export function Compose({
    * `force` ignores the dirty flag, which the scheduling flow needs: a writer
    * can resume a draft, change nothing, and schedule it, and the stored row
    * still has to match what is on screen (an older draft may predate the
-   * markdown projection entirely). Publishing does NOT force — there the
-   * publish itself carries the words.
+   * markdown projection entirely). Publishing forces too, for the same reason
+   * one step removed: a rejected publish now lands back on this draft, so the
+   * stored row is what the writer gets back.
    */
   async function runSave(force = false): Promise<string | null> {
     if (editing || savingRef.current) return null;
@@ -1117,9 +1118,30 @@ export function Compose({
     // may be CREATING the draft row. Wait for it so the fresh id rides the
     // publish form and the server can complete (delete) the draft; otherwise
     // the row would outlive its own publish as an orphan.
+    //
+    // Then flush anything still unsaved. The debounce timer was just cleared,
+    // so without this a writer who types and immediately hits Publish submits
+    // words the draft row has never seen — invisible while the publish
+    // succeeds, and exactly what they get handed back when it doesn't.
+    //
+    // Nothing to flush submits synchronously, as it always did. Editing a
+    // published post has no draft row to flush (runSave short-circuits on it,
+    // and a rejected edit resumes by rkey), and an untouched draft is already
+    // current — deferring either behind a microtask would buy nothing and put
+    // a publish click one turn further from the submit it triggers.
     const pending = saveInFlightRef.current;
-    if (pending) void pending.finally(submit);
-    else submit();
+    if (editing || (!pending && !dirtyRef.current)) {
+      submit();
+      return;
+    }
+    const flush = () => (dirtyRef.current ? saveDraft(true) : null);
+    void Promise.resolve(pending)
+      .then(flush)
+      // A failed flush must not block the publish: the words are in the form
+      // body either way, and refusing to publish because a draft write flaked
+      // would be a strictly worse trade than an out-of-date fallback.
+      .catch(() => null)
+      .finally(submit);
   }
 
   return (

@@ -142,3 +142,99 @@ describe("/write — editor buttons must never submit the publish form", () => {
     await waitFor(() => expect(submitSpy).toHaveBeenCalledTimes(1));
   });
 });
+
+/**
+ * A rejected publish sends the writer back to `/write?draft=…`, so the draft
+ * row is what they get handed back. That only helps if the row is CURRENT —
+ * and clicking Publish clears the pending autosave timer, so words typed in
+ * the seconds before the click had never reached D1. They were invisible while
+ * publishes succeeded, and were exactly what a refusal lost.
+ */
+describe("/write — publishing flushes the draft first", () => {
+  const calls: string[] = [];
+  let submitSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    calls.length = 0;
+    submitSpy = vi
+      .spyOn(HTMLFormElement.prototype, "submit")
+      .mockImplementation(() => {
+        calls.push("submit");
+      });
+    vi.stubGlobal("fetch", (input: RequestInfo | URL) => {
+      calls.push(`fetch:${String(input)}`);
+      return Promise.resolve(
+        new Response(JSON.stringify({ draft: { id: FRESH_DRAFT_ID } }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    });
+    return () => {
+      submitSpy.mockRestore();
+      vi.unstubAllGlobals();
+    };
+  });
+
+  const FRESH_DRAFT_ID = "99999999-8888-4777-8666-555555555555";
+
+  async function composeAndPublish() {
+    render(
+      <Compose
+        draft={null}
+        error={undefined}
+        reconnectHandle={null}
+        resumed={null}
+      />,
+    );
+    await screen.findByRole("button", { name: "+" });
+    const publish = screen.getByRole("button", { name: "Publish" });
+    await waitFor(() => expect(publish.hasAttribute("disabled")).toBe(false));
+    // Typing marks the draft dirty; the debounce has not fired yet.
+    fireEvent.change(screen.getByLabelText("Title"), {
+      target: { value: "Words typed a moment ago" },
+    });
+    fireEvent.click(publish);
+    await waitFor(() => expect(calls).toContain("submit"));
+    return publish;
+  }
+
+  it("saves the draft before submitting, not after", async () => {
+    await composeAndPublish();
+    const saved = calls.findIndex((c) => c.startsWith("fetch:/api/drafts"));
+    expect(saved).toBeGreaterThanOrEqual(0);
+    expect(saved).toBeLessThan(calls.indexOf("submit"));
+  });
+
+  it("sends the id of the draft that flush just created", async () => {
+    await composeAndPublish();
+    // Without the flush this field is empty for a first-ever publish, and a
+    // refusal has nothing to point the writer at.
+    const field = document.querySelector<HTMLInputElement>(
+      "#publish-form input[name='draftId']",
+    );
+    expect(field?.value).toBe(FRESH_DRAFT_ID);
+  });
+
+  it("publishes anyway when the flush fails", async () => {
+    vi.stubGlobal("fetch", () => Promise.reject(new Error("offline")));
+    render(
+      <Compose
+        draft={null}
+        error={undefined}
+        reconnectHandle={null}
+        resumed={null}
+      />,
+    );
+    await screen.findByRole("button", { name: "+" });
+    const publish = screen.getByRole("button", { name: "Publish" });
+    await waitFor(() => expect(publish.hasAttribute("disabled")).toBe(false));
+    fireEvent.change(screen.getByLabelText("Title"), {
+      target: { value: "A title" },
+    });
+    fireEvent.click(publish);
+    // The words ride the form body regardless. Refusing to publish because a
+    // draft write flaked would trade a working publish for a better fallback.
+    await waitFor(() => expect(calls).toContain("submit"));
+  });
+});
