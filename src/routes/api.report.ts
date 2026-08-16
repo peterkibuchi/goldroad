@@ -15,7 +15,7 @@ const bad = () =>
   Response.json({ ok: false, error: "invalid" }, { status: 400 });
 
 /**
- * Abuse-report intake (moderation kit, audit #1). Same posture as
+ * Abuse-report intake. Same posture as
  * /api/waitlist: JSON-only, zod-validated, honeypot-gated, one D1 insert — plus
  * a hard body cap (streamed via readBodyCapped, like /img). A human triages
  * `reports` against the hidden_content list.

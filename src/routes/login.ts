@@ -5,10 +5,12 @@ import { isHandle } from "~/lib/atproto";
 import { createOAuthClient, safeReturnTo } from "~/lib/oauth";
 
 /**
- * A sign-in that can't start is a designed moment, not a bare 400 (the owner
- * hit the plain-text one in prod): 303 back to the /write sign-in panel,
- * which renders these codes as inline notices. The entered handle rides
- * along so the writer fixes the typo instead of retyping it.
+ * A sign-in that can't start is a designed moment, not a bare 400: a
+ * text/plain 400 from this handler is a dead end in the browser — no way back
+ * to the form, and the typed handle is lost. So every failure 303s back to the
+ * /write sign-in panel, which renders these codes as inline notices, and the
+ * entered handle rides along so the writer fixes the typo instead of retyping
+ * it.
  */
 function backToSignIn(
   error: "invalid_handle" | "handle_not_found" | "signin_unavailable",
@@ -40,7 +42,7 @@ function normalizeHandle(raw: string): string {
  * Starts the OAuth flow: resolves the handle to its authorization server,
  * pushes the PAR request, and 302s the user to authorize. The state (with
  * returnTo) is persisted in the D1 state store by the library. POST-only —
- * this is the side-effecting path (audit #8): a D1 write + a PAR push to an
+ * this is the side-effecting path: a D1 write + a PAR push to an
  * attacker-named PDS must never ride on an unauthenticated GET.
  */
 async function startLogin(
@@ -92,7 +94,7 @@ async function startLogin(
 export const Route = createFileRoute("/login")({
   server: {
     handlers: {
-      // GET is READ-ONLY (audit #8): it never resolves a handle, writes a D1
+      // GET is READ-ONLY: it never resolves a handle, writes a D1
       // state row, or pushes PAR. Malformed input still gets the designed
       // inline error (no side effect); a well-formed handle is prefilled back
       // into the /write sign-in form, which POSTs to actually start the flow.

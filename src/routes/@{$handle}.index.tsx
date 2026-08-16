@@ -50,7 +50,7 @@ export const Route = createFileRoute("/@{$handle}/")({
     if (!isHandle(ident) && !isDid(ident)) throw notFound();
     try {
       const did = isDid(ident) ? ident : await resolveHandleToDid(ident);
-      // Author-level takedown (moderation kit, audit #1): a hidden DID stops
+      // Author-level takedown: a hidden DID stops
       // serving its whole publication with a calm 404 + takedown notice.
       if (await checkHidden({ data: { did } })) {
         throw notFound({ data: { hidden: true } });

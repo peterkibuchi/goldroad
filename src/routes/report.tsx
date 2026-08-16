@@ -11,7 +11,7 @@ import {
 } from "~/components/turnstile";
 
 /**
- * Report a page (moderation kit, audit #1). Pressroom register — we're speaking
+ * Report a page. Pressroom register — we're speaking
  * as Goldroad here, not rendering a writer. The reading-surface "Report" link
  * prefills `?url`; the form posts JSON to /api/report (same client-fetch shape
  * as the waitlist). No-JS is a known degradation, acceptable for MVP.

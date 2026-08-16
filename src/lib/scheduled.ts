@@ -15,10 +15,10 @@
  *    below starts, and an exhausted budget now lands on those jobs — including
  *    the self-check that feeds the alert webhook. That trade is deliberate (a
  *    missed self-check is one missed hour of a backstop whose primary is the
- *    GitHub-Action canary; a missed publish is a writer's post going out late),
- *    but it is a trade, and the per-tick cap is the dial to turn if the budget
- *    ever actually bites.
- * 2. Purge expired oauth_kv rows (audit #7). `D1Store.get` only deletes an
+ *    external uptime monitor; a missed publish is a writer's post going out
+ *    late), but it is a trade, and the per-tick cap is the dial to turn if the
+ *    budget ever actually bites.
+ * 2. Purge expired oauth_kv rows. `D1Store.get` only deletes an
  *    expired row when that exact key is read again, so abandoned authorize
  *    `state:` rows — every login started but never completed — accumulate
  *    forever. This sweeps them. Sessions (`sess:`, expires_at = null) are left
@@ -40,10 +40,10 @@
  *    an alert flood. Batching bounds the alert volume by this cron instead. It
  *    runs ahead of the self-check because a takedown request going unread is a
  *    legal exposure, while a missed self-check hour is a backstop whose primary
- *    is the GitHub-Action canary.
- * 6. A self-check of core invariants (audit #6). Logs are on but nobody is
- *    paged; this POSTs failures to WEBHOOK_URL if that secret is set, and is a
- *    silent no-op otherwise. The GitHub-Action canary remains the primary
+ *    is the external uptime monitor.
+ * 6. A self-check of core invariants. Logs are on but nobody is alerted by
+ *    default; this POSTs failures to WEBHOOK_URL if that secret is set, and is
+ *    a silent no-op otherwise. External uptime monitoring remains the primary
  *    alerting path — this is a cheap always-on backstop.
  */
 import { and, isNotNull, lte } from "drizzle-orm";
@@ -72,13 +72,13 @@ export function expiredOauthKvCondition(now: number) {
   return and(isNotNull(oauthKv.expiresAt), lte(oauthKv.expiresAt, now));
 }
 
-/** Delete expired authorize-state rows (audit #7). Exposed (and unit-tested via
+/** Delete expired authorize-state rows. Exposed (and unit-tested via
  * .toSQL()) so the query is verifiable without a live D1. */
 export function purgeExpiredOauthKv(db: DrizzleD1, now: number) {
   return db.delete(oauthKv).where(expiredOauthKvCondition(now));
 }
 
-/** Core-invariant self-check against the live origin (audit #6). Returns a list
+/** Core-invariant self-check against the live origin. Returns a list
  * of human-readable failure strings (empty = healthy). `origin` is injectable
  * for tests. */
 export async function selfCheck(
@@ -132,7 +132,7 @@ export async function reportFailures(
   return true;
 }
 
-/** WEBHOOK_URL is an OPTIONAL Workers secret (owner-provided), so it isn't in
+/** WEBHOOK_URL is an OPTIONAL Workers secret (operator-provided), so it isn't in
  * the generated Env bindings — model it as an optional field. An Env value
  * satisfies this intersection because the property is optional. */
 type CronEnv = Env & { WEBHOOK_URL?: string };
@@ -171,8 +171,9 @@ export async function runScheduled(env: CronEnv): Promise<void> {
   // pass never throws and reports what it did, including whether it hit its
   // per-tick cap; failures are recorded ON THE ROW in words the writer reads in
   // the posts manager, which is why they don't ride the operator alert path
-  // below. A revoked grant is the writer's to fix, not the owner's to be paged
-  // about; systemic trouble shows up as a run of them in this log line.
+  // below. A revoked grant is the writer's to fix, not something the operator
+  // should be alerted about; systemic trouble shows up as a run of them in
+  // this log line.
   const scheduled = await runScheduledPublishPass({
     store: d1ScheduledPostStore(db),
     publish: cronPublisher(db),

@@ -88,7 +88,7 @@ path as the existing self-check — when the newest backup is:
 Set `WEBHOOK_URL` as a Worker secret to actually be told. Without it the check
 still runs and still logs; it just has nobody to tell.
 
-## Owner setup — one time
+## Operator setup — one time
 
 **1. Generate the backup keypair.** Do this on your own machine, not in CI:
 

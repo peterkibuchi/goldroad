@@ -29,13 +29,13 @@ export const waitlist = sqliteTable("waitlist", {
 });
 
 /**
- * Takedown list (moderation kit, audit #1). trygoldroad.com renders and proxies
+ * Takedown list. trygoldroad.com renders and proxies
  * arbitrary third-party atproto content, so it needs a lever to stop serving a
  * given subject. `subject` is either a DID ("did:plc:…" — hides an entire
  * author, including their /img blobs) or an AT-URI
  * ("at://did/collection/rkey" — hides one record). The reader loaders and the
  * /img proxy consult this before serving. No admin UI yet: rows are inserted by
- * hand via `wrangler d1 execute` (SQL documented on /policies + in the PR).
+ * hand via `wrangler d1 execute` (the SQL is documented on /policies).
  */
 export const hiddenContent = sqliteTable("hidden_content", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -328,10 +328,10 @@ export const backupRuns = sqliteTable(
 );
 
 /**
- * Abuse reports from the public "Report" link (moderation kit, audit #1).
+ * Abuse reports from the public "Report" link.
  * `url` is the reported page, `reason` the reporter's note, `email` optional
- * for follow-up. Same anti-abuse posture as the waitlist: honeypot + validation
- * (a Turnstile token verification point is left for the owner). A human triages
+ * for follow-up. Same anti-abuse posture as the waitlist: honeypot +
+ * validation, with an optional Turnstile verification point. A human triages
  * these against the hidden_content list.
  *
  * `notified_at` is the alert watermark (~/lib/reports): stamped only once the

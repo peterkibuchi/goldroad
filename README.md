@@ -45,7 +45,8 @@ permanently.
 - Readers can subscribe to a publication, and choose light or dark for themselves
 - Writer stats (followers over time, per-post engagement), honest about being approximate
 - Export everything, or delete your account outright
-- A 27-check production canary and an adversarially-reviewed pipeline
+- An hourly self-check of core invariants in production, backed by external uptime
+  monitoring, and an adversarially-reviewed pipeline
 
 Newsletters, reader payments, custom domains, our own extension lexicon
 and continuous mirroring are **not** built yet — [`docs/PRODUCT.md`](docs/PRODUCT.md)

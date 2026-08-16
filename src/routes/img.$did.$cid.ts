@@ -70,7 +70,7 @@ export const Route = createFileRoute("/img/$did/$cid")({
         // year, so a post-cache hide would otherwise keep serving. Checks BOTH
         // the DID (author-level hide covers all their blobs) AND the raw CID,
         // so a record-level (AT-URI) takedown can also hide its cover image by
-        // adding a hide row keyed on the cover's CID (see scripts/takedown.mjs).
+        // adding a second hidden_content row keyed on the cover's CID.
         // env.DB is absent in unit tests — anyHidden then no-ops via the guard.
         if (env.DB) {
           const hidden = await anyHidden(drizzle(env.DB), [did, cid]).catch(

@@ -1,5 +1,5 @@
 /**
- * Takedown checks (moderation kit, audit #1). trygoldroad.com renders and
+ * Takedown checks. trygoldroad.com renders and
  * proxies arbitrary third-party atproto content, making it a host/republisher —
  * so it needs a lever to stop serving a given author or record. The reader
  * loaders (404) and the /img proxy (451) consult the D1 `hidden_content` list
@@ -8,9 +8,11 @@
  * FRESHNESS CAVEAT: the reader-page check runs in the loader, which a warm read
  * cache short-circuits — so a takedown on an already-cached page is only
  * enforced once that cache entry expires (≤60 s, see read-cache.ts) OR the
- * cache is purged. An urgent (legal/CSAM) takedown MUST purge, not just insert
- * the hide row (scripts/takedown.mjs does both). The /img check runs BEFORE its
- * cache, so image takedowns are immediate.
+ * cache is purged. A takedown is a row in `hidden_content` keyed on the DID or
+ * AT-URI; inserting that row is therefore only half of an URGENT (legal/CSAM)
+ * takedown — the edge cache must be purged for the same URLs in the same
+ * breath, or the content keeps being served until the entry ages out. The /img
+ * check runs BEFORE its cache, so image takedowns are immediate.
  *
  * `anyHidden` is pure (db injected) so it unit-tests without a live D1 and so
  * the /img route (which already holds `env.DB`) can call it directly.
