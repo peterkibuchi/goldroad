@@ -36,12 +36,12 @@ const entry = createServerEntry({
   async fetch(request, opts) {
     const redirect = canonicalRedirect(request);
     if (redirect) return redirect;
-    // Reading surfaces are served through the edge cache (audit #3); everything
+    // Reading surfaces are served through the edge cache; everything
     // else (and any non-reading path) falls straight through.
     const response = await serveWithReadCache(request, () =>
       handler.fetch(request, opts),
     );
-    // Security-header baseline on HTML documents (audit #4). Applied after the
+    // Security-header baseline on HTML documents. Applied after the
     // cache so policy changes take effect on already-cached pages immediately.
     return withSecurityHeaders(response, CSP, __BUILD_SHA__);
   },
@@ -56,7 +56,7 @@ const handleFetch = withExceptionCapture((request) => entry.fetch(request), {
   host: import.meta.env.VITE_PUBLIC_POSTHOG_HOST || undefined,
 });
 
-// Default export carries BOTH fetch and the Workers Cron handler (audit #6/#7);
+// Default export carries BOTH fetch and the Workers Cron handler;
 // createServerEntry only builds `fetch`, so scheduled is attached here.
 export default {
   fetch(request: Request, _env: Env, ctx: ExecutionContext): Promise<Response> {

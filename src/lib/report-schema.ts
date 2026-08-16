@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /**
- * Abuse-report payload (moderation kit, audit #1). Shared by the API handler
+ * Abuse-report payload. Shared by the API handler
  * and its tests. `gr_extra` is the same honeypot as the waitlist — an opaque
  * name so Chrome doesn't autofill it (crbug 40223868) and reject real reports.
  * `email` is optional (reporters may stay anonymous); `url` and `reason` are

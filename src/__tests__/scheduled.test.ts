@@ -103,7 +103,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("purgeExpiredOauthKv — the purge query (audit #7)", () => {
+describe("purgeExpiredOauthKv — the purge query", () => {
   it("deletes oauth_kv rows with a set, past expiry — and never null ones", () => {
     // Build-only drizzle instance; .toSQL() never touches the (empty) client.
     // biome-ignore lint/suspicious/noExplicitAny: no live D1 needed to build SQL
@@ -118,7 +118,7 @@ describe("purgeExpiredOauthKv — the purge query (audit #7)", () => {
   });
 });
 
-describe("selfCheck — core invariants (audit #6)", () => {
+describe("selfCheck — core invariants", () => {
   const origin = "https://trygoldroad.com";
 
   function stubFetch(
@@ -252,7 +252,7 @@ describe("runScheduled — six jobs, one hourly trigger, none able to sink anoth
     expect(backup.runBackupCheck).toHaveBeenCalledTimes(1);
   });
 
-  it("does not page the owner about a writer's own failed post", async () => {
+  it("does not alert the operator about a writer's own failed post", async () => {
     const posts: string[] = [];
     vi.stubGlobal(
       "fetch",

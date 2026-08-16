@@ -3,7 +3,7 @@
  * Pressroom register — we're speaking AS Goldroad here, not rendering a
  * writer. Franklin display headings, ink on paper,
  * hairline rules; serif body for long-form readability. A DRAFT banner marks
- * pages awaiting owner/lawyer review before public launch.
+ * pages still awaiting final legal review.
  */
 import { AppShell } from "~/components/site-chrome";
 
@@ -39,8 +39,8 @@ export function LegalLayout({
             className="mt-6 border-2 border-spot px-4 py-3 font-display text-sm text-spot"
             role="note"
           >
-            DRAFT — under owner and legal review, not yet in force. Published
-            for transparency ahead of public launch; the binding version will
+            DRAFT — under legal review, not yet in force. Published for
+            transparency ahead of public launch; the binding version will
             replace it.
           </p>
         )}

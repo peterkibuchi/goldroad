@@ -75,7 +75,7 @@ export async function loadDocument(identParam: string, rkey: string) {
   if (!RKEY_RE.test(rkey)) throw notFound();
   try {
     const did = isDid(ident) ? ident : await resolveHandleToDid(ident);
-    // Takedown check before the PDS reads (moderation kit, audit #1): a hidden
+    // Takedown check before the PDS reads: a hidden
     // author or record returns a calm 404 notice, never the writer's content.
     if (
       await checkHidden({
@@ -321,7 +321,7 @@ export function documentHead(
 }
 
 /**
- * Whisper-level "Report" link for reading surfaces (moderation kit, audit #1):
+ * Whisper-level "Report" link for reading surfaces:
  * carries the current page's canonical URL to the /report form so the reporter
  * doesn't retype it. `useLocation` keeps it right on both SSR and client nav.
  */
@@ -503,8 +503,8 @@ export function DocumentArticle({
   const publicationHref = `/@${encodeURIComponent(ident)}`;
   const mirrorHost = mirror ? provenanceHost(mirror.sourceUrl) : null;
   const readingLabel = formatReadingTime(documentReadingMinutes(body));
-  // Owner decision #1: the dek is ALWAYS shown when set — no longer just a
-  // no-body fallback — as its own line under the H1.
+  // The dek is ALWAYS shown when set — not just as a no-body fallback — as its
+  // own line under the H1.
   const dek = doc.description?.trim() || null;
   // The year of the piece, not of the render — a 2024 essay should not claim
   // 2026 because someone opened it today.
@@ -843,7 +843,7 @@ export function DocumentNotFound({ data }: { data?: unknown } = {}) {
 }
 
 /**
- * Takedown state (moderation kit, audit #1): the author or record is on the
+ * Takedown state: the author or record is on the
  * hide-list, so we don't serve it. Calm register, honest and non-accusatory —
  * we don't reveal who reported it or why. Rendered with a 451 status.
  */

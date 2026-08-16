@@ -4,9 +4,8 @@ import { ExternalLink } from "~/components/external-link";
 import { LegalLayout, LegalList, LegalSection } from "~/components/legal-page";
 
 /**
- * Acceptable-use + takedown policy (moderation kit, audit #1). Plain, outcome-
- * first copy. abuse@trygoldroad.com is a placeholder until the owner wires the
- * mailbox (see PR OWNER ACTIONS).
+ * Acceptable-use + takedown policy. Plain, outcome-first copy.
+ * abuse@trygoldroad.com is a placeholder until the mailbox is wired.
  */
 export const Route = createFileRoute("/policies")({
   head: () => ({

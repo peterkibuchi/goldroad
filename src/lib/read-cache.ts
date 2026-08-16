@@ -1,6 +1,6 @@
 /**
- * Edge caching for the public reading surfaces (audit finding #3 — the DoS
- * lever). A hit on `/@handle`, `/@handle/$rkey`, or `/p/…` runs the full
+ * Edge caching for the public reading surfaces — and, just as much, the fix for
+ * a DoS lever. A hit on `/@handle`, `/@handle/$rkey`, or `/p/…` runs the full
  * handle→DID→PDS→listRecords/getRecord chain live (≈3–4 upstream fetches),
  * uncached — so a loop of requests burns the Worker request budget AND hammers
  * third-party PDSes from our IP. This wraps those GET responses in the Workers
@@ -8,10 +8,12 @@
  * single edge lookup.
  *
  * TTL is deliberately SHORT (`s-maxage=60`, short SWR): reading surfaces render
- * third-party content that can be taken down (moderation kit, audit #1), and a
- * cached page is served WITHOUT re-running the takedown check until it expires.
- * 60 s bounds that residual window. An urgent (legal/CSAM) takedown must ALSO
- * purge the cache, not just insert the hide row — see scripts/takedown.mjs.
+ * third-party content that can be taken down, and a cached page is served
+ * WITHOUT re-running the takedown check until it expires. 60 s bounds that
+ * residual window. Because a takedown is just a `hidden_content` row that the
+ * loader consults, an urgent (legal/CSAM) one must ALSO purge the cache for the
+ * affected URLs — inserting the row alone leaves the page served until the
+ * entry ages out.
  *
  * These surfaces are NEVER personalized (the reader loaders don't read the
  * session), so responses are cached and served regardless of any cookie. That
@@ -25,9 +27,9 @@
  * so `/@h?x=<random>` can't mint distinct full-cost MISSes. This NARROWS but
  * does not fully close the amplifier: `isValidCursor` checks shape only, so
  * `/@h?cursor=<random-valid-shape>` still varies the key on that path and
- * forces a MISS. Volumetric abuse of that is the job of the single free CF
- * rate-limit rule on read paths (owner action) — the cache handles the common
- * repeated-read case. Only 200
+ * forces a MISS. Volumetric abuse of that is the job of a CDN rate-limit rule
+ * on read paths, configured outside this codebase — the cache handles the
+ * common repeated-read case. Only 200
  * responses of an allowlisted content type (the HTML pages plus the RSS
  * feeds — see CACHEABLE_CONTENT_TYPES) without a Set-Cookie are stored; 404s
  * (takedowns included) and upstream flakes never cache, so they re-run the

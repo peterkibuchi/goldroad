@@ -4,9 +4,8 @@ import { ExternalLink } from "~/components/external-link";
 import { LegalLayout, LegalList, LegalSection } from "~/components/legal-page";
 
 /**
- * Privacy policy (audit #2). DRAFT — owner/lawyer review before public launch.
- * GDPR/UK GDPR-aware; DRAFT pending full legal review. privacy@trygoldroad.com is a
- * placeholder (see PR OWNER ACTIONS).
+ * Privacy policy. GDPR/UK GDPR-aware, but DRAFT pending final legal review.
+ * privacy@trygoldroad.com is a placeholder until the mailbox is wired.
  */
 export const Route = createFileRoute("/privacy")({
   head: () => ({

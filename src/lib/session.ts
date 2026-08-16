@@ -2,7 +2,7 @@
  * Session cookie: `payload.signature` where payload = base64url(JSON{did,iat})
  * and signature = base64url(HMAC-SHA256(payload, secret)). The signature covers
  * the issued-at, so a token is only valid for MAX_AGE_SECONDS from issue — a
- * leaked cookie is no longer replayable forever (audit #9). The cookie still
+ * leaked cookie is no longer replayable forever. The cookie still
  * carries ONLY the DID (+ its issue time); OAuth tokens and DPoP keys stay in
  * the D1-backed session store. WebCrypto only — must run on workerd.
  *

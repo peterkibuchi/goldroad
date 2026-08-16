@@ -3,8 +3,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { LegalLayout, LegalList, LegalSection } from "~/components/legal-page";
 
 /**
- * Terms of service (audit #2). DRAFT — owner/lawyer review before public
- * launch. Governing law is a placeholder (see PR OWNER ACTIONS).
+ * Terms of service. DRAFT pending final legal review — governing law is still
+ * a placeholder and must be set before these are in force.
  */
 export const Route = createFileRoute("/terms")({
   head: () => ({

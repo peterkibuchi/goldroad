@@ -131,7 +131,7 @@ jobs:
           # 90 days is the ceiling this plan allows. It is longer than D1's
           # 30-day Time Travel window, which is the point — but it is still a
           # rolling window, not an archive. Pulling a copy down periodically is
-          # an owner step, documented in docs/BACKUPS.md.
+          # a manual operator step, documented in docs/BACKUPS.md.
           retention-days: 90
           if-no-files-found: error
 

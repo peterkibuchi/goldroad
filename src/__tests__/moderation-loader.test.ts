@@ -15,8 +15,8 @@ import { checkHidden } from "~/lib/moderation";
  * both ends: here + the hiddenSubjectsFromInput unit test). It does NOT drive
  * the real GET server-fn HTTP round-trip — that isn't exercisable under vitest
  * ("No Start context in AsyncLocalStorage", probed), so it's covered instead by
- * a manual seeded-D1 end-to-end check and the opt-in live-takedown canary
- * (CANARY_SEED=1). checkHidden is mocked to true; resolveHandleToDid
+ * a manual end-to-end check against a deployed origin with a seeded
+ * hidden_content row. checkHidden is mocked to true; resolveHandleToDid
  * is mocked so the loader reaches the check.
  */
 vi.mock("~/lib/moderation", async (importOriginal) => ({

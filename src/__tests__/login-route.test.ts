@@ -4,9 +4,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 /**
  * /login handler behavior: every way sign-in can fail to start must land the
  * browser back on the /write sign-in panel with a designed error code — never
- * a bare text/plain 400 (the owner hit that one in prod). The OAuth client is
- * mocked (it needs Workers bindings); handle normalization, validation, and
- * redirect shaping are the real handler code.
+ * a bare text/plain 400, which is a dead end with the typed handle lost. The
+ * OAuth client is mocked (it needs Workers bindings); handle normalization,
+ * validation, and redirect shaping are the real handler code.
  */
 const authorize = vi.fn();
 vi.mock("~/lib/oauth", async (importOriginal) => {
@@ -116,7 +116,7 @@ describe("/login — designed failure redirects", () => {
     expect(res.headers.get("location")).toBe("/write");
   });
 
-  it("GET with a valid handle prefills /write but never starts OAuth (audit #8)", async () => {
+  it("GET with a valid handle prefills /write but never starts OAuth", async () => {
     const res = await get("?handle=@writer.bsky.social");
     expect(res.status).toBe(303);
     const location = locationOf(res);
