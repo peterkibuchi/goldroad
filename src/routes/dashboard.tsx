@@ -54,8 +54,7 @@ import {
   isValidCursor,
   listRecords,
   listRecordsPage,
-  resolveDidToHandle,
-  resolveDidToPds,
+  resolveDidIdentity,
   type StandardDocument,
   type StandardPublication,
 } from "~/lib/atproto";
@@ -147,12 +146,11 @@ const getDashboard = createServerFn({ method: "GET" })
     );
     if (!did) return null;
     const origin = new URL(request.url).origin;
-    const handle = await resolveDidToHandle(did).catch(() => null);
     // The writer's own documents, straight from their PDS over public XRPC —
     // same read path the public publication page uses. A failed load stays
     // distinguishable from "no posts yet" (rows: null) so we never greet a
     // writer whose PDS flaked with a scary empty state.
-    const pds = await resolveDidToPds(did).catch(() => null);
+    const { handle, pds } = await resolveDidIdentity(did);
     // The PDS fan-out and the D1 drafts read run in one parallel batch —
     // neither depends on the other, so the page pays the slowest, not the sum.
     const [draftRows, scheduleRows, [page, onLegacyUrl]] = await Promise.all([

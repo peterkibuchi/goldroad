@@ -133,9 +133,7 @@ async function fetchDidDocument(did: string): Promise<DidDocument> {
   return doc;
 }
 
-/** Resolve a DID to its PDS service endpoint via the DID document. */
-export async function resolveDidToPds(did: string): Promise<string> {
-  const doc = await fetchDidDocument(did);
+function pdsFromDocument(doc: DidDocument, did: string): string {
   const pds = doc.service?.find(
     (s) =>
       s.type === "AtprotoPersonalDataServer" || s.id.endsWith("#atproto_pds"),
@@ -146,15 +144,61 @@ export async function resolveDidToPds(did: string): Promise<string> {
   return assertPublicHttpsUrl(pds).origin;
 }
 
-/** Resolve a DID to its declared handle (`alsoKnownAs` at:// entry). UNVERIFIED
- * (display use only — a bidirectional check would re-resolve handle → DID). */
-export async function resolveDidToHandle(did: string): Promise<Handle> {
-  const doc = await fetchDidDocument(did);
+function handleFromDocument(doc: DidDocument, did: string): Handle {
   const aka = doc.alsoKnownAs?.find((u) => u.startsWith("at://"));
   const handle = aka?.slice("at://".length) ?? "";
   if (!isHandle(handle))
     throw new NotFoundError(`no handle in DID document for ${did}`);
   return handle;
+}
+
+function orNull<T>(read: () => T): T | null {
+  try {
+    return read();
+  } catch {
+    return null;
+  }
+}
+
+/** Both answers a DID document carries, for callers that want both. */
+export type DidIdentity = { handle: Handle | null; pds: string | null };
+
+/**
+ * Resolve a DID's handle AND its PDS from ONE fetch of the DID document.
+ *
+ * Nearly every signed-in surface needs both — the handle to address the
+ * writer, the PDS to read their repo — and resolving them separately fetched
+ * the same document from plc.directory twice per page load, for one page's
+ * worth of latency on somebody else's infrastructure.
+ *
+ * Null per field rather than a throw: every one of those callers already
+ * treated its own resolution as best-effort, and an unreachable directory and
+ * a document that names no PDS lead to exactly the same fallback.
+ */
+export async function resolveDidIdentity(did: string): Promise<DidIdentity> {
+  let doc: DidDocument;
+  try {
+    doc = await fetchDidDocument(did);
+  } catch {
+    return { handle: null, pds: null };
+  }
+  return {
+    handle: orNull(() => handleFromDocument(doc, did)),
+    pds: orNull(() => pdsFromDocument(doc, did)),
+  };
+}
+
+/** Resolve a DID to its PDS service endpoint via the DID document. Throws
+ * (unlike resolveDidIdentity) — a reader route needs a NotFoundError to
+ * distinguish "no such repo" from a directory that was merely unreachable. */
+export async function resolveDidToPds(did: string): Promise<string> {
+  return pdsFromDocument(await fetchDidDocument(did), did);
+}
+
+/** Resolve a DID to its declared handle (`alsoKnownAs` at:// entry). UNVERIFIED
+ * (display use only — a bidirectional check would re-resolve handle → DID). */
+export async function resolveDidToHandle(did: string): Promise<Handle> {
+  return handleFromDocument(await fetchDidDocument(did), did);
 }
 
 /** com.atproto.repo.getRecord entry: at:// URI + CID (a strongRef) + value.

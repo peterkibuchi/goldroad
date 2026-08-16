@@ -25,8 +25,7 @@ import { drizzle } from "drizzle-orm/d1";
 import {
   isDid,
   listRecords,
-  resolveDidToHandle,
-  resolveDidToPds,
+  resolveDidIdentity,
   type StandardDocument,
 } from "~/lib/atproto";
 import { readLiveSessionDid } from "~/lib/live-session";
@@ -69,15 +68,19 @@ export const Route = createFileRoute("/api/account/export")({
         const origin = canonicalOrigin(url.origin);
         const db = drizzle(env.DB);
 
-        const [draftRows, ledgerRows, followerRows, scheduleRows, handle, pds] =
-          await Promise.all([
-            selectDraftsForExport(db, did),
-            selectImportItemsForExport(db, did),
-            selectFollowerSnapshotsForExport(db, did),
-            selectScheduledPostsForExport(db, did),
-            resolveDidToHandle(did).catch(() => null),
-            resolveDidToPds(did).catch(() => null),
-          ]);
+        const [
+          draftRows,
+          ledgerRows,
+          followerRows,
+          scheduleRows,
+          { handle, pds },
+        ] = await Promise.all([
+          selectDraftsForExport(db, did),
+          selectImportItemsForExport(db, did),
+          selectFollowerSnapshotsForExport(db, did),
+          selectScheduledPostsForExport(db, did),
+          resolveDidIdentity(did),
+        ]);
         const ident = handle ?? did;
 
         // Best-effort convenience listing only — never blocks the export of

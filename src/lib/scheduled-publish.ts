@@ -25,7 +25,7 @@
 import { Client } from "@atcute/client";
 import type { drizzle } from "drizzle-orm/d1";
 
-import { isDid, resolveDidToHandle, resolveDidToPds } from "~/lib/atproto";
+import { isDid, resolveDidIdentity } from "~/lib/atproto";
 import { selectDraft } from "~/lib/drafts";
 import { createOAuthClient } from "~/lib/oauth";
 import { CANONICAL_ORIGIN, ownOrigins } from "~/lib/origin";
@@ -97,10 +97,7 @@ export async function publishDuePost(
   }
   if (!draft) return { ok: false, retry: false, reason: DRAFT_GONE_REASON };
 
-  const [handle, pds] = await Promise.all([
-    resolveDidToHandle(post.did).catch(() => null),
-    resolveDidToPds(post.did).catch(() => null),
-  ]);
+  const { handle, pds } = await resolveDidIdentity(post.did);
   // Without a PDS there is nowhere to write. Worth another hour: identity
   // resolution is a network call to somebody else's infrastructure.
   if (!pds) return { ok: false, retry: true, reason: PDS_UNREACHABLE_REASON };

@@ -14,8 +14,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  */
 
 const atproto = vi.hoisted(() => ({
-  resolveDidToHandle: vi.fn(),
-  resolveDidToPds: vi.fn(),
+  resolveDidIdentity: vi.fn(),
   listRecordPages: vi.fn(),
 }));
 vi.mock("~/lib/atproto", async (importOriginal) => ({
@@ -100,8 +99,10 @@ beforeEach(() => {
   postResult.current = { ok: true, status: 200, data: {} };
   restoreFails.current = false;
   session.did = READER;
-  atproto.resolveDidToHandle.mockResolvedValue("reader.example");
-  atproto.resolveDidToPds.mockResolvedValue("https://reader-pds.example.com");
+  atproto.resolveDidIdentity.mockResolvedValue({
+    handle: "reader.example",
+    pds: "https://reader-pds.example.com",
+  });
   // The reader's own subscription collection, as their PDS lists it.
   atproto.listRecordPages.mockResolvedValue({ records: [], truncated: false });
 });
@@ -226,7 +227,10 @@ describe("POST /api/publish — intent=subscribe", () => {
   });
 
   it("says so plainly when the reader's own PDS could not be resolved", async () => {
-    atproto.resolveDidToPds.mockRejectedValue(new Error("no did doc"));
+    atproto.resolveDidIdentity.mockResolvedValue({
+      handle: "reader.example",
+      pds: null,
+    });
     const res = await subscribe();
     expect(res.status).toBe(502);
     expect(await res.json()).toEqual({ ok: false, error: "unavailable" });

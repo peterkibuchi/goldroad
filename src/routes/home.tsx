@@ -27,8 +27,7 @@ import {
   listRecords,
   listRecordsPage,
   MAX_LIST_RECORDS,
-  resolveDidToHandle,
-  resolveDidToPds,
+  resolveDidIdentity,
   type StandardDocument,
   type StandardPublication,
 } from "~/lib/atproto";
@@ -72,8 +71,7 @@ const getOverview = createServerFn({ method: "GET" }).handler(async () => {
     drizzle(env.DB),
   );
   if (!did) return null;
-  const handle = await resolveDidToHandle(did).catch(() => null);
-  const pds = await resolveDidToPds(did).catch(() => null);
+  const { handle, pds } = await resolveDidIdentity(did);
 
   const [draftRows, docsPage, pubs] = await Promise.all([
     listDrafts(drizzle(env.DB), did).catch(() => null),

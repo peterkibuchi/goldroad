@@ -41,8 +41,7 @@ const publishing = vi.hoisted(() => ({
 vi.mock("~/lib/publish-document", () => publishing);
 
 const atproto = vi.hoisted(() => ({
-  resolveDidToHandle: vi.fn(),
-  resolveDidToPds: vi.fn(),
+  resolveDidIdentity: vi.fn(),
   listRecords: vi.fn(),
 }));
 vi.mock("~/lib/atproto", async (importOriginal) => ({
@@ -151,8 +150,10 @@ beforeEach(() => {
   publishing.resolvePublicationSite.mockResolvedValue(
     `at://${DID}/site.standard.publication/3lyk73wxnok2f`,
   );
-  atproto.resolveDidToHandle.mockResolvedValue("writer.example");
-  atproto.resolveDidToPds.mockResolvedValue("https://pds.example.com");
+  atproto.resolveDidIdentity.mockResolvedValue({
+    handle: "writer.example",
+    pds: "https://pds.example.com",
+  });
 });
 
 afterEach(() => {
