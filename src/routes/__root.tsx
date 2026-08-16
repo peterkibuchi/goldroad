@@ -63,8 +63,11 @@ export const Route = createRootRoute({
         href: appCss,
       },
       { rel: "manifest", href: "/manifest.json" },
-      // iOS ignores the manifest's icons for the Home Screen and looks for this.
-      { rel: "apple-touch-icon", href: "/logo192.png" },
+      // iOS ignores the manifest's icons for the Home Screen and looks for
+      // this. 180×180 is the size it actually wants (the 192 it was pointed at
+      // is the Android number), and it is flattened onto the manifest's own
+      // background: iOS composites transparency onto black.
+      { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
     ],
   }),
   notFoundComponent: NotFoundPage,
