@@ -49,8 +49,10 @@
       // `--env` resolves to this placeholder and fails with "database
       // 00000000-... could not be found". That is the intended outcome — it is
       // a loud failure rather than a migration applied to the wrong database —
-      // but it means every d1 command needs its env: see db:migrate:prod and
-      // db:migrate:staging in package.json.
+      // but it means a hosted d1 command needs its env: see db:migrate:prod and
+      // db:migrate:staging in package.json. db:migrate:selfhost is the one that
+      // deliberately omits `--env` and so lands here, on the id a self-hoster
+      // has replaced with their own.
       "database_id": "00000000-0000-0000-0000-000000000000",
       "migrations_dir": "drizzle"
     }
