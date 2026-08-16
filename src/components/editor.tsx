@@ -101,18 +101,23 @@ export default function Editor({
   useEffect(() => {
     if (!appliedRef.current) {
       appliedRef.current = true;
+      let loaded = false;
       if (initialBlocks && initialBlocks.length > 0) {
         // Draft rows are written by our own editor, but guard the cast: a
-        // malformed row falls back to an empty editor instead of a crash.
+        // malformed row must not crash the resume.
         try {
           editor.replaceBlocks(
             editor.document,
             initialBlocks as PartialBlock[],
           );
+          loaded = true;
         } catch {
-          // start empty
+          // Fall through to the markdown projection. Opening EMPTY over a
+          // draft that still has words is not a recovery — the next autosave
+          // would write the blank document back over them.
         }
-      } else if (initialMarkdown) {
+      }
+      if (!loaded && initialMarkdown) {
         const blocks = editor.tryParseMarkdownToBlocks(initialMarkdown);
         if (blocks.length > 0) editor.replaceBlocks(editor.document, blocks);
       }

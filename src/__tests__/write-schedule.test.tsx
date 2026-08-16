@@ -241,6 +241,7 @@ describe("Compose — the schedule control's place in the publish flow", () => {
           title: "Queued",
           dek: "",
           blocksJson: "[]",
+          markdown: "",
           inlineImages: "",
           imported: false,
           schedule: { id: ROW_ID, dueAt: "2027-08-04T06:00:00.000Z" },

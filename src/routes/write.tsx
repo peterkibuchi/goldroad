@@ -120,9 +120,13 @@ type ResumedDraft = {
   /** Set when this draft is already queued to publish. */
   schedule: PendingSchedule | null;
   /** The stored BlockNote JSON, verbatim (loader data must be plainly
-   * serializable); the client parses it and falls back to an empty editor
-   * when it's unreadable. */
+   * serializable); the client parses it and falls back to `markdown` when
+   * it's unreadable. */
   blocksJson: string;
+  /** The markdown projection saved alongside the blocks — the resume's
+   * fallback when the block JSON can't be loaded into the editor. Lossy
+   * (that's why it isn't the primary), but it is the writer's words. */
+  markdown: string;
   /**
    * The blob references for body images already uploaded for this draft, as
    * the publish form's `images` field stores them.
@@ -203,6 +207,7 @@ const getWriteContext = createServerFn({ method: "GET" })
             title: row.title,
             dek: row.dek,
             blocksJson: row.content,
+            markdown: row.markdown,
             inlineImages: row.inlineImages,
             imported: importRow !== undefined,
             schedule: pending
@@ -806,18 +811,72 @@ function isBlankDocument(blocks: BlockNoteEditor["document"]): boolean {
   );
 }
 
-/** Stored draft JSON → blocks array, or undefined when empty/unreadable (the
- * editor then starts empty rather than crashing the resume). */
-function parseDraftBlocks(
+/**
+ * The least a value must look like before BlockNote will accept it as a block:
+ * an object naming a type, whose content and children (when present) are the
+ * kinds the editor's own document carries.
+ *
+ * Not a schema check — the editor knows its own block types and this file must
+ * not learn them. It rules out the shapes that make `replaceBlocks` throw
+ * *while* it is rewriting the document.
+ */
+function isBlockShaped(value: unknown): boolean {
+  if (typeof value !== "object" || value === null || Array.isArray(value))
+    return false;
+  const block = value as {
+    type?: unknown;
+    content?: unknown;
+    children?: unknown;
+  };
+  if (typeof block.type !== "string" || block.type === "") return false;
+  if (
+    block.content !== undefined &&
+    typeof block.content !== "string" &&
+    !Array.isArray(block.content)
+  )
+    return false;
+  if (block.children !== undefined)
+    return Array.isArray(block.children) && block.children.every(isBlockShaped);
+  return true;
+}
+
+/**
+ * Stored draft JSON → blocks array, or undefined when it is empty or isn't a
+ * document the editor can load.
+ *
+ * `Array.isArray && length > 0` was not the guard its comment promised: a
+ * non-empty array of ANYTHING passed it, and each kind of garbage throws
+ * somewhere different inside `replaceBlocks` — `[null]` on a property read,
+ * `[{ type: "paragraph", content: 42 }]` deeper in. The editor catches that
+ * throw, so the resume did not crash; it silently opened EMPTY over a draft
+ * that still held the writer's words, and the next autosave wrote the empty
+ * document back over them. Every entry is checked before the array is handed
+ * over, and the markdown projection is passed as the fallback either way.
+ */
+export function parseDraftBlocks(
   blocksJson: string | undefined,
 ): unknown[] | undefined {
   if (!blocksJson) return undefined;
+  let parsed: unknown;
   try {
-    const parsed: unknown = JSON.parse(blocksJson);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : undefined;
+    parsed = JSON.parse(blocksJson);
   } catch {
     return undefined;
   }
+  if (!Array.isArray(parsed) || parsed.length === 0) return undefined;
+  return parsed.every(isBlockShaped) ? parsed : undefined;
+}
+
+/** The draft id /api/drafts names in a successful save, or null when the
+ * response isn't the shape it promises — never read blind, or a drifted
+ * body turns a save that WORKED into a mid-flow crash. */
+function savedDraftId(body: unknown): string | null {
+  const saved = body as { draft?: { id?: unknown } } | null;
+  return typeof saved === "object" &&
+    saved !== null &&
+    typeof saved.draft?.id === "string"
+    ? saved.draft.id
+    : null;
 }
 
 function postDraft(payload: {
@@ -1053,21 +1112,25 @@ export function Compose({
         });
       }
       if (res.ok) {
-        const data = (await res.json()) as { draft?: { id?: string } };
-        if (!draftIdRef.current && typeof data.draft?.id === "string") {
-          draftIdRef.current = data.draft.id;
+        const id = savedDraftId(await res.json().catch(() => null));
+        if (draftIdRef.current) {
+          next = "saved";
+        } else if (id) {
+          draftIdRef.current = id;
           // Make refresh/back resume this draft. replaceState, not a router
           // navigation: the loader must not re-run under the writer's
           // cursor. (The router's in-memory location goes stale, which is
           // fine while all site chrome navigates with full-page <a> links —
           // revisit if /write ever gains client-side <Link> nav.)
-          window.history.replaceState(
-            null,
-            "",
-            `/write?draft=${data.draft.id}`,
-          );
+          window.history.replaceState(null, "", `/write?draft=${id}`);
+          next = "saved";
+        } else {
+          // Written, but the response didn't name the row — so this editor no
+          // longer knows which draft it is writing to, and every later save
+          // would mint another one. Say so and keep the words dirty.
+          dirtyRef.current = true;
+          next = "error";
         }
-        next = "saved";
       } else {
         dirtyRef.current = true;
         next = res.status === 409 ? "limit" : "error";
@@ -1349,7 +1412,12 @@ export function Compose({
               <Editor
                 imageStore={imageStore}
                 initialBlocks={initialBlocks}
-                initialMarkdown={draft?.textContent || undefined}
+                // Both are passed on a resume: blocks are lossless and win,
+                // and the projection is what the editor falls back to when
+                // the stored JSON turns out not to be loadable.
+                initialMarkdown={
+                  draft?.textContent || resumed?.markdown || undefined
+                }
                 onChange={handleDraftChange}
                 onReady={handleEditorReady}
               />
