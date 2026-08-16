@@ -259,15 +259,9 @@ const ALLOWED: Array<{
   },
   {
     file: "routes/write.tsx",
-    token: "border-spot",
-    count: 1,
-    why: "The sign-in panel's error notice, on the same signed-out surface.",
-  },
-  {
-    file: "routes/write.tsx",
     token: "text-spot",
-    count: 3,
-    why: "That error notice plus the cover and schedule error lines — errors, not primaries, and absent at rest.",
+    count: 2,
+    why: 'The cover and schedule error lines — errors, not primaries, and absent at rest. The editor\'s own error notices are `Notice tone="alert"` now and spend their accent in components/notice.tsx.',
   },
   {
     file: "components/theme-editor.tsx",

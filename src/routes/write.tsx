@@ -309,19 +309,6 @@ export const Route = createFileRoute("/write")({
   component: WritePage,
 });
 
-function ErrorNotice({ code }: { code: string | undefined }) {
-  const message = errorMessage(code);
-  if (!message) return null;
-  return (
-    <p
-      className="mb-6 border border-spot px-4 py-3 font-display text-sm text-spot"
-      role="alert"
-    >
-      {message}
-    </p>
-  );
-}
-
 /** Exported for tests (write-signin.test.tsx) — not a route. */
 export function SignIn({
   error,
@@ -1299,10 +1286,22 @@ export function Compose({
       .finally(submit);
   }
 
+  // The page's refusal, and the draft loader's — shown together only when they
+  // are actually different complaints.
+  const pageAlert = errorMessage(localError ?? error);
+  const draftAlert = draftError !== error ? errorMessage(draftError) : null;
+
   return (
     <main className="mx-auto w-full max-w-2xl px-6 py-10">
-      <ErrorNotice code={localError ?? error} />
-      {draftError !== error && <ErrorNotice code={draftError} />}
+      {/* `Notice` carries its own top margin and no bottom one, so the group
+          owns the gap to whatever comes next — the reconnect form's negative
+          offset below is measured against it. */}
+      {(pageAlert || draftAlert) && (
+        <div className="mb-6">
+          {pageAlert && <Notice tone="alert">{pageAlert}</Notice>}
+          {draftAlert && <Notice tone="alert">{draftAlert}</Notice>}
+        </div>
+      )}
       {unscheduled && (
         <Notice tone="info">
           Schedule cancelled — this is a draft again, and nothing will publish
