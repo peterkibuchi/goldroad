@@ -270,7 +270,12 @@ export const Route = createFileRoute("/write")({
     // with the draft still loaded) so the editor can confirm it in words.
     if (search.unscheduled === "1" || search.unscheduled === 1)
       out.unscheduled = true;
-    if (typeof search.edit === "string") out.edit = search.edit;
+    // Both keys name a stored thing and both are validated here, to the same
+    // standard the loader already holds them to: an rkey that isn't a TID
+    // (or a draft id that isn't one of ours) can only ever produce a
+    // not-found, so it never becomes part of this route's address.
+    if (typeof search.edit === "string" && TID_RE.test(search.edit))
+      out.edit = search.edit;
     if (typeof search.draft === "string" && isDraftId(search.draft))
       out.draft = search.draft;
     // /login sends the entered handle back so the sign-in form can prefill it.
