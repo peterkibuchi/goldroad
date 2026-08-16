@@ -1,0 +1,31 @@
+name: Feature request
+description: Suggest something Goldroad should do
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: >
+        What are you trying to do that Goldroad makes hard or impossible? Write
+        the situation, not the solution — it is the part that can't be guessed.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you'd like instead
+      description: How you imagine it working. A rough sketch is fine.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you've tried
+      description: >
+        Workarounds, other tools that get it right, or why the obvious answer
+        doesn't work.
+    validations:
+      required: false

@@ -1,0 +1,56 @@
+name: Bug report
+description: Something behaves differently than it should
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security issues do **not** belong here — see
+        [SECURITY.md](https://github.com/peterkibuchi/goldroad/blob/main/SECURITY.md)
+        for private reporting.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+      placeholder: |
+        Expected: …
+        Actual: …
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: >
+        The shortest path that shows the problem. If it involves a published
+        post or a publication page, a link is worth more than a description.
+      placeholder: |
+        1. Go to …
+        2. Click …
+        3. …
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: >
+        Browser and version, OS, and whether this is trygoldroad.com or your own
+        deployment. For a self-hosted instance, the release tag helps.
+      placeholder: Firefox 141 on macOS 15 · trygoldroad.com
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: >
+        Console errors, screenshots, the handle involved — whatever you have.
+        Never paste tokens, cookies, or session values.
+    validations:
+      required: false
