@@ -61,11 +61,13 @@ import {
 import {
   DATE_COLUMN,
   type DashboardRow,
+  DEFAULT_POST_SORT,
   type DraftRow,
   mapDashboardRows,
   nextPostsTab,
   type PostSort,
   type PostsTab,
+  parsePostSort,
   type ScheduledPostRow,
   sortingStateFor,
   VIEWS_COLUMN,
@@ -601,7 +603,7 @@ export function PostsManager({
 }) {
   const stats = useWriterStats();
   const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<PostSort>("newest");
+  const [sort, setSort] = useState<PostSort>(DEFAULT_POST_SORT);
 
   // A view count exists only where the analytics provider recorded that exact
   // path; every other row keeps `undefined`, which renders as nothing.
@@ -815,7 +817,7 @@ export function PostsManager({
               {/* Same 16px floor as the search field above. */}
               <select
                 className="cursor-pointer border-rule border-b bg-transparent pb-1 font-display text-base text-ink focus:outline-none sm:text-sm"
-                onChange={(event) => setSort(event.target.value as PostSort)}
+                onChange={(event) => setSort(parsePostSort(event.target.value))}
                 value={sort}
               >
                 <option value="newest">Newest first</option>

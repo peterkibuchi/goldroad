@@ -7,6 +7,8 @@ import {
   type DashboardRow,
   joinStatsToRows,
   mapDashboardRows,
+  POST_SORTS,
+  parsePostSort,
   sortingStateFor,
   VIEWS_COLUMN,
   viewsByRkey,
@@ -301,5 +303,29 @@ describe("sortingStateFor", () => {
     expect(sortingStateFor("most-read")).toEqual([
       { id: VIEWS_COLUMN, desc: true },
     ]);
+  });
+});
+
+describe("parsePostSort", () => {
+  it("accepts every sort the control actually offers", () => {
+    for (const sort of POST_SORTS) expect(parsePostSort(sort)).toBe(sort);
+  });
+
+  it("falls back to newest for anything else", () => {
+    // A <select>'s value is a string; it used to be asserted straight into a
+    // PostSort, so a value the table has no column for would have reached
+    // sortingStateFor and sorted by an id that doesn't exist.
+    expect(parsePostSort("")).toBe("newest");
+    expect(parsePostSort("most_read")).toBe("newest");
+    expect(parsePostSort("date")).toBe("newest");
+    expect(parsePostSort("__proto__")).toBe("newest");
+  });
+
+  it("hands sortingStateFor a column the table has, whatever it is given", () => {
+    const columns = [DATE_COLUMN, VIEWS_COLUMN];
+    for (const value of ["newest", "oldest", "most-read", "nonsense"]) {
+      for (const state of sortingStateFor(parsePostSort(value)))
+        expect(columns).toContain(state.id);
+    }
   });
 });
