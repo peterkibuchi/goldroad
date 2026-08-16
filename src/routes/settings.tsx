@@ -9,6 +9,7 @@ import { ExternalLink } from "~/components/external-link";
 import { MovePublicationNotice } from "~/components/move-publication-notice";
 import { Notice } from "~/components/notice";
 import { AppShell } from "~/components/site-chrome";
+import { MAIN_CONTENT_ID } from "~/components/skip-link";
 import { ThemeEditor } from "~/components/theme-editor";
 import {
   listRecords,
@@ -408,7 +409,11 @@ function SettingsPage() {
 
   return (
     <AppShell header={{ variant: "signed-in", ident, active: "settings" }}>
-      <main className="mx-auto w-full max-w-2xl px-6 py-10">
+      <main
+        className="mx-auto w-full max-w-2xl px-6 py-10"
+        id={MAIN_CONTENT_ID}
+        tabIndex={-1}
+      >
         <h1 className="font-black font-display text-3xl text-ink tracking-tight">
           Settings
         </h1>

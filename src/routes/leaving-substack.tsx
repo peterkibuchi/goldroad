@@ -8,6 +8,7 @@ import {
   RegMark,
 } from "~/components/marketing";
 import { SiteFooter, SiteHeader } from "~/components/site-chrome";
+import { MAIN_CONTENT_ID } from "~/components/skip-link";
 import { CANONICAL_ORIGIN } from "~/lib/origin";
 
 export const Route = createFileRoute("/leaving-substack")({
@@ -249,7 +250,7 @@ export function LeavingSubstack() {
     <div className="goldroad-surface flex min-h-screen flex-col bg-paper font-body text-ink">
       <SiteHeader variant="marketing" />
 
-      <main className="flex-1">
+      <main className="flex-1" id={MAIN_CONTENT_ID} tabIndex={-1}>
         {/* Entry point for writers migrating from other platforms: economics
             and ownership lead here, where the homepage leads with
             distribution. Substack's lock-in is the foil — never a sideways

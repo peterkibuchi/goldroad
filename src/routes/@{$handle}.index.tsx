@@ -8,6 +8,7 @@ import {
   ReportLink,
 } from "~/components/document-article";
 import { SearchIcon } from "~/components/icons";
+import { MAIN_CONTENT_ID } from "~/components/skip-link";
 import { SubscribeControl } from "~/components/subscribe-control";
 import { WriterSurface } from "~/components/writer-surface";
 import { filterPostsByQuery, groupPostsByMonth } from "~/lib/archive";
@@ -314,7 +315,11 @@ export function PublicationView({
     // The writer's surface, not ours: their theme applies here, our dark-mode
     // toggle deliberately does not (see WriterSurface and styles.css).
     <WriterSurface theme={theme}>
-      <main className="mx-auto max-w-[42rem] px-6 py-16 md:py-24">
+      <main
+        className="mx-auto max-w-[42rem] px-6 py-16 md:py-24"
+        id={MAIN_CONTENT_ID}
+        tabIndex={-1}
+      >
         {/* The masthead: the writer's name is the largest text on the page —
             this is their publication, not a Goldroad page. */}
         <header className="mb-14 border-ink border-b pb-10">

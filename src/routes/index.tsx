@@ -11,6 +11,7 @@ import {
 } from "~/components/marketing";
 import { Notice } from "~/components/notice";
 import { SiteFooter, SiteHeader } from "~/components/site-chrome";
+import { MAIN_CONTENT_ID } from "~/components/skip-link";
 import {
   resetTurnstileWidgets,
   TURNSTILE_TOKEN_FIELD,
@@ -346,7 +347,7 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
       {/* Homepage speaks to Bluesky-native writers; /leaving-substack is the
           separate entry point for writers migrating from other platforms —
           never a blended hero. */}
-      <main className="flex-1">
+      <main className="flex-1" id={MAIN_CONTENT_ID} tabIndex={-1}>
         {/* Hero — distribution-first message. landing_variant control renders
             below; the challenger lives in HERO_HEADLINES. */}
         <section className="relative">

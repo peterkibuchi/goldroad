@@ -37,6 +37,7 @@ import { useEffect, useRef, useState } from "react";
 import { formatDate } from "~/components/document-article";
 import { Notice } from "~/components/notice";
 import { AppShell } from "~/components/site-chrome";
+import { MAIN_CONTENT_ID } from "~/components/skip-link";
 import { resolveDidToHandle } from "~/lib/atproto";
 import {
   detectFileKind,
@@ -837,7 +838,11 @@ function ImportPage() {
     // No active row: importing is a task you perform on your archive, reached
     // from the posts manager's toolbar — not one of the rail's places.
     <AppShell header={{ variant: "signed-in", ident }}>
-      <main className="mx-auto w-full max-w-2xl px-6 py-10">
+      <main
+        className="mx-auto w-full max-w-2xl px-6 py-10"
+        id={MAIN_CONTENT_ID}
+        tabIndex={-1}
+      >
         <h1 className="font-black font-display text-3xl text-ink tracking-tight">
           Import your writing
         </h1>
