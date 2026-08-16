@@ -2,6 +2,7 @@
 import { drizzle } from "drizzle-orm/d1";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { MAX_ALERT_SUMMARY_CHARS } from "../lib/alert-webhook";
 import {
   buildReportAlert,
   MAX_ALERT_REASON_CHARS,
@@ -223,6 +224,47 @@ describe("buildReportAlert — what a chat channel is allowed to see", () => {
       "impersonation",
       "spam",
     ]);
+  });
+
+  it("leads with the summary line a chat webhook needs to accept the POST", () => {
+    // Discord answers 400 to a body with no `content`, Slack renders an empty
+    // message without `text` — so a payload of only our own fields is an alert
+    // that never arrives. The line also has to stand alone: a chat channel does
+    // not render the structured fields at all.
+    const alert = buildReportAlert([
+      { id: 1, url: "https://trygoldroad.com/a", reason: "impersonation" },
+      { id: 2, url: "https://trygoldroad.com/b", reason: "spam" },
+    ]);
+    expect(alert.content).toContain("2 abuse reports");
+    expect(alert.text).toBe(alert.content);
+  });
+
+  it("counts one report in the singular, and says when the batch filled", () => {
+    expect(
+      buildReportAlert([{ id: 1, url: "u", reason: "r" }]).content,
+    ).toMatch(/1 abuse report awaiting/);
+    // Otherwise a chat reader sees "50 reports" every hour with no way to tell
+    // a spike from a backlog that is never draining.
+    const capped = buildReportAlert(
+      [{ id: 1, url: "u", reason: "r" }],
+      NOW,
+      true,
+    );
+    expect(capped.content).toContain("more waiting");
+  });
+
+  it("keeps reporter-written text out of the one line a human reads", () => {
+    // `url` and `reason` arrive from an anonymous endpoint. They belong in the
+    // structured fields, where they are clipped and clearly quoted — not in the
+    // headline, which is the only part a chat channel renders.
+    const alert = buildReportAlert([
+      { id: 1, url: "https://evil.example/pwn", reason: "call me now" },
+    ]);
+    expect(alert.content).not.toContain("evil.example");
+    expect(alert.content).not.toContain("call me now");
+    expect(alert.content.length).toBeLessThanOrEqual(
+      MAX_ALERT_SUMMARY_CHARS + 1,
+    );
   });
 
   it("says where to triage instead of shipping the queue", () => {

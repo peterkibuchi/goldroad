@@ -19,11 +19,11 @@
  * delivered, so a missed hour is a delayed alert rather than a lost one.
  *
  * WHICH MEANS THE STAMP FOLLOWS THE POST, NEVER PRECEDES IT. ~/lib/scheduled's
- * `reportFailures` fires and forgets, which is right for a self-check that
- * re-runs next hour and re-reports the same failure. It is wrong here: a
- * dropped POST plus a stamped row loses the report for good. So this pass
- * checks `res.ok` and only then writes the watermark; anything less leaves the
- * rows alone for the next tick to retry.
+ * `reportFailures` refuses to call a non-2xx a delivery too, but it has nothing
+ * to stamp — a self-check re-runs next hour and re-reports the same failure, so
+ * a rejected POST costs an hour. Here a rejected POST plus a stamped row loses
+ * the report for good. So this pass checks `res.ok` and only then writes the
+ * watermark; anything less leaves the rows alone for the next tick to retry.
  *
  * SHAPE. A drizzle query builder (verifiable via `.toSQL()` without a live D1),
  * pure functions, and a pass over an injectable store — the same shape as
@@ -33,6 +33,7 @@ import { asc, inArray, isNull } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/d1";
 
 import { reports } from "~/db/schema";
+import { type ChatSummary, chatSummary, clip } from "~/lib/alert-webhook";
 
 type DrizzleD1 = ReturnType<typeof drizzle>;
 
@@ -124,7 +125,7 @@ export function d1ReportStore(db: DrizzleD1): ReportStore {
   };
 }
 
-export type ReportAlert = {
+export type ReportAlert = ChatSummary & {
   source: "goldroad-cron";
   kind: "abuse-reports";
   count: number;
@@ -135,20 +136,29 @@ export type ReportAlert = {
   at: string;
 };
 
-/** `text` shortened to `max` characters, marked as shortened. */
-function clip(text: string, max: number): string {
-  return text.length <= max ? text : `${text.slice(0, max)}…`;
+/**
+ * The headline a chat channel shows. It counts the queue and says whether the
+ * batch filled — and carries no reporter-supplied text at all, because the one
+ * line a human reads should not be something an anonymous endpoint can write.
+ * The URLs and the notes travel in the structured fields below.
+ */
+function summarize(count: number, capped: boolean): string {
+  const queue = `${count} abuse report${count === 1 ? "" : "s"} awaiting review`;
+  return capped
+    ? `Goldroad: ${queue} — batch full, more waiting`
+    : `Goldroad: ${queue}`;
 }
 
 /**
  * The alert body — pure, so what does and does not travel is testable without a
  * network.
  *
- * Field by field rather than a spread: the destination is a chat channel, which
- * is a far wider audience than the moderation queue, so the payload lists what
- * a triager needs to act (how many, which URLs, what was alleged, which rows)
- * and points at the database for anything more. A reporter who left an email
- * gave it for follow-up, not for broadcast.
+ * Every row field is listed by hand rather than spread: the destination is a
+ * chat channel, which is a far wider audience than the moderation queue, so the
+ * payload lists what a triager needs to act (how many, which URLs, what was
+ * alleged, which rows) and points at the database for anything more. A reporter
+ * who left an email gave it for follow-up, not for broadcast. (The one spread
+ * here is the summary envelope, which is built from a count, not from a row.)
  */
 export function buildReportAlert(
   pending: readonly PendingReport[],
@@ -156,6 +166,10 @@ export function buildReportAlert(
   capped = false,
 ): ReportAlert {
   return {
+    // `content`/`text` first: without one of them Discord rejects the whole
+    // POST and Slack renders an empty message, so the fields below would never
+    // be read by anyone (~/lib/alert-webhook).
+    ...chatSummary(summarize(pending.length, capped)),
     source: "goldroad-cron",
     kind: "abuse-reports",
     count: pending.length,

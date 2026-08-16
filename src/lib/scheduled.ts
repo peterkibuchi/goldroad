@@ -50,6 +50,7 @@ import { and, isNotNull, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 
 import { oauthKv } from "~/db/schema";
+import { chatSummary } from "~/lib/alert-webhook";
 import { d1BackupStore, runBackupCheck } from "~/lib/backup";
 import {
   d1SnapshotStore,
@@ -109,27 +110,73 @@ export async function selfCheck(
   return failures;
 }
 
-/** POST failures to the alert webhook, but only when both a webhook and at
- * least one failure exist. Returns whether a POST was attempted. */
+export type AlertDelivery = {
+  /** Whether a POST was attempted — a webhook is set AND something is wrong. */
+  attempted: boolean;
+  /** Why the alert did not land, in the words an operator reads. Empty unless a
+   * POST was attempted and rejected. */
+  failures: string[];
+};
+
+/** The one-line headline a chat channel renders: how many invariants broke and
+ * the first of them. The rest travel in `failures` for a JSON sink;
+ * `chatSummary` clips this hard, which matters because a failure string can
+ * carry a `String(err)` or a value read off a remote response. */
+function summarize(failures: string[]): string {
+  const count = `${failures.length} failure${failures.length === 1 ? "" : "s"}`;
+  return `Goldroad self-check: ${count} — ${failures[0]}`;
+}
+
+/**
+ * POST failures to the alert webhook, but only when both a webhook and at least
+ * one failure exist.
+ *
+ * A non-2xx is a message nobody received, exactly as in ~/lib/reports, and used
+ * to be indistinguishable from success here: the old `.catch()` only saw
+ * network rejections, while an HTTP 400 resolves. That is the shape a chat
+ * webhook rejecting a body actually takes, so the failure it hid was the one
+ * most likely to happen.
+ */
 export async function reportFailures(
   webhook: string | undefined,
   failures: string[],
-): Promise<boolean> {
-  if (!webhook || failures.length === 0) return false;
-  await fetch(webhook, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      source: "goldroad-cron",
-      // Two different things now post to this one webhook. Without a
-      // discriminator on BOTH, anything routing on `kind` gets `undefined` for
-      // these and has to sniff for a `failures` key to tell them apart.
-      kind: "self-check",
-      failures,
-      at: new Date().toISOString(),
-    }),
-  }).catch((err) => console.error("alert webhook POST failed", err));
-  return true;
+): Promise<AlertDelivery> {
+  if (!webhook || failures.length === 0)
+    return { attempted: false, failures: [] };
+  try {
+    const res = await fetch(webhook, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        // `content`/`text` first, and not optional: Discord answers 400 to a
+        // body carrying none of its renderable fields and Slack shows an empty
+        // message, so without this the fields below reach nobody at all
+        // (~/lib/alert-webhook).
+        ...chatSummary(summarize(failures)),
+        source: "goldroad-cron",
+        // Two different things now post to this one webhook. Without a
+        // discriminator on BOTH, anything routing on `kind` gets `undefined` for
+        // these and has to sniff for a `failures` key to tell them apart.
+        kind: "self-check",
+        failures,
+        at: new Date().toISOString(),
+      }),
+    });
+    if (!res.ok) {
+      console.error("alert webhook POST ->", res.status);
+      return {
+        attempted: true,
+        failures: [`self-check alert rejected by the webhook (${res.status})`],
+      };
+    }
+  } catch (err) {
+    console.error("alert webhook POST failed", err);
+    return {
+      attempted: true,
+      failures: ["self-check alert could not be delivered"],
+    };
+  }
+  return { attempted: true, failures: [] };
 }
 
 /** WEBHOOK_URL is an OPTIONAL Workers secret (operator-provided), so it isn't in
@@ -229,5 +276,14 @@ export async function runScheduled(env: CronEnv): Promise<void> {
     ...reported.failures,
   ];
   if (failures.length > 0) console.error("cron self-check failures", failures);
-  await reportFailures(env.WEBHOOK_URL, failures);
+  // This is the last job in the pass, so there is no later failure list for a
+  // rejected alert to join — and nothing persists across ticks to carry one.
+  // The log line is therefore the only record that the alert CHANNEL itself is
+  // down, which is precisely why it is an error rather than a shrug: an
+  // invariant that is still broken next hour re-alerts and fails again, and a
+  // run of these lines is what tells an operator the webhook is the problem
+  // rather than the site.
+  const alert = await reportFailures(env.WEBHOOK_URL, failures);
+  if (alert.failures.length > 0)
+    console.error("cron alert delivery failures", alert.failures);
 }

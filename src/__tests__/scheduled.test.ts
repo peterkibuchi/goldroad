@@ -55,6 +55,7 @@ const reports = vi.hoisted(() => ({
 }));
 vi.mock("~/lib/reports", () => reports);
 
+import { MAX_ALERT_SUMMARY_CHARS } from "../lib/alert-webhook";
 import {
   purgeExpiredOauthKv,
   reportFailures,
@@ -434,27 +435,140 @@ describe("runScheduled — six jobs, one hourly trigger, none able to sink anoth
     expect(posts).toHaveLength(1);
     expect(posts[0]).toContain("73h old");
   });
+
+  it("says out loud when the alert itself was rejected", async () => {
+    // The tick has nowhere to escalate to — this is the last job in the pass,
+    // and nothing survives to the next one — so the log line is the only record
+    // that the alert CHANNEL is what is broken rather than the site.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: URL | RequestInfo) => {
+        const url = String(input);
+        if (url.includes("hook.example"))
+          return new Response("bad request", { status: 400 });
+        return url.includes("client-metadata")
+          ? Response.json({
+              client_id: "https://trygoldroad.com/oauth/client-metadata.json",
+            })
+          : new Response("<html>Goldroad</html>");
+      }),
+    );
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    backup.runBackupCheck.mockResolvedValue({
+      failures: ["newest backup is 73h old (max 48h)"],
+      pruned: true,
+    });
+
+    await runScheduled(envWithHook());
+
+    const logged = errors.mock.calls.map((call) => JSON.stringify(call));
+    expect(logged.some((line) => line.includes("alert delivery"))).toBe(true);
+  });
 });
 
 describe("reportFailures — alert only when a webhook AND failures exist", () => {
+  /** The body of the nth POST, parsed. */
+  function sent(spy: ReturnType<typeof vi.fn>, index = 0) {
+    return JSON.parse(String(spy.mock.calls[index][1].body));
+  }
+
   it("POSTs when both are present", async () => {
     const spy = vi.fn(async () => new Response(null));
     vi.stubGlobal("fetch", spy);
-    expect(await reportFailures("https://hook.example", ["down"])).toBe(true);
+    expect(await reportFailures("https://hook.example", ["down"])).toEqual({
+      attempted: true,
+      failures: [],
+    });
     expect(spy).toHaveBeenCalledTimes(1);
   });
 
   it("no-ops without a webhook (WEBHOOK_URL absent)", async () => {
     const spy = vi.fn(async () => new Response(null));
     vi.stubGlobal("fetch", spy);
-    expect(await reportFailures(undefined, ["down"])).toBe(false);
+    expect(await reportFailures(undefined, ["down"])).toEqual({
+      attempted: false,
+      failures: [],
+    });
     expect(spy).not.toHaveBeenCalled();
   });
 
   it("no-ops when there are no failures", async () => {
     const spy = vi.fn(async () => new Response(null));
     vi.stubGlobal("fetch", spy);
-    expect(await reportFailures("https://hook.example", [])).toBe(false);
+    expect(await reportFailures("https://hook.example", [])).toEqual({
+      attempted: false,
+      failures: [],
+    });
     expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("carries the summary line a chat webhook needs to accept the POST", async () => {
+    // Discord answers 400 to a body with no `content`, Slack renders an empty
+    // message without `text`. A payload of only our own fields is an alert that
+    // is never delivered — and the structured fields are not rendered in a chat
+    // channel at all, so the line has to say the useful thing by itself.
+    const spy = vi.fn(async () => new Response(null));
+    vi.stubGlobal("fetch", spy);
+
+    await reportFailures("https://hook.example", ["GET / -> 503", "down"]);
+
+    const body = sent(spy);
+    expect(body.content).toContain("2 failures");
+    expect(body.content).toContain("GET / -> 503");
+    expect(body.text).toBe(body.content);
+    // ...without losing what a JSON sink reads.
+    expect(body.kind).toBe("self-check");
+    expect(body.failures).toEqual(["GET / -> 503", "down"]);
+  });
+
+  it("clips the summary so one runaway failure string cannot become the alert", async () => {
+    // A failure can embed a `String(err)` or a value read off a remote
+    // response, so the headline is clipped rather than trusted to be short.
+    const spy = vi.fn(async () => new Response(null));
+    vi.stubGlobal("fetch", spy);
+
+    await reportFailures("https://hook.example", [`x`.repeat(5_000)]);
+
+    const body = sent(spy);
+    expect(body.content.length).toBeLessThanOrEqual(
+      MAX_ALERT_SUMMARY_CHARS + 1,
+    );
+    // The full text still travels in the structured field.
+    expect(body.failures[0]).toHaveLength(5_000);
+  });
+
+  it("calls a non-2xx a failed delivery rather than a delivery", async () => {
+    // This is the failure the old `.catch()` could not see: a rejected POST
+    // RESOLVES, so a webhook answering 400 to every alert looked exactly like a
+    // webhook accepting them.
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("bad request", { status: 400 })),
+    );
+
+    const result = await reportFailures("https://hook.example", ["down"]);
+
+    expect(result.attempted).toBe(true);
+    expect(result.failures).toHaveLength(1);
+    expect(result.failures[0]).toContain("400");
+  });
+
+  it("reports a network rejection rather than swallowing it", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("connect ECONNREFUSED");
+      }),
+    );
+
+    const result = await reportFailures("https://hook.example", ["down"]);
+
+    expect(result.attempted).toBe(true);
+    expect(result.failures).toEqual([
+      "self-check alert could not be delivered",
+    ]);
   });
 });
