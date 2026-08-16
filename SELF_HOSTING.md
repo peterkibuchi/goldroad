@@ -45,22 +45,40 @@ before OAuth works.
 
    ```sh
    pnpm exec wrangler d1 create goldroad-db
-   pnpm db:migrate:prod        # applies drizzle/ migrations to the remote DB
+   pnpm db:migrate:selfhost    # applies drizzle/ migrations to your remote DB
    ```
 
-3. **Set your public origin.** Point `VITE_PUBLIC_ORIGIN` at the origin your instance
-   serves from (in `.env` for local, and as a Build variable for deploys), e.g.
-   `https://your-worker.your-subdomain.workers.dev` or your own domain. Every minted
-   URL and your OAuth `client_id` are derived from this — it must be correct before
-   first sign-in.
+   `db:migrate:selfhost` is the one to use: it carries no `--env`, so it resolves
+   the top-level `d1_databases` block — the one whose id you just replaced.
+   `db:migrate:prod` and `db:migrate:staging` target the hosted project's own
+   environments and are not yours to run.
 
-4. **Set secrets** (values documented in `.dev.vars.example`):
+3. **Set your build variables.** These are `VITE_`-prefixed, which means they are
+   baked into the client bundle at build time — put them in `.env` for local work
+   and in your Workers Builds **build variables** for deploys, and never put a
+   secret in one. The schema is `src/env.ts`; every one of them is optional there,
+   but the origin is only optional in the sense that it falls back to the hosted
+   instance, which is wrong for you.
+
+   | Variable | Required | What it is |
+   |----------|----------|------------|
+   | `VITE_PUBLIC_ORIGIN` | yes, in practice | The origin your instance serves from, e.g. `https://your-worker.your-subdomain.workers.dev` or your own domain. Every minted URL and your OAuth `client_id` derive from it, so it must be right before the first sign-in. Left empty it defaults to the hosted origin. |
+   | `VITE_PUBLIC_POSTHOG_KEY` | optional | PostHog project key. Empty (the default) means analytics never initialise at all — no SDK load, no events. |
+   | `VITE_PUBLIC_POSTHOG_HOST` | optional | PostHog ingestion host. Defaults to `https://us.i.posthog.com`; set it for EU or a self-hosted PostHog. |
+   | `VITE_PUBLIC_TURNSTILE_SITE_KEY` | optional | Cloudflare Turnstile sitekey. Set it and the waitlist and report forms render the widget; empty means no widget. Pair it with `TURNSTILE_SECRET` below — the sitekey alone renders a challenge nobody checks. |
+   | `VITE_APP_TITLE` | optional | Overrides the application title. |
+
+4. **Set secrets** (values documented in `.dev.vars.example`). Everything here is
+   server-side and never reaches the browser:
 
    | Secret | Required | What it is |
    |--------|----------|------------|
    | `COOKIE_SECRET` | yes | HMAC key for the session-cookie signature. Generate with `openssl rand -hex 32`. |
    | `OAUTH_PRIVATE_KEY_JWK` | yes (prod) | ES256 private JWK for `private_key_jwt` client assertions — your instance's OAuth key. Generate it per the comment in `.dev.vars.example`. |
+   | `TURNSTILE_SECRET` | optional | Turnstile secret paired with `VITE_PUBLIC_TURNSTILE_SITE_KEY`. Unset, `/api/waitlist` and `/api/report` skip verification entirely and behave as they do without Turnstile; set, a solved challenge is required. |
    | `WEBHOOK_URL` | optional | Alert webhook for the hourly cron: self-check failures, and new abuse reports awaiting triage. Absent = silent no-op: reports stay queued and unnotified, and once it is set the backlog goes out oldest-first at up to 50 per hourly tick. |
+   | `POSTHOG_QUERY_API_KEY` | optional | PostHog personal API key with Query Read scope, for the writer-stats endpoint. |
+   | `POSTHOG_PROJECT_ID` | optional | Numeric PostHog project id the pageviews live in. Both PostHog secrets are needed together — with either missing, `/api/stats` answers `{ enabled: false }` and never calls upstream. |
 
    Set each as a Worker secret, e.g.:
 
@@ -111,4 +129,8 @@ answer.
 ## Analytics (optional)
 
 Analytics are off unless you set `VITE_PUBLIC_POSTHOG_KEY` (PostHog). Leaving it empty
-disables analytics entirely.
+disables analytics entirely — the SDK is never even loaded.
+
+The per-post view counts a writer sees are a separate switch: they come from PostHog's
+Query API and need `POSTHOG_QUERY_API_KEY` and `POSTHOG_PROJECT_ID` as Worker secrets.
+Without both, `/api/stats` reports itself disabled and the counts simply do not appear.
