@@ -28,6 +28,26 @@
  */
 export const MAX_ALERT_SUMMARY_CHARS = 180;
 
+/**
+ * A chat webhook that hasn't answered in this long is not going to. Bounds
+ * every outbound alert this project sends, because both senders sit inside the
+ * hourly cron: a POST left hanging holds the tick open behind the jobs that
+ * have not run yet, and an unanswered alert is a failed delivery whether the
+ * webhook says so or simply never replies.
+ */
+export const ALERT_TIMEOUT_MS = 5_000;
+
+/** Whether a rejected fetch was our own deadline rather than the network.
+ * `AbortSignal.timeout` rejects with a `TimeoutError`; a caller worth the name
+ * says which of the two happened. */
+export function isTimeout(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    (err as { name?: unknown }).name === "TimeoutError"
+  );
+}
+
 /** `text` shortened to `max` characters, marked as shortened. */
 export function clip(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max)}…`;

@@ -50,7 +50,7 @@ import { and, isNotNull, lte } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 
 import { oauthKv } from "~/db/schema";
-import { chatSummary } from "~/lib/alert-webhook";
+import { ALERT_TIMEOUT_MS, chatSummary, isTimeout } from "~/lib/alert-webhook";
 import { d1BackupStore, runBackupCheck } from "~/lib/backup";
 import {
   d1SnapshotStore,
@@ -136,6 +136,11 @@ function summarize(failures: string[]): string {
  * network rejections, while an HTTP 400 resolves. That is the shape a chat
  * webhook rejecting a body actually takes, so the failure it hid was the one
  * most likely to happen.
+ *
+ * The POST is bounded on the same deadline as the abuse alert. This is the last
+ * job in an hourly cron, so a webhook that accepts the connection and then says
+ * nothing would hold the whole tick open waiting on a third party we don't run
+ * — the one failure mode that costs more than the alert it is failing to send.
  */
 export async function reportFailures(
   webhook: string | undefined,
@@ -161,6 +166,7 @@ export async function reportFailures(
         failures,
         at: new Date().toISOString(),
       }),
+      signal: AbortSignal.timeout(ALERT_TIMEOUT_MS),
     });
     if (!res.ok) {
       console.error("alert webhook POST ->", res.status);
@@ -171,9 +177,16 @@ export async function reportFailures(
     }
   } catch (err) {
     console.error("alert webhook POST failed", err);
+    // A deadline we imposed and a network that refused are different problems —
+    // one is a webhook that hangs, the other a URL that is wrong or gone — and
+    // the operator reading the line is the one who has to tell them apart.
     return {
       attempted: true,
-      failures: ["self-check alert could not be delivered"],
+      failures: [
+        isTimeout(err)
+          ? `self-check alert timed out after ${ALERT_TIMEOUT_MS} ms`
+          : "self-check alert could not be delivered",
+      ],
     };
   }
   return { attempted: true, failures: [] };

@@ -55,7 +55,10 @@ const reports = vi.hoisted(() => ({
 }));
 vi.mock("~/lib/reports", () => reports);
 
-import { MAX_ALERT_SUMMARY_CHARS } from "../lib/alert-webhook";
+import {
+  ALERT_TIMEOUT_MS,
+  MAX_ALERT_SUMMARY_CHARS,
+} from "../lib/alert-webhook";
 import {
   purgeExpiredOauthKv,
   reportFailures,
@@ -553,6 +556,45 @@ describe("reportFailures — alert only when a webhook AND failures exist", () =
     expect(result.attempted).toBe(true);
     expect(result.failures).toHaveLength(1);
     expect(result.failures[0]).toContain("400");
+  });
+
+  it("bounds the POST so a webhook that never answers cannot hold the tick open", async () => {
+    // A webhook that accepts the connection and then says nothing is worse than
+    // one that refuses: this is the last job in an hourly cron, so an unbounded
+    // POST parks the whole tick on a third party we don't run. The abuse alert
+    // has always carried this deadline; this one did not.
+    let seen: RequestInit | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: unknown, init?: RequestInit) => {
+        seen = init;
+        return new Response(null);
+      }),
+    );
+
+    await reportFailures("https://hook.example", ["down"]);
+
+    expect(seen?.signal).toBeInstanceOf(AbortSignal);
+    expect(seen?.signal?.aborted).toBe(false);
+  });
+
+  it("counts a timed-out alert as a failed delivery, and says which it was", async () => {
+    // The rejection `AbortSignal.timeout` actually produces. A hanging webhook
+    // and a wrong URL need different fixes, so the line says which happened.
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new DOMException("The operation timed out.", "TimeoutError");
+      }),
+    );
+
+    const result = await reportFailures("https://hook.example", ["down"]);
+
+    expect(result.attempted).toBe(true);
+    expect(result.failures).toEqual([
+      `self-check alert timed out after ${ALERT_TIMEOUT_MS} ms`,
+    ]);
   });
 
   it("reports a network rejection rather than swallowing it", async () => {
