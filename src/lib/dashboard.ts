@@ -191,7 +191,26 @@ export const VIEWS_COLUMN = "views";
  * seam is answering — a sort by a metric we don't have would silently do
  * nothing, which is worse than not offering it.
  */
-export type PostSort = "newest" | "oldest" | "most-read";
+export const POST_SORTS = ["newest", "oldest", "most-read"] as const;
+
+export type PostSort = (typeof POST_SORTS)[number];
+
+/** The sort a writer gets when they haven't asked for one. */
+export const DEFAULT_POST_SORT: PostSort = "newest";
+
+/**
+ * Narrow an arbitrary string to a sort choice.
+ *
+ * The select's `value` is a `string` as far as the DOM is concerned, and it was
+ * being asserted into a `PostSort` — an assertion the compiler cannot check and
+ * that would have quietly handed the table a sort id it has no column for.
+ * "most-read" is a real case of this rather than a hypothetical: the option is
+ * only rendered while the stats seam is answering, so it can vanish from under
+ * a selection.
+ */
+export function parsePostSort(value: string): PostSort {
+  return POST_SORTS.find((sort) => sort === value) ?? DEFAULT_POST_SORT;
+}
 
 /** Sort choice → the table's sorting state. One mapping, so the select and
  * the table can't disagree about what "oldest" means. */
