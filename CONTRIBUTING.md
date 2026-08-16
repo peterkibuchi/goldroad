@@ -59,3 +59,8 @@ What this means in practice:
 ## Reporting security issues
 
 Do **not** open a public issue for a vulnerability. See [`SECURITY.md`](SECURITY.md).
+
+## Code of conduct
+
+Participating here means agreeing to the [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md)
+(Contributor Covenant 2.1). Report anything that breaches it to abuse@trygoldroad.com.
