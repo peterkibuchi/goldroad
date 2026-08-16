@@ -1,3 +1,16 @@
+# Transitive dependencies pinned past a published advisory, for packages that
+# have not yet shipped a release carrying the fix themselves. Each entry earns
+# its place with an advisory id; drop it once the direct dependency's own range
+# has moved past the patched version.
+overrides:
+  # GHSA-55q2-fjhq-7xh7 — an IN_PLACE hook removal leaves a detached subtree
+  # executable (XSS). Reaches the browser through posthog-js.
+  dompurify: "^3.4.13"
+  # GHSA-5p4m-2wfm-xmqj — quadratic CPU on !!omap resolution. Build-time only
+  # (xmlbuilder2, under the Start plugin), so this is hygiene rather than an
+  # exposed surface.
+  js-yaml: "^4.3.1"
+
 allowBuilds:
   # core-js (via posthog-js) postinstall only prints a funding banner — skip it.
   core-js: false
