@@ -27,8 +27,10 @@ vi.mock("~/lib/atproto", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../lib/atproto")>();
   return {
     ...actual,
-    resolveDidToHandle: vi.fn(async () => "writer.example"),
-    resolveDidToPds: vi.fn(async () => "https://pds.example"),
+    resolveDidIdentity: vi.fn(async () => ({
+      handle: "writer.example",
+      pds: "https://pds.example",
+    })),
   };
 });
 

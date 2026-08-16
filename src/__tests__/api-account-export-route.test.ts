@@ -16,8 +16,7 @@ const store = vi.hoisted(() => ({
 vi.mock("~/lib/rights-store", () => store);
 
 const atproto = vi.hoisted(() => ({
-  resolveDidToHandle: vi.fn(),
-  resolveDidToPds: vi.fn(),
+  resolveDidIdentity: vi.fn(),
   listRecords: vi.fn(),
 }));
 vi.mock("~/lib/atproto", async () => {
@@ -73,8 +72,7 @@ beforeEach(() => {
   store.selectImportItemsForExport.mockResolvedValue([]);
   store.selectFollowerSnapshotsForExport.mockResolvedValue([]);
   store.selectScheduledPostsForExport.mockResolvedValue([]);
-  atproto.resolveDidToHandle.mockRejectedValue(new Error("no handle"));
-  atproto.resolveDidToPds.mockRejectedValue(new Error("no pds"));
+  atproto.resolveDidIdentity.mockResolvedValue({ handle: null, pds: null });
 });
 
 describe("session gate", () => {
@@ -243,7 +241,10 @@ describe("response shape", () => {
   });
 
   it("degrades ownPosts to null (never fails the export) when the PDS read flakes", async () => {
-    atproto.resolveDidToPds.mockResolvedValue("https://pds.example");
+    atproto.resolveDidIdentity.mockResolvedValue({
+      handle: null,
+      pds: "https://pds.example",
+    });
     atproto.listRecords.mockRejectedValue(new Error("pds unreachable"));
     const res = await call();
     expect(res.status).toBe(200);
@@ -252,7 +253,10 @@ describe("response shape", () => {
   });
 
   it("lists own posts read live from the PDS when it resolves", async () => {
-    atproto.resolveDidToPds.mockResolvedValue("https://pds.example");
+    atproto.resolveDidIdentity.mockResolvedValue({
+      handle: null,
+      pds: "https://pds.example",
+    });
     atproto.listRecords.mockResolvedValue([
       {
         uri: "at://did/site.standard.document/abc",

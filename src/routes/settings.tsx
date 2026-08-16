@@ -12,8 +12,8 @@ import { AppShell } from "~/components/site-chrome";
 import { ThemeEditor } from "~/components/theme-editor";
 import {
   listRecords,
-  resolveDidToHandle,
-  resolveDidToPds,
+  NotFoundError,
+  resolveDidIdentity,
   type StandardPublication,
 } from "~/lib/atproto";
 import { blobImagePath, coverImageCid } from "~/lib/blob";
@@ -75,7 +75,7 @@ const getSettings = createServerFn({ method: "GET" }).handler(async () => {
   );
   if (!did) return null;
   const origin = new URL(request.url).origin;
-  const handle = await resolveDidToHandle(did).catch(() => null);
+  const { handle, pds } = await resolveDidIdentity(did);
   const ident = handle ?? did;
 
   // Read the writer's Goldroad-managed publication (same matching rule as the
@@ -92,7 +92,9 @@ const getSettings = createServerFn({ method: "GET" }).handler(async () => {
    * publication, and the form below cannot be trusted either way. See the catch. */
   let unreadable = false;
   try {
-    const pds = await resolveDidToPds(did);
+    // No PDS is the same kind of "we couldn't read it" as a failed listRecords
+    // — never an empty publication. See the catch.
+    if (!pds) throw new NotFoundError(`no PDS resolved for ${did}`);
     const pubs = await listRecords<StandardPublication>(
       pds,
       did,

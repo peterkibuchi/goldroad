@@ -12,8 +12,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  */
 
 const atproto = vi.hoisted(() => ({
-  resolveDidToHandle: vi.fn(),
-  resolveDidToPds: vi.fn(),
+  resolveDidIdentity: vi.fn(),
   listRecords: vi.fn(),
 }));
 vi.mock("~/lib/atproto", async (importOriginal) => ({
@@ -112,8 +111,10 @@ function errorFrom(res: Response): string | null {
 beforeEach(() => {
   posted.length = 0;
   postResult.current = { ok: true, data: {} };
-  atproto.resolveDidToHandle.mockResolvedValue("writer.example");
-  atproto.resolveDidToPds.mockResolvedValue("https://pds.example.com");
+  atproto.resolveDidIdentity.mockResolvedValue({
+    handle: "writer.example",
+    pds: "https://pds.example.com",
+  });
   atproto.listRecords.mockResolvedValue([publication()]);
 });
 

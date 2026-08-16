@@ -15,8 +15,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  */
 
 const atproto = vi.hoisted(() => ({
-  resolveDidToHandle: vi.fn(),
-  resolveDidToPds: vi.fn(),
+  resolveDidIdentity: vi.fn(),
 }));
 vi.mock("~/lib/atproto", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/atproto")>()),
@@ -110,8 +109,10 @@ beforeEach(() => {
   session.did = DID;
   for (const fn of Object.values(atproto)) fn.mockReset();
   for (const fn of Object.values(ledger)) fn.mockReset();
-  atproto.resolveDidToHandle.mockResolvedValue("writer.example");
-  atproto.resolveDidToPds.mockResolvedValue("https://pds.example.com");
+  atproto.resolveDidIdentity.mockResolvedValue({
+    handle: "writer.example",
+    pds: "https://pds.example.com",
+  });
   ledger.clearPublishedImport.mockImplementation(async () => {
     steps.push("clearPublishedImport");
     return [];
@@ -187,7 +188,10 @@ describe("POST /api/publish — intent=delete", () => {
   });
 
   it("deletes even when the writer's PDS can't be resolved — this reads nothing", async () => {
-    atproto.resolveDidToPds.mockRejectedValue(new Error("no did doc"));
+    atproto.resolveDidIdentity.mockResolvedValue({
+      handle: "writer.example",
+      pds: null,
+    });
     const res = await remove();
     // The session's own XRPC client already knows where to write; a failed
     // directory lookup must not block a writer removing their own post.
@@ -220,7 +224,7 @@ describe("POST /api/publish — intent=delete", () => {
     const res = await remove({}, { origin: "https://evil.example" });
     expect(res.status).toBe(403);
     expect(posted).toHaveLength(0);
-    expect(atproto.resolveDidToPds).not.toHaveBeenCalled();
+    expect(atproto.resolveDidIdentity).not.toHaveBeenCalled();
   });
 
   it("refuses a signed-out delete", async () => {

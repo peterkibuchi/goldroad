@@ -21,8 +21,7 @@ const drafts = vi.hoisted(() => ({ selectDraft: vi.fn() }));
 vi.mock("~/lib/drafts", () => drafts);
 
 const atproto = vi.hoisted(() => ({
-  resolveDidToHandle: vi.fn(),
-  resolveDidToPds: vi.fn(),
+  resolveDidIdentity: vi.fn(),
 }));
 vi.mock("~/lib/atproto", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/atproto")>()),
@@ -68,8 +67,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   restore.mockResolvedValue({ session: true });
   drafts.selectDraft.mockResolvedValue([draftRow]);
-  atproto.resolveDidToHandle.mockResolvedValue("writer.example");
-  atproto.resolveDidToPds.mockResolvedValue("https://pds.example.com");
+  atproto.resolveDidIdentity.mockResolvedValue({
+    handle: "writer.example",
+    pds: "https://pds.example.com",
+  });
   publishing.publishStoredDraft.mockResolvedValue({
     ok: true,
     rkey: "3lyk73wxnok2f",
@@ -153,14 +154,20 @@ describe("publishing", () => {
   });
 
   it("retries when the PDS can't be resolved — somebody else's network", async () => {
-    atproto.resolveDidToPds.mockRejectedValue(new Error("dns"));
+    atproto.resolveDidIdentity.mockResolvedValue({
+      handle: "writer.example",
+      pds: null,
+    });
     const result = await publishDuePost(db, POST);
     expect(result).toMatchObject({ ok: false, retry: true });
     expect(publishing.publishStoredDraft).not.toHaveBeenCalled();
   });
 
   it("publishes under the DID when the handle won't resolve", async () => {
-    atproto.resolveDidToHandle.mockRejectedValue(new Error("dns"));
+    atproto.resolveDidIdentity.mockResolvedValue({
+      handle: null,
+      pds: "https://pds.example.com",
+    });
     await publishDuePost(db, POST);
     const input = publishing.publishStoredDraft.mock.calls[0][0] as {
       ident: string;

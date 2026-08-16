@@ -11,8 +11,8 @@ import { ScheduledTime } from "~/components/scheduled-time";
 import { AppShell } from "~/components/site-chrome";
 import {
   getRecord,
-  resolveDidToHandle,
-  resolveDidToPds,
+  NotFoundError,
+  resolveDidIdentity,
   type StandardDocument,
 } from "~/lib/atproto";
 import { blobImagePath, coverImageCid } from "~/lib/blob";
@@ -164,7 +164,9 @@ const getWriteContext = createServerFn({ method: "GET" })
         resumed: null,
         draftError: undefined,
       } as const;
-    const handle = await resolveDidToHandle(did).catch(() => null);
+    // One DID-document read for both: the handle names the writer in the
+    // chrome, and the PDS is where an edit reads its record back from.
+    const { handle, pds } = await resolveDidIdentity(did);
 
     // Resume a saved draft (ownership enforced in the query's WHERE). Editing
     // a published record wins if both params are somehow present.
@@ -220,7 +222,7 @@ const getWriteContext = createServerFn({ method: "GET" })
     let draft: Draft | null = null;
     if (data.edit) {
       try {
-        const pds = await resolveDidToPds(did);
+        if (!pds) throw new NotFoundError(`no PDS resolved for ${did}`);
         const doc = await getRecord<StandardDocument>(
           pds,
           did,

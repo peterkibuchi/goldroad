@@ -25,8 +25,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  */
 
 const atproto = vi.hoisted(() => ({
-  resolveDidToHandle: vi.fn(),
-  resolveDidToPds: vi.fn(),
+  resolveDidIdentity: vi.fn(),
   listRecords: vi.fn(),
   getRecordEntry: vi.fn(),
 }));
@@ -195,8 +194,10 @@ beforeEach(() => {
   for (const fn of Object.values(drafts)) fn.mockReset();
   for (const fn of Object.values(schedules)) fn.mockReset();
   for (const fn of Object.values(ledger)) fn.mockReset();
-  atproto.resolveDidToHandle.mockResolvedValue("writer.example");
-  atproto.resolveDidToPds.mockResolvedValue("https://pds.example.com");
+  atproto.resolveDidIdentity.mockResolvedValue({
+    handle: "writer.example",
+    pds: "https://pds.example.com",
+  });
   atproto.listRecords.mockResolvedValue([publication()]);
   drafts.deleteDraft.mockImplementation(async () => {
     steps.push("deleteDraft");
@@ -281,7 +282,10 @@ describe("POST /api/publish — intent=document, publishing a new post", () => {
   });
 
   it("publishes a loose document rather than refusing when the PDS is unknown", async () => {
-    atproto.resolveDidToPds.mockRejectedValue(new Error("no did doc"));
+    atproto.resolveDidIdentity.mockResolvedValue({
+      handle: "writer.example",
+      pds: null,
+    });
     const res = await publish();
     // An honest https `site` beats a publish refused over bookkeeping — the
     // words are what the writer pressed the button for.
@@ -296,7 +300,10 @@ describe("POST /api/publish — intent=document, publishing a new post", () => {
     // The worker also answers on goldroad.kibuchi.workers.dev, and that
     // hostname has gone dark for a day before now. A permanent record must not
     // depend on it.
-    atproto.resolveDidToPds.mockResolvedValue(null);
+    atproto.resolveDidIdentity.mockResolvedValue({
+      handle: "writer.example",
+      pds: null,
+    });
     const form = new FormData();
     form.append("title", "The long way round");
     form.append("body", "Some words.");
@@ -472,7 +479,10 @@ describe("POST /api/publish — intent=document, editing a published post", () =
   });
 
   it("says not_found rather than creating a post when the PDS is unknown", async () => {
-    atproto.resolveDidToPds.mockResolvedValue(null);
+    atproto.resolveDidIdentity.mockResolvedValue({
+      handle: "writer.example",
+      pds: null,
+    });
     const res = await edit();
     // A create here would leave the writer with the same post published twice.
     expect(posted).toHaveLength(0);
@@ -706,7 +716,7 @@ describe("POST /api/publish — intent=document, refusals write nothing", () => 
     expect(res.status).toBe(403);
     expect(posted).toHaveLength(0);
     // The gate runs first, so a cross-site POST costs no session read at all.
-    expect(atproto.resolveDidToPds).not.toHaveBeenCalled();
+    expect(atproto.resolveDidIdentity).not.toHaveBeenCalled();
   });
 
   it("refuses a signed-out publish", async () => {

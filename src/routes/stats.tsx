@@ -21,8 +21,7 @@ import { TrafficSources } from "~/components/stats/traffic-sources";
 import {
   listRecordPages,
   MAX_ARCHIVE_PAGES,
-  resolveDidToHandle,
-  resolveDidToPds,
+  resolveDidIdentity,
   rkeyFromUri,
   type StandardDocument,
 } from "~/lib/atproto";
@@ -87,8 +86,7 @@ const getStats = createServerFn({ method: "GET" }).handler(async () => {
   );
   if (!did) return null;
 
-  const handle = await resolveDidToHandle(did).catch(() => null);
-  const pds = await resolveDidToPds(did).catch(() => null);
+  const { handle, pds } = await resolveDidIdentity(did);
   const page = pds
     ? await listRecordPages<StandardDocument>(
         pds,

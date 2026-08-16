@@ -22,8 +22,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  */
 
 const atproto = vi.hoisted(() => ({
-  resolveDidToHandle: vi.fn(),
-  resolveDidToPds: vi.fn(),
+  resolveDidIdentity: vi.fn(),
   getRecordEntry: vi.fn(),
 }));
 vi.mock("~/lib/atproto", async (importOriginal) => ({
@@ -182,8 +181,10 @@ beforeEach(() => {
   restoreFails.current = false;
   session.did = DID;
   for (const fn of Object.values(atproto)) fn.mockReset();
-  atproto.resolveDidToHandle.mockResolvedValue("writer.example");
-  atproto.resolveDidToPds.mockResolvedValue("https://pds.example.com");
+  atproto.resolveDidIdentity.mockResolvedValue({
+    handle: "writer.example",
+    pds: "https://pds.example.com",
+  });
   repoHolds({ document: document(), publication: publication() });
   // The PDS mints the post's key, so the create is where its strongRef comes
   // from — and the write-back below has nothing to write without it.
@@ -372,7 +373,10 @@ describe("POST /api/publish — intent=announce, refusals write nothing", () => 
   });
 
   it("says the PDS could not be resolved instead of announcing a guess", async () => {
-    atproto.resolveDidToPds.mockRejectedValue(new Error("no did doc"));
+    atproto.resolveDidIdentity.mockResolvedValue({
+      handle: "writer.example",
+      pds: null,
+    });
     const res = await announce();
     // Without a PDS the document can't be read, and a post announcing a URL we
     // never verified is worse than no post.
@@ -423,7 +427,7 @@ describe("POST /api/publish — intent=announce, refusals write nothing", () => 
     const res = await announce({}, { origin: "https://evil.example" });
     expect(res.status).toBe(403);
     expect(posted).toHaveLength(0);
-    expect(atproto.resolveDidToPds).not.toHaveBeenCalled();
+    expect(atproto.resolveDidIdentity).not.toHaveBeenCalled();
   });
 
   it("refuses a signed-out announce", async () => {

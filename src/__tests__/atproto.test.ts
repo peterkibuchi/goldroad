@@ -9,6 +9,9 @@ import {
   listRecordsPage,
   NotFoundError,
   parseAtUri,
+  resolveDidIdentity,
+  resolveDidToHandle,
+  resolveDidToPds,
   rkeyFromUri,
 } from "../lib/atproto";
 
@@ -250,6 +253,91 @@ describe("listRecordsPage — cursor mapping", () => {
     await expect(
       listRecords("https://pds.example", did, "c"),
     ).resolves.toHaveLength(1);
+  });
+});
+
+/**
+ * A signed-in page needs the writer's handle AND their PDS, and both live in
+ * the same DID document — resolving them one at a time fetched that document
+ * from plc.directory twice on every load.
+ */
+describe("resolveDidIdentity", () => {
+  const did = "did:plc:fake0000000000writer0000";
+  const document = {
+    alsoKnownAs: ["at://writer.example"],
+    service: [
+      {
+        id: "#atproto_pds",
+        type: "AtprotoPersonalDataServer",
+        serviceEndpoint: "https://pds.example",
+      },
+    ],
+  };
+
+  function mockFetch(payload: unknown, init?: ResponseInit) {
+    const fn = vi.fn(
+      async (..._args: [URL | string, RequestInit?]) =>
+        new Response(JSON.stringify(payload), init),
+    );
+    vi.stubGlobal("fetch", fn);
+    return fn;
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("costs exactly one request for both answers", async () => {
+    const fetchMock = mockFetch(document);
+    await expect(resolveDidIdentity(did)).resolves.toEqual({
+      handle: "writer.example",
+      pds: "https://pds.example",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      `https://plc.directory/${did}`,
+    );
+  });
+
+  it("reports the field the document is missing, not the whole identity", async () => {
+    mockFetch({ service: document.service });
+    await expect(resolveDidIdentity(did)).resolves.toEqual({
+      handle: null,
+      pds: "https://pds.example",
+    });
+    mockFetch({ alsoKnownAs: document.alsoKnownAs });
+    await expect(resolveDidIdentity(did)).resolves.toEqual({
+      handle: "writer.example",
+      pds: null,
+    });
+  });
+
+  it("refuses a PDS endpoint the SSRF guard rejects, keeping the handle", async () => {
+    mockFetch({
+      ...document,
+      service: [
+        { ...document.service[0], serviceEndpoint: "http://localhost" },
+      ],
+    });
+    await expect(resolveDidIdentity(did)).resolves.toEqual({
+      handle: "writer.example",
+      pds: null,
+    });
+  });
+
+  it("answers with nulls rather than throwing when the directory is down", async () => {
+    mockFetch({}, { status: 503 });
+    await expect(resolveDidIdentity(did)).resolves.toEqual({
+      handle: null,
+      pds: null,
+    });
+  });
+
+  it("still lets the single-answer helpers throw, which reader routes need", async () => {
+    mockFetch({}, { status: 503 });
+    await expect(resolveDidToPds(did)).rejects.toBeInstanceOf(NotFoundError);
+    mockFetch(document);
+    await expect(resolveDidToHandle(did)).resolves.toBe("writer.example");
   });
 });
 

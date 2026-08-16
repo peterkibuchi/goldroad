@@ -12,8 +12,7 @@ import {
   listRecordPages,
   parseAtUri,
   RKEY_RE,
-  resolveDidToHandle,
-  resolveDidToPds,
+  resolveDidIdentity,
   rkeyFromUri,
   type StandardDocument,
   type StandardPublication,
@@ -262,9 +261,8 @@ export const Route = createFileRoute("/api/publish")({
         }
 
         const rpc = new Client({ handler: session });
-        const handle = await resolveDidToHandle(did).catch(() => null);
+        const { handle, pds } = await resolveDidIdentity(did);
         const ident = handle ?? did; // reader routes accept handle or DID
-        const pds = await resolveDidToPds(did).catch(() => null);
 
         const ctx: WriteContext = {
           rpc,
