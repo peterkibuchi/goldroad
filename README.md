@@ -1,5 +1,8 @@
 # Goldroad
 
+[![CI](https://github.com/peterkibuchi/goldroad/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/peterkibuchi/goldroad/actions/workflows/ci.yml)
+[![License: AGPL-3.0-only](https://img.shields.io/badge/license-AGPL--3.0--only-blue.svg)](LICENSE)
+
 **Writer-owned publishing on the AT Protocol.** Your posts, your audience and your name
 live in an account you control, so leaving costs you nothing. When reader payments ship,
 our cut of them is 0% — permanently.
