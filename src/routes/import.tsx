@@ -32,7 +32,7 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { drizzle } from "drizzle-orm/d1";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { formatDate } from "~/components/document-article";
 import { Notice } from "~/components/notice";
@@ -86,10 +86,18 @@ type ImportItem = {
   contentHtml: string;
   preview: boolean;
   alreadyImported: boolean;
+  /** Does conversion drop an embed from this post (see hasEmbed)? Decided
+   * once, when the item is built: the scan reads the whole post body, and the
+   * picker re-renders on every checkbox the writer touches. */
+  hasEmbed: boolean;
   /** File-upload path only: the export says this post never published at
    * the source (a draft, or — Substack's CSV specifically — unpublished). */
   unpublishedAtSource?: boolean;
 };
+
+/** An item exactly as /api/import sends it — the flags this page derives are
+ * added on arrival, so the wire shape stays the thing we validate. */
+type WireImportItem = Omit<ImportItem, "hasEmbed" | "unpublishedAtSource">;
 
 /** Which export format an uploaded file was recognized as — drives the
  * picker's copy and, for Substack/Ghost, whether the optional host input
@@ -179,6 +187,88 @@ export function isSubstackHost(raw: string): boolean {
  */
 export function hasEmbed(html: string): boolean {
   return /<\s*(iframe|embed|object|video|audio)\b/i.test(html);
+}
+
+/**
+ * Our own JSON endpoints are still network reads, and this page walks whatever
+ * they answer with straight into `items.filter`, `item.title.trim()` and
+ * `slice(0, draftSlotsRemaining)`. A server that drifts — or an intercepting
+ * proxy, or a captive portal answering with its own JSON — would surface as an
+ * undefined-property crash partway through an import, with the writer's picked
+ * posts and their progress rows gone. The page already knows how to say "that
+ * didn't work"; these guards are what route a drift into that notice instead.
+ */
+
+/** Is this one of our `{ ok: true, … }` successes? Exported for tests
+ * (import-response-shape.test.ts) — not a route. */
+export function isOkBody(body: unknown): boolean {
+  return (
+    typeof body === "object" &&
+    body !== null &&
+    (body as { ok?: unknown }).ok === true
+  );
+}
+
+/** The code from one of our `{ ok: false, error }` refusals, or null.
+ * Exported for tests — not a route. */
+export function errorCodeOf(body: unknown): string | null {
+  const refusal = body as { error?: unknown } | null;
+  return typeof refusal === "object" &&
+    refusal !== null &&
+    typeof refusal.error === "string"
+    ? refusal.error
+    : null;
+}
+
+function isWireImportItem(value: unknown): value is WireImportItem {
+  const item = value as WireImportItem | null;
+  return (
+    typeof item === "object" &&
+    item !== null &&
+    typeof item.guid === "string" &&
+    typeof item.guidHash === "string" &&
+    typeof item.title === "string" &&
+    typeof item.contentHtml === "string" &&
+    typeof item.preview === "boolean" &&
+    typeof item.alreadyImported === "boolean" &&
+    (item.link === null || typeof item.link === "string") &&
+    (item.publishedAt === null || typeof item.publishedAt === "string")
+  );
+}
+
+/** The /api/import success body: a feed, its counts, and its items.
+ * Exported for tests — not a route. */
+export function isFeedBody(
+  body: unknown,
+): body is Omit<ImportFeed, "kind" | "items"> & { items: WireImportItem[] } {
+  if (!isOkBody(body)) return false;
+  const feed = body as Omit<ImportFeed, "kind" | "items"> & {
+    items?: unknown;
+  };
+  return (
+    typeof feed.feed?.title === "string" &&
+    typeof feed.feed?.url === "string" &&
+    typeof feed.totalItems === "number" &&
+    typeof feed.draftSlotsRemaining === "number" &&
+    Array.isArray(feed.items) &&
+    feed.items.every(isWireImportItem)
+  );
+}
+
+/** The /api/import/status success body. Exported for tests — not a route. */
+export function isStatusBody(
+  body: unknown,
+): body is { draftSlotsRemaining: number; alreadyImported: string[] } {
+  if (!isOkBody(body)) return false;
+  const status = body as {
+    draftSlotsRemaining?: unknown;
+    alreadyImported?: unknown;
+  };
+  return (
+    typeof status.draftSlotsRemaining === "number" &&
+    Array.isArray(status.alreadyImported) &&
+    status.alreadyImported.every((hash) => typeof hash === "string")
+  );
 }
 
 export type SourceError = { code: string; url?: string };
@@ -334,6 +424,7 @@ async function toImportItems<TPost extends ParsedPost>(
         contentHtml: post.contentHtml,
         preview: post.preview,
         alreadyImported: false,
+        hasEmbed: hasEmbed(post.contentHtml),
         unpublishedAtSource: post.publishedAtSource === false,
       };
     }),
@@ -533,6 +624,11 @@ function ImportPage() {
   const [data, setData] = useState<ImportFeed | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [status, setStatus] = useState<Record<string, ItemStatus>>({});
+  // An import is one round-trip per picked post, so it can run for a long
+  // while — leaving the page has to stop it, and nothing may paint rows that
+  // are no longer mounted.
+  const runRef = useRef<AbortController | null>(null);
+  useEffect(() => () => runRef.current?.abort(), []);
 
   function showPicker(next: ImportFeed) {
     setData(next);
@@ -562,14 +658,21 @@ function ImportPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ url }),
       });
-      const body = (await res.json()) as
-        | ({ ok: true } & Omit<ImportFeed, "kind">)
-        | { ok: false; error?: string };
-      if (!body.ok) {
-        setError({ code: body.error ?? "fetch_failed", url });
+      const body: unknown = await res.json().catch(() => null);
+      if (!isFeedBody(body)) {
+        // An honest refusal and a body we don't recognize land in the same
+        // notice — with the server's own code when it named one.
+        setError({ code: errorCodeOf(body) ?? "fetch_failed", url });
         return;
       }
-      showPicker({ ...body, kind: "feed" });
+      showPicker({
+        ...body,
+        kind: "feed",
+        items: body.items.map((item) => ({
+          ...item,
+          hasEmbed: hasEmbed(item.contentHtml),
+        })),
+      });
     } catch {
       setError({ code: "fetch_failed", url });
     } finally {
@@ -595,17 +698,13 @@ function ImportPage() {
           guidHashes: parsed.items.map((item) => item.guidHash),
         }),
       });
-      const body = (await res.json().catch(() => ({}))) as
-        | {
-            ok: true;
-            draftSlotsRemaining: number;
-            alreadyImported: string[];
-          }
-        | { ok?: false; error?: string };
-      if (!("ok" in body) || body.ok !== true) {
+      const body: unknown = await res.json().catch(() => null);
+      if (!isStatusBody(body)) {
         setError({
           code:
-            body.error === "not_signed_in" ? "not_signed_in" : "status_failed",
+            errorCodeOf(body) === "not_signed_in"
+              ? "not_signed_in"
+              : "status_failed",
         });
         return;
       }
@@ -642,6 +741,9 @@ function ImportPage() {
     if (!data) return;
     const picked = data.items.filter((item) => selected.has(item.guidHash));
     if (picked.length === 0) return;
+    runRef.current?.abort();
+    const run = new AbortController();
+    runRef.current = run;
     setPhase("importing");
     setStatus(
       Object.fromEntries(
@@ -650,13 +752,17 @@ function ImportPage() {
     );
     // The editor bundle loads only when an import actually runs.
     const { BlockNoteEditor } = await import("@blocknote/core");
+    if (run.signal.aborted) return;
     const editor = BlockNoteEditor.create();
-    const setOne = (hash: string, s: ItemStatus) =>
+    const setOne = (hash: string, s: ItemStatus) => {
+      if (run.signal.aborted) return;
       setStatus((old) => ({ ...old, [hash]: s }));
+    };
 
     let imported = 0;
     let limitHit = false;
     for (const item of picked) {
+      if (run.signal.aborted) return;
       if (limitHit) {
         setOne(item.guidHash, { kind: "skipped", reason: "draft limit" });
         continue;
@@ -684,23 +790,22 @@ function ImportPage() {
               publishedAt: item.publishedAt,
             },
           }),
+          signal: run.signal,
         });
-        const body = (await res.json().catch(() => ({}))) as {
-          ok?: boolean;
-          error?: string;
-        };
-        if (res.ok && body.ok) {
+        const body: unknown = await res.json().catch(() => null);
+        const failure = errorCodeOf(body);
+        if (res.ok && isOkBody(body)) {
           imported++;
           setOne(item.guidHash, { kind: "saved" });
-        } else if (body.error === "draft_limit") {
+        } else if (failure === "draft_limit") {
           limitHit = true;
           setOne(item.guidHash, { kind: "skipped", reason: "draft limit" });
-        } else if (body.error === "already_imported") {
+        } else if (failure === "already_imported") {
           setOne(item.guidHash, {
             kind: "skipped",
             reason: "already in your drafts",
           });
-        } else if (body.error === "too_large") {
+        } else if (failure === "too_large") {
           setOne(item.guidHash, {
             kind: "failed",
             reason: "too long for a single draft",
@@ -709,12 +814,16 @@ function ImportPage() {
           setOne(item.guidHash, { kind: "failed", reason: "couldn't save" });
         }
       } catch {
+        // An abort lands here too — that is the writer leaving, not a failure
+        // to report on a page that is going away.
+        if (run.signal.aborted) return;
         setOne(item.guidHash, {
           kind: "failed",
           reason: "couldn't save — network hiccup",
         });
       }
     }
+    if (run.signal.aborted) return;
     capture("import_completed", {
       imported,
       picked: picked.length,
@@ -1086,7 +1195,7 @@ function PickList({
                     {isFile ? "Might be incomplete" : "Preview only"}
                   </Badge>
                 )}
-                {!item.alreadyImported && hasEmbed(item.contentHtml) && (
+                {!item.alreadyImported && item.hasEmbed && (
                   <Badge>Embed won't come across</Badge>
                 )}
                 {item.alreadyImported && <Badge>Already imported</Badge>}
