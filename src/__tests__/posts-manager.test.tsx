@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DashboardRow, DraftRow, PostsTab } from "../lib/dashboard";
 import type { DocumentEngagement } from "../lib/engagement";
 import { PostsManager } from "../routes/dashboard";
+import { TestRouter } from "./support/router";
 import { VIEWS_OFF, viewsReady } from "./support/views-envelope";
 
 // No vitest globals in this repo — RTL auto-cleanup doesn't run; do it by hand.
@@ -85,7 +86,13 @@ function renderManager(
     onTabChange: () => {},
     ...overrides,
   };
-  return render(<PostsManager {...props} />);
+  // The "Older posts" pagination is a router <Link> — it needs a router to
+  // resolve against. Everything else here renders the same either way.
+  return render(
+    <TestRouter path="/dashboard">
+      <PostsManager {...props} />
+    </TestRouter>,
+  );
 }
 
 /** Titles of the currently visible post/draft rows, in DOM order. */
@@ -217,17 +224,21 @@ describe("posts manager — search", () => {
     fireEvent.change(screen.getByRole("searchbox"), {
       target: { value: "zebra" },
     });
+    // Same wrapper as the first render: swapping it out would remount the
+    // manager, and the query surviving a remount would prove nothing.
     rerender(
-      <PostsManager
-        drafts={DRAFTS}
-        engagement={new Map()}
-        ident={IDENT}
-        nextCursor={null}
-        onTabChange={() => {}}
-        scheduled={[]}
-        rows={POSTS}
-        tab="drafts"
-      />,
+      <TestRouter path="/dashboard">
+        <PostsManager
+          drafts={DRAFTS}
+          engagement={new Map()}
+          ident={IDENT}
+          nextCursor={null}
+          onTabChange={() => {}}
+          scheduled={[]}
+          rows={POSTS}
+          tab="drafts"
+        />
+      </TestRouter>,
     );
     expect(visibleTitles()).toEqual(["Draft about zebras"]);
   });
