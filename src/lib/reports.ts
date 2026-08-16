@@ -33,7 +33,12 @@ import { asc, inArray, isNull } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/d1";
 
 import { reports } from "~/db/schema";
-import { type ChatSummary, chatSummary, clip } from "~/lib/alert-webhook";
+import {
+  ALERT_TIMEOUT_MS,
+  type ChatSummary,
+  chatSummary,
+  clip,
+} from "~/lib/alert-webhook";
 
 type DrizzleD1 = ReturnType<typeof drizzle>;
 
@@ -186,10 +191,6 @@ export function buildReportAlert(
     at: new Date(now).toISOString(),
   };
 }
-
-/** A chat webhook that hasn't answered in this long is not going to. Bounds the
- * one job in the cron pass that talks to a third party we don't run. */
-const ALERT_TIMEOUT_MS = 5_000;
 
 export type ReportAlertResult = {
   /** Unnotified reports read this tick (post-cap). */
