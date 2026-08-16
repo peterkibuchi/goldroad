@@ -27,7 +27,12 @@
  * pages exist rather than letting a writer conclude a post was deleted
  * because a search didn't surface it.
  */
-import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Link,
+  redirect,
+  useRouter,
+} from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import {
@@ -895,12 +900,18 @@ export function PostsManager({
             </ul>
             {nextCursor && (
               <p className="mt-6">
-                <a
+                {/* A router <Link>, not an <a>: this navigates to the page it
+                    is already on, and a full reload there tears down the
+                    manager along with the search box and the sort the writer
+                    set. Keeping the search params means the tab they were on
+                    survives the page turn too. */}
+                <Link
                   className="font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
-                  href={`/dashboard?cursor=${encodeURIComponent(nextCursor)}`}
+                  search={(prev) => ({ ...prev, cursor: nextCursor })}
+                  to="/dashboard"
                 >
                   Older posts →
-                </a>
+                </Link>
               </p>
             )}
           </>

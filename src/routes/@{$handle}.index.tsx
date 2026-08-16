@@ -1,4 +1,4 @@
-import { createFileRoute, notFound } from "@tanstack/react-router";
+import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { Fragment, useState } from "react";
 
 import {
@@ -430,12 +430,17 @@ export function PublicationView({
         {nextCursor && (
           // Calm register: a quiet text link, no buttons, no page numbers.
           <p className="mt-12 border-rule border-t pt-6">
-            <a
+            {/* Same route, next cursor — a router <Link> so turning the page
+                doesn't reload the archive out from under whatever the visitor
+                typed in the search box. */}
+            <Link
               className="font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
-              href={`/@${encodeURIComponent(ident)}?cursor=${encodeURIComponent(nextCursor)}`}
+              params={{ handle: ident }}
+              search={{ cursor: nextCursor }}
+              to="/@{$handle}"
             >
               Older posts →
-            </a>
+            </Link>
           </p>
         )}
         {/* Same close as the article page: the writer's items lead, Goldroad
