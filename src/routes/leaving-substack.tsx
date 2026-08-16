@@ -61,7 +61,7 @@ const ROWS: Row[] = [
   {
     label: "Ads in your newsletter",
     goldroad: "None. Not now, not at scale, not ever",
-    substack: "Sponsorships, since June 2026",
+    substack: "Opt-in sponsorships (bestseller tier), since June 2026",
   },
   {
     label: "Your comment section",
@@ -105,7 +105,7 @@ const ROWS: Row[] = [
   {
     label: "Feeds",
     goldroad: "RSS for every publication, on by default",
-    substack: "Excerpt, depending on your settings",
+    substack: "Free posts in full; paid posts as a preview",
   },
   {
     label: "The look of your page",
