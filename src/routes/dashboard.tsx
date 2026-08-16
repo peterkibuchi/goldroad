@@ -39,7 +39,7 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import { drizzle } from "drizzle-orm/d1";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { formatDate } from "~/components/document-article";
 import { ExternalLink } from "~/components/external-link";
@@ -1271,6 +1271,84 @@ function FirstRun() {
   );
 }
 
+/**
+ * The one-shot outcome of a write. A server redirect appends exactly one of
+ * these to /dashboard (`?published=<rkey>`, `?announced=<rkey>`,
+ * `?scheduled=1`) and they are read once: into the confirmation notice, and
+ * into a single analytics event.
+ */
+export type DashboardOutcome = {
+  published?: string;
+  announced?: string;
+  scheduled?: boolean;
+};
+
+/** Drops the outcome params and nothing else — `tab`, `cursor`, `error` and
+ * the rest are durable URL state a writer can reload into. */
+export function withoutOutcomeParams<T extends object>(
+  search: T,
+): Omit<T, keyof DashboardOutcome> {
+  const { published, announced, scheduled, ...rest } = search as T &
+    DashboardOutcome;
+  return rest;
+}
+
+/**
+ * Consume the outcome params: fire the matching analytics event at most once
+ * per redirect, and hand back what the notices need so they keep rendering
+ * after the params leave the URL.
+ *
+ * They have to leave. The redirect target is an ordinary reloadable address,
+ * so a refresh, a back-nav or any remount replays whatever the query string
+ * still says — and analytics here is cookieless with memory persistence, so
+ * nothing downstream collapses the repeats. Left in place, `post_published`
+ * counts reloads instead of posts.
+ *
+ * Two guards, covering different things: `strip` rewrites the URL so a fresh
+ * page load has nothing left to replay, and the ref pins the event to the
+ * params that produced it so a re-render before that rewrite lands (React's
+ * double-invoked effects in development, a changing `navigate` identity)
+ * cannot fire it a second time.
+ *
+ * Exported for tests (dashboard-outcome-params.test.tsx) — not a route.
+ */
+export function useOutcomeParams(
+  search: DashboardOutcome,
+  ident: string,
+  strip: () => void,
+): DashboardOutcome {
+  const { published, announced, scheduled } = search;
+  // Seeded from the URL so the notice is on screen in the first paint, not one
+  // frame after it.
+  const [outcome, setOutcome] = useState<DashboardOutcome>(() => ({
+    published,
+    announced,
+    scheduled,
+  }));
+  const consumed = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!(published || announced || scheduled)) return;
+    const key = `${published ?? ""}|${announced ?? ""}|${scheduled ? "1" : ""}`;
+    if (consumed.current === key) return;
+    consumed.current = key;
+
+    // Analytics (cookieless, no-op without a PostHog key): this is the closest
+    // client-side moment to the actual PDS write. Properties stay within
+    // DID/handle policy.
+    if (published) capture("post_published", { rkey: published, ident });
+    if (announced) capture("post_announced", { rkey: announced, ident });
+    // Scheduling adoption. No rkey to attach — a scheduled post has not been
+    // published yet, so there is no record to name.
+    if (scheduled) capture("post_scheduled", { ident });
+
+    setOutcome({ published, announced, scheduled });
+    strip();
+  }, [published, announced, scheduled, ident, strip]);
+
+  return outcome;
+}
+
 function DashboardPage() {
   const {
     ident,
@@ -1283,33 +1361,17 @@ function DashboardPage() {
     scheduled,
   } = Route.useLoaderData();
   const search = Route.useSearch();
-  const {
-    error,
-    published,
-    announced,
-    deleted,
-    moved,
-    cursor,
-    scheduled: justScheduled,
-  } = search;
+  const { error, deleted, moved, cursor } = search;
   const navigate = Route.useNavigate();
   const message = errorMessage(error);
   const tab: PostsTab = search.tab ?? "published";
 
-  // Analytics (cookieless, no-op without a PostHog key): the server redirects
-  // land here with the result in the query string — the closest client-side
-  // moment to the actual PDS write. Properties stay within DID/handle policy.
-  useEffect(() => {
-    if (published) capture("post_published", { rkey: published, ident });
-  }, [published, ident]);
-  useEffect(() => {
-    if (announced) capture("post_announced", { rkey: announced, ident });
-  }, [announced, ident]);
-  // Scheduling adoption. No rkey to attach — a scheduled post has not been
-  // published yet, so there is no record to name.
-  useEffect(() => {
-    if (justScheduled) capture("post_scheduled", { ident });
-  }, [justScheduled, ident]);
+  // `replace`, so Back still goes where the writer came from rather than to
+  // the pre-strip URL — which would put the consumed params right back.
+  const stripOutcomeParams = useCallback(() => {
+    void navigate({ replace: true, search: withoutOutcomeParams });
+  }, [navigate]);
+  const outcome = useOutcomeParams(search, ident, stripOutcomeParams);
 
   return (
     <AppShell header={{ variant: "signed-in", ident, active: "posts" }}>
@@ -1328,34 +1390,34 @@ function DashboardPage() {
           </p>
         </div>
 
-        {published && (
+        {outcome.published && (
           <Notice tone="info">
             Published.{" "}
             {/* New tab: the writer keeps their dashboard context. */}
             <ExternalLink
               className="underline underline-offset-2"
-              href={`/@${encodeURIComponent(ident)}/${published}`}
+              href={`/@${encodeURIComponent(ident)}/${outcome.published}`}
             >
               View it live
             </ExternalLink>
             <span className="mt-1 block">
-              {ANNOUNCE_EXPLAINER} <AnnounceButton rkey={published} />
+              {ANNOUNCE_EXPLAINER} <AnnounceButton rkey={outcome.published} />
             </span>
           </Notice>
         )}
-        {announced && (
+        {outcome.announced && (
           <Notice tone="info">
             Announced — your followers will see this post as a card that links
             back here.{" "}
             <ExternalLink
               className="underline underline-offset-2"
-              href={bskyPostUrl(ident, announced)}
+              href={bskyPostUrl(ident, outcome.announced)}
             >
               View your post on Bluesky
             </ExternalLink>
           </Notice>
         )}
-        {search.scheduled && (
+        {outcome.scheduled && (
           <Notice tone="info">
             Scheduled. It's in the queue below with its time — you can change
             it, cancel it, or publish it now from there.
