@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { ExternalLink } from "~/components/external-link";
 import { CtaLink, MarketingSection, RegMark } from "~/components/marketing";
 import { OPEN_LINKS, SiteFooter, SiteHeader } from "~/components/site-chrome";
+import { MAIN_CONTENT_ID } from "~/components/skip-link";
 import { CANONICAL_ORIGIN } from "~/lib/origin";
 
 /**
@@ -74,7 +75,7 @@ export function OpenPage() {
     <div className="goldroad-surface flex min-h-screen flex-col bg-paper font-body text-ink">
       <SiteHeader variant="marketing" />
 
-      <main className="flex-1">
+      <main className="flex-1" id={MAIN_CONTENT_ID} tabIndex={-1}>
         <section className="relative">
           <RegMark className="absolute top-6 left-6 size-5 text-ink opacity-75" />
           <RegMark className="absolute top-6 right-6 size-5 text-ink opacity-75" />

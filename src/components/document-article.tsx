@@ -5,6 +5,7 @@ import { Conversation } from "~/components/conversation";
 import { ExternalLink } from "~/components/external-link";
 import { HeartIcon, ReplyIcon, RepostIcon } from "~/components/icons";
 import { Prose } from "~/components/prose";
+import { MAIN_CONTENT_ID } from "~/components/skip-link";
 import { SubscribeControl } from "~/components/subscribe-control";
 import { WriterSurface } from "~/components/writer-surface";
 import {
@@ -516,7 +517,14 @@ export function DocumentArticle({
     // The writer's surface, not ours: their theme applies here, our dark-mode
     // toggle deliberately does not (see WriterSurface and styles.css).
     <WriterSurface theme={theme}>
-      <article className="mx-auto max-w-[42rem] px-6 py-16 md:py-24">
+      {/* The post itself is this page's content, and it is the only landmark
+          the surface has — there is no <main> here to hang the skip target
+          on, so the article carries it. */}
+      <article
+        className="mx-auto max-w-[42rem] px-6 py-16 md:py-24"
+        id={MAIN_CONTENT_ID}
+        tabIndex={-1}
+      >
         {cover && (
           // Fixed aspect box reserves the layout slot before the image
           // loads (no lexicon width/height metadata exists to size it

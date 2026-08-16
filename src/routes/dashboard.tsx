@@ -54,6 +54,7 @@ import { Notice } from "~/components/notice";
 import { PostMetrics, PostThumb } from "~/components/post-summary";
 import { ScheduledTime } from "~/components/scheduled-time";
 import { AppShell } from "~/components/site-chrome";
+import { MAIN_CONTENT_ID } from "~/components/skip-link";
 import { matchesPostQuery } from "~/lib/archive";
 import {
   isValidCursor,
@@ -1326,7 +1327,11 @@ function DashboardPage() {
 
   return (
     <AppShell header={{ variant: "signed-in", ident, active: "posts" }}>
-      <main className="mx-auto w-full max-w-3xl px-6 py-10">
+      <main
+        className="mx-auto w-full max-w-3xl px-6 py-10"
+        id={MAIN_CONTENT_ID}
+        tabIndex={-1}
+      >
         {/* No page-level "New post" button here any more: the rail carries the
             writer's primary action on every surface, and a second copy of it
             would spend the view's one accent twice. Import moved down into the

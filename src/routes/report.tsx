@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ExternalLink } from "~/components/external-link";
 import { Notice } from "~/components/notice";
 import { AppShell } from "~/components/site-chrome";
+import { MAIN_CONTENT_ID } from "~/components/skip-link";
 import {
   resetTurnstileWidgets,
   TURNSTILE_TOKEN_FIELD,
@@ -162,7 +163,11 @@ function ReportPage() {
   const { url } = Route.useSearch();
   return (
     <AppShell header={{ variant: "signed-out" }}>
-      <main className="mx-auto w-full max-w-xl px-6 py-16 md:py-24">
+      <main
+        className="mx-auto w-full max-w-xl px-6 py-16 md:py-24"
+        id={MAIN_CONTENT_ID}
+        tabIndex={-1}
+      >
         <h1 className="font-black font-display text-3xl text-ink tracking-tight">
           Report content
         </h1>

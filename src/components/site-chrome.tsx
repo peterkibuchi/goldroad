@@ -41,6 +41,7 @@ import {
 import { type ComponentType, useEffect, useState } from "react";
 
 import { ExternalLink } from "~/components/external-link";
+import { SkipToContent } from "~/components/skip-link";
 import { currentEdition, setEdition } from "~/lib/appearance";
 import { SESSION_HINT_COOKIE } from "~/lib/session";
 import { cn } from "~/lib/utils";
@@ -104,6 +105,9 @@ function Wordmark({
 export function SiteHeader(props: MarketingHeaderProps) {
   return (
     <header className="border-ink border-b-3 border-double">
+      {/* First focusable thing on every marketing and signed-out page — the
+          masthead is rendered before the content on all of them. */}
+      <SkipToContent />
       <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-x-6 px-6 py-2 md:px-16">
         <Wordmark href="/" />
         {props.variant === "marketing" && (
@@ -722,6 +726,9 @@ function WriterChrome({
     // surface we own carries it. Publication reading pages deliberately do not:
     // a writer's page follows the appearance they give it, not our toggle.
     <div className="goldroad-surface flex min-h-screen flex-col bg-paper font-body text-ink md:flex-row">
+      {/* Ahead of the rail on desktop and of the top strip on mobile — both
+          frames put navigation before the writer's own page. */}
+      <SkipToContent />
       <WriterRail active={active} ident={ident} />
       <div className="flex min-w-0 flex-1 flex-col">
         <WriterTopStrip ident={ident} />

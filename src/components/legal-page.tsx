@@ -6,6 +6,7 @@
  * pages awaiting owner/lawyer review before public launch.
  */
 import { AppShell } from "~/components/site-chrome";
+import { MAIN_CONTENT_ID } from "~/components/skip-link";
 
 export function LegalLayout({
   kicker,
@@ -22,7 +23,11 @@ export function LegalLayout({
 }) {
   return (
     <AppShell header={{ variant: "signed-out" }}>
-      <main className="mx-auto w-full max-w-2xl px-6 py-16 md:py-24">
+      <main
+        className="mx-auto w-full max-w-2xl px-6 py-16 md:py-24"
+        id={MAIN_CONTENT_ID}
+        tabIndex={-1}
+      >
         <p className="font-display font-semibold text-ink-soft text-sm uppercase tracking-[0.12em]">
           {kicker}
         </p>

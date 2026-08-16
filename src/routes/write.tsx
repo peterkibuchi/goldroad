@@ -9,6 +9,7 @@ import { ExternalLink } from "~/components/external-link";
 import { Notice } from "~/components/notice";
 import { ScheduledTime } from "~/components/scheduled-time";
 import { AppShell } from "~/components/site-chrome";
+import { MAIN_CONTENT_ID } from "~/components/skip-link";
 import {
   getRecord,
   resolveDidToHandle,
@@ -321,7 +322,11 @@ export function SignIn({
 }) {
   const message = errorMessage(error);
   return (
-    <main className="mx-auto w-full max-w-md px-6 py-16 md:py-24">
+    <main
+      className="mx-auto w-full max-w-md px-6 py-16 md:py-24"
+      id={MAIN_CONTENT_ID}
+      tabIndex={-1}
+    >
       <h1 className="font-black font-display text-3xl text-ink tracking-tight">
         Sign in to write
       </h1>
@@ -1227,7 +1232,11 @@ export function Compose({
   const draftAlert = draftError !== error ? errorMessage(draftError) : null;
 
   return (
-    <main className="mx-auto w-full max-w-2xl px-6 py-10">
+    <main
+      className="mx-auto w-full max-w-2xl px-6 py-10"
+      id={MAIN_CONTENT_ID}
+      tabIndex={-1}
+    >
       {/* `Notice` carries its own top margin and no bottom one, so the group
           owns the gap to whatever comes next — the reconnect form's negative
           offset below is measured against it. */}

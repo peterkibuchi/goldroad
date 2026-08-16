@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { formatDate } from "~/components/document-article";
 import { Notice } from "~/components/notice";
 import { AppShell } from "~/components/site-chrome";
+import { MAIN_CONTENT_ID } from "~/components/skip-link";
 import type { ChartSeriesKind } from "~/components/stats/chart-plot";
 import {
   EngagementPanel,
@@ -318,7 +319,11 @@ function StatsPage() {
 
   return (
     <AppShell header={{ variant: "signed-in", ident, active: "stats" }}>
-      <main className="mx-auto w-full max-w-5xl px-6 py-10 md:px-10">
+      <main
+        className="mx-auto w-full max-w-5xl px-6 py-10 md:px-10"
+        id={MAIN_CONTENT_ID}
+        tabIndex={-1}
+      >
         <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
           <div>
             <h1 className="font-black font-display text-3xl text-ink tracking-tight">

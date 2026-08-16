@@ -23,6 +23,7 @@ import { ExternalLink } from "~/components/external-link";
 import { Notice } from "~/components/notice";
 import { PostMetrics, PostThumb } from "~/components/post-summary";
 import { AppShell } from "~/components/site-chrome";
+import { MAIN_CONTENT_ID } from "~/components/skip-link";
 import {
   listRecords,
   listRecordsPage,
@@ -597,7 +598,11 @@ function HomePage() {
     <AppShell
       header={{ variant: "signed-in", ident: data.ident, active: "home" }}
     >
-      <main className="mx-auto w-full max-w-3xl px-6 py-10">
+      <main
+        className="mx-auto w-full max-w-3xl px-6 py-10"
+        id={MAIN_CONTENT_ID}
+        tabIndex={-1}
+      >
         <Overview {...data} />
       </main>
     </AppShell>

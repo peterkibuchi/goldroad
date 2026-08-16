@@ -1,4 +1,5 @@
 import { AppShell } from "~/components/site-chrome";
+import { MAIN_CONTENT_ID } from "~/components/skip-link";
 
 /**
  * System pages — 404, error boundary, route-pending skeleton. System
@@ -11,7 +12,11 @@ import { AppShell } from "~/components/site-chrome";
 export function NotFoundPage() {
   return (
     <AppShell header={{ variant: "signed-out" }}>
-      <main className="mx-auto w-full max-w-2xl px-6 py-20 md:py-28">
+      <main
+        className="mx-auto w-full max-w-2xl px-6 py-20 md:py-28"
+        id={MAIN_CONTENT_ID}
+        tabIndex={-1}
+      >
         <p className="font-black font-display text-7xl text-ink tracking-tight md:text-8xl">
           404<span className="text-spot">.</span>
         </p>
@@ -39,7 +44,11 @@ export function NotFoundPage() {
 export function ErrorPage({ error }: { error: Error }) {
   return (
     <AppShell header={{ variant: "signed-out" }}>
-      <main className="mx-auto w-full max-w-2xl px-6 py-20 md:py-28">
+      <main
+        className="mx-auto w-full max-w-2xl px-6 py-20 md:py-28"
+        id={MAIN_CONTENT_ID}
+        tabIndex={-1}
+      >
         <h1 className="text-balance font-black font-display text-3xl text-ink tracking-tight md:text-4xl">
           Something went wrong.
         </h1>

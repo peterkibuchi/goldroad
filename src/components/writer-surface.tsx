@@ -1,3 +1,4 @@
+import { SkipToContent } from "~/components/skip-link";
 import { type BasicTheme, themeStyle } from "~/lib/theme";
 import { cn } from "~/lib/utils";
 
@@ -45,6 +46,10 @@ export function WriterSurface({
       data-writer-theme={theme ? "" : undefined}
       style={themeStyle(theme)}
     >
+      {/* Reading surfaces render none of our chrome, but they still lead with
+          the writer's masthead, their nav and (on a post) the article header
+          before the words start. */}
+      <SkipToContent />
       {children}
     </div>
   );
