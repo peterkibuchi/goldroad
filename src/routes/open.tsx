@@ -29,7 +29,7 @@ export const Route = createFileRoute("/open")({
       {
         name: "description",
         content:
-          "Goldroad's server is open source under AGPL-3.0-only: read it, run it, or fork it. Contributions are DCO with no CLA, so the core can never be relicensed away from the commons.",
+          "Goldroad's server is open source under AGPL-3.0-only: read the whole of it, or run your own copy. Contributions are DCO with no CLA, so the core can never be relicensed away from the commons.",
       },
       { property: "og:title", content: "Open source — Goldroad" },
       {
@@ -90,8 +90,8 @@ export function OpenPage() {
             <p className="mt-6 max-w-[54ch] text-pretty font-body text-ink-soft text-lg italic md:text-xl">
               Goldroad publishes your work into an account you own on the open
               network, and the code that does it is public under a licence
-              designed to keep it public. Every promise on this site is
-              something you can read for yourself, run yourself, or fork.
+              designed to keep it public. Every promise on this site is one you
+              can go and check in the source.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3">
               <CtaLink
@@ -154,7 +154,7 @@ export function OpenPage() {
                 Anyone who runs Goldroad as a service for other people — us
                 included — owes those people the source of the exact version
                 they're using. That network clause is why the licence is a
-                copyleft one and not a permissive one.
+                copyleft one.
               </span>
             </li>
           </ul>
@@ -206,20 +206,20 @@ export function OpenPage() {
               AT Protocol
             </ExternalLink>
             , the open network behind Bluesky. Your identity, your followers and
-            your published posts live in your account there — not in our
-            database. Signing out of Goldroad forever leaves all of it exactly
-            where it was.
+            your published posts live in your account there. None of it is in
+            our database. Signing out of Goldroad forever leaves all of it
+            exactly where it was.
           </p>
           <p className={PROSE}>
             Your posts are written as{" "}
             <ExternalLink className={INLINE_LINK} href="https://standard.site">
               standard.site
             </ExternalLink>{" "}
-            documents — a format defined by the Leaflet, pckt.blog and Offprint
-            teams rather than invented here, so other software on the network
-            can read what you publish through us. It runs both ways: Goldroad's
-            reading pages render any author's standard.site posts, including
-            authors who have never heard of us.
+            documents — a format the Leaflet, pckt.blog and Offprint teams
+            defined, so other software on the network can read what you publish
+            through us. It runs both ways: Goldroad's reading pages render any
+            author's standard.site posts, including authors who have never heard
+            of us.
           </p>
           <p className={PROSE}>
             We have not needed a format of our own yet, and we won't add one
