@@ -808,6 +808,10 @@ function isBlankDocument(blocks: BlockNoteEditor["document"]): boolean {
   );
 }
 
+function isPlainObject(value: unknown): boolean {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 /**
  * The least a value must look like before BlockNote will accept it as a block:
  * an object naming a type, whose content and children (when present) are the
@@ -816,10 +820,19 @@ function isBlankDocument(blocks: BlockNoteEditor["document"]): boolean {
  * Not a schema check — the editor knows its own block types and this file must
  * not learn them. It rules out the shapes that make `replaceBlocks` throw
  * *while* it is rewriting the document.
+ *
+ * `content` has three legal kinds, not two: inline content is an array, some
+ * blocks carry a plain string, and a table carries an OBJECT — BlockNote's
+ * default schema stores one as `{ type: "tableContent", columnWidths, rows }`.
+ * Rejecting objects failed the ENTIRE document over a single table, because the
+ * caller's check is all-or-nothing: a draft with a table resumed from the lossy
+ * markdown projection instead, and the next autosave wrote that projection back
+ * over the lossless blocks. An object that isn't real content still throws
+ * inside the editor, which catches it and falls back to the same projection — so
+ * the outcome for junk is unchanged and tables now survive.
  */
 function isBlockShaped(value: unknown): boolean {
-  if (typeof value !== "object" || value === null || Array.isArray(value))
-    return false;
+  if (!isPlainObject(value)) return false;
   const block = value as {
     type?: unknown;
     content?: unknown;
@@ -829,7 +842,8 @@ function isBlockShaped(value: unknown): boolean {
   if (
     block.content !== undefined &&
     typeof block.content !== "string" &&
-    !Array.isArray(block.content)
+    !Array.isArray(block.content) &&
+    !isPlainObject(block.content)
   )
     return false;
   if (block.children !== undefined)

@@ -34,6 +34,34 @@ const UNLOADABLE = {
   "unloadable children": '[{"type":"paragraph","children":[null]}]',
 };
 
+/**
+ * A table, built by the editor itself rather than hand-written: its `content`
+ * is the one shape in the default schema that is neither a string nor an array,
+ * and the point of building it this way is that nothing here has to claim what
+ * that shape is.
+ */
+function storedTableDocument(): string {
+  const editor = BlockNoteEditor.create();
+  editor.replaceBlocks(editor.document, [
+    { type: "paragraph", content: "Comparison" },
+    {
+      type: "table",
+      content: {
+        type: "tableContent",
+        rows: [
+          {
+            cells: [
+              [{ type: "text", text: "Goldroad", styles: {} }],
+              [{ type: "text", text: "0%", styles: {} }],
+            ],
+          },
+        ],
+      },
+    },
+  ]);
+  return JSON.stringify(editor.document);
+}
+
 describe("parseDraftBlocks", () => {
   it("keeps a document the editor can actually load", () => {
     const blocks = '[{"type":"paragraph","content":[]}]';
@@ -46,6 +74,29 @@ describe("parseDraftBlocks", () => {
         '[{"type":"bulletListItem","children":[{"type":"paragraph"}]}]',
       ),
     ).toHaveLength(1);
+  });
+
+  /**
+   * A table's content is an OBJECT, and the shape check accepted only undefined,
+   * a string or an array — so one table failed the whole document (the check is
+   * `every`). The draft then resumed from the lossy markdown projection, where a
+   * table is at best pipes and dashes, and the next autosave wrote that back
+   * over the lossless blocks. Losing a table by opening the draft is exactly the
+   * failure this guard was added to prevent.
+   */
+  it("keeps a document containing a table", () => {
+    const stored = storedTableDocument();
+    const blocks = parseDraftBlocks(stored);
+    expect(blocks).toHaveLength(2);
+    expect(JSON.stringify(blocks)).toBe(stored);
+
+    // And it is still a table once the editor has it back, cells and all.
+    const editor = BlockNoteEditor.create();
+    editor.replaceBlocks(editor.document, blocks as never);
+    const reloaded = JSON.stringify(editor.document);
+    expect(reloaded).toContain('"type":"table"');
+    expect(reloaded).toContain('"text":"Goldroad"');
+    expect(reloaded).toContain('"text":"0%"');
   });
 
   it("refuses every row shape the editor would choke on", () => {
@@ -90,6 +141,29 @@ describe("the editor's fallback when stored blocks won't load", () => {
     render(
       <Editor
         initialBlocks={[null]}
+        initialMarkdown="The words the writer actually typed."
+        onReady={(instance) => {
+          editor = instance;
+        }}
+      />,
+    );
+    await waitFor(() => expect(editor).not.toBeNull());
+    expect(documentText(editor as unknown as BlockNoteEditor)).toContain(
+      "The words the writer actually typed.",
+    );
+  });
+
+  /**
+   * The shape check lets any plain object through as `content` because that is
+   * what a table carries, so an object that ISN'T content reaches the editor and
+   * throws there. That is the same recovery, not a new hole: the editor catches
+   * it and loads the words.
+   */
+  it("still recovers when an object turns out not to be content", async () => {
+    let editor: BlockNoteEditor | null = null;
+    render(
+      <Editor
+        initialBlocks={[{ type: "paragraph", content: { nonsense: true } }]}
         initialMarkdown="The words the writer actually typed."
         onReady={(instance) => {
           editor = instance;
