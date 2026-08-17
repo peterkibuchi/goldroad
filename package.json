@@ -50,7 +50,7 @@
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/react-router": "^1.170.29",
     "@tanstack/react-start": "^1.168.46",
-    "@tanstack/react-table": "^8.21.3",
+    "@tanstack/react-table": "^9.1.2",
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.2",
     "fflate": "^0.8.3",
