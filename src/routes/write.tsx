@@ -18,6 +18,10 @@ import {
   type StandardDocument,
 } from "~/lib/atproto";
 import { blobImagePath, coverImageCid } from "~/lib/blob";
+import {
+  documentBodyMarkdown,
+  hasForeignContent,
+} from "~/lib/document-content";
 import { selectDraft } from "~/lib/drafts";
 import { isDraftId, MAX_DRAFTS_PER_USER } from "~/lib/drafts-schema";
 import { downscaleImage } from "~/lib/image";
@@ -99,7 +103,12 @@ type Draft = {
   /** The writer's own subtitle, or "" when the record's description is just
    * the generated body excerpt (see writerDek). */
   dek: string;
-  textContent: string;
+  /** The body as markdown, ready to load into the editor: the record's content
+   * union when it carries ours, else its textContent (markdown-shaped on every
+   * record published before the union existed). Named for what it holds — this
+   * is what the editor parses, and a plaintext projection here would silently
+   * strip a writer's formatting the first time they opened an old post. */
+  markdown: string;
   /** Same-origin /img path for the existing cover, when the record has one. */
   coverPath: string | null;
   /** Set when this published post is a mirror (imported; original elsewhere):
@@ -235,9 +244,10 @@ const getWriteContext = createServerFn({ method: "GET" })
           "site.standard.document",
           data.edit,
         );
-        // Rich content unions (e.g. Leaflet's) are the source of truth in
+        // FOREIGN content unions (e.g. Leaflet's) are the source of truth in
         // their app — editing only textContent would silently fork the post.
-        if (doc.content != null) draftError = "not_editable";
+        // Our own union is not foreign: those posts open with full fidelity.
+        if (hasForeignContent(doc)) draftError = "not_editable";
         else {
           const coverCid = coverImageCid(doc.coverImage);
           // Mirror lookup (import ledger): editing a mirrored post offers
@@ -251,7 +261,7 @@ const getWriteContext = createServerFn({ method: "GET" })
             rkey: data.edit,
             title: doc.title ?? "",
             dek: writerDek(doc),
-            textContent: doc.textContent ?? "",
+            markdown: documentBodyMarkdown(doc),
             coverPath: coverCid ? blobImagePath(did, coverCid) : null,
             mirror: mirror ? { sourceUrl: mirror.sourceUrl } : null,
           };
@@ -1450,7 +1460,7 @@ export function Compose({
                 // and the projection is what the editor falls back to when
                 // the stored JSON turns out not to be loadable.
                 initialMarkdown={
-                  draft?.textContent || resumed?.markdown || undefined
+                  draft?.markdown || resumed?.markdown || undefined
                 }
                 onChange={handleDraftChange}
                 onReady={handleEditorReady}

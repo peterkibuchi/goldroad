@@ -42,8 +42,12 @@ Package manager: **pnpm**. Path alias: `~/*` → `src/*` (see tsconfig).
   (self-hosters set their own). Permanent records must not depend on infrastructure
   hostnames.
 - **Records:** always emit `site.standard.*` for interop. Never invent a lexicon
-  where `standard.site` suffices. An extension lexicon (`pub.goldroad.*`) — when it
-  ships — is **permanent public API**: treat NSIDs as unrenameable.
+  where `standard.site` suffices — the bar is a field the shared vocabulary genuinely
+  lacks, and it has been met exactly once (`pub.goldroad.content.markdown`, in
+  [`lexicons/`](lexicons/)). Our NSIDs are **permanent public API**: unrenameable,
+  additive-only, and a new shape means a new NSID, not a changed one.
+- Never pass `validate: true` to `createRecord`/`putRecord`: it makes a record type the
+  PDS has no schema for a hard error, and `site.standard.*` is exactly that.
 
 ## Commands
 

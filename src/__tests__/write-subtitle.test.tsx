@@ -33,7 +33,7 @@ const publishedPost = {
   rkey: "3abc2345678df",
   title: "Hello Atmosphere",
   dek: "",
-  textContent: "A body.",
+  markdown: "A body.",
   coverPath: null,
   mirror: null,
 };

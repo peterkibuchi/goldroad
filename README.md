@@ -51,7 +51,7 @@ permanently.
 - An hourly self-check of core invariants in production, backed by external uptime
   monitoring, and an adversarially-reviewed pipeline
 
-Newsletters, reader payments, custom domains, our own extension lexicon
+Newsletters, reader payments, custom domains
 and continuous mirroring are **not** built yet — [`docs/PRODUCT.md`](docs/PRODUCT.md)
 lists exactly what's shipped and what isn't. Self-hosting is documented
 ([`SELF_HOSTING.md`](SELF_HOSTING.md)) but community-supported, not a product yet.
@@ -99,8 +99,9 @@ pnpm check && pnpm typecheck && pnpm test                # the gate; keep it gre
 - Server/core: **AGPL-3.0-only** ([LICENSE](LICENSE)). Anyone running Goldroad as a
   service for other people — this project included — owes those people the source of
   the exact version they're using.
-- Lexicons, if we ever need one of our own: **CC0**. Today we publish into the shared
-  `site.standard.*` vocabulary and haven't minted any.
+- Lexicons: **CC0** ([`lexicons/`](lexicons/)). Almost everything we write uses the
+  shared `site.standard.*` vocabulary; the one schema of our own carries a document's
+  markdown, which that vocabulary has no field for.
 - Client SDK, when one exists: **MIT**, so native clients can build on it without the
   copyleft. There isn't one yet.
 

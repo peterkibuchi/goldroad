@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 
+import { markdownContent } from "../lib/document-content";
 import {
   buildDocumentRecord,
   buildPublicationRecord,
@@ -166,10 +167,11 @@ describe("buildDocumentRecord", () => {
     expect(record.description).toBe("First paragraph. Second paragraph.");
   });
 
-  it("omits textContent/description for empty bodies", () => {
+  it("omits textContent/description/content for empty bodies", () => {
     const record = buildDocumentRecord({ ...input, body: "   " });
     expect(record.textContent).toBeUndefined();
     expect(record.description).toBeUndefined();
+    expect(record.content).toBeUndefined();
   });
 
   it("references the uploaded cover blob (the reference keeps it alive on the PDS)", () => {
@@ -231,7 +233,9 @@ describe("updateDocumentRecord", () => {
       body: "New **body**",
     });
     expect(record.title).toBe("New title");
-    expect(record.textContent).toBe("New **body**");
+    // The markdown lives in the content union; textContent is its projection.
+    expect(record.content?.markdown).toBe("New **body**");
+    expect(record.textContent).toBe("New body");
     expect(record.description).toBe("New body");
     expect(record.publishedAt).toBe("2026-07-01T00:00:00.000Z");
     expect(record.site).toBe(existing.site);
@@ -240,13 +244,13 @@ describe("updateDocumentRecord", () => {
     expect(Date.parse(record.updatedAt ?? "")).not.toBeNaN();
   });
 
-  it("refuses documents that carry a rich content union (would silently fork them)", () => {
+  it("refuses documents that carry a FOREIGN content union (would silently fork them)", () => {
     expect(() =>
       updateDocumentRecord(
         { ...existing, content: { $type: "pub.leaflet.content" } },
         { title: "t", body: "b" },
       ),
-    ).toThrow("rich content");
+    ).toThrow("foreign content");
   });
 
   it("refuses records without a valid site", () => {
@@ -261,12 +265,20 @@ describe("updateDocumentRecord", () => {
     ).toThrow("no valid site");
   });
 
-  it("clears textContent/description when the body is emptied", () => {
-    const record = updateDocumentRecord(existing, { title: "t", body: "  " });
+  it("clears textContent/description/content when the body is emptied", () => {
+    const record = updateDocumentRecord(
+      { ...existing, content: markdownContent("Old **body**") },
+      { title: "t", body: "  " },
+    );
     expect(record.textContent).toBeUndefined();
     expect(record.description).toBeUndefined();
+    // The inherited union goes too — it would otherwise be the old text
+    // sitting under an emptied post, and the half most readers trust.
+    expect(record.content).toBeUndefined();
     // undefined keys vanish on the wire — JSON.stringify drops them.
-    expect(JSON.parse(JSON.stringify(record)).textContent).toBeUndefined();
+    const wire = JSON.parse(JSON.stringify(record));
+    expect(wire.textContent).toBeUndefined();
+    expect(wire.content).toBeUndefined();
   });
 
   it("preserves the announce write-back (bskyPostRef) across edits", () => {

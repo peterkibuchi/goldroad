@@ -10,6 +10,10 @@ import {
   type StandardDocument,
 } from "~/lib/atproto";
 import { blobImagePath, coverImageCid } from "~/lib/blob";
+import {
+  documentBodyMarkdown,
+  hasForeignContent,
+} from "~/lib/document-content";
 import { listItemReadingMinutes } from "~/lib/reading-time";
 
 export type DashboardRow = {
@@ -26,14 +30,15 @@ export type DashboardRow = {
    */
   coverPath: string | null;
   /** Reading-time estimate over the record's own body; 0 when there is no
-   * body to estimate from (an empty post, or one whose text lives in a
-   * content union we don't read). */
+   * body to estimate from (an empty post, or one whose text lives entirely in
+   * a foreign content union we don't read). */
   readingMinutes: number;
   /**
-   * Rich-content-union documents (e.g. Leaflet's pub.leaflet.content) are not
-   * editable here (editing only textContent would silently fork what readers
-   * render). They still get Delete and Announce: both act on
-   * the record as a whole, in the writer's own repo.
+   * Documents carrying a FOREIGN content union (e.g. Leaflet's
+   * pub.leaflet.content) are not editable here (editing only textContent would
+   * silently fork what readers render). They still get Delete and Announce:
+   * both act on the record as a whole, in the writer's own repo. Our own
+   * union does not make a post read-only — see ~/lib/document-content.
    */
   editable: boolean;
   /**
@@ -73,15 +78,14 @@ export function mapDashboardRows(
       const rkey = rkeyFromUri(r.uri);
       if (!rkey) return [];
       const coverCid = did ? coverImageCid(r.value.coverImage) : null;
-      const textContent =
-        typeof r.value.textContent === "string" ? r.value.textContent : "";
+      const body = documentBodyMarkdown(r.value);
       return [
         {
           rkey,
           coverPath: did && coverCid ? blobImagePath(did, coverCid) : null,
           // Bounded scan: this loop can see a full page of third-party
           // records, so it takes the list-sized reading-time budget.
-          readingMinutes: listItemReadingMinutes(textContent),
+          readingMinutes: listItemReadingMinutes(body),
           title:
             typeof r.value.title === "string" && r.value.title.trim() !== ""
               ? r.value.title
@@ -97,7 +101,7 @@ export function mapDashboardRows(
               : null,
           updatedAt:
             typeof r.value.updatedAt === "string" ? r.value.updatedAt : null,
-          editable: r.value.content == null,
+          editable: !hasForeignContent(r.value),
           announced: announcedFromRef(r.value.bskyPostRef),
         },
       ];

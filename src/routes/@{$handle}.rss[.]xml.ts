@@ -13,6 +13,7 @@ import {
   type StandardDocument,
   type StandardPublication,
 } from "~/lib/atproto";
+import { documentBodyMarkdown } from "~/lib/document-content";
 import {
   type FeedItem,
   plainTextExcerpt,
@@ -145,6 +146,11 @@ export const Route = createFileRoute("/@{$handle}/rss.xml")({
             )
             .map((e) => {
               const doc = e.value;
+              // One read of the body per item, from the content union when the
+              // record has ours and from textContent otherwise — the feed must
+              // carry the same markdown the page renders, for every generation
+              // of record.
+              const body = documentBodyMarkdown(doc);
               // Canonical composed URL (publication.url + document.path —
               // page parity); when composition fails (foreign publication
               // ref, missing path) fall back to our own reading surface,
@@ -168,8 +174,8 @@ export const Route = createFileRoute("/@{$handle}/rss.xml")({
                   typeof doc.description === "string" &&
                   doc.description.trim() !== ""
                     ? doc.description
-                    : typeof doc.textContent === "string"
-                      ? plainTextExcerpt(doc.textContent)
+                    : body
+                      ? plainTextExcerpt(body)
                       : null,
                 // The full post, rendered the same way the page renders it.
                 // The text is already here — the record carries it — so an
@@ -184,7 +190,7 @@ export const Route = createFileRoute("/@{$handle}/rss.xml")({
                 // spent newest-first (the sort above), so the items a feed
                 // reader actually shows carry full text and the tail falls back
                 // to `description` — the excerpt built two lines up.
-                content: budget.render(doc.textContent),
+                content: budget.render(body),
               };
             });
 

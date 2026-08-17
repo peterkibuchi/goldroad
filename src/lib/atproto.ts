@@ -400,8 +400,9 @@ export class NotFoundError extends Error {}
 
 /** site.standard.document — metadata + plaintext lexicon. Field shapes match
  * @atcute/standard-site@2 (types/document); everything optional here because
- * network records are untrusted input. `content` is an open union (e.g.
- * pub.leaflet.content) we don't render yet; `textContent` is the plaintext body. */
+ * network records are untrusted input. Read the body through
+ * `documentBodyMarkdown` (~/lib/document-content) rather than off either field
+ * directly — it knows which of the two is authoritative per record. */
 export type StandardDocument = {
   $type?: string;
   title?: string;
@@ -413,9 +414,14 @@ export type StandardDocument = {
   publishedAt?: string;
   updatedAt?: string;
   tags?: string[];
-  /** Plaintext representation of the document's contents. */
+  /** Plaintext representation of the document's contents — per the lexicon,
+   * free of markdown. True of what we now write; records published before the
+   * content union (ours and other apps') hold markdown here instead, which is
+   * why the body is read through documentBodyMarkdown and not from here. */
   textContent?: string;
-  /** Open content union (e.g. pub.leaflet.content) — rich source of truth when present. */
+  /** Open content union: ours (pub.goldroad.content.markdown) is the body's
+   * source of truth, a foreign one (e.g. pub.leaflet.content) makes the
+   * document read-only for us. See ~/lib/document-content. */
   content?: unknown;
   /** strongRef to the Bluesky post announcing this document (lexicon: "Strong
    * reference to a Bluesky post") — our announce write-back target. Untrusted. */

@@ -26,6 +26,10 @@ import {
   rkeyFromUri,
   type StandardDocument,
 } from "~/lib/atproto";
+import {
+  documentBodyMarkdown,
+  hasForeignContent,
+} from "~/lib/document-content";
 import { announcedPostUri } from "~/lib/engagement";
 import { readLiveSessionDid } from "~/lib/live-session";
 import { parseStatsRange, type StatsRange } from "~/lib/stats";
@@ -120,11 +124,12 @@ const getStats = createServerFn({ method: "GET" }).handler(async () => {
                 publishedAt,
                 date: formatDate(publishedAt ?? undefined),
                 readingMinutes: approximateReadingMinutes(
-                  typeof record.value.textContent === "string"
-                    ? record.value.textContent.slice(0, READING_SCAN_LIMIT)
-                    : undefined,
+                  documentBodyMarkdown(record.value).slice(
+                    0,
+                    READING_SCAN_LIMIT,
+                  ) || undefined,
                 ),
-                editable: record.value.content == null,
+                editable: !hasForeignContent(record.value),
                 announced: announced
                   ? {
                       did: announced.did,
