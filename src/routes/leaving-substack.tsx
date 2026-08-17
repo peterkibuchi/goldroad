@@ -325,11 +325,30 @@ export function LeavingSubstack() {
             <p className="font-black font-display text-5xl text-ink md:text-6xl">
               0%
             </p>
+            {/* The only place on the site carrying arithmetic, so it is the
+                place a "$5,000 = payments are free" misread is most expensive.
+                Naming the processing fee strengthens the comparison rather than
+                softening it: the 10% sits on top of Stripe's fee, which is
+                Substack's own description of it, and every writer who has been
+                paid through Substack has already seen both on a statement.
+                Stripe by name here — this reader holds that account.
+
+                Two paragraphs rather than one run: appended to the arithmetic
+                it made an eight-line block of 14px text and the correction
+                landed in the middle of it, which is where fine print goes to be
+                skipped. Its own beat reads as candour instead. */}
             <figcaption className="mt-3 max-w-[52ch] text-ink-soft text-sm leading-relaxed">
-              of what your readers pay you — a permanent policy, not a
-              promotion. Substack takes 10%. On a publication earning $50,000 a
-              year, that's about $5,000 a year that stays yours. (Illustrative;
-              your numbers are your own.)
+              <span className="block">
+                of what your readers pay you — a permanent policy, not a
+                promotion. Substack takes 10%. On a publication earning $50,000
+                a year, that's about $5,000 a year that stays yours.
+              </span>
+              <span className="mt-3 block">
+                Stripe's processing fee (about 2.9% + 30¢ a charge) applies
+                either way — Substack's 10% is charged on top of it. The $5,000
+                is the difference between the two platforms, not a claim that
+                payments are free. (Illustrative; your numbers are your own.)
+              </span>
             </figcaption>
           </figure>
         </MarketingSection>

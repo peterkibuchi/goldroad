@@ -101,7 +101,12 @@ correct incentive to be under.
 
 - "Your followers are already your readers."
 - "Leave anytime. Lose nothing."
-- "Publish on the open network, email your readers, keep 100% of what they pay you."
+- "Publish on the open network, email your readers, keep what they pay you."
+- **0% is our take, not the whole chain.** Say it in a way that cannot be read as "payments
+  are free" — the writer's own payment processor still charges its fee, and a writer who
+  discovers that on their first payout has caught us shading the one claim everything else
+  rests on. Naming the fee makes the comparison stronger: Substack's 10% sits *on top of*
+  processing, by Substack's own description.
 - Promises are stated as things the writer owns, not fears we deny — "your followers stay
   yours", not "we'll never sell your list". Naming a fear evokes it.
 - Never punch sideways at other Atmosphere projects. Leaflet, pckt and Offprint are

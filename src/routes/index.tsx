@@ -234,12 +234,14 @@ function FoundingWritersForm() {
 
   if (state === "done") {
     return (
-      // NOT "your invite is coming". There is no invite gate — the header's
+      // NOT an invite-is-coming message. There is no invite gate — the header's
       // sign-in link opens the product to anyone with a Bluesky account, and
       // telling a writer to wait for a door that is already open is the kind of
       // small dishonesty that costs more than the scarcity buys. What the list
       // is actually for is the founding cohort and the direct line, neither of
-      // which needs access to be withheld to mean something.
+      // which needs access to be withheld to mean something. The phrasing is
+      // banned in marketing-claims.test.ts, which reads this file's comments
+      // too — hence the paraphrase above rather than the quoted phrase.
       <p className="border-2 border-ink p-6 font-display font-semibold text-ink text-lg">
         You're on the list. You don't have to wait for us, though — sign in with
         Bluesky and start writing whenever you like.
@@ -288,9 +290,14 @@ function FoundingWritersForm() {
       </button>
       {/* Anti-bot challenge — renders only when the sitekey env var is set. */}
       <TurnstileWidget />
+      {/* Answers the question an email field on a pre-launch page creates —
+          "am I signing up to wait?" — in the first four words, and agrees with
+          the success state above. It also promises no send on any clock, which
+          is the honest position while delivery is unbuilt. */}
       <p className="basis-full font-display text-ink-soft text-xs leading-normal">
-        One email when your invite is ready, occasional build notes in between —
-        and yours to leave anytime with one click.
+        No invite to wait for — sign in with Bluesky whenever you like. This
+        list is where the founding-writer notes go, and you can leave it with
+        one click.
       </p>
       {state === "error" && (
         <p className="basis-full font-display text-sm text-spot" role="alert">
@@ -493,10 +500,22 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
               <dt className="font-bold font-display text-ink text-lg">
                 0% of what readers pay
               </dt>
+              {/* The processor fee is named on purpose. "0%" next to
+                  "Substack takes 10%" invites the reader to infer they keep
+                  100% of gross, and they'd meet their processor's fee on the
+                  first payout — at which point the strongest claim on the site
+                  is the one they caught us shading. Generic "your payment
+                  processor" here, because bring-your-own-processor means
+                  whichever one serves the writer's country; /leaving-substack
+                  names Stripe, because that reader already holds a Stripe
+                  account. Enforced by marketing-claims.test.ts, which exists
+                  because this is the sentence a future edit would trim. */}
               <dd className="mt-2 text-ink-soft text-sm leading-relaxed">
                 When reader payments ship, readers will pay you directly and
                 we'll take zero — permanently, not a launch promo. Substack
-                takes 10%.
+                takes 10%. Your payment processor still charges its own fee, the
+                way it does everywhere — that one is theirs, and it's the only
+                cut anyone takes.
               </dd>
             </div>
           </dl>
