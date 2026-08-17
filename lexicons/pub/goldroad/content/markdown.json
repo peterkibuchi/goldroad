@@ -1,0 +1,19 @@
+{
+  "lexicon": 1,
+  "id": "pub.goldroad.content.markdown",
+  "defs": {
+    "main": {
+      "type": "object",
+      "description": "Markdown source for a document body, for use as an entry in the open `content` union of a `site.standard.document` record. This complements `textContent` rather than replacing it: `textContent` carries the plaintext projection of the same body, which the standard lexicon asks it to hold and which every reader can use, and this carries the formatting that projection necessarily drops. A consumer that does not recognise this $type should ignore it and read `textContent`.",
+      "required": ["markdown"],
+      "properties": {
+        "markdown": {
+          "type": "string",
+          "description": "The document body as CommonMark with the GitHub Flavored Markdown extensions (tables, strikethrough, task lists, autolinks). Raw HTML is not part of this format: producers should not emit it and consumers should not render it. Images may point at blobs held in the author's own repository, in which case the record also references those blobs so the repository keeps serving them.",
+          "maxLength": 300000,
+          "maxGraphemes": 100000
+        }
+      }
+    }
+  }
+}
