@@ -29,6 +29,7 @@ import {
 } from "~/lib/atproto";
 import { blobImagePath, coverImageCid } from "~/lib/blob";
 import { getPostConversation, type PostConversation } from "~/lib/comments";
+import { documentBodyMarkdown } from "~/lib/document-content";
 import {
   bskyProfileUrl,
   type DocumentEngagement,
@@ -498,7 +499,11 @@ export function DocumentArticle({
   engagement?: DocumentEngagement | null;
   conversation?: PostConversation | null;
 }) {
-  const body = doc.textContent ?? "";
+  // Our content union when the record carries one, else textContent — which on
+  // pre-mint and third-party records is markdown-shaped and has always been
+  // rendered through <Prose>. Every already-published post keeps rendering
+  // identically; new ones gain the formatting textContent can no longer hold.
+  const body = documentBodyMarkdown(doc);
   const date = formatDate(doc.publishedAt);
   const updated = formatDate(doc.updatedAt);
   const publicationHref = `/@${encodeURIComponent(ident)}`;

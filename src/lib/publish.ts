@@ -1,11 +1,18 @@
 /**
  * Record shaping for the publish loop. Emits `site.standard.document` and
- * `site.standard.publication` — the consensus lexicons —
- * using the typed shapes from @atcute/standard-site. NO custom NSIDs here,
- * ever, until we own a domain to root our lexicon namespace on (NSIDs are
- * permanent, unrenameable public API). The one field the lexicons don't
- * define — the inline-image blob list — is a plain namespaced property with a
- * storage reason, not a content format: see DocumentRecord below.
+ * `site.standard.publication` — the consensus lexicons — using the typed
+ * shapes from @atcute/standard-site. Those stay the primary surface, and the
+ * bar for adding to them is high: NSIDs are permanent, unrenameable public API.
+ *
+ * Exactly one of ours appears here, `pub.goldroad.content.markdown`, as an
+ * entry in the document's open `content` union — the field the lexicon
+ * declares for extension, holding the format its `textContent` explicitly
+ * asks not to hold. See ~/lib/document-content for the reasoning and
+ * `lexicons/` for the schema.
+ *
+ * The other non-standard field, the inline-image blob list, is deliberately
+ * NOT an NSID: it's a storage requirement rather than a content format, so it
+ * stays a plain namespaced property. See DocumentRecord below.
  */
 import type * as SiteStandardDocument from "@atcute/standard-site/types/document";
 import type * as SiteStandardPublication from "@atcute/standard-site/types/publication";
@@ -17,7 +24,13 @@ import {
   isBlobObject,
   MAX_IMAGE_BLOB_BYTES,
 } from "~/lib/blob";
-import { stripMarkdown } from "~/lib/feed";
+import {
+  documentBodyMarkdown,
+  hasForeignContent,
+  type MarkdownContent,
+  markdownContent,
+} from "~/lib/document-content";
+import { plainTextBody, stripMarkdown } from "~/lib/feed";
 import { type BasicTheme, themeRecord } from "~/lib/theme";
 
 // TID: 13-char base32-sortable record key — 53-bit microsecond timestamp + 10-bit clock id.
@@ -92,11 +105,19 @@ export const MAX_INLINE_IMAGES = 50;
  *
  * A plain namespaced field, deliberately not an invented `pub.goldroad.*` NSID:
  * NSIDs are permanent public API (see AGENTS.md) and this is a storage
- * requirement, not a content format. Other apps ignore it; the markdown in
- * `textContent` stays the interoperable representation, and `/img/<did>/<cid>`
- * names both halves of a `getBlob` call for anyone who wants the original.
+ * requirement, not a content format. Other apps ignore it; `textContent` stays
+ * the universally readable representation, and `/img/<did>/<cid>` names both
+ * halves of a `getBlob` call for anyone who wants the original.
  */
-export interface DocumentRecord extends SiteStandardDocument.Main {
+export interface DocumentRecord
+  extends Omit<SiteStandardDocument.Main, "content"> {
+  /**
+   * Our entry in the lexicon's open `content` union. Typed as exactly our own
+   * shape rather than as the union at large because it is the only thing we
+   * ever write here — a record carrying someone else's union is refused before
+   * a builder sees it (see updateDocumentRecord).
+   */
+  content?: MarkdownContent;
   goldroadInlineImages?: InlineImageBlob[];
 }
 
@@ -309,18 +330,27 @@ function resolveDescription(
  */
 export function writerDek(doc: {
   description?: string;
-  textContent?: string;
+  textContent?: unknown;
+  content?: unknown;
 }): string {
   const description = doc.description?.trim() ?? "";
   if (!description) return "";
-  const body = (doc.textContent ?? "").replace(/\r\n/g, "\n").trim();
+  // Compared against an excerpt of the MARKDOWN body, which is what the
+  // description was generated from. Reading textContent directly would
+  // compare against the plaintext projection on post-mint records and hand
+  // the writer a machine-written excerpt in a field labelled as theirs.
+  const body = documentBodyMarkdown(doc).replace(/\r\n/g, "\n").trim();
   return description === excerpt(body) ? "" : description;
 }
 
 /**
- * Builds a site.standard.document record. The markdown body goes in
- * `textContent` (interop-readable; plain prose round-trips cleanly); the
- * rich `content` union waits for our own lexicon, post-domain.
+ * Builds a site.standard.document record. The body is written twice, on
+ * purpose: the markdown into the `content` union (our lexicon, lossless, what
+ * our own reader and editor read) and its plaintext projection into
+ * `textContent` (what the lexicon specifies that field holds, and what every
+ * reader that doesn't know our union reads). Neither is optional — a record
+ * with only the union would be unreadable to the rest of the network, and one
+ * with only the projection is the lossy state this pair replaced.
  */
 export function buildDocumentRecord(input: DocumentInput): DocumentRecord {
   const { title, body } = validateTitleAndBody(input.title, input.body);
@@ -333,7 +363,14 @@ export function buildDocumentRecord(input: DocumentInput): DocumentRecord {
     path: input.path,
     publishedAt: (input.publishedAt ?? new Date()).toISOString(),
   };
-  if (body) record.textContent = body;
+  if (body) {
+    record.content = markdownContent(body);
+    // Can come back empty from a body that is only an un-alt-texted image;
+    // an empty string is not a plaintext representation of anything, so the
+    // field is omitted exactly as it is for an empty body.
+    const plain = plainTextBody(body, MAX_BODY_LENGTH);
+    if (plain) record.textContent = plain;
+  }
   const description = resolveDescription(input.dek, body);
   if (description) record.description = description;
   if (input.coverImage) record.coverImage = input.coverImage;
@@ -349,10 +386,16 @@ export function buildDocumentRecord(input: DocumentInput): DocumentRecord {
  * undefined = keep the existing cover, a blob = replace it, null = remove it
  * (an unreferenced blob is then garbage-collected by the PDS — intended).
  *
- * Refuses documents that carry a rich `content` union (e.g. Leaflet's
+ * Refuses documents carrying a FOREIGN content union (e.g. Leaflet's
  * pub.leaflet.content): we would update the plaintext while readers keep
  * rendering the stale rich content — silent corruption. Those documents are
  * editable in the app that owns their content format.
+ *
+ * Our own union is not foreign, and a document carrying it is fully editable —
+ * that is the whole point of having minted it. The check used to be
+ * `content != null`, which was correct only while we never wrote the field;
+ * left as-is it would have made every post we published unopenable the moment
+ * we started.
  */
 export function updateDocumentRecord(
   existing: StandardDocument,
@@ -369,8 +412,8 @@ export function updateDocumentRecord(
     updatedAt?: Date;
   },
 ): DocumentRecord {
-  if (existing.content != null)
-    throw new Error("document has a rich content union — not editable here");
+  if (hasForeignContent(existing))
+    throw new Error("document has a foreign content union — not editable here");
   if (typeof existing.site !== "string" || !existing.site.includes(":"))
     throw new Error("existing document has no valid site");
   const { title, body } = validateTitleAndBody(changes.title, changes.body);
@@ -382,7 +425,15 @@ export function updateDocumentRecord(
     publishedAt: existing.publishedAt ?? new Date().toISOString(),
     updatedAt: (changes.updatedAt ?? new Date()).toISOString(),
   } as DocumentRecord;
-  record.textContent = body || undefined;
+  // Both representations are rewritten together, always. An edit that updated
+  // one and left the other would leave the record self-contradicting, and
+  // whichever half a given reader trusts would be the stale one. Emptying the
+  // body clears both — including the union inherited from `existing`, which
+  // would otherwise survive as the old text under an empty post.
+  record.content = body ? markdownContent(body) : undefined;
+  record.textContent = body
+    ? plainTextBody(body, MAX_BODY_LENGTH) || undefined
+    : undefined;
   record.description = resolveDescription(changes.dek, body);
   if (changes.coverImage) record.coverImage = changes.coverImage;
   else if (changes.coverImage === null) record.coverImage = undefined;

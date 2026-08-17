@@ -1,7 +1,8 @@
 /**
  * Reading-time estimate for the byline (document page) and post-list rows
- * (publication page): a simple words-per-minute heuristic over the
- * markdown/plaintext `textContent` body. Delegates all markdown stripping
+ * (publication page): a simple words-per-minute heuristic over a document's
+ * body, as `documentBodyMarkdown` resolves it (~/lib/document-content) — so
+ * markdown or plaintext, depending on the record. Delegates all stripping
  * to the shared hardened strip in ~/lib/feed — never fork it (see that
  * file's own note on why the pre-hardening copies went quadratic).
  */

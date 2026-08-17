@@ -25,6 +25,7 @@ import {
   MAX_IMAGE_BLOB_BYTES,
   thumbFromCover,
 } from "~/lib/blob";
+import { hasForeignContent } from "~/lib/document-content";
 import { deleteDraft, selectDraft } from "~/lib/drafts";
 import { isDraftId } from "~/lib/drafts-schema";
 import { clampOriginalDate, rehostBodyImages } from "~/lib/import";
@@ -487,7 +488,7 @@ async function publishDocument({
   // ---- Edit: merge into the existing record, preserve its history ----
   if (editRkey) {
     // Record-key syntax, not the TID shape this app mints: the record has to
-    // exist in the writer's OWN repo and pass the content-union check below
+    // exist in the writer's OWN repo and pass the foreign-union check below
     // before anything is written, and holding this to TID meant an edit of a
     // slug-keyed document was refused after the writer had already retyped it.
     if (!RKEY_RE.test(editRkey) || !pds) return backToWrite("not_found");
@@ -502,7 +503,8 @@ async function publishDocument({
     } catch {
       return backToWrite("not_found");
     }
-    if (existing.value.content != null) return backToWrite("not_editable");
+    // Foreign union only — our own is editable (see ~/lib/document-content).
+    if (hasForeignContent(existing.value)) return backToWrite("not_editable");
     let record: ReturnType<typeof updateDocumentRecord>;
     try {
       record = updateDocumentRecord(existing.value, {

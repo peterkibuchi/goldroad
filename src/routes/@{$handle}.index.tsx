@@ -26,6 +26,7 @@ import {
   type StandardPublication,
 } from "~/lib/atproto";
 import { blobImagePath, coverImageCid } from "~/lib/blob";
+import { documentBodyMarkdown } from "~/lib/document-content";
 import { checkHidden } from "~/lib/moderation";
 import { CANONICAL_ORIGIN } from "~/lib/origin";
 import { formatReadingTime, listItemReadingMinutes } from "~/lib/reading-time";
@@ -85,8 +86,7 @@ export const Route = createFileRoute("/@{$handle}/")({
           const rkey = rkeyFromUri(r.uri);
           if (!rkey || typeof r.value.title !== "string") return [];
           const coverCid = coverImageCid(r.value.coverImage);
-          const textContent =
-            typeof r.value.textContent === "string" ? r.value.textContent : "";
+          const body = documentBodyMarkdown(r.value);
           return [
             {
               rkey,
@@ -104,7 +104,7 @@ export const Route = createFileRoute("/@{$handle}/")({
               coverPath: coverCid ? blobImagePath(did, coverCid) : null,
               // Bounded scan (see ~/lib/reading-time): this loop can see up
               // to 50 third-party records per page.
-              readingMinutes: listItemReadingMinutes(textContent),
+              readingMinutes: listItemReadingMinutes(body),
             },
           ];
         })

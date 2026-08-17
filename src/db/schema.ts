@@ -72,8 +72,8 @@ export const hiddenContent = sqliteTable("hidden_content", {
  * runs. "" means "no body images", and a save from a session that uploaded none
  * leaves whatever is stored alone (the same rule `markdown` follows).
  *
- * `markdown` is the SAME projection publishing sends to the record's
- * `textContent`, saved next to the blocks it came from. It exists because that
+ * `markdown` is the SAME projection publishing sends to the record's `content`
+ * union, saved next to the blocks it came from. It exists because that
  * projection can only be produced by the editor: `blocksToMarkdownLossy` needs
  * a live BlockNote instance (ProseMirror, a real DOM), which a Workers cron
  * does not have and never will. Storing it makes the draft — not a copy of it

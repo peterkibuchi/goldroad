@@ -41,7 +41,7 @@ const publishedPost = {
   rkey: "3lyk73wxnok2f",
   title: "Live post",
   dek: "",
-  textContent: "words",
+  markdown: "words",
   coverPath: null,
   mirror: null,
 };
