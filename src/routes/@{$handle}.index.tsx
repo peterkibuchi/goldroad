@@ -1,4 +1,4 @@
-import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import { createFileRoute, notFound } from "@tanstack/react-router";
 import { Fragment, useState } from "react";
 
 import {
@@ -435,17 +435,20 @@ export function PublicationView({
         {nextCursor && (
           // Calm register: a quiet text link, no buttons, no page numbers.
           <p className="mt-12 border-rule border-t pt-6">
-            {/* Same route, next cursor — a router <Link> so turning the page
-                doesn't reload the archive out from under whatever the visitor
-                typed in the search box. */}
-            <Link
+            {/* A plain anchor, deliberately: the page turn must be a SERVER
+                navigation. `?cursor=` responses are what the edge read-cache
+                keys on (~/lib/read-cache), and this route's loader reads a
+                third-party PDS over public XRPC — in the visitor's browser that
+                loses the cache, and the reads themselves are not dependable
+                cross-origin (no guaranteed CORS, and the no-follow fetch yields
+                an opaque redirect). Keep the cache and the loader on the
+                server. */}
+            <a
               className="font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
-              params={{ handle: ident }}
-              search={{ cursor: nextCursor }}
-              to="/@{$handle}"
+              href={`/@${encodeURIComponent(ident)}?cursor=${encodeURIComponent(nextCursor)}`}
             >
               Older posts →
-            </Link>
+            </a>
           </p>
         )}
         {/* Same close as the article page: the writer's items lead, Goldroad
