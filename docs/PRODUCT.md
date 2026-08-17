@@ -101,7 +101,10 @@ correct incentive to be under.
 
 - "Your followers are already your readers."
 - "Leave anytime. Lose nothing."
-- "Publish on the open network, email your readers, keep what they pay you."
+- "Publish on the open network, to the followers you already have."
+- Newsletters and reader payments are unbuilt, so no messaging line puts either in the
+  present tense — and none implies the writer keeps the gross. When the economics need
+  saying, the bullet below is the wording, processor fee and all.
 - **0% is our take, not the whole chain.** Say it in a way that cannot be read as "payments
   are free" — the writer's own payment processor still charges its fee, and a writer who
   discovers that on their first payout has caught us shading the one claim everything else
