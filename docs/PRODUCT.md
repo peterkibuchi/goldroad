@@ -99,7 +99,7 @@ correct incentive to be under.
 
 ## Messaging
 
-- "Publish where your readers already are."
+- "Your followers are already your readers."
 - "Leave anytime. Lose nothing."
 - "Publish on the open network, email your readers, keep 100% of what they pay you."
 - Promises are stated as things the writer owns, not fears we deny — "your followers stay
