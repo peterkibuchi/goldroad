@@ -13,6 +13,7 @@ import { MAIN_CONTENT_ID } from "~/components/skip-link";
 import {
   getRecord,
   NotFoundError,
+  RKEY_RE,
   resolveDidIdentity,
   type StandardDocument,
 } from "~/lib/atproto";
@@ -33,7 +34,6 @@ import {
   MAX_DEK_LENGTH,
   parseInlineImagesField,
   RECOMMENDED_DEK_LENGTH,
-  TID_RE,
   writerDek,
 } from "~/lib/publish";
 import {
@@ -148,7 +148,7 @@ type ResumedDraft = {
 const getWriteContext = createServerFn({ method: "GET" })
   .validator((data: { edit?: string; draft?: string }) => ({
     edit:
-      typeof data.edit === "string" && TID_RE.test(data.edit)
+      typeof data.edit === "string" && RKEY_RE.test(data.edit)
         ? data.edit
         : undefined,
     draft:
@@ -279,10 +279,17 @@ export const Route = createFileRoute("/write")({
     if (search.unscheduled === "1" || search.unscheduled === 1)
       out.unscheduled = true;
     // Both keys name a stored thing and both are validated here, to the same
-    // standard the loader already holds them to: an rkey that isn't a TID
-    // (or a draft id that isn't one of ours) can only ever produce a
+    // standard the loader already holds them to: a value that cannot name a
+    // record (or a draft id that isn't one of ours) can only ever produce a
     // not-found, so it never becomes part of this route's address.
-    if (typeof search.edit === "string" && TID_RE.test(search.edit))
+    //
+    // Record-key syntax, NOT the TID shape this app happens to mint. A writer's
+    // repo holds documents written by other atproto apps too, and those rkeys
+    // are legitimately slugs (`my-first-post`) — the reader renders them, the
+    // posts list offers to edit them. Held to TID, this dropped the param and
+    // presented a blank NEW-post editor, so saving forked the post instead of
+    // editing it.
+    if (typeof search.edit === "string" && RKEY_RE.test(search.edit))
       out.edit = search.edit;
     if (typeof search.draft === "string" && isDraftId(search.draft))
       out.draft = search.draft;

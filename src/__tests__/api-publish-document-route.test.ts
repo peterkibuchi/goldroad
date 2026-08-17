@@ -434,6 +434,34 @@ describe("POST /api/publish — intent=document, editing a published post", () =
     expect(location(res).pathname).toBe(`/@writer.example/${EDIT_RKEY}`);
   });
 
+  /**
+   * A writer's repo holds documents written by other atproto apps, and those key
+   * theirs by slug rather than by TID. The reader renders them and the posts list
+   * offers to edit them — but the write path required a TID, so saving the edit
+   * was refused after the writer had already made it. `getRecordEntry` above is
+   * what decides the record exists and is ours to touch; the key's SHAPE never
+   * was that check.
+   */
+  it("edits a record this app didn't key, in place", async () => {
+    const slug = "my-first-post";
+    atproto.getRecordEntry.mockResolvedValue({
+      uri: `at://${DID}/site.standard.document/${slug}`,
+      cid: "bafyreislug",
+      value: {
+        $type: "site.standard.document",
+        title: "Imported elsewhere",
+        site: PUB_URI,
+        path: `/${slug}`,
+        publishedAt: "2026-07-01T09:00:00.000Z",
+        textContent: "Older words.",
+      },
+    });
+    const res = await publish({ rkey: slug });
+    expect(callOf("com.atproto.repo.putRecord")?.options.input.rkey).toBe(slug);
+    expect(callOf("com.atproto.repo.createRecord")).toBeUndefined();
+    expect(location(res).pathname).toBe(`/@writer.example/${slug}`);
+  });
+
   it("pins the version it merged from, so a concurrent write is never clobbered", async () => {
     await edit();
     // Without swapRecord an announce landing in the same second loses its
@@ -848,10 +876,25 @@ describe("POST /api/publish — intent=document, a refusal hands the words back"
     // sitting in the same request.
     const res = await publish({
       title: "  ",
-      rkey: "not-a-tid",
+      rkey: "../../etc/passwd",
       draftId: DRAFT_ID,
     });
     expect(location(res).searchParams.get("edit")).toBeNull();
     expect(draftOf(res)).toBe(DRAFT_ID);
+    expect(res.headers.get("location") ?? "").not.toContain("passwd");
+  });
+
+  it("keeps a record key this app didn't mint", async () => {
+    // A document written by another atproto app is keyed by slug, and both the
+    // reader and the posts list already treat those as editable. Held to the TID
+    // shape, a refusal here dropped the key and handed the writer a blank NEW
+    // post instead of the one they were editing.
+    const res = await publish({
+      title: "  ",
+      rkey: "my-first-post",
+      draftId: DRAFT_ID,
+    });
+    expect(location(res).searchParams.get("edit")).toBe("my-first-post");
+    expect(draftOf(res)).toBeNull();
   });
 });

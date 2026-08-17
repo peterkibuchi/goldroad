@@ -58,7 +58,6 @@ import {
   MAX_PUBLICATION_DESCRIPTION_LENGTH,
   MAX_TITLE_LENGTH,
   parseInlineImagesField,
-  TID_RE,
   toRecordInput,
   updateDocumentRecord,
   withBasicTheme,
@@ -437,10 +436,13 @@ async function publishDocument({
    * Only a WELL-FORMED rkey counts as an edit. /write's validator drops an
    * `?edit=` it cannot parse, so redirecting with a malformed one produces the
    * very blank editor this exists to prevent — and silently discards a
-   * perfectly good draft id that was sitting right there.
+   * perfectly good draft id that was sitting right there. Well-formed means
+   * record-key syntax, the same standard /write's validator and the delete
+   * paths below hold it to: a document written by another atproto app can have
+   * a slug rkey, and the editor loads those.
    */
   const reject = (error: string): Response =>
-    TID_RE.test(editRkey)
+    RKEY_RE.test(editRkey)
       ? backToWrite(error, editRkey)
       : backToDraft(draftId, error);
 
@@ -484,7 +486,11 @@ async function publishDocument({
 
   // ---- Edit: merge into the existing record, preserve its history ----
   if (editRkey) {
-    if (!TID_RE.test(editRkey) || !pds) return backToWrite("not_found");
+    // Record-key syntax, not the TID shape this app mints: the record has to
+    // exist in the writer's OWN repo and pass the content-union check below
+    // before anything is written, and holding this to TID meant an edit of a
+    // slug-keyed document was refused after the writer had already retyped it.
+    if (!RKEY_RE.test(editRkey) || !pds) return backToWrite("not_found");
     let existing: Awaited<ReturnType<typeof getRecordEntry<StandardDocument>>>;
     try {
       existing = await getRecordEntry<StandardDocument>(
