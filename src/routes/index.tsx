@@ -19,6 +19,7 @@ import {
 } from "~/components/turnstile";
 import { CANONICAL_ORIGIN } from "~/lib/origin";
 import { capture } from "~/lib/posthog";
+import { DEFAULT_CARD_META } from "~/lib/social-card";
 
 export const Route = createFileRoute("/")({
   validateSearch: (search: Record<string, unknown>) => {
@@ -42,6 +43,8 @@ export const Route = createFileRoute("/")({
       },
       { property: "og:type", content: "website" },
       { property: "og:url", content: `${CANONICAL_ORIGIN}/` },
+      // This page shows the default card, so this page describes it.
+      ...DEFAULT_CARD_META,
     ],
     links: [{ rel: "canonical", href: `${CANONICAL_ORIGIN}/` }],
   }),

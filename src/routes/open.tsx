@@ -5,6 +5,7 @@ import { CtaLink, MarketingSection, RegMark } from "~/components/marketing";
 import { OPEN_LINKS, SiteFooter, SiteHeader } from "~/components/site-chrome";
 import { MAIN_CONTENT_ID } from "~/components/skip-link";
 import { CANONICAL_ORIGIN } from "~/lib/origin";
+import { DEFAULT_CARD_META } from "~/lib/social-card";
 
 /**
  * /open — the trust surface. Goldroad's central promise is that it can't be
@@ -38,6 +39,8 @@ export const Route = createFileRoute("/open")({
       },
       { property: "og:type", content: "website" },
       { property: "og:url", content: `${CANONICAL_ORIGIN}/open` },
+      // This page shows the default card, so this page describes it.
+      ...DEFAULT_CARD_META,
     ],
     links: [{ rel: "canonical", href: `${CANONICAL_ORIGIN}/open` }],
   }),

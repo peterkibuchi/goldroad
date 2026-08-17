@@ -6,8 +6,8 @@ import { useEffect } from "react";
 import { env } from "#/env";
 import { ErrorPage, NotFoundPage } from "~/components/system-pages";
 import { APPEARANCE_KEY } from "~/lib/appearance";
-import { CANONICAL_ORIGIN } from "~/lib/origin";
 import { initPostHog } from "~/lib/posthog";
+import { DEFAULT_OG_IMAGE } from "~/lib/social-card";
 import appCss from "../styles.css?url";
 
 export const Route = createRootRoute({
@@ -37,8 +37,9 @@ export const Route = createRootRoute({
       // with a cover — overrides this tag but cannot remove sibling ones, so
       // inherited width/height/alt would describe the wrong picture and the alt
       // would announce Goldroad on somebody's essay. Whoever knows the image
-      // describes it; see the marketing pages and the document head.
-      { property: "og:image", content: `${CANONICAL_ORIGIN}/og.png` },
+      // describes it: DEFAULT_CARD_META on the pages that show this one, and the
+      // document head on the pages that don't.
+      { property: "og:image", content: DEFAULT_OG_IMAGE },
       { name: "twitter:card", content: "summary_large_image" },
       // Status-bar and splash colour, per edition. iOS 26 opens ANY site added
       // to the Home Screen as a standalone app by default — with or without a
