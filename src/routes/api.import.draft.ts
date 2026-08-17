@@ -1,8 +1,16 @@
 /**
- * Feed-import API, step 2 of 2: the browser converted one picked item's HTML
- * to BlockNote blocks — this handler lands it as a draft AND writes the
- * import-ledger row in one atomic D1 batch, so a draft can never exist
- * without its provenance (or vice versa).
+ * Import intake — the LAST step of every import, whichever door it came in
+ * through: the browser has converted one picked item into BlockNote blocks
+ * (feed/export HTML via /api/import, or a thread's markdown via
+ * /api/threads/assemble), and this handler lands it as a draft AND writes the
+ * import-ledger row in one atomic D1 batch, so a draft can never exist without
+ * its provenance (or vice versa).
+ *
+ * One intake for both importers on purpose: dedupe, discarded-draft revival,
+ * the draft cap and the atomic pair are the same rules regardless of where the
+ * words came from, and the only thing that actually differs — how the published
+ * page states its origin — is one recorded field (`source.kind`) rather than a
+ * second copy of this handler.
  *
  * Dedupe contract (idempotent re-runs):
  *  - ledger row published, or pointing at a still-live draft → 409
@@ -46,7 +54,8 @@ const importDraftPayload = z.object({
   /** BlockNote blocks — opaque array, same contract as /api/drafts. */
   content: z.array(z.unknown()),
   source: z.object({
-    /** The feed item's identity — hashed server-side for the ledger key. */
+    /** The item's identity — a feed guid, or a thread's root at:// URI.
+     * Hashed server-side for the ledger key. */
     guid: z.string().min(1).max(MAX_IMPORT_URL_LENGTH),
     /** The item's public URL — https only (it is stored and later rendered
      * as a provenance href; javascript:/data:/http: all refused here). */
@@ -55,6 +64,14 @@ const importDraftPayload = z.object({
       .max(MAX_IMPORT_URL_LENGTH)
       .nullish(),
     publishedAt: z.iso.datetime({ offset: true }).nullish(),
+    /**
+     * Which import this came from. Recorded on the ledger row because it
+     * decides how the published page states its origin — see `source_kind` in
+     * ~/db/schema. Defaults to `feed` so a client that predates thread import
+     * (a tab left open across a deploy) keeps making valid, correctly-labelled
+     * requests.
+     */
+    kind: z.enum(["feed", "thread"]).default("feed"),
   }),
 });
 
@@ -153,6 +170,7 @@ export const Route = createFileRoute("/api/import/draft")({
             ? reviveImportItem(db, did, hash, {
                 draftId,
                 sourceUrl,
+                sourceKind: source.kind,
                 originalAt,
               })
             : insertImportItem(db, {
@@ -160,6 +178,7 @@ export const Route = createFileRoute("/api/import/draft")({
                 did,
                 guidHash: hash,
                 sourceUrl,
+                sourceKind: source.kind,
                 originalAt,
                 draftId,
               }),
