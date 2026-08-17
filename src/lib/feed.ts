@@ -70,6 +70,18 @@ export function stripMarkdown(
   text: string,
   scanChars = EXCERPT_SCAN_CHARS,
 ): string {
+  return stripMarkdownConstructs(text, scanChars).replace(/\s+/g, " ").trim();
+}
+
+/**
+ * The markdown-construct removal itself, with whitespace left exactly as it
+ * was found. Factored out because the excerpt strip above and the full-body
+ * projection below differ ONLY in how much whitespace they keep — which is
+ * precisely the kind of near-duplicate that would otherwise get forked, and
+ * this ladder is hardened against hostile input (see the note above); a fork
+ * of it would not stay hardened.
+ */
+function stripMarkdownConstructs(text: string, scanChars: number): string {
   return text
     .slice(0, scanChars)
     .replace(/```[\s\S]*?(```|$)/g, " ") // fenced code blocks
@@ -79,8 +91,45 @@ export function stripMarkdown(
     .replace(/^#{1,6}\s+/gm, "") // heading markers
     .replace(/^\s{0,3}>\s?/gm, "") // blockquote markers
     .replace(/^\s*(?:[-*+]|\d+[.)])\s+/gm, "") // list markers
-    .replace(/(\*{1,3}|_{1,3}|~~)/g, "") // emphasis markers
-    .replace(/\s+/g, " ")
+    .replace(/(\*{1,3}|_{1,3}|~~)/g, ""); // emphasis markers
+}
+
+/**
+ * A markdown body as the plaintext that `site.standard.document` asks
+ * `textContent` to hold — the lexicon's own words are "Should not contain
+ * markdown or other formatting". This is the projection written into that
+ * field on publish; the formatted source lives in the record's `content`
+ * union (see ~/lib/document-content).
+ *
+ * Same hardened construct strip as the excerpt above, with two differences,
+ * both because this is a whole document rather than a 300-character summary:
+ *
+ * - **Paragraph breaks survive.** Collapsing an article to a single line would
+ *   make the field that every reader outside Goldroad falls back to unreadable.
+ *   Runs of spaces collapse, blank lines cap at one, structure stays.
+ * - **Fenced code survives** (its fence markers don't). An excerpt is better
+ *   off skipping a code sample, but a plaintext rendition that silently omitted
+ *   whole sections of a technical post would not be a rendition of that post.
+ *   The code then goes through the same emphasis and list passes as prose, so
+ *   code carrying markdown punctuation comes out lightly mangled — the lossless
+ *   source is in the content union, which is what having one is for.
+ *
+ * `scanChars` is REQUIRED here, unlike on the excerpt strip. This result is
+ * stored in a record rather than rendered once, so a default window would mean
+ * a caller who forgot the argument silently truncating someone's article to
+ * 2 KB — permanently, in their repo. The publish path passes the same bound the
+ * body was validated against, which makes the slice a no-op by construction.
+ */
+export function plainTextBody(markdown: string, scanChars: number): string {
+  // Fence lines only. Leaves a blank line behind, which the newline collapse
+  // below folds into the ordinary paragraph gap around a code block.
+  const unfenced = markdown
+    .slice(0, scanChars)
+    .replace(/^ {0,3}(?:```|~~~)[^\n]*$/gm, "");
+  return stripMarkdownConstructs(unfenced, scanChars)
+    .replace(/[^\S\n]+/g, " ") // runs of spaces/tabs → one space
+    .replace(/ ?\n ?/g, "\n") // no leading/trailing space on any line
+    .replace(/\n{3,}/g, "\n\n") // at most one blank line between blocks
     .trim();
 }
 
