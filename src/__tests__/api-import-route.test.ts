@@ -446,3 +446,71 @@ describe("/api/import/draft — intake", () => {
     expect(inserted.originalAt.getTime()).toBeLessThanOrEqual(Date.now());
   });
 });
+
+/**
+ * One intake, two importers. `source.kind` is the only thing that differs, and
+ * it is the field the reader page's canonical decision hangs off — so it has to
+ * be recorded from the request and defaulted conservatively when absent.
+ */
+describe("/api/import/draft — which import a row came from", () => {
+  const THREAD_PAYLOAD = {
+    title: "On leaving",
+    content: [{ type: "paragraph", content: [] }],
+    source: {
+      guid: `at://${DID}/app.bsky.feed.post/3aa1`,
+      kind: "thread",
+      link: `https://bsky.app/profile/${DID}/post/3aa1`,
+      publishedAt: "2026-02-04T10:00:00.000Z",
+    },
+  };
+
+  it("records a thread import as a thread, keyed by the root URI", async () => {
+    const res = await callDraft(THREAD_PAYLOAD);
+    expect(res.status).toBe(201);
+    const inserted = store.insertImportItem.mock.calls[0][1];
+    expect(inserted.sourceKind).toBe("thread");
+    expect(inserted.guidHash).toBe(
+      await hashOf(`at://${DID}/app.bsky.feed.post/3aa1`),
+    );
+    expect(inserted.sourceUrl).toBe(
+      `https://bsky.app/profile/${DID}/post/3aa1`,
+    );
+    // Backdated to the thread's own root date, for publish to pick up.
+    expect(inserted.originalAt.toISOString()).toBe("2026-02-04T10:00:00.000Z");
+  });
+
+  it("defaults to feed when a client sends no kind (a tab open across a deploy)", async () => {
+    await callDraft(DRAFT_PAYLOAD);
+    expect(store.insertImportItem.mock.calls[0][1].sourceKind).toBe("feed");
+  });
+
+  it("refuses a kind it doesn't recognize rather than storing it", async () => {
+    const res = await callDraft({
+      ...THREAD_PAYLOAD,
+      source: { ...THREAD_PAYLOAD.source, kind: "whatever" },
+    });
+    expect(res.status).toBe(400);
+    expect(store.insertImportItem).not.toHaveBeenCalled();
+  });
+
+  it("carries the kind through a revive too", async () => {
+    store.selectImportItem.mockResolvedValue([
+      { publishedRkey: null, draftId: "11111111-2222-3333-4444-555555555555" },
+    ]);
+    store.selectLiveDraftIds.mockResolvedValue([]); // discarded
+    await callDraft(THREAD_PAYLOAD);
+    expect(store.reviveImportItem.mock.calls[0][3].sourceKind).toBe("thread");
+  });
+
+  it("dedupes a thread by its root URI — the second import is refused", async () => {
+    store.selectImportItem.mockResolvedValue([
+      { publishedRkey: "3lzabc", draftId: null },
+    ]);
+    const res = await callDraft(THREAD_PAYLOAD);
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { error: string }).error).toBe(
+      "already_imported",
+    );
+    expect(fakeDb.batch).not.toHaveBeenCalled();
+  });
+});
