@@ -10,6 +10,7 @@ import { Notice } from "~/components/notice";
 import { ScheduledTime } from "~/components/scheduled-time";
 import { AppShell } from "~/components/site-chrome";
 import { MAIN_CONTENT_ID } from "~/components/skip-link";
+import { announceDefaultFor, selectWriterPrefs } from "~/lib/announce-prefs";
 import {
   getRecord,
   NotFoundError,
@@ -177,10 +178,19 @@ const getWriteContext = createServerFn({ method: "GET" })
         draft: null,
         resumed: null,
         draftError: undefined,
+        announceDefault: true,
       } as const;
     // One DID-document read for both: the handle names the writer in the
     // chrome, and the PDS is where an edit reads its record back from.
     const { handle, pds } = await resolveDidIdentity(did);
+    // The announce toggle's starting position. Absent row = on, and a flaked
+    // read lands on the same answer — which is safe because the writer is about
+    // to look at the checkbox this fills in, with the consequence written
+    // underneath it, before anything is posted anywhere.
+    const [prefs] = await selectWriterPrefs(drizzle(env.DB), did).catch(
+      () => [],
+    );
+    const announceDefault = announceDefaultFor(prefs);
 
     // Resume a saved draft (ownership enforced in the query's WHERE). Editing
     // a published record wins if both params are somehow present.
@@ -270,7 +280,13 @@ const getWriteContext = createServerFn({ method: "GET" })
         draftError = "not_found";
       }
     }
-    return { viewer: { did, handle }, draft, resumed, draftError } as const;
+    return {
+      viewer: { did, handle },
+      draft,
+      resumed,
+      draftError,
+      announceDefault,
+    } as const;
   });
 
 export const Route = createFileRoute("/write")({
@@ -637,6 +653,73 @@ function SubtitleField({
 }
 
 /**
+ * The per-post announce decision, said in full where the decision is made.
+ *
+ * IT IS A CHECKBOX AND A SENTENCE, not a confirmation dialog. Announcing is the
+ * default, so the writer is not being asked to opt in — they are being told what
+ * pressing Publish will do, early enough to change it, which is the difference
+ * between a default and a surprise. The sentence changes with the box rather than
+ * describing only the on state: "your followers won't see this one" is exactly as
+ * much a fact worth reading as its opposite.
+ *
+ * It also points at where the DEFAULT lives, because a writer who unticks this
+ * every time is a writer who wants the setting changed and can't be expected to
+ * guess that a setting exists.
+ *
+ * `form` on the input rather than nesting inside the form element: the publish
+ * form wraps only the fields (the editor has to live outside it — see the note
+ * on the form itself), and the schedule panel is a different form entirely, so
+ * both get the value by association rather than by position.
+ *
+ * Exported for tests (write-announce.test.tsx) — not a route.
+ */
+export function AnnounceToggle({
+  announce,
+  formId,
+  onChange,
+}: {
+  announce: boolean;
+  /** The form this control's value belongs to. */
+  formId: string;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <div className="mt-8 flex flex-col gap-2 border-rule border-t pt-6">
+      <label className="flex min-h-9 cursor-pointer items-start gap-3 font-display text-ink text-sm">
+        {/* accent-ink: a checked box is this page's ink, not the browser's
+            blue (docs/DESIGN.md — the parts we didn't draw carry the design). */}
+        <input
+          aria-describedby="announce-consequence"
+          checked={announce}
+          className="mt-0.5 size-4 shrink-0 accent-ink"
+          form={formId}
+          name="announce"
+          onChange={(event) => onChange(event.target.checked)}
+          type="checkbox"
+          value="1"
+        />
+        <span className="font-bold">Announce this post on Bluesky</span>
+      </label>
+      <p
+        className="max-w-prose font-display text-ink-soft text-xs leading-relaxed"
+        id="announce-consequence"
+      >
+        {announce
+          ? "Your followers see it as a card linking to your page, and their replies become the conversation under your post."
+          : "Your followers won't see this post in their timelines, and it will have no conversation on Bluesky. You can announce it later from your posts page."}{" "}
+        <a
+          className="underline underline-offset-2 transition-colors hover:text-ink"
+          href="/settings#announcing-heading"
+        >
+          Change the default in Settings
+        </a>
+        .
+      </p>
+    </div>
+  );
+}
+
+/**
  * Scheduling, on the publish flow — a time and two buttons, next to the button
  * it is an alternative to.
  *
@@ -659,7 +742,15 @@ export function SchedulePanel({
   draftId,
   prepare,
   disabled,
+  announce,
 }: {
+  /**
+   * The announce decision from the toggle above — CAPTURED ON THE ROW by this
+   * submit, and the reason the cron never has to ask the writer's settings what
+   * they wanted (see `announce` in ~/db/schema). Passed down rather than chosen
+   * here so scheduling and publishing cannot disagree about the same post.
+   */
+  announce: boolean;
   existing: PendingSchedule | null;
   /** The draft this panel is scheduling, when it has been saved once — what a
    * cancel needs in order to return the writer to THIS draft rather than to a
@@ -747,6 +838,12 @@ export function SchedulePanel({
             MOMENT, which is what makes a schedule across a DST change land on
             the hour the writer meant (~/lib/schedule-time). */}
         <input name="dueTzOffset" ref={offsetRef} type="hidden" />
+        {/* Hidden rather than a second checkbox: the decision has one control,
+            up beside Publish. Written as "1"/"0" so an unticked box is an
+            explicit no on the wire — the handler reads a missing field as no
+            too, but a scheduled post is the one that goes out unattended and
+            it should not depend on that. */}
+        <input name="announce" type="hidden" value={announce ? "1" : "0"} />
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <label
             className="font-display text-ink-soft text-sm"
@@ -803,6 +900,9 @@ export function SchedulePanel({
       <p className="mt-1 font-display text-ink-soft text-xs leading-relaxed">
         A scheduled post publishes its words, not a cover image — add a cover by
         editing the post once it's out, or press Publish instead.
+        {announce
+          ? " It announces on Bluesky when it goes out, as the box above says."
+          : " It won't be announced on Bluesky, as the box above says."}
       </p>
       {error && (
         <p className="mt-2 font-display text-sm text-spot" role="alert">
@@ -945,10 +1045,14 @@ export function Compose({
   draftError,
   unscheduled,
   reconnectHandle,
+  announceDefault,
 }: {
   draft: Draft | null;
   resumed: ResumedDraft | null;
   error: string | undefined;
+  /** The writer's account setting, as the per-post toggle's starting position.
+   * A pre-fill and nothing else: changing the toggle never writes it back. */
+  announceDefault: boolean;
   /**
    * Trouble loading the draft named by `?draft=`, reported ALONGSIDE `error`
    * rather than behind it. A refused publish now redirects here carrying both
@@ -964,6 +1068,14 @@ export function Compose({
 }) {
   const [editor, setEditor] = useState<BlockNoteEditor | null>(null);
   const [coverBusy, setCoverBusy] = useState(false);
+  /**
+   * Announce this post? Lifted to here rather than owned by the control, because
+   * ONE decision has to reach TWO forms: the multipart publish form, and the
+   * schedule panel's own form beside it (which posts a due date and nothing
+   * else). A checkbox in each would let the two disagree, and the writer would
+   * have no way to tell which one they had answered.
+   */
+  const [announce, setAnnounce] = useState(announceDefault);
   // Body images uploaded during this session. One store per mount: the editor
   // fills it, the publish form submits it (the record must reference every
   // blob it uses — see ~/lib/inline-images).
@@ -1499,6 +1611,22 @@ export function Compose({
               : `${missingAlt} images have no alt text — select each one and use “Edit alt text” to describe it for readers who can't see it.`}
           </p>
         )}
+        {/* Announcing is ON by default, so it is stated BEFORE the press and in
+            the same block as the button — not in a confirmation afterwards, and
+            not only in Settings. A writer must never learn that publishing
+            posted to their timeline by seeing it in their timeline.
+
+            Only for a new post. An edit changes a record that is already public
+            and never announces (see the create-branch note in
+            ~/routes/api.publish), so a toggle here would promise something the
+            server will not do. */}
+        {!editing && (
+          <AnnounceToggle
+            announce={announce}
+            formId="publish-form"
+            onChange={setAnnounce}
+          />
+        )}
         {/* The consequence of the button is stated beside the button, where the
             decision is actually made.
 
@@ -1526,6 +1654,7 @@ export function Compose({
             date picker there would imply otherwise. */}
         {!editing && (
           <SchedulePanel
+            announce={announce}
             disabled={!editor || coverBusy || submitting}
             draftId={resumed?.id ?? null}
             existing={resumed?.schedule ?? null}
@@ -1538,7 +1667,8 @@ export function Compose({
 }
 
 function WritePage() {
-  const { viewer, draft, resumed, draftError } = Route.useLoaderData();
+  const { viewer, draft, resumed, draftError, announceDefault } =
+    Route.useLoaderData();
   const { error, handle, returnTo, unscheduled } = Route.useSearch();
   if (!viewer) {
     return (
@@ -1562,6 +1692,7 @@ function WritePage() {
           editor state would otherwise go stale on client-side navigation and
           duplicate posts). */}
       <Compose
+        announceDefault={announceDefault}
         draft={draft}
         draftError={draftError}
         error={error}

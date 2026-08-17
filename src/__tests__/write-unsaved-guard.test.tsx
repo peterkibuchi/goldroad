@@ -60,6 +60,7 @@ function leavePagePrompted(): boolean {
 beforeAll(async () => {
   render(
     <Compose
+      announceDefault={false}
       draft={null}
       error={undefined}
       reconnectHandle={null}
@@ -83,6 +84,7 @@ describe("/write — the leave-page guard covers edits of published posts", () =
   async function renderEdit() {
     render(
       <Compose
+        announceDefault={false}
         draft={publishedPost}
         error={undefined}
         reconnectHandle={null}
@@ -118,6 +120,7 @@ describe("/write — the leave-page guard covers edits of published posts", () =
   it("still warns on an unsaved new composition", async () => {
     render(
       <Compose
+        announceDefault={false}
         draft={null}
         error={undefined}
         reconnectHandle={null}
@@ -134,6 +137,7 @@ describe("/write — the leave-page guard covers edits of published posts", () =
   it("does not warn on an untouched new composition", async () => {
     render(
       <Compose
+        announceDefault={false}
         draft={null}
         error={undefined}
         reconnectHandle={null}

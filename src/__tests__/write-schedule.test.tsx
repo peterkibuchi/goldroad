@@ -60,6 +60,7 @@ describe("SchedulePanel — its own form, and what it refuses to do", () => {
   ) {
     render(
       <SchedulePanel
+        announce={false}
         draftId={DRAFT_ID}
         existing={existing}
         prepare={prepare}
@@ -143,6 +144,7 @@ describe("SchedulePanel — its own form, and what it refuses to do", () => {
   it("shows an existing schedule with its zone named, and offers a cancel", () => {
     render(
       <SchedulePanel
+        announce={false}
         draftId={DRAFT_ID}
         existing={{ id: ROW_ID, dueAt: "2027-08-04T06:00:00.000Z" }}
         prepare={async () => DRAFT_ID}
@@ -164,6 +166,7 @@ describe("SchedulePanel — its own form, and what it refuses to do", () => {
     // apparently gone.
     render(
       <SchedulePanel
+        announce={false}
         draftId={DRAFT_ID}
         existing={{ id: ROW_ID, dueAt: "2027-08-04T06:00:00.000Z" }}
         prepare={async () => DRAFT_ID}
@@ -182,6 +185,7 @@ describe("SchedulePanel — its own form, and what it refuses to do", () => {
   it("states the cover limitation where the decision is made", () => {
     render(
       <SchedulePanel
+        announce={false}
         draftId={null}
         existing={null}
         prepare={async () => DRAFT_ID}
@@ -195,6 +199,7 @@ describe("Compose — the schedule control's place in the publish flow", () => {
   it("offers scheduling on a new composition", async () => {
     render(
       <Compose
+        announceDefault={false}
         draft={null}
         error={undefined}
         reconnectHandle={null}
@@ -213,6 +218,7 @@ describe("Compose — the schedule control's place in the publish flow", () => {
   it("does NOT offer it while editing a post that is already public", async () => {
     render(
       <Compose
+        announceDefault={false}
         draft={{
           rkey: "3lyk73wxnok2f",
           title: "Live post",
@@ -233,6 +239,7 @@ describe("Compose — the schedule control's place in the publish flow", () => {
   it("shows the pending schedule when a queued draft is reopened", async () => {
     render(
       <Compose
+        announceDefault={false}
         draft={null}
         error={undefined}
         reconnectHandle={null}

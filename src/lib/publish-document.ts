@@ -17,12 +17,28 @@
 import type { Client } from "@atcute/client";
 import type { drizzle } from "drizzle-orm/d1";
 
+import {
+  type AnnounceIntent,
+  type AssociatedRef,
+  type AutoAnnounceSkip,
+  autoAnnounceSkip,
+  buildAnnouncePost,
+  createAnnouncement,
+} from "~/lib/announce";
+import {
+  consumeAutoAnnounceBudget,
+  withinAutoAnnounceBudget,
+} from "~/lib/announce-prefs";
 import { type Did, listRecords, type StandardPublication } from "~/lib/atproto";
+import { thumbFromCover } from "~/lib/blob";
 import { deleteDraft } from "~/lib/drafts";
 import { setPublishedRkey } from "~/lib/import-store";
+import { anyHidden, recordAtUri } from "~/lib/moderation";
 import {
   buildDocumentRecord,
   buildPublicationRecord,
+  composeDocumentUrl,
+  type DocumentRecord,
   generateTid,
   isOwnPublicationUrl,
   parseInlineImagesField,
@@ -67,6 +83,27 @@ export async function findOwnPublication(
 }
 
 /**
+ * What a new document attaches to.
+ *
+ * `site` is the record field; the other two are what announcing needs and what
+ * every caller of this function already had to hand. They are returned rather
+ * than re-read because the alternative — the shape this replaced — was an
+ * announce path that fetched the document and its publication back out of the
+ * PDS to learn things the publish had just written: two round trips per post to
+ * recover a URL and a strongRef that were in scope a few lines earlier.
+ */
+export type ResolvedSite = {
+  /** document.site — an at:// publication URI, or an https URL (loose). */
+  site: string;
+  /** The publication's https URL — the base a canonical document URL composes
+   * from. Known even for a loose document, because we minted it. */
+  publicationUrl: string;
+  /** The publication's strongRef, for the announce card's associatedRefs. Null
+   * when the document is loose: there is no record to point at. */
+  ref: AssociatedRef | null;
+};
+
+/**
  * What a new document's `site` field should point at: the writer's own
  * publication record, auto-creating it on their first publish (name defaults to
  * the handle; editable later in /settings). Falls back to the publication's
@@ -81,17 +118,30 @@ export async function resolvePublicationSite(input: {
   pds: string | null;
   origin: string;
   origins: readonly string[];
-}): Promise<string> {
+}): Promise<ResolvedSite> {
   const { rpc, did, ident, pds, origin, origins } = input;
   const publicationUrl = `${origin}/@${ident}`;
-  if (!pds) return publicationUrl;
+  const loose: ResolvedSite = {
+    site: publicationUrl,
+    publicationUrl,
+    ref: null,
+  };
+  if (!pds) return loose;
 
   const { ok, own } = await findOwnPublication(pds, did, origins);
-  if (own) return own.uri;
+  if (own)
+    return {
+      site: own.uri,
+      // The record's own URL, not the one we would mint: a writer who has not
+      // moved off a legacy origin still has their posts composed under it.
+      publicationUrl:
+        typeof own.value.url === "string" ? own.value.url : publicationUrl,
+      ref: { uri: own.uri, cid: own.cid },
+    };
   // Couldn't ask — so we don't know they have none, and creating one on that
   // guess is how a writer ends up with two. A loose document is the honest
   // outcome here, and it is the same one this function already falls back to.
-  if (!ok) return publicationUrl;
+  if (!ok) return loose;
 
   const pubRkey = generateTid();
   const created = await rpc
@@ -104,9 +154,168 @@ export async function resolvePublicationSite(input: {
       },
     })
     .catch(() => null);
-  if (created?.ok) return `at://${did}/site.standard.publication/${pubRkey}`;
+  if (created?.ok) {
+    const uri = `at://${did}/site.standard.publication/${pubRkey}`;
+    return {
+      site: uri,
+      publicationUrl,
+      // createRecord returns the strongRef, so a first-ever publish can carry
+      // its brand-new publication in the announce card too.
+      ref: created.data.cid ? { uri, cid: created.data.cid } : null,
+    };
+  }
   if (created) console.warn("publication auto-create failed", created.data);
-  return publicationUrl;
+  return loose;
+}
+
+/**
+ * What announcing a fresh publish did, in the vocabulary its two callers need.
+ * Never a thrown error and never a failed publish: by the time this is
+ * reported, the document is already live in the writer's repo.
+ */
+export type AnnounceReport =
+  | { state: "skipped"; reason: AutoAnnounceSkip }
+  | { state: "announced"; postRkey: string | null; wroteBack: boolean }
+  | {
+      state: "failed";
+      reason: "scope" | "refused" | "already_announced";
+      detail?: string;
+    };
+
+/**
+ * Announce a document that was just created — the auto path, shared by the
+ * interactive publish and the two draft-publishing callers.
+ *
+ * IT RUNS AFTER THE COMMIT AND CANNOT UNDO IT. Everything here is reported
+ * upward and nothing is thrown: the post exists, the writer published it, and a
+ * Bluesky card that didn't happen is a smaller problem than a publish that
+ * appears to have failed. The callers turn a failure into something a person
+ * reads — a notice for the writer on the interactive path, the cron's operator
+ * failure list where nobody is watching.
+ *
+ * FIRST PUBLISH ONLY. There is no edit branch here and there must not be one:
+ * see the residual note on `createAnnouncement` for what an edit-time auto
+ * announce would cost when a write-back has been lost.
+ */
+export async function announceNewDocument(input: {
+  rpc: Client;
+  db: DrizzleD1;
+  did: Did;
+  ident: string;
+  /** The document's record key. */
+  rkey: string;
+  /** The record as written, and the strongRef createRecord answered with. */
+  record: DocumentRecord;
+  created: { uri: string; cid: string };
+  publication: Pick<ResolvedSite, "publicationUrl" | "ref">;
+  /** Origin the fallback URL is minted from (~/lib/origin). */
+  origin: string;
+  intent: AnnounceIntent;
+  /** This post came from an import — its ledger row exists. */
+  imported: boolean;
+  now?: Date;
+}): Promise<AnnounceReport> {
+  const {
+    rpc,
+    db,
+    did,
+    ident,
+    rkey,
+    record,
+    created,
+    publication,
+    origin,
+    intent,
+    imported,
+    now = new Date(),
+  } = input;
+
+  // Cheapest first: a writer who turned this off costs no query at all.
+  if (!intent.requested) return { state: "skipped", reason: "not_requested" };
+
+  // FAIL CLOSED, deliberately the opposite of the reader path. ~/lib/moderation
+  // treats a D1 error as "not hidden" because a store outage must not blank the
+  // whole reader — availability over enforcement, for a page somebody asked to
+  // see. This is not that: nobody asked for this post to appear in their
+  // timeline, we would be putting it there, and a takedown we couldn't read is
+  // exactly when we should not be amplifying. The cost of being wrong here is
+  // one press of "Announce"; the cost the other way is broadcasting content
+  // under a legal takedown.
+  const hidden = await anyHidden(db, [
+    did,
+    recordAtUri(did, "site.standard.document", rkey),
+  ]).catch((err) => {
+    console.warn("announce takedown check failed — not announcing", err);
+    return true;
+  });
+
+  const publishedAt =
+    typeof record.publishedAt === "string"
+      ? new Date(record.publishedAt)
+      : null;
+  const skip = autoAnnounceSkip({
+    requested: true,
+    imported,
+    hidden,
+    publishedAt,
+    now: now.getTime(),
+  });
+  if (skip) {
+    console.log("auto announce skipped", skip, intent.source, rkey);
+    return { state: "skipped", reason: skip };
+  }
+
+  // Spending the slot is the last thing before the write, so a post refused on
+  // any ground above doesn't cost the writer one.
+  const [budget] = await consumeAutoAnnounceBudget(db, did, now).catch(
+    () => [],
+  );
+  // A budget we couldn't spend is a budget we can't prove — and this is the one
+  // guard whose whole job is to bound an unattended path, so it fails closed too.
+  if (!budget || !withinAutoAnnounceBudget(budget.spent)) {
+    console.warn(
+      "auto announce over budget",
+      intent.source,
+      rkey,
+      budget?.spent,
+    );
+    return { state: "skipped", reason: "over_budget" };
+  }
+
+  const url =
+    composeDocumentUrl({
+      site: record.site,
+      path: record.path,
+      publicationUrl: publication.publicationUrl,
+    }) ?? `${origin}/@${encodeURIComponent(ident)}/${rkey}`;
+
+  const associatedRefs: AssociatedRef[] = [
+    { uri: created.uri, cid: created.cid },
+  ];
+  if (publication.ref) associatedRefs.push(publication.ref);
+
+  const result = await createAnnouncement({
+    rpc,
+    did,
+    rkey,
+    post: buildAnnouncePost({
+      title: record.title,
+      url,
+      description: record.description,
+      associatedRefs,
+      // Same repo, so the post's own reference keeps the blob alive; skipped
+      // over the thumb lexicon's 1MB cap, which would fail the whole announce.
+      thumb: thumbFromCover(record.coverImage) ?? undefined,
+    }),
+    document: { record: toRecordInput(record), cid: created.cid },
+  });
+  if (!result.ok)
+    return { state: "failed", reason: result.reason, detail: result.detail };
+  return {
+    state: "announced",
+    postRkey: result.postRkey,
+    wroteBack: result.wroteBack,
+  };
 }
 
 /** A stored draft, as the two draft-publishing callers read it. */
@@ -133,7 +342,7 @@ export type StoredDraft = {
  *   tell them apart, which is why the cron doesn't try to.
  */
 export type StoredDraftPublish =
-  | { ok: true; rkey: string }
+  | { ok: true; rkey: string; announce: AnnounceReport }
   | { ok: false; retry: boolean; reason: string; code: string };
 
 /** Transient by nature: the PDS was there but unwilling right now. Anything
@@ -157,6 +366,11 @@ function isTransientStatus(status: number): boolean {
  * interactive path uses: the record is already live in the writer's repo, so a
  * flaked ledger update costs the mirror treatment and a flaked draft delete
  * costs one manual tidy — never the publish, and never a second attempt at it.
+ *
+ * ANNOUNCING IS THE LAST THING AND IS REPORTED, NOT RETURNED AS FAILURE. The
+ * decision arrives with the caller (`announce`) rather than being read from the
+ * writer's account here: the cron must publish the decision the writer made when
+ * they scheduled the post, not the one their settings hold at 09:00.
  */
 export async function publishStoredDraft(input: {
   rpc: Client;
@@ -167,8 +381,11 @@ export async function publishStoredDraft(input: {
   origin: string;
   origins: readonly string[];
   draft: StoredDraft;
+  /** Required, not optional: a new caller has to say what it wants, and a bulk
+   * one says `NEVER_ANNOUNCE` (~/lib/announce). */
+  announce: AnnounceIntent;
 }): Promise<StoredDraftPublish> {
-  const { rpc, db, did, ident, pds, origin, origins, draft } = input;
+  const { rpc, db, did, ident, pds, origin, origins, draft, announce } = input;
   const title = draft.title.trim();
   if (!title)
     return {
@@ -180,7 +397,7 @@ export async function publishStoredDraft(input: {
     };
 
   const rkey = generateTid();
-  const site = await resolvePublicationSite({
+  const publication = await resolvePublicationSite({
     rpc,
     did,
     ident,
@@ -195,7 +412,7 @@ export async function publishStoredDraft(input: {
       title,
       body: draft.markdown,
       dek: draft.dek,
-      site,
+      site: publication.site,
       path: `/${rkey}`,
       // The body's own images. A PDS only serves a blob some record references,
       // so publishing without these would produce a post whose pictures are
@@ -242,9 +459,18 @@ export async function publishStoredDraft(input: {
   // Import ledger write-back: an imported draft's row records the rkey it
   // published under, which is what makes the reader page treat it as a mirror
   // and what keeps a re-import refusing it as a duplicate.
-  await setPublishedRkey(db, did, draft.id, rkey).catch((err) => {
-    console.warn("import ledger write-back failed", err);
-  });
+  //
+  // Its RESULT is also how this path knows the draft was imported — a matched
+  // row means a ledger entry exists — so the announce skip below costs no
+  // second query. A write-back that failed reports no rows, which reads as "not
+  // imported": the backdate guard in `autoAnnounceSkip` is the second net under
+  // exactly that case, which is why it exists.
+  const ledgerRows = await setPublishedRkey(db, did, draft.id, rkey).catch(
+    (err) => {
+      console.warn("import ledger write-back failed", err);
+      return [] as { id: number }[];
+    },
+  );
   // The publish completes the draft — and with it any schedule pointing at it.
   // A row that outlives its own published post is not harmless: the next tick
   // finds the draft gone and writes DRAFT_GONE_REASON, so the posts manager
@@ -259,5 +485,25 @@ export async function publishStoredDraft(input: {
     }),
   ]);
 
-  return { ok: true, rkey };
+  // Strictly after the commit and everything that follows from it. A throw here
+  // would lose a published post's bookkeeping to a Bluesky problem, so the whole
+  // step is guarded: the publish has already succeeded and says so.
+  const announced = await announceNewDocument({
+    rpc,
+    db,
+    did,
+    ident,
+    rkey,
+    record,
+    created: { uri: res.data.uri, cid: res.data.cid },
+    publication,
+    origin,
+    intent: announce,
+    imported: ledgerRows.length > 0,
+  }).catch((err) => {
+    console.error("auto announce threw after publish", rkey, err);
+    return { state: "failed", reason: "refused", detail: "threw" } as const;
+  });
+
+  return { ok: true, rkey, announce: announced };
 }

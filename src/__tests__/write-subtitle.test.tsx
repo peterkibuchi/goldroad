@@ -46,6 +46,7 @@ describe("/write — the title is one wrapping line, not a text input", () => {
   it("moves to the subtitle on Enter instead of breaking the line", () => {
     render(
       <Compose
+        announceDefault={false}
         draft={null}
         error={undefined}
         reconnectHandle={null}
@@ -68,6 +69,7 @@ describe("/write — the subtitle field", () => {
   it("sits in the publish form, so it travels with the post", () => {
     render(
       <Compose
+        announceDefault={false}
         draft={null}
         error={undefined}
         reconnectHandle={null}
@@ -83,6 +85,7 @@ describe("/write — the subtitle field", () => {
   it("opens an edit with the subtitle the writer wrote", () => {
     render(
       <Compose
+        announceDefault={false}
         draft={{ ...publishedPost, dek: "What this one is about" }}
         error={undefined}
         reconnectHandle={null}
@@ -95,6 +98,7 @@ describe("/write — the subtitle field", () => {
   it("opens a resumed draft with its saved subtitle", () => {
     render(
       <Compose
+        announceDefault={false}
         draft={null}
         error={undefined}
         reconnectHandle={null}
@@ -116,6 +120,7 @@ describe("/write — the subtitle field", () => {
   it("guides on length without refusing it — a long line still submits", () => {
     render(
       <Compose
+        announceDefault={false}
         draft={null}
         error={undefined}
         reconnectHandle={null}

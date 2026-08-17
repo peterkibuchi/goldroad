@@ -124,6 +124,8 @@ describe("consuming the outcome params", () => {
     expect(capture).toHaveBeenCalledWith("post_announced", {
       rkey: RKEY,
       ident: IDENT,
+      // `announced` alone means the writer pressed the button.
+      mode: "manual",
     });
     expect(url().announced).toBeUndefined();
     unmount();
@@ -133,6 +135,32 @@ describe("consuming the outcome params", () => {
     expect(capture).toHaveBeenCalledWith("post_scheduled", { ident: IDENT });
     expect(url().scheduled).toBeUndefined();
     expect(url().cursor).toBe("abc");
+  });
+
+  /**
+   * The property that keeps this metric readable now that publishing announces
+   * by default. Without it, `post_announced` would stop being comparable to its
+   * own history the moment the default flipped — every announce would look like
+   * a writer choosing to press a button, and nobody could tell how many were
+   * simply the new default working.
+   */
+  it("distinguishes an announce the publish made from one the writer pressed", () => {
+    const { unmount } = render(
+      <Harness
+        initialSearch={{ published: "3bbb2bbb2bbb2", announced: RKEY }}
+      />,
+    );
+    expect(capture).toHaveBeenCalledWith("post_announced", {
+      rkey: RKEY,
+      ident: IDENT,
+      mode: "auto",
+    });
+    // Both events fire: one post published, one post announced.
+    expect(capture).toHaveBeenCalledWith("post_published", {
+      rkey: "3bbb2bbb2bbb2",
+      ident: IDENT,
+    });
+    unmount();
   });
 
   it("does not capture again when the page remounts on the stripped URL", () => {

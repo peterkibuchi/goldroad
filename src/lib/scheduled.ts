@@ -234,6 +234,12 @@ export async function runScheduled(env: CronEnv): Promise<void> {
   // below. A revoked grant is the writer's to fix, not something the operator
   // should be alerted about; systemic trouble shows up as a run of them in
   // this log line.
+  //
+  // ONE EXCEPTION, arriving with auto-announce: a post that published but could
+  // not be announced. That failure cannot be written on the row — the row is
+  // about to be marked published, and `last_error` is what the posts manager
+  // renders as "this didn't go out" — so it joins the operator failure list
+  // below instead of being lost to a log line nobody reads at 09:00.
   const scheduled = await runScheduledPublishPass({
     store: d1ScheduledPostStore(db),
     publish: cronPublisher(db),
@@ -287,6 +293,13 @@ export async function runScheduled(env: CronEnv): Promise<void> {
     ...backup.failures,
     ...snapshotFailures(snapshots),
     ...reported.failures,
+    // A scheduled post that went out but could not be announced. It is NOT a
+    // publish failure — the post is live — which is exactly why it has to come
+    // here: the row is terminal and successful, so the writer-facing channel
+    // (`last_error`, shown in the posts manager) is not available to say it, and
+    // a console line at 09:00 reaches nobody. This is the channel an operator
+    // already watches, and announcing on a writer's behalf is a promise we made.
+    ...scheduled.announceFailures,
   ];
   if (failures.length > 0) console.error("cron self-check failures", failures);
   // This is the last job in the pass, so there is no later failure list for a

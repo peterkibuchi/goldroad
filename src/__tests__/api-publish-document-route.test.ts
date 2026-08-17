@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * `intent=document` on /api/publish — the primary publish path, and the handler
@@ -56,6 +56,20 @@ const ledger = vi.hoisted(() => ({
   setPublishedRkey: vi.fn(),
 }));
 vi.mock("~/lib/import-store", () => ledger);
+
+/** The takedown list and the announce budget — both D1 reads, and this suite
+ * has no D1. Only the auto-announce path touches either. */
+const moderation = vi.hoisted(() => ({ anyHidden: vi.fn() }));
+vi.mock("~/lib/moderation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/moderation")>()),
+  ...moderation,
+}));
+
+const prefs = vi.hoisted(() => ({ consumeAutoAnnounceBudget: vi.fn() }));
+vi.mock("~/lib/announce-prefs", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/announce-prefs")>()),
+  ...prefs,
+}));
 
 /** The XRPC calls the handler makes, in order — nsid plus what it sent. */
 type Posted = {
@@ -211,6 +225,10 @@ beforeEach(() => {
   ledger.selectImportItemByDraft.mockResolvedValue([]);
   ledger.setPublishedRkey.mockResolvedValue([]);
   ledger.adoptMirror.mockResolvedValue([]);
+  moderation.anyHidden.mockReset();
+  moderation.anyHidden.mockResolvedValue(false);
+  prefs.consumeAutoAnnounceBudget.mockReset();
+  prefs.consumeAutoAnnounceBudget.mockResolvedValue([{ spent: 1 }]);
 });
 
 describe("POST /api/publish — intent=document, publishing a new post", () => {
@@ -896,5 +914,208 @@ describe("POST /api/publish — intent=document, a refusal hands the words back"
     });
     expect(location(res).searchParams.get("edit")).toBe("my-first-post");
     expect(draftOf(res)).toBeNull();
+  });
+});
+
+/**
+ * Announcing, on the interactive publish — the path a writer is standing in
+ * front of.
+ *
+ * Four things are load-bearing, and the first is the one everything else
+ * depends on:
+ *
+ *  1. THE DOCUMENT IS WRITTEN FIRST AND ITS FATE IS SETTLED. Nothing announcing
+ *     does can fail the publish, retry it, or change what the redirect says
+ *     about it. A card that didn't happen is a smaller problem than a writer
+ *     believing their essay didn't publish.
+ *  2. THE FORM IS THE DECISION. `announce=1` or nothing — the writer's account
+ *     setting is never consulted here. It pre-fills the checkbox on /write and
+ *     stops there, so nothing can announce by omission.
+ *  3. IT IS THE CREATE BRANCH ONLY. An edit changes a record that is already
+ *     public; announcing there would post a second card for the same essay.
+ *  4. FAILURE IS SAID OUT LOUD, in words that do not imply the publish failed.
+ */
+describe("POST /api/publish — intent=document, announcing the new post", () => {
+  const POST_URI = `at://${DID}/app.bsky.feed.post/3lz9999999999`;
+
+  // Two cases below spy on the reply table to make the SECOND createRecord
+  // fail; a spy left in place would answer for the next test too.
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /** createRecord answers with a post-shaped strongRef, so the redirect's
+   * `announced=` is the key a Bluesky link would really use. */
+  function announcingReplies() {
+    replies.set("com.atproto.repo.createRecord", {
+      ok: true,
+      status: 200,
+      data: { uri: POST_URI, cid: "bafyreibskypost" },
+    });
+  }
+
+  function announceCall(): Posted | undefined {
+    return callOf("com.atproto.repo.createRecord", "app.bsky.feed.post");
+  }
+
+  it("posts the card after the document, and names it in the redirect", async () => {
+    announcingReplies();
+    const res = await publish({ announce: "1" });
+    expect(steps).toEqual([
+      "com.atproto.repo.createRecord:site.standard.document",
+      "com.atproto.repo.createRecord:app.bsky.feed.post",
+      "com.atproto.repo.putRecord:site.standard.document",
+    ]);
+    const url = location(res);
+    expect(url.searchParams.get("published")).toBeTruthy();
+    expect(url.searchParams.get("announced")).toBe("3lz9999999999");
+    expect(url.searchParams.get("error")).toBeNull();
+  });
+
+  it("links the card at the canonical URL composed from the publication", async () => {
+    announcingReplies();
+    const res = await publish({ announce: "1" });
+    const rkey = location(res).searchParams.get("published");
+    const card = announceCall()?.options.input.record as {
+      embed: { external: { uri: string } };
+    };
+    expect(card.embed.external.uri).toBe(
+      `https://trygoldroad.com/@writer.example/${rkey}`,
+    );
+  });
+
+  it("stays quiet when the checkbox was unticked — and asks nothing to find out", async () => {
+    const res = await publish();
+    expect(announceCall()).toBeUndefined();
+    expect(location(res).searchParams.get("published")).toBeTruthy();
+    expect(location(res).searchParams.get("announced")).toBeNull();
+    // Absence is a decision, not a question: no takedown read, no budget spent.
+    expect(moderation.anyHidden).not.toHaveBeenCalled();
+    expect(prefs.consumeAutoAnnounceBudget).not.toHaveBeenCalled();
+  });
+
+  it("treats anything but announce=1 as unticked", async () => {
+    for (const announce of ["0", "", "on", "true"]) {
+      posted.length = 0;
+      steps.length = 0;
+      await publish({ announce });
+      expect(announceCall()).toBeUndefined();
+    }
+  });
+
+  it("NEVER announces an edit, even with the box ticked", async () => {
+    // The record is already public. A second card for the same essay is the
+    // one duplicate a create-only scope leaves nobody able to clean up.
+    atproto.getRecordEntry.mockResolvedValue({
+      uri: `at://${DID}/site.standard.document/${PUB_RKEY}`,
+      cid: "bafyreiexisting",
+      value: {
+        $type: "site.standard.document",
+        title: "Old title",
+        site: PUB_URI,
+        path: `/${PUB_RKEY}`,
+        publishedAt: "2026-07-01T09:00:00.000Z",
+      },
+    });
+    const res = await publish({ announce: "1", rkey: PUB_RKEY });
+    expect(announceCall()).toBeUndefined();
+    expect(res.status).toBe(303);
+    expect(location(res).pathname).toContain(PUB_RKEY);
+  });
+
+  it("does not announce an imported post, whatever the box says", async () => {
+    // Forty archive posts must never become forty cards. The writer can
+    // announce the ones they mean to from their posts page.
+    ledger.selectImportItemByDraft.mockResolvedValue([
+      {
+        id: "ledger-1",
+        did: DID,
+        originalAt: new Date("2024-03-01T09:00:00.000Z"),
+        sourceUrl: "https://writer.substack.com/p/old",
+      },
+    ]);
+    const quiet = vi.spyOn(console, "log").mockImplementation(() => {});
+    const res = await publish({ announce: "1", draftId: DRAFT_ID });
+    quiet.mockRestore();
+    expect(announceCall()).toBeUndefined();
+    expect(location(res).searchParams.get("published")).toBeTruthy();
+    expect(location(res).searchParams.get("announced")).toBeNull();
+  });
+
+  it("does not announce a taken-down writer's post", async () => {
+    moderation.anyHidden.mockResolvedValue(true);
+    const quiet = vi.spyOn(console, "log").mockImplementation(() => {});
+    const res = await publish({ announce: "1" });
+    quiet.mockRestore();
+    expect(announceCall()).toBeUndefined();
+    // The publish is untouched: a document nobody may serve is still the
+    // writer's record. Amplifying it is the part that is ours to refuse.
+    expect(location(res).searchParams.get("published")).toBeTruthy();
+  });
+
+  it("does not announce once the hourly budget is spent", async () => {
+    prefs.consumeAutoAnnounceBudget.mockResolvedValue([{ spent: 99 }]);
+    const quiet = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const res = await publish({ announce: "1" });
+    quiet.mockRestore();
+    expect(announceCall()).toBeUndefined();
+    expect(location(res).searchParams.get("published")).toBeTruthy();
+    expect(location(res).searchParams.get("announceFailed")).toBeNull();
+  });
+
+  /**
+   * The document create and the card create are the same XRPC procedure, so
+   * "the second one fails" is arranged by answering per call rather than per
+   * nsid. Everything after the first createRecord gets `answer`.
+   */
+  function cardFailsWith(answer: {
+    ok: boolean;
+    status: number;
+    data: Record<string, unknown>;
+  }) {
+    const document = {
+      ok: true,
+      status: 200,
+      data: { uri: `at://${DID}/x/y`, cid: "bafyreidoc" },
+    };
+    let seen = 0;
+    vi.spyOn(replies, "get").mockImplementation((nsid: string) => {
+      if (nsid !== "com.atproto.repo.createRecord") return undefined;
+      seen += 1;
+      return seen === 1 ? document : answer;
+    });
+  }
+
+  it("still reports the publish when the card is refused", async () => {
+    cardFailsWith({
+      ok: false,
+      status: 400,
+      data: { error: "InvalidRequest" },
+    });
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await publish({ announce: "1" });
+    quiet.mockRestore();
+    const url = location(res);
+    // The essay is live and the redirect says so first.
+    expect(url.searchParams.get("published")).toBeTruthy();
+    expect(url.searchParams.get("announceFailed")).toBe("announce_failed");
+    expect(url.searchParams.get("announced")).toBeNull();
+    // NOT an error: telling a writer their publish failed when it did not is
+    // the one thing this path must never do.
+    expect(url.searchParams.get("error")).toBeNull();
+  });
+
+  it("says the announce needs a re-connect without implying the publish failed", async () => {
+    // Sessions predating the app.bsky.feed.post scope land here, and they need a
+    // fresh sign-in rather than another press of a button.
+    for (const status of [401, 403]) {
+      cardFailsWith({ ok: false, status, data: {} });
+      const res = await publish({ announce: "1" });
+      const url = location(res);
+      expect(url.searchParams.get("published")).toBeTruthy();
+      expect(url.searchParams.get("announceFailed")).toBe("announce_scope");
+      expect(url.searchParams.get("error")).toBeNull();
+      vi.restoreAllMocks();
+    }
   });
 });

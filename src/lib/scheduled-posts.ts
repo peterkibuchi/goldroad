@@ -81,8 +81,15 @@ export const PUBLISHED_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 export type ScheduledStatus = "pending" | "published" | "failed";
 
-/** A due row as the cron reads it — identity only, no content. */
-export type DuePost = { id: string; did: string; draftId: string };
+/** A due row as the cron reads it — identity only, no content, plus the one
+ * decision that cannot be re-derived at fire time (see `announce` in
+ * ~/db/schema). */
+export type DuePost = {
+  id: string;
+  did: string;
+  draftId: string;
+  announce: boolean;
+};
 
 /**
  * Posts due to publish: pending, unclaimed, and past their time. Oldest first,
@@ -106,6 +113,10 @@ export function selectDuePosts(
       id: scheduledPosts.id,
       did: scheduledPosts.did,
       draftId: scheduledPosts.draftId,
+      // Read here and nowhere else on this path: the cron must never consult
+      // the writer's current account setting, only the decision this row
+      // captured when they scheduled the post.
+      announce: scheduledPosts.announce,
     })
     .from(scheduledPosts)
     .where(
@@ -263,10 +274,21 @@ export function prunePublished(db: DrizzleD1, before: Date) {
  * cleanly instead of colliding with its history. A reschedule also resets
  * `attempts` and `last_error` — the writer picked a new time, so the new time
  * gets its own full budget of tries rather than inheriting a spent one.
+ *
+ * `announce` is captured, and a reschedule RE-captures it: the writer was on the
+ * publish surface with the toggle in front of them both times, so the value they
+ * just submitted is the current decision. Required rather than optional, so a
+ * caller cannot schedule a post without saying whether it announces.
  */
 export function upsertSchedule(
   db: DrizzleD1,
-  row: { id: string; did: string; draftId: string; dueAt: Date },
+  row: {
+    id: string;
+    did: string;
+    draftId: string;
+    dueAt: Date;
+    announce: boolean;
+  },
   now: Date = new Date(),
 ) {
   return db
@@ -277,6 +299,7 @@ export function upsertSchedule(
       targetWhere: eq(scheduledPosts.status, "pending"),
       set: {
         dueAt: row.dueAt,
+        announce: row.announce,
         attempts: 0,
         lastError: null,
         claimedAt: null,
@@ -401,6 +424,12 @@ export function selectScheduleForDraft(
  * caller must ask which before writing anything to the writer's repo. That is
  * the whole double-publish guard on the interactive path, and it is one
  * statement precisely so there is no window inside it.
+ *
+ * `announce` RIDES OUT ON THE RETURNING CLAUSE, and it has to: this statement
+ * deletes the row, and "publish now" then reads the draft and publishes it — so
+ * by the time anything downstream could want the captured decision, the only
+ * copy of it has been deleted. Returning it here is not a convenience, it is the
+ * only moment it is readable.
  */
 export function deleteUnclaimedSchedulesForDraft(
   db: DrizzleD1,
@@ -416,7 +445,11 @@ export function deleteUnclaimedSchedulesForDraft(
         isNull(scheduledPosts.claimedAt),
       ),
     )
-    .returning({ id: scheduledPosts.id, status: scheduledPosts.status });
+    .returning({
+      id: scheduledPosts.id,
+      status: scheduledPosts.status,
+      announce: scheduledPosts.announce,
+    });
 }
 
 /**
@@ -493,7 +526,22 @@ export function d1ScheduledPostStore(db: DrizzleD1): ScheduledPostStore {
  * and shown to the writer, so it is a sentence, not a code.
  */
 export type PublishAttempt =
-  | { ok: true; rkey: string }
+  | {
+      ok: true;
+      rkey: string;
+      /**
+       * A sentence for the OPERATOR when announcing this post failed, absent
+       * when it didn't (or was never asked for).
+       *
+       * It does not go on the row, and that is not an oversight: this row is
+       * about to be marked published, its `last_error` cleared, and the post IS
+       * published — writing a failure onto a row whose status says success is how
+       * the posts manager would start reporting a live post as broken. But a
+       * `console.warn` at 09:00 is nobody, so it rides the one channel an
+       * operator already watches (~/lib/scheduled's failure list) instead.
+       */
+      announceProblem?: string;
+    }
   | { ok: false; retry: boolean; reason: string };
 
 export type ScheduledPublisher = (post: DuePost) => Promise<PublishAttempt>;
@@ -517,6 +565,16 @@ export type SchedulePassResult = {
    * swallowed: the log line has to say a queue was left behind. */
   capped: boolean;
   pruned: boolean;
+  /**
+   * Posts that published but whose announce didn't, one sentence each.
+   *
+   * These are not publish failures — every one of them is a live post — and they
+   * are collected separately for exactly that reason. They cannot be told to the
+   * writer here (the row is terminal and successful), and an unattended failure
+   * that only reaches a log line is the silent failure this whole module exists
+   * to refuse, so the caller folds them into the operator alert list.
+   */
+  announceFailures: string[];
 };
 
 /**
@@ -560,6 +618,7 @@ export async function runScheduledPublishPass(opts: {
     releasedStale: 0,
     capped: false,
     pruned: false,
+    announceFailures: [],
   };
 
   // Abandoned leases first, so a row a dead tick was holding is eligible in
@@ -607,6 +666,11 @@ export async function runScheduledPublishPass(opts: {
         if (attempt.ok) {
           await store.published(post.id, attempt.rkey, now);
           result.published++;
+          // Collected AFTER the row is marked published: the post going out is
+          // the outcome that matters, and the announce is a separate promise
+          // that was separately broken.
+          if (attempt.announceProblem)
+            result.announceFailures.push(attempt.announceProblem);
           continue;
         }
         // The ceiling is checked against the count the claim just returned, so
