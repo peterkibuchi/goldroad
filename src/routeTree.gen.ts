@@ -23,6 +23,7 @@ import { Route as ReportRouteImport } from './routes/report'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as StatsRouteImport } from './routes/stats'
+import { Route as SubscribedRouteImport } from './routes/subscribed'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as WriteRouteImport } from './routes/write'
 import { Route as AtChar123handleChar125IndexRouteImport } from './routes/@{$handle}.index'
@@ -33,6 +34,7 @@ import { Route as ApiImportRouteImport } from './routes/api.import'
 import { Route as ApiPublishRouteImport } from './routes/api.publish'
 import { Route as ApiReportRouteImport } from './routes/api.report'
 import { Route as ApiStatsRouteImport } from './routes/api.stats'
+import { Route as ApiSubscribeRouteImport } from './routes/api.subscribe'
 import { Route as ApiSubscriptionRouteImport } from './routes/api.subscription'
 import { Route as ApiWaitlistRouteImport } from './routes/api.waitlist'
 import { Route as OauthCallbackRouteImport } from './routes/oauth.callback'
@@ -115,6 +117,11 @@ const StatsRoute = StatsRouteImport.update({
   path: '/stats',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SubscribedRoute = SubscribedRouteImport.update({
+  id: '/subscribed',
+  path: '/subscribed',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
   path: '/terms',
@@ -166,6 +173,11 @@ const ApiReportRoute = ApiReportRouteImport.update({
 const ApiStatsRoute = ApiStatsRouteImport.update({
   id: '/api/stats',
   path: '/api/stats',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiSubscribeRoute = ApiSubscribeRouteImport.update({
+  id: '/api/subscribe',
+  path: '/api/subscribe',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiSubscriptionRoute = ApiSubscriptionRouteImport.update({
@@ -240,6 +252,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/stats': typeof StatsRoute
+  '/subscribed': typeof SubscribedRoute
   '/terms': typeof TermsRoute
   '/write': typeof WriteRoute
   '/@{$handle}/$rkey': typeof AtChar123handleChar125RkeyRoute
@@ -249,6 +262,7 @@ export interface FileRoutesByFullPath {
   '/api/publish': typeof ApiPublishRoute
   '/api/report': typeof ApiReportRoute
   '/api/stats': typeof ApiStatsRoute
+  '/api/subscribe': typeof ApiSubscribeRoute
   '/api/subscription': typeof ApiSubscriptionRoute
   '/api/waitlist': typeof ApiWaitlistRoute
   '/oauth/callback': typeof OauthCallbackRoute
@@ -277,6 +291,7 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/stats': typeof StatsRoute
+  '/subscribed': typeof SubscribedRoute
   '/terms': typeof TermsRoute
   '/write': typeof WriteRoute
   '/@{$handle}/$rkey': typeof AtChar123handleChar125RkeyRoute
@@ -286,6 +301,7 @@ export interface FileRoutesByTo {
   '/api/publish': typeof ApiPublishRoute
   '/api/report': typeof ApiReportRoute
   '/api/stats': typeof ApiStatsRoute
+  '/api/subscribe': typeof ApiSubscribeRoute
   '/api/subscription': typeof ApiSubscriptionRoute
   '/api/waitlist': typeof ApiWaitlistRoute
   '/oauth/callback': typeof OauthCallbackRoute
@@ -315,6 +331,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
   '/stats': typeof StatsRoute
+  '/subscribed': typeof SubscribedRoute
   '/terms': typeof TermsRoute
   '/write': typeof WriteRoute
   '/@{$handle}/$rkey': typeof AtChar123handleChar125RkeyRoute
@@ -324,6 +341,7 @@ export interface FileRoutesById {
   '/api/publish': typeof ApiPublishRoute
   '/api/report': typeof ApiReportRoute
   '/api/stats': typeof ApiStatsRoute
+  '/api/subscribe': typeof ApiSubscribeRoute
   '/api/subscription': typeof ApiSubscriptionRoute
   '/api/waitlist': typeof ApiWaitlistRoute
   '/oauth/callback': typeof OauthCallbackRoute
@@ -354,6 +372,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/sitemap.xml'
     | '/stats'
+    | '/subscribed'
     | '/terms'
     | '/write'
     | '/@{$handle}/$rkey'
@@ -363,6 +382,7 @@ export interface FileRouteTypes {
     | '/api/publish'
     | '/api/report'
     | '/api/stats'
+    | '/api/subscribe'
     | '/api/subscription'
     | '/api/waitlist'
     | '/oauth/callback'
@@ -391,6 +411,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/sitemap.xml'
     | '/stats'
+    | '/subscribed'
     | '/terms'
     | '/write'
     | '/@{$handle}/$rkey'
@@ -400,6 +421,7 @@ export interface FileRouteTypes {
     | '/api/publish'
     | '/api/report'
     | '/api/stats'
+    | '/api/subscribe'
     | '/api/subscription'
     | '/api/waitlist'
     | '/oauth/callback'
@@ -428,6 +450,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/sitemap.xml'
     | '/stats'
+    | '/subscribed'
     | '/terms'
     | '/write'
     | '/@{$handle}/$rkey'
@@ -437,6 +460,7 @@ export interface FileRouteTypes {
     | '/api/publish'
     | '/api/report'
     | '/api/stats'
+    | '/api/subscribe'
     | '/api/subscription'
     | '/api/waitlist'
     | '/oauth/callback'
@@ -466,6 +490,7 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
   StatsRoute: typeof StatsRoute
+  SubscribedRoute: typeof SubscribedRoute
   TermsRoute: typeof TermsRoute
   WriteRoute: typeof WriteRoute
   AtChar123handleChar125RkeyRoute: typeof AtChar123handleChar125RkeyRoute
@@ -475,6 +500,7 @@ export interface RootRouteChildren {
   ApiPublishRoute: typeof ApiPublishRoute
   ApiReportRoute: typeof ApiReportRoute
   ApiStatsRoute: typeof ApiStatsRoute
+  ApiSubscribeRoute: typeof ApiSubscribeRoute
   ApiSubscriptionRoute: typeof ApiSubscriptionRoute
   ApiWaitlistRoute: typeof ApiWaitlistRoute
   OauthCallbackRoute: typeof OauthCallbackRoute
@@ -587,6 +613,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StatsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/subscribed': {
+      id: '/subscribed'
+      path: '/subscribed'
+      fullPath: '/subscribed'
+      preLoaderRoute: typeof SubscribedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/terms': {
       id: '/terms'
       path: '/terms'
@@ -655,6 +688,13 @@ declare module '@tanstack/react-router' {
       path: '/api/stats'
       fullPath: '/api/stats'
       preLoaderRoute: typeof ApiStatsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/subscribe': {
+      id: '/api/subscribe'
+      path: '/api/subscribe'
+      fullPath: '/api/subscribe'
+      preLoaderRoute: typeof ApiSubscribeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/subscription': {
@@ -766,6 +806,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
   StatsRoute: StatsRoute,
+  SubscribedRoute: SubscribedRoute,
   TermsRoute: TermsRoute,
   WriteRoute: WriteRoute,
   AtChar123handleChar125RkeyRoute: AtChar123handleChar125RkeyRoute,
@@ -775,6 +816,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublishRoute: ApiPublishRoute,
   ApiReportRoute: ApiReportRoute,
   ApiStatsRoute: ApiStatsRoute,
+  ApiSubscribeRoute: ApiSubscribeRoute,
   ApiSubscriptionRoute: ApiSubscriptionRoute,
   ApiWaitlistRoute: ApiWaitlistRoute,
   OauthCallbackRoute: OauthCallbackRoute,
