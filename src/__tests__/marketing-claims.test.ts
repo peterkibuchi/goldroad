@@ -1,9 +1,14 @@
-// @vitest-environment node
+import { cleanup, render } from "@testing-library/react";
+import { createElement, type ReactElement } from "react";
+import { afterEach, describe, expect, it } from "vitest";
 
-import { describe, expect, it } from "vitest";
-
+import { Landing } from "#/routes/index";
+import { LeavingSubstack } from "#/routes/leaving-substack";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
+// No vitest globals in this repo — RTL auto-cleanup doesn't run; do it by hand.
+afterEach(cleanup);
 
 /**
  * A guard against the failure class that has now bitten this project three
@@ -140,32 +145,78 @@ describe("marketing copy makes no claim we cannot keep", () => {
    * `/open` is deliberately absent: its "We take 0% of what readers pay
    * writers, permanently" is a policy statement to people reading about the
    * licence, and the qualifier there is noise. That omission is a decision.
+   *
+   * REQUIRED phrases are matched against the RENDERED page, where the banned
+   * ones above are matched against raw source. The asymmetry is deliberate and
+   * it is the point of the split: a ban must bite wherever the phrasing appears,
+   * including in a comment, because a comment quoting a dead phrase is how it
+   * comes back. A requirement is the opposite — source-matching passes so long
+   * as the words exist *somewhere* in the file, so a disclosure that survives
+   * only in a comment, or in a constant the page never renders, reads as present
+   * while the reader is told nothing. This project has already shipped a false
+   * claim out of an unrendered A/B variant (see "Your domain." above); this is
+   * that same hole pointed the other way, and rendering is what closes it.
    */
   const PROCESSOR_FEE: ReadonlyArray<{
-    page: string;
+    surface: string;
+    ui: () => ReactElement;
     phrase: string;
     why: string;
   }> = [
     {
-      page: "index.tsx",
+      surface: "the landing page",
+      ui: () => createElement(Landing),
       phrase: "Your payment processor still charges its own fee",
       why: "generic, because bring-your-own-processor means whichever one serves the writer's country",
     },
     {
-      page: "leaving-substack.tsx",
+      surface: "/leaving-substack",
+      ui: () => createElement(LeavingSubstack),
       phrase: "Stripe's processing fee",
       why: "named, because a Substack refugee already holds a Stripe account — and this is the only page carrying arithmetic",
     },
   ];
 
-  for (const { page, phrase, why } of PROCESSOR_FEE) {
-    it(`${page} distinguishes our 0% take from the processor's fee`, () => {
+  for (const { surface, ui, phrase, why } of PROCESSOR_FEE) {
+    it(`${surface} shows the reader our 0% take is not the processor's fee`, () => {
+      const { container } = render(ui());
+      // Flattened for the same reason the source reader is: JSX text arrives
+      // in the DOM re-wrapped by the formatter's line breaks.
+      const shown = (container.textContent ?? "").replace(/\s+/g, " ");
       expect(
-        readFlat(page).includes(phrase),
-        `${page} lost "${phrase}" — ${why}. Without it, 0% reads as "payments are free".`,
+        shown.includes(phrase),
+        `${surface} no longer SHOWS "${phrase}" — ${why}. Without it on the page, 0% reads as "payments are free".`,
       ).toBe(true);
     });
   }
+
+  /**
+   * The no-ads promise. It lives in exactly two places — the comparison row and
+   * the prose beside it — and a cadence pass rewrote both wordings in one commit,
+   * which is exactly when a promise can evaporate without anyone deciding to
+   * drop it.
+   *
+   * Deliberately matched as a CONCEPT, not a sentence. The promise has to keep
+   * its scope ("and not later either"), because an unscoped "we don't sell ads"
+   * reads as "not yet" beside a competitor who just started. Pinning one exact
+   * phrasing would make the next honest rewrite fail this test, and a test that
+   * punishes rewording is a test someone eventually deletes — so any phrasing
+   * that carries the scope passes, and losing the scope altogether is the only
+   * failure.
+   */
+  it("/leaving-substack still refuses ads at any size, not merely for now", () => {
+    const { container } = render(createElement(LeavingSubstack));
+    const shown = (container.textContent ?? "").replace(/\s+/g, " ");
+    // Substack's June 2026 sponsorship launch is the fact this contrasts with;
+    // our own refusal has to survive next to it.
+    expect(shown).toMatch(/sponsorships/i);
+    expect(
+      /however big this gets|at any size|no matter how big|not ever|not later/i.test(
+        shown,
+      ),
+      'the no-ads promise lost its scope: beside Substack\'s sponsorship launch, an unqualified "no ads" reads as "not yet"',
+    ).toBe(true);
+  });
 });
 
 /**
