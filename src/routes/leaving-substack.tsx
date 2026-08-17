@@ -64,7 +64,7 @@ const ROWS: Row[] = [
   },
   {
     label: "Ads in your newsletter",
-    goldroad: "None. Not now, not at scale, not ever",
+    goldroad: "None, however big this gets",
     substack: "Opt-in sponsorships (bestseller tier), since June 2026",
   },
   {
@@ -273,8 +273,7 @@ export function LeavingSubstack() {
               writing on a page you own, and your archive here today. Once the
               list and reader payments ship, the readers already paying you keep
               paying — through the same Stripe account they use today. Substack
-              takes 10% of what readers pay you. Our cut will be 0% —
-              permanently, not a launch promotion.
+              takes 10% of what readers pay you. Ours will always be 0%.
             </p>
             {/* The contrast that did not exist when this page was written. In
                 June 2026 Substack began selling sponsorships into newsletters —
@@ -284,9 +283,8 @@ export function LeavingSubstack() {
                 a competitor is how a comparison page loses its credibility. */}
             <p className="mt-5 max-w-[54ch] text-pretty font-body text-ink-soft text-lg md:text-xl">
               In June 2026 Substack started selling sponsorships into writers'
-              newsletters. We won't — not now, not at scale, not later. What
-              your readers get from us is your writing, and nothing else in the
-              envelope.
+              newsletters. We won't, however big this gets. What your readers
+              get from us is your writing, and nothing else in the envelope.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3">
               <CtaLink href="/#join">Join the founding writers</CtaLink>
@@ -344,10 +342,12 @@ export function LeavingSubstack() {
                 a year, that's about $5,000 a year that stays yours.
               </span>
               <span className="mt-3 block">
-                Stripe's processing fee (about 2.9% + 30¢ a charge) applies
-                either way — Substack's 10% is charged on top of it. The $5,000
-                is the difference between the two platforms, not a claim that
-                payments are free. (Illustrative; your numbers are your own.)
+                Stripe's processing fee applies either way, and Substack's 10%
+                is charged on top of it. Their standard US domestic-card rate is
+                about 2.9% + 30¢ a charge; other payment methods, currencies and
+                countries price differently. So the $5,000 is the difference
+                between two platforms, not a claim that payments are free.
+                (Illustrative; your numbers are your own.)
               </span>
             </figcaption>
           </figure>
@@ -393,12 +393,12 @@ export function LeavingSubstack() {
               {
                 term: "A feed for every publication",
                 detail:
-                  "An RSS twin of your archive, on by default — for readers who'd rather follow you than be in anyone's inbox.",
+                  "An RSS twin of your archive, on by default — for the readers who follow by feed.",
               },
               {
                 term: "Your colours, everywhere",
                 detail:
-                  "A theme stored in your own account, so other apps on the network render your page in it too. Not a setting in our database.",
+                  "A theme stored in your own account, so other apps on the network render your page in it too.",
               },
             ].map(({ term, detail }) => (
               <div className="border-ink border-t-2 pt-4" key={term}>
@@ -449,9 +449,9 @@ export function LeavingSubstack() {
             Substack charges your paid subscriptions through Stripe, and that
             Stripe account is yours — it holds your subscribers and their
             payment methods. When reader payments ship, you'll connect that same
-            account to Goldroad, and the readers already paying you keep paying:
-            same cards, same schedule, nothing for them to sign up for again.
-            The 10% stays with you instead.
+            account to Goldroad. The readers already paying you keep paying:
+            same cards, same schedule, and nothing to sign up for again. The 10%
+            stays with you instead.
           </p>
           <p className="mt-8 max-w-[56ch] border-rule border-t pt-4 font-display text-ink-soft text-sm leading-normal">
             Reader payments are still being built — this is the plan for when
@@ -466,7 +466,7 @@ export function LeavingSubstack() {
             Move when the machinery's ready — not before.
           </h2>
           <p className="mt-4 max-w-[58ch] text-pretty text-ink-soft text-lg leading-relaxed">
-            Substack import is live — your archive can come across today.
+            Substack import is live. Your archive can come across today.
             Newsletters and reader payments are still being hardened before we
             ask anyone whose income depends on them to switch. Join the founding
             writers and we'll bring you in the moment it's solid.

@@ -33,7 +33,7 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Your followers are already your readers. Goldroad turns your Bluesky handle into a publication: long-form on a page you own, sent to the timeline as a native card. Your posts, your name, your archive — portable, and when reader payments ship we take 0% of what readers pay you.",
+          "Your followers are already your readers. Goldroad turns your Bluesky handle into a publication: long-form on a page you own, sent to the timeline as a native card. Everything you publish stays portable, and when reader payments ship we take 0% of what readers pay you.",
       },
       { property: "og:title", content: "Goldroad" },
       {
@@ -59,19 +59,22 @@ export const Route = createFileRoute("/")({
  * but noise. To run it: read the `landing_variant` flag, render
  * HERO_HEADLINES[variant] in the hero, and pass { landing_variant } to
  * capture("waitlist_joined") below. The control's spot-highlight span sits on
- * "your readers"; a challenger render would highlight "0% taken".
+ * "your readers"; a challenger render would highlight "take with you".
  */
 export const HERO_HEADLINES = {
   control: "Your followers are already your readers.",
   // NOT "your domain" — custom domains are not built, and a variant nobody has
   // rendered yet is exactly where a false claim hides until the day it ships.
-  challenger: "Your publication. Your readers. Your name. 0% taken.",
+  // The challenger argues portability, which is true today, rather than an
+  // economics line: "0% taken" was a stat-card fragment, and stating our take
+  // without room for the qualifier is how 0% gets read as "payments are free".
+  challenger: "The publication you can take with you.",
 } as const;
 
 const STEPS = [
   {
     title: "Sign in with Bluesky",
-    body: "Your handle is your account. The readers you've already earned come with you — nothing to rebuild.",
+    body: "Your handle is your account. The readers you've already earned come with you.",
   },
   {
     title: "Write the long one",
@@ -79,7 +82,7 @@ const STEPS = [
   },
   {
     title: "Publish to a page you own",
-    body: "Every piece gets a fast, quiet page — and the original is saved to a data repo that's yours, portable anywhere.",
+    body: "Every piece gets a fast, quiet page. The original goes to a data repo that's yours, portable anywhere.",
   },
   {
     title: "Send it to the timeline",
@@ -93,7 +96,7 @@ const REASONS = [
     body: "The followers you've earned are your launch list. Publish this afternoon; they can read it this afternoon.",
   },
   {
-    title: "A card, not a bare link",
+    title: "It lands as a card",
     body: "Your posts land as first-class cards — cover, title, summary — because Goldroad publishes in the network's own format.",
   },
   {
@@ -481,10 +484,10 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
                 Your readers
               </dt>
               <dd className="mt-2 text-ink-soft text-sm leading-relaxed">
-                They follow your handle, not our app, so they stay yours on
-                every app that speaks the same network. When the email list
-                ships it starts portable: import it, export it, every address
-                visibly yours.
+                They follow your handle, so they stay yours on every app that
+                speaks the same network. When the email list ships it starts
+                portable: import it, export it, and every address is visible to
+                you.
               </dd>
             </div>
             <div>
@@ -512,10 +515,10 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
                   because this is the sentence a future edit would trim. */}
               <dd className="mt-2 text-ink-soft text-sm leading-relaxed">
                 When reader payments ship, readers will pay you directly and
-                we'll take zero — permanently, not a launch promo. Substack
-                takes 10%. Your payment processor still charges its own fee, the
-                way it does everywhere — that one is theirs, and it's the only
-                cut anyone takes.
+                we'll take zero of it, permanently. Substack takes 10%. Your
+                payment processor still charges its own fee, the way it does
+                everywhere — that fee is theirs and separate from our 0%, and
+                none of it comes to us.
               </dd>
             </div>
           </dl>
@@ -558,11 +561,11 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
             {[
               {
                 q: "What does it cost?",
-                a: "Publishing, your page and Bluesky distribution are free, and stay free. Paid plans will sell the things that cost us money — never a share of what your readers pay you.",
+                a: "Publishing, your page and Bluesky distribution are free, and they stay free. What we'll charge for later is what costs us money to run.",
               },
               {
                 q: "Is Bluesky big enough?",
-                a: "Your followers are already there, and that is the point: this is built for the audience you have rather than one an algorithm might grant you.",
+                a: "Your followers are already there. That's the audience this is built for.",
               },
               {
                 q: "Can I use my own domain?",
@@ -685,10 +688,9 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
             We're starting with{" "}
             <strong className="font-display font-semibold text-ink">
               25 writers
-            </strong>{" "}
-            — small enough that setting you up is a conversation rather than a
-            queue, and that the person answering your questions is the one
-            building the thing.
+            </strong>
+            . Small enough that setting you up is a conversation, and that the
+            person answering your questions is the one building the thing.
           </p>
           <div className="mt-10 max-w-xl">
             <FoundingWritersForm />
