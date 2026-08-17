@@ -68,6 +68,7 @@ import {
   publishStoredDraft,
   resolvePublicationSite,
 } from "~/lib/publish-document";
+import { withWarmTargets } from "~/lib/read-cache";
 import { dueAtProblem, localToUtcMs } from "~/lib/schedule-time";
 import {
   cancelSchedule,
@@ -123,6 +124,41 @@ function backToSettings(error?: string, kind?: "theme"): Response {
 
 function backToDashboard(query: Record<string, string>): Response {
   return redirectTo(`/dashboard?${new URLSearchParams(query)}`);
+}
+
+/**
+ * Names the reading surfaces a write just changed, so the Worker entry can
+ * re-render them on `waitUntil` (~/lib/read-cache → src/server.ts). Attach it to
+ * the SUCCESS response of any write that changes what a reader sees.
+ *
+ * Two reasons, and the second one is not optional:
+ *
+ * - A writer shares their link within seconds of publishing, and the first thing
+ *   to fetch it is a link-preview scraper — Bluesky's card service included. A
+ *   cold reading surface is a multi-hop PDS crawl; scrapers give up, and the post
+ *   renders as a bare text card, which is the distribution story failing at the
+ *   one moment it matters. Warming costs one background subrequest and moves
+ *   that fetch onto a cached page.
+ * - The read cache holds pages for READ_CACHE_TTL_SECONDS. An edit, a delete or
+ *   an announce would otherwise leave the OLD page being served for that long —
+ *   starting with the writer, who is redirected straight at it. The warm path
+ *   deletes the key before it re-fetches, which is what makes it a refresh
+ *   rather than a no-op cache HIT.
+ *
+ * The archive index goes on the list whenever a document does: publishing,
+ * editing a title, or deleting all change the list it renders.
+ */
+function warmingReaderPages(
+  response: Response,
+  opts: { origin: string; ident: string; rkey?: string },
+): Response {
+  // Same spelling our own links mint (announce URLs, the canonical composed
+  // URL) — that is the key a shared link will actually be cached under.
+  const base = `${opts.origin}/@${encodeURIComponent(opts.ident)}`;
+  return withWarmTargets(response, [
+    base,
+    ...(opts.rkey ? [`${base}/${opts.rkey}`] : []),
+  ]);
 }
 
 /**
@@ -545,7 +581,13 @@ async function publishDocument({
         console.warn("mirror adoption failed", err);
       });
     }
-    return redirectTo(`/@${encodeURIComponent(ident)}/${editRkey}`);
+    // The writer is being sent straight at the page they just edited, which the
+    // read cache is still holding in its pre-edit form — warm it or they see
+    // their old words.
+    return warmingReaderPages(
+      redirectTo(`/@${encodeURIComponent(ident)}/${editRkey}`),
+      { origin, ident, rkey: editRkey },
+    );
   }
 
   // ---- Import provenance: a draft that arrived through the feed import
@@ -675,8 +717,14 @@ async function publishDocument({
   }
 
   // Success lands on the dashboard: the new post on top, a "view it live"
-  // link, and the explicit opt-in "Announce on Bluesky" action.
-  return backToDashboard({ published: rkey });
+  // link, and the explicit opt-in "Announce on Bluesky" action. The new page
+  // and the archive index are warmed behind that redirect, so the link the
+  // writer is about to share is already rendered at the edge.
+  return warmingReaderPages(backToDashboard({ published: rkey }), {
+    origin,
+    ident,
+    rkey,
+  });
 }
 
 /**
@@ -930,7 +978,11 @@ async function publishNow({
   });
   if (!outcome.ok)
     return backToDashboard({ error: outcome.code, tab: "scheduled" });
-  return backToDashboard({ published: outcome.rkey });
+  return warmingReaderPages(backToDashboard({ published: outcome.rkey }), {
+    origin,
+    ident,
+    rkey: outcome.rkey,
+  });
 }
 
 /**
@@ -943,7 +995,7 @@ async function publishNow({
  * not editable here, but they are the writer's records, and
  * removing one deletes the whole record rather than forking its content.
  */
-async function deleteDocument({ rpc, form, did }: WriteContext) {
+async function deleteDocument({ rpc, form, did, ident, origin }: WriteContext) {
   const rkey = String(form.get("rkey") ?? "");
   if (!RKEY_RE.test(rkey)) return backToDashboard({ error: "missing_rkey" });
 
@@ -963,7 +1015,14 @@ async function deleteDocument({ rpc, form, did }: WriteContext) {
   await clearPublishedImport(drizzle(env.DB), did, rkey).catch((err) => {
     console.warn("import ledger cleanup after delete failed", err);
   });
-  return backToDashboard({ deleted: "1" });
+  // A deleted post must stop being readable NOW, not when its cache entry ages
+  // out. The warm pass drops the key first, and the re-fetch then 404s — which
+  // is never stored — so the page is simply gone.
+  return warmingReaderPages(backToDashboard({ deleted: "1" }), {
+    origin,
+    ident,
+    rkey,
+  });
 }
 
 /**
@@ -1091,7 +1150,13 @@ async function announceDocument({
   }
 
   const postRkey = rkeyFromUri(res.data.uri);
-  return backToDashboard(postRkey ? { announced: postRkey } : {});
+  // The document now carries a bskyPostRef, which is what unlocks the counts and
+  // the reply thread on the reading surface — and this is the moment the link is
+  // about to be seen by strangers. Re-render it so the first scrape lands warm.
+  return warmingReaderPages(
+    backToDashboard(postRkey ? { announced: postRkey } : {}),
+    { origin, ident, rkey },
+  );
 }
 
 async function savePublication({

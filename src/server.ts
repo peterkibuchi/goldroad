@@ -16,7 +16,11 @@ import handler, { createServerEntry } from "@tanstack/react-start/server-entry";
 
 import { withExceptionCapture } from "~/lib/error-tracking";
 import { canonicalRedirect } from "~/lib/origin";
-import { serveWithReadCache } from "~/lib/read-cache";
+import {
+  serveWithReadCache,
+  takeWarmTargets,
+  warmReadSurfaces,
+} from "~/lib/read-cache";
 import { runScheduled } from "~/lib/scheduled";
 import {
   buildContentSecurityPolicy,
@@ -59,8 +63,24 @@ const handleFetch = withExceptionCapture((request) => entry.fetch(request), {
 // Default export carries BOTH fetch and the Workers Cron handler;
 // createServerEntry only builds `fetch`, so scheduled is attached here.
 export default {
-  fetch(request: Request, _env: Env, ctx: ExecutionContext): Promise<Response> {
-    return handleFetch(request, ctx);
+  async fetch(
+    request: Request,
+    _env: Env,
+    ctx: ExecutionContext,
+  ): Promise<Response> {
+    const response = await handleFetch(request, ctx);
+    // Warm-on-publish, scheduled HERE because this is the only scope that holds
+    // the ExecutionContext: a TanStack route handler never receives one, and a
+    // promise not handed to waitUntil is cancelled as soon as we return. The
+    // publish handler names the URLs it just invalidated via an internal
+    // response header; takeWarmTargets strips it before anything is sent.
+    const { response: outgoing, urls } = takeWarmTargets(response);
+    if (urls.length > 0) {
+      ctx.waitUntil(
+        warmReadSurfaces(urls, { origin: new URL(request.url).origin }),
+      );
+    }
+    return outgoing;
   },
   scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
     ctx.waitUntil(runScheduled(env));
