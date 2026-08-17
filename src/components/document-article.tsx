@@ -190,7 +190,7 @@ export async function loadDocument(identParam: string, rkey: string) {
     // allowed to fail the page — every error degrades to null. Held to this
     // page's render budget (see budgetedFetch) rather than the module's own
     // 5 s, which on a cold render would let a like count set TTFB.
-    const engagementPromise = getDocumentEngagement(doc.bskyPostRef, {
+    const engagementPromise = getDocumentEngagement(doc.bskyPostRef, did, {
       fetcher: budgetedFetch,
     }).catch(() => null);
 
@@ -199,7 +199,9 @@ export async function loadDocument(identParam: string, rkey: string) {
     // the common case) and degrades to null on absolutely everything —
     // ~/lib/comments already swallows its own failures; this .catch is the
     // belt to that braces, because nothing about replies may fail this page.
-    const conversationPromise = getPostConversation(doc.bskyPostRef, {
+    // `did` is passed as the ref's expected repo: a bskyPostRef aimed outside
+    // this writer's own repo is not this document's conversation.
+    const conversationPromise = getPostConversation(doc.bskyPostRef, did, {
       fetcher: budgetedFetch,
     }).catch(() => null);
 

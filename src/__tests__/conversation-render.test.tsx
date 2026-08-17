@@ -143,6 +143,50 @@ describe("Conversation — the affordance to join in", () => {
   });
 });
 
+describe("Conversation — a thread too big to carry here", () => {
+  /** What ~/lib/comments returns for an over-cap thread: no rows, a URL, more. */
+  const overCap = () => conversation({ replies: [], hasMore: true });
+
+  it("keeps the section, as a heading and a way in", () => {
+    // The defect: an over-cap thread used to make the whole section disappear —
+    // on exactly the posts with the most conversation to point a reader at.
+    render(<Conversation conversation={overCap()} />);
+    expect(screen.getByRole("heading", { name: "Conversation" })).toBeDefined();
+    const join = screen.getByRole("link", {
+      name: /Read the rest and reply on Bluesky/,
+    });
+    expect(join.getAttribute("href")).toBe(THREAD_URL);
+  });
+
+  it("renders no rows, and no list announcing zero items", () => {
+    render(<Conversation conversation={overCap()} />);
+    expect(document.querySelectorAll("li")).toHaveLength(0);
+    expect(document.querySelectorAll("ul")).toHaveLength(0);
+  });
+
+  it("does not promise replies that aren't below it", () => {
+    render(<Conversation conversation={overCap()} />);
+    expect(document.body.textContent).not.toMatch(
+      /Replies from Bluesky|moderates them/,
+    );
+    expect(
+      screen.getByText(/conversation is on Bluesky, where it was shared/),
+    ).toBeDefined();
+    // Still not an empty state, and still no plumbing.
+    expect(document.body.textContent).not.toMatch(
+      /first to|no replies|too large|AppView|at:\/\//i,
+    );
+  });
+
+  it("shows the rows and the usual line whenever there are any", () => {
+    render(<Conversation conversation={conversation()} />);
+    expect(document.querySelectorAll("ul")).toHaveLength(1);
+    expect(
+      screen.getByText(/Bluesky moderates them, not Goldroad/),
+    ).toBeDefined();
+  });
+});
+
 describe("DocumentArticle — a conversation only appears when there is one", () => {
   it("renders nothing at all for a post with no announcement", () => {
     render(

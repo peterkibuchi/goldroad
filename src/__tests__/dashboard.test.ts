@@ -101,16 +101,19 @@ describe("mapDashboardRows", () => {
   });
 
   it("derives the announced state from a bskyPostRef strongRef", () => {
-    const rows = mapDashboardRows([
-      rec("3aaa2aaa2aaa2", {
-        title: "announced",
-        bskyPostRef: {
-          uri: `at://${DID}/app.bsky.feed.post/3lz2post2key2`,
-          cid: "bafyreib-canary-not-a-real-cid",
-        },
-      }),
-      rec("3bbb2bbb2bbb2", { title: "not announced" }),
-    ]);
+    const rows = mapDashboardRows(
+      [
+        rec("3aaa2aaa2aaa2", {
+          title: "announced",
+          bskyPostRef: {
+            uri: `at://${DID}/app.bsky.feed.post/3lz2post2key2`,
+            cid: "bafyreib-canary-not-a-real-cid",
+          },
+        }),
+        rec("3bbb2bbb2bbb2", { title: "not announced" }),
+      ],
+      DID,
+    );
     expect(rows.find((r) => r.title === "announced")?.announced).toEqual({
       did: DID,
       postRkey: "3lz2post2key2",
@@ -119,25 +122,62 @@ describe("mapDashboardRows", () => {
   });
 
   it("rejects bskyPostRefs that don't point at an app.bsky.feed.post", () => {
+    const rows = mapDashboardRows(
+      [
+        // A ref to some other collection must not masquerade as announce status.
+        rec("3aaa2aaa2aaa2", {
+          title: "wrong collection",
+          bskyPostRef: {
+            uri: `at://${DID}/site.standard.document/3lz2post2key2`,
+            cid: "bafyreib-canary-not-a-real-cid",
+          },
+        }),
+        rec("3bbb2bbb2bbb2", {
+          title: "malformed",
+          bskyPostRef: { uri: "not-an-at-uri", cid: "x" },
+        }),
+        rec("3ccc2ccc2ccc2", {
+          title: "non-string",
+          bskyPostRef: { uri: 42, cid: "x" },
+        }),
+      ],
+      DID,
+    );
+    for (const row of rows) expect(row.announced).toBeNull();
+  });
+
+  it("rejects a bskyPostRef pointing into ANOTHER account's repo", () => {
+    // Collection was checked and the repo wasn't, so a record could name a
+    // stranger's post as its announcement — and the row would then link to it
+    // as the writer's own and join that stranger's counts onto this post.
+    const rows = mapDashboardRows(
+      [
+        rec("3aaa2aaa2aaa2", {
+          title: "somebody else's post",
+          bskyPostRef: {
+            uri: "at://did:plc:strangerstrangerstranger/app.bsky.feed.post/3lz2post2key2",
+            cid: "bafyreib-canary-not-a-real-cid",
+          },
+        }),
+      ],
+      DID,
+    );
+    expect(rows[0].announced).toBeNull();
+  });
+
+  it("claims no announcement at all when it doesn't know whose repo this is", () => {
+    // Without a DID to compare against, no ref can be shown to belong to the
+    // writer — so the honest answer is null rather than a link taken on trust.
     const rows = mapDashboardRows([
-      // A ref to some other collection must not masquerade as announce status.
       rec("3aaa2aaa2aaa2", {
-        title: "wrong collection",
+        title: "announced",
         bskyPostRef: {
-          uri: `at://${DID}/site.standard.document/3lz2post2key2`,
+          uri: `at://${DID}/app.bsky.feed.post/3lz2post2key2`,
           cid: "bafyreib-canary-not-a-real-cid",
         },
       }),
-      rec("3bbb2bbb2bbb2", {
-        title: "malformed",
-        bskyPostRef: { uri: "not-an-at-uri", cid: "x" },
-      }),
-      rec("3ccc2ccc2ccc2", {
-        title: "non-string",
-        bskyPostRef: { uri: 42, cid: "x" },
-      }),
     ]);
-    for (const row of rows) expect(row.announced).toBeNull();
+    expect(rows[0].announced).toBeNull();
   });
 });
 
