@@ -114,7 +114,10 @@ describe("documentHead — mirrored posts", () => {
     atUri:
       "at://did:plc:fake0000000000writer0000/site.standard.document/3abc2345678df",
     canonicalUrl: "https://goldroad.example/@writer.example/3abc2345678df",
-    mirror: { sourceUrl: "https://writer.substack.com/p/mirrored" },
+    mirror: {
+      sourceUrl: "https://writer.substack.com/p/mirrored",
+      kind: "feed" as const,
+    },
   };
 
   it("swaps the canonical link for robots noindex", () => {
@@ -275,7 +278,10 @@ describe("documentHead — JSON-LD Article script", () => {
   it("does not call a mirror the article's main page", () => {
     const { scripts } = documentHead({
       ...loaderData,
-      mirror: { sourceUrl: "https://writer.substack.com/p/hello" },
+      mirror: {
+        sourceUrl: "https://writer.substack.com/p/hello",
+        kind: "feed",
+      },
     });
     const jsonLd = JSON.parse(scripts?.[0]?.children ?? "{}");
     expect(jsonLd.mainEntityOfPage).toBeUndefined();
