@@ -29,6 +29,61 @@ export const waitlist = sqliteTable("waitlist", {
 });
 
 /**
+ * Reader email capture — one row per (publication writer, address).
+ *
+ * THE WRITER IS THE CONTROLLER, WHICH IS WHY `writer_did` IS PART OF THE KEY
+ * rather than a tag on a single global list. A reader leaves an address with a
+ * publication, not with Goldroad: the same person may subscribe to three
+ * writers and expect three separate relationships, and one writer must never be
+ * able to see (or inherit) another's readers. Keyed on the DID rather than on
+ * the publication record's URI because a writer's handle and their publication
+ * record can both change under them; their DID cannot.
+ *
+ * `email` is stored lowercase-normalized at the door (~/lib/reader-email-schema)
+ * so the unique key below is a real duplicate check rather than a
+ * case-sensitive one — otherwise Reader@example.com and reader@example.com
+ * would be two subscribers, and one of them would get two copies of everything.
+ *
+ * `consented_at` is deliberately not called `created_at`. Under GDPR the
+ * lawful basis for holding this address is the reader's consent, and the column
+ * is the record OF that consent — the moment they asked to hear from this
+ * writer. A duplicate submission leaves the first timestamp alone (the insert is
+ * `onConflictDoNothing`): the consent that counts is the one that was given, not
+ * the last time a form was posted.
+ *
+ * `source` is which surface the reader was on — 'post' or 'publication'. It is
+ * here because the two surfaces answer different questions ("did the essay earn
+ * it" versus "did the archive"), and that is unrecoverable after the fact.
+ *
+ * NOTHING SENDS YET. Email delivery is not built, and the copy on the capture
+ * surface says so as a flat fact rather than promising a date. Until it ships
+ * these rows are held, disclosed on /privacy, and removable on request.
+ */
+export const readerEmails = sqliteTable(
+  "reader_emails",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    email: text("email").notNull(),
+    /** The publication writer's DID — the controller of this address. */
+    writerDid: text("writer_did").notNull(),
+    /** Which reading surface the address was left on. */
+    source: text("source", { enum: ["post", "publication"] }).notNull(),
+    consentedAt: integer("consented_at", { mode: "timestamp_ms" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  // Writer first: it is both halves of the idempotency key AND the prefix every
+  // read will use (one writer's list), so the same index serves the duplicate
+  // check today and the writer-facing export when sending ships.
+  (table) => [
+    uniqueIndex("reader_emails_writer_email_idx").on(
+      table.writerDid,
+      table.email,
+    ),
+  ],
+);
+
+/**
  * Takedown list. trygoldroad.com renders and proxies
  * arbitrary third-party atproto content, so it needs a lever to stop serving a
  * given subject. `subject` is either a DID ("did:plc:…" — hides an entire
