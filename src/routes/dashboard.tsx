@@ -932,6 +932,11 @@ export function PostsManager({
                     survives the page turn too. */}
                 <Link
                   className="font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
+                  // No preload: the router's default is "intent" with a zero
+                  // stale time, so a hover would re-run this whole loader —
+                  // every post page and its counts — for a page turn nobody has
+                  // asked for yet.
+                  preload={false}
                   search={(prev) => ({ ...prev, cursor: nextCursor })}
                   to="/dashboard"
                 >
