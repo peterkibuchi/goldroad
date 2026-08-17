@@ -879,6 +879,16 @@ export function PostsManager({
             >
               Import…
             </a>
+            {/* Its own link rather than a step inside /import: a Bluesky-native
+                writer's archive IS their threads, so this is a first-class
+                door, not a variant of "bring your publication over". Same
+                secondary weight, immediately beside it. */}
+            <a
+              className="inline-flex min-h-11 items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
+              href="/import/threads"
+            >
+              Import threads…
+            </a>
           </div>
         </div>
       )}

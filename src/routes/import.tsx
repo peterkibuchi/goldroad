@@ -1055,6 +1055,30 @@ export function SourcePicker({
           </div>
         )}
       </section>
+
+      {/* The third door, on its own surface: a writer whose long-form work is
+          threads has no address to paste and no export to upload, and telling
+          them so here is the difference between "this isn't for me" and one
+          click. */}
+      <section aria-labelledby="thread-import" className="mt-10">
+        <h2
+          className="border-rule border-t pt-6 font-bold font-display text-ink text-sm"
+          id="thread-import"
+        >
+          Or bring your Bluesky threads
+        </h2>
+        <p className="mt-1 font-display text-ink-soft text-sm">
+          Already writing long-form as threads? Turn them into posts — the
+          words, the pictures and their descriptions, with a line back to the
+          thread each one came from.{" "}
+          <a
+            className="font-bold underline underline-offset-2"
+            href="/import/threads"
+          >
+            Find my threads
+          </a>
+        </p>
+      </section>
     </>
   );
 }
