@@ -698,6 +698,25 @@ describe("POST /api/publish — intent=document, a post that arrived by import",
     );
   });
 
+  /**
+   * The rule that makes a backfill survivable: nothing announces.
+   *
+   * A writer bringing twenty old threads (or twenty old newsletter posts)
+   * across publishes them one after another, and if publishing announced, each
+   * one would land in their followers' timelines — twenty notifications for
+   * work from 2024. Announcing is a separate explicit intent on this same
+   * endpoint, which is what keeps that from happening; this test is here so
+   * that stays true, because the failure mode is unrecoverable and public.
+   */
+  it("never announces — a backfill must not reach the writer's followers", async () => {
+    await publish(fields);
+    expect(
+      callOf("com.atproto.repo.createRecord", "app.bsky.feed.post"),
+    ).toBeUndefined();
+    // And the document record carries no announcement reference of its own.
+    expect(documentRecord().bskyPostRef).toBeUndefined();
+  });
+
   it("ignores an original date in the future rather than publishing ahead of now", async () => {
     ledger.selectImportItemByDraft.mockResolvedValue([
       {

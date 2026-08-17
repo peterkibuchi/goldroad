@@ -114,7 +114,10 @@ describe("documentHead — mirrored posts", () => {
     atUri:
       "at://did:plc:fake0000000000writer0000/site.standard.document/3abc2345678df",
     canonicalUrl: "https://goldroad.example/@writer.example/3abc2345678df",
-    mirror: { sourceUrl: "https://writer.substack.com/p/mirrored" },
+    mirror: {
+      sourceUrl: "https://writer.substack.com/p/mirrored",
+      kind: "feed" as const,
+    },
   };
 
   it("swaps the canonical link for robots noindex", () => {
