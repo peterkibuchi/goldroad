@@ -13,6 +13,11 @@
         "@tanstack/react-start",
         "@tanstack/react-router-devtools"
       ]
+    },
+    {
+      "description": "Majors wait for a human here, overriding the shared preset's automerge-with-soak. The last one (react-table v9) compiled red and was caught, but the major worth fearing is the one that compiles green while changing behavior — and main auto-deploys and feeds releases. Revisit once the product is past launch and the suite has grown into its majors.",
+      "matchUpdateTypes": ["major"],
+      "automerge": false
     }
   ]
 }
