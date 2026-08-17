@@ -260,6 +260,25 @@ export const scheduledPosts = sqliteTable(
     attempts: integer("attempts").notNull().default(0),
     /** A sentence the WRITER reads, not a stack trace (see `failureReason`). */
     lastError: text("last_error"),
+    /**
+     * Whether publishing this row also announces it on Bluesky — CAPTURED WHEN
+     * THE WRITER SCHEDULED IT, and the one thing here that is a snapshot rather
+     * than a reference.
+     *
+     * The rest of this row deliberately points at a draft so editing the draft
+     * changes what goes out. A decision about reaching somebody's followers is
+     * different: the writer made it with this post in front of them, and a cron
+     * that re-read their account setting at 09:00 would apply a preference they
+     * changed for a DIFFERENT post, hours later, to this one. So the cron never
+     * consults the account setting — it reads this column.
+     *
+     * DEFAULT FALSE, and that is about the backfill, not about the product. New
+     * rows always write the value explicitly (the publish surface pre-fills it
+     * from the account setting). Rows that predate the column were scheduled
+     * when publishing announced nothing at all, and a migration must not decide
+     * on the writer's behalf that those posts now go to their followers.
+     */
+    announce: integer("announce", { mode: "boolean" }).notNull().default(false),
     claimedAt: integer("claimed_at", { mode: "timestamp_ms" }),
     /** The rkey the post published under — set with status = 'published'. */
     publishedRkey: text("published_rkey"),
@@ -291,6 +310,50 @@ export const scheduledPosts = sqliteTable(
       .where(sql`${table.status} = 'pending'`),
   ],
 );
+
+/**
+ * Per-writer account preferences. ONE ROW PER WRITER, and it does not have to
+ * exist: an absent row means every default, which is what a writer who has
+ * never opened the setting has.
+ *
+ * WHY THIS IS A TABLE AND NOT A FIELD ON THE PUBLICATION RECORD. Writer
+ * theming lives in the publication record, in the writer's own repo, because a
+ * theme is part of the publication — public, portable, and useful to any app
+ * that reads it. "Do I want Goldroad to post on my behalf" is the opposite of
+ * that: it is an instruction to THIS app about its own behaviour, it is nobody
+ * else's business, and putting it in a public record would broadcast a private
+ * choice to the whole network. So it is ours to hold, which also means it goes
+ * out with the account export and dies with the account (~/lib/rights-store).
+ *
+ * `auto_announce` DEFAULTS TO TRUE, in the column and in the code that reads a
+ * missing row (~/lib/announce-prefs): announcing a new post is the product's
+ * default, and the absence of a row is not a decision to stay quiet.
+ *
+ * `auto_count` / `auto_window_at` are the announce budget, kept here rather
+ * than in a ledger table of their own: the cap is a fixed count in a rolling
+ * hour, so a counter and the moment its window opened is the whole of the state
+ * — one row per writer that already exists, no rows to prune, and one statement
+ * to spend a slot (see `consumeAutoAnnounceBudget`). Manual announces are not
+ * counted; this bounds only what a path fires on the writer's behalf.
+ */
+export const writerPrefs = sqliteTable("writer_prefs", {
+  did: text("did").primaryKey(),
+  /** Announce new posts on Bluesky by default. */
+  autoAnnounce: integer("auto_announce", { mode: "boolean" })
+    .notNull()
+    .default(true),
+  /** Auto announces spent inside the current window. */
+  autoCount: integer("auto_count").notNull().default(0),
+  /** When the current budget window opened; null before the first auto
+   * announce. */
+  autoWindowAt: integer("auto_window_at", { mode: "timestamp_ms" }),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
 
 /**
  * Import rate-limit ledger: one row per /api/import feed-fetch run. The

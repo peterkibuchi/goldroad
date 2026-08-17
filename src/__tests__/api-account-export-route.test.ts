@@ -12,6 +12,7 @@ const store = vi.hoisted(() => ({
   selectFollowerSnapshotsForExport: vi.fn(),
   selectImportItemsForExport: vi.fn(),
   selectScheduledPostsForExport: vi.fn(),
+  selectWriterPrefsForExport: vi.fn(),
 }));
 vi.mock("~/lib/rights-store", () => store);
 
@@ -72,6 +73,9 @@ beforeEach(() => {
   store.selectImportItemsForExport.mockResolvedValue([]);
   store.selectFollowerSnapshotsForExport.mockResolvedValue([]);
   store.selectScheduledPostsForExport.mockResolvedValue([]);
+  // No row is the common case (a writer who never opened the setting), and the
+  // export has to describe that as the default rather than as an absence.
+  store.selectWriterPrefsForExport.mockResolvedValue([]);
   atproto.resolveDidIdentity.mockResolvedValue({ handle: null, pds: null });
 });
 

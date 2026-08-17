@@ -15,6 +15,7 @@ const store = vi.hoisted(() => ({
   deleteImportFetchesForDid: vi.fn(),
   deleteOAuthSessionForDid: vi.fn(),
   deleteScheduledPostsForDid: vi.fn(),
+  deleteWriterPrefsForDid: vi.fn(),
 }));
 vi.mock("~/lib/rights-store", () => store);
 

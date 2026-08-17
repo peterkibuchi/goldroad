@@ -7,10 +7,11 @@
  * (awaitable), unit-testable via .toSQL() without a live D1.
  *
  * Scope, deliberately narrow (see AGENTS.md architectural note): these are
- * the ONLY six places a writer's DID appears in our D1 — drafts,
- * import_items, import_fetches, follower_snapshots, scheduled_posts, and the
- * oauth_kv session row. Published posts live in the writer's own atproto repo
- * and are never touched here; deleting an account purges our copies only.
+ * the ONLY seven places a writer's DID appears in our D1 — drafts,
+ * import_items, import_fetches, follower_snapshots, scheduled_posts,
+ * writer_prefs, and the oauth_kv session row. Published posts live in the
+ * writer's own atproto repo and are never touched here; deleting an account
+ * purges our copies only.
  *
  * Anything new that stores a DID belongs in both halves of this file, in the
  * same change that creates it. A table that ships without its export and
@@ -40,6 +41,7 @@ import {
   importItems,
   oauthKv,
   scheduledPosts,
+  writerPrefs,
 } from "~/db/schema";
 import { MAX_DRAFTS_PER_USER } from "~/lib/drafts-schema";
 import { SNAPSHOT_RETENTION_DAYS } from "~/lib/follower-snapshots";
@@ -159,6 +161,38 @@ export function deleteScheduledPostsForDid(db: DrizzleD1, did: string) {
     .delete(scheduledPosts)
     .where(eq(scheduledPosts.did, did))
     .returning({ id: scheduledPosts.id });
+}
+
+/**
+ * The writer's account preferences — currently the announce default and the
+ * budget counter behind it (~/db/schema's `writerPrefs`).
+ *
+ * In the export because it is a setting the writer chose and we act on: if we
+ * hold an instruction of theirs, they get to read it back. The budget columns go
+ * out with it rather than being filtered — they are our account of what we did
+ * on their behalf and when, and a number we would not show them is a number they
+ * should be suspicious of.
+ */
+export function selectWriterPrefsForExport(db: DrizzleD1, did: string) {
+  return db
+    .select({
+      autoAnnounce: writerPrefs.autoAnnounce,
+      autoCount: writerPrefs.autoCount,
+      autoWindowAt: writerPrefs.autoWindowAt,
+      updatedAt: writerPrefs.updatedAt,
+    })
+    .from(writerPrefs)
+    .where(eq(writerPrefs.did, did))
+    .limit(1);
+}
+
+/** Deletes the writer's preferences row (account deletion). Nothing recreates
+ * it: the only writers it is written for are ones with a live session. */
+export function deleteWriterPrefsForDid(db: DrizzleD1, did: string) {
+  return db
+    .delete(writerPrefs)
+    .where(eq(writerPrefs.did, did))
+    .returning({ did: writerPrefs.did });
 }
 
 /** Deletes every draft a writer owns (account deletion, not the single-draft

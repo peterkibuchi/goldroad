@@ -12,12 +12,14 @@ import {
   deleteImportItemsForDid,
   deleteOAuthSessionForDid,
   deleteScheduledPostsForDid,
+  deleteWriterPrefsForDid,
   MAX_LEDGER_ROWS_PER_EXPORT,
   MAX_SNAPSHOT_ROWS_PER_EXPORT,
   selectDraftsForExport,
   selectFollowerSnapshotsForExport,
   selectImportItemsForExport,
   selectScheduledPostsForExport,
+  selectWriterPrefsForExport,
 } from "../lib/rights-store";
 
 /**
@@ -133,6 +135,30 @@ describe("account-deletion deletes — DID-scoped, RETURNing so callers can see 
     const { sql, params } = deleteScheduledPostsForDid(db, DID).toSQL();
     expectDidBound(sql, params);
     expect(sql.toLowerCase()).toContain('delete from "scheduled_posts"');
+    expect(sql.toLowerCase()).toContain("returning");
+  });
+
+  /**
+   * The seventh place a writer's DID appears in our D1, and the newest. This
+   * file's own note says anything storing a DID belongs in BOTH halves of it in
+   * the same change that creates it — a table that ships without its export and
+   * delete wiring is how an instance ends up holding rows nobody can reach.
+   */
+  it("selectWriterPrefsForExport reads the writer's own settings row", () => {
+    const { sql, params } = selectWriterPrefsForExport(db, DID).toSQL();
+    expectDidBound(sql, params);
+    expect(sql.toLowerCase()).toContain('from "writer_prefs"');
+    // Their instruction to us, and our own count of what we did on their
+    // behalf — both go out, because a number we would not show them is a
+    // number they should be suspicious of.
+    expect(sql).toContain('"auto_announce"');
+    expect(sql).toContain('"auto_count"');
+  });
+
+  it("deleteWriterPrefsForDid removes the settings row too", () => {
+    const { sql, params } = deleteWriterPrefsForDid(db, DID).toSQL();
+    expectDidBound(sql, params);
+    expect(sql.toLowerCase()).toContain('delete from "writer_prefs"');
     expect(sql.toLowerCase()).toContain("returning");
   });
 

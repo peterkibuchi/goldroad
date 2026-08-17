@@ -36,6 +36,7 @@ import {
   selectFollowerSnapshotsForExport,
   selectImportItemsForExport,
   selectScheduledPostsForExport,
+  selectWriterPrefsForExport,
 } from "~/lib/rights-store";
 import { env } from "cloudflare:workers";
 
@@ -73,12 +74,14 @@ export const Route = createFileRoute("/api/account/export")({
           ledgerRows,
           followerRows,
           scheduleRows,
+          prefsRows,
           { handle, pds },
         ] = await Promise.all([
           selectDraftsForExport(db, did),
           selectImportItemsForExport(db, did),
           selectFollowerSnapshotsForExport(db, did),
           selectScheduledPostsForExport(db, did),
+          selectWriterPrefsForExport(db, did),
           resolveDidIdentity(did),
         ]);
         const ident = handle ?? did;
@@ -122,7 +125,8 @@ export const Route = createFileRoute("/api/account/export")({
           account: { did, handle: handle ?? null },
           manifest:
             "Goldroad stores remarkably little for your account: your drafts, " +
-            "import history, scheduled posts and daily follower counts below, " +
+            "import history, scheduled posts, daily follower counts and account " +
+            "settings below, " +
             "plus a record of your sign-in session. That is everything we hold keyed to your " +
             "DID. It does NOT include an email address you may have given our " +
             "waitlist form or left on an abuse report: those rows are keyed by " +
@@ -169,6 +173,19 @@ export const Route = createFileRoute("/api/account/export")({
             followers: row.followers,
             posts: row.posts,
           })),
+          // A writer who has never opened the setting has no row, and the
+          // default is what they have — said in the payload rather than left as
+          // a null for them to interpret. `autoAnnouncesInWindow` is our own
+          // count of what we posted on their behalf in the current hour; it is
+          // here because we hold it, not because it is interesting.
+          settings: {
+            announceNewPosts: prefsRows[0]?.autoAnnounce ?? true,
+            storedExplicitly: prefsRows.length > 0,
+            autoAnnouncesInWindow: prefsRows[0]?.autoCount ?? 0,
+            autoAnnounceWindowOpenedAt:
+              prefsRows[0]?.autoWindowAt?.toISOString() ?? null,
+            updatedAt: prefsRows[0]?.updatedAt?.toISOString() ?? null,
+          },
           ownPosts: {
             publicPage: `${origin}/@${encodeURIComponent(ident)}`,
             pdsRepoExportUrl: pds
