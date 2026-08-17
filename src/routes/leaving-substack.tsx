@@ -10,6 +10,7 @@ import {
 import { SiteFooter, SiteHeader } from "~/components/site-chrome";
 import { MAIN_CONTENT_ID } from "~/components/skip-link";
 import { CANONICAL_ORIGIN } from "~/lib/origin";
+import { DEFAULT_CARD_META } from "~/lib/social-card";
 
 export const Route = createFileRoute("/leaving-substack")({
   head: () => ({
@@ -28,6 +29,8 @@ export const Route = createFileRoute("/leaving-substack")({
       },
       { property: "og:type", content: "website" },
       { property: "og:url", content: `${CANONICAL_ORIGIN}/leaving-substack` },
+      // This page shows the default card, so this page describes it.
+      ...DEFAULT_CARD_META,
     ],
     links: [{ rel: "canonical", href: `${CANONICAL_ORIGIN}/leaving-substack` }],
   }),
