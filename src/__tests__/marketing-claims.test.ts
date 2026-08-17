@@ -31,6 +31,14 @@ import { join } from "node:path";
 const ROUTES = join(import.meta.dirname, "..", "routes");
 const read = (file: string) => readFileSync(join(ROUTES, file), "utf8");
 
+/**
+ * The same source with every whitespace run collapsed to one space. JSX text is
+ * re-wrapped by the formatter, so a banned phrase can hide across a line break
+ * and a required phrase can appear to be missing for the same reason. Matching
+ * on the flattened source removes the formatter from the equation.
+ */
+const readFlat = (file: string) => read(file).replace(/\s+/g, " ");
+
 const MARKETING_PAGES = [
   "index.tsx",
   "leaving-substack.tsx",
@@ -54,6 +62,15 @@ const FALSE_CLAIMS: ReadonlyArray<{ phrase: string; why: string }> = [
   {
     phrase: "is either your invite",
     why: "there is no invite gate — the header's sign-in link opens the product to anyone with a Bluesky account, so this told writers to wait for a door that was already open (corrected 2026-08-01)",
+  },
+  {
+    // Second occurrence of the same class: the 2026-08-01 correction landed on
+    // one string, and the waitlist helper kept promising "one email when your
+    // invite is ready" for a fortnight afterwards. Banning the possessive
+    // outright is what stops a third. It matches comments as well as copy,
+    // deliberately: a comment quoting the dead phrasing is how it comes back.
+    phrase: "your invite",
+    why: "there is no invite to wait for, in any phrasing — the product opens to anyone with a Bluesky account, and a list that gates nothing must not imply it does (corrected 2026-08-16)",
   },
   {
     phrase: "Full-text RSS",
@@ -80,7 +97,7 @@ const FALSE_CLAIMS: ReadonlyArray<{ phrase: string; why: string }> = [
 describe("marketing copy makes no claim we cannot keep", () => {
   for (const page of MARKETING_PAGES) {
     it(`${page} carries none of the phrasings that shipped falsely`, () => {
-      const source = read(page);
+      const source = readFlat(page);
       for (const { phrase, why } of FALSE_CLAIMS) {
         expect(
           source.includes(phrase),
@@ -112,6 +129,43 @@ describe("marketing copy makes no claim we cannot keep", () => {
       }
     }
   });
+
+  /**
+   * The inverse of a banned phrase: a sentence that MUST be present. "0%" is
+   * true and architectural, but a writer can read it next to "Substack takes
+   * 10%" as "so I keep 100% of gross" and then meet their processor's fee on
+   * the first payout — the one claim the whole position rests on, caught being
+   * shaded. So the two surfaces that pitch 0% must also name the fee.
+   *
+   * `/open` is deliberately absent: its "We take 0% of what readers pay
+   * writers, permanently" is a policy statement to people reading about the
+   * licence, and the qualifier there is noise. That omission is a decision.
+   */
+  const PROCESSOR_FEE: ReadonlyArray<{
+    page: string;
+    phrase: string;
+    why: string;
+  }> = [
+    {
+      page: "index.tsx",
+      phrase: "Your payment processor still charges its own fee",
+      why: "generic, because bring-your-own-processor means whichever one serves the writer's country",
+    },
+    {
+      page: "leaving-substack.tsx",
+      phrase: "Stripe's processing fee",
+      why: "named, because a Substack refugee already holds a Stripe account — and this is the only page carrying arithmetic",
+    },
+  ];
+
+  for (const { page, phrase, why } of PROCESSOR_FEE) {
+    it(`${page} distinguishes our 0% take from the processor's fee`, () => {
+      expect(
+        readFlat(page).includes(phrase),
+        `${page} lost "${phrase}" — ${why}. Without it, 0% reads as "payments are free".`,
+      ).toBe(true);
+    });
+  }
 });
 
 /**
