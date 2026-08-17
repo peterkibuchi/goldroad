@@ -5,6 +5,7 @@ import { Conversation } from "~/components/conversation";
 import { ExternalLink } from "~/components/external-link";
 import { HeartIcon, ReplyIcon, RepostIcon } from "~/components/icons";
 import { Prose } from "~/components/prose";
+import { ReaderEmailCapture } from "~/components/reader-email-capture";
 import { MAIN_CONTENT_ID } from "~/components/skip-link";
 import { SubscribeControl } from "~/components/subscribe-control";
 import { WriterSurface } from "~/components/writer-surface";
@@ -186,6 +187,11 @@ export async function loadDocument(identParam: string, rkey: string) {
     return {
       doc,
       ident,
+      // The author's DID and their publication's own URL: between them they say
+      // whose address an email capture would be held for, and whether this
+      // instance hosts the publication at all (~/components/reader-email-capture).
+      did,
+      publicationUrl: publicationUrl ?? null,
       publicationName,
       publicationDescription,
       publicationIcon,
@@ -470,10 +476,12 @@ function EngagementRow({ engagement }: { engagement: DocumentEngagement }) {
 export function DocumentArticle({
   doc,
   ident,
+  did,
   publicationName,
   publicationDescription,
   publicationIcon,
   publicationAtUri,
+  publicationUrl,
   cover,
   mirror,
   relatedPosts,
@@ -483,6 +491,8 @@ export function DocumentArticle({
 }: {
   doc: StandardDocument;
   ident: string;
+  /** The author's DID — who an email left on this page is held for. */
+  did?: string | null;
   publicationName?: string | null;
   publicationDescription?: string | null;
   publicationIcon?: CoverRef | null;
@@ -490,6 +500,9 @@ export function DocumentArticle({
    * document (an https `site` with no publication record) — there is nothing to
    * subscribe to, and the card simply doesn't offer it. */
   publicationAtUri?: string | null;
+  /** The publication record's own url — the ownership signal the email capture
+   * gates on, so a publication this instance doesn't host never offers one. */
+  publicationUrl?: string | null;
   /** The author's validated theme, or null for our default palette. */
   theme?: BasicTheme | null;
   cover?: CoverRef | null;
@@ -685,8 +698,8 @@ export function DocumentArticle({
             highest: directly after the last line of the piece, before the
             letters. A magazine's contributor note, not a leftover grey box.
             This is the reading surface's ONE capture moment and it belongs to
-            the writer, not to us; when newsletters ship, the email field lands
-            here and nowhere else. No sticky bar, no modal, no second ask. */}
+            the writer, not to us; the email field lands here and nowhere else on
+            a post. No sticky bar, no modal, no second ask. */}
         <aside className="mt-14 border-ink border-t pt-8">
           <div className="flex items-start gap-4">
             {publicationIcon && (
@@ -713,7 +726,19 @@ export function DocumentArticle({
                 className="mt-5"
                 publicationAtUri={publicationAtUri ?? null}
               />
-              <p className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 font-display text-sm">
+              {/* The email, under the network relationship rather than over it:
+                  subscribing works today and sending does not, so the thing that
+                  works leads. Renders nothing at all for a publication this
+                  instance doesn't host. */}
+              <ReaderEmailCapture
+                className="mt-6"
+                ident={ident}
+                publicationName={publicationName}
+                publicationUrl={publicationUrl}
+                source="post"
+                writerDid={did}
+              />
+              <p className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 font-display text-sm">
                 <ExternalLink
                   className="font-semibold text-ink underline underline-offset-2 transition-colors hover:text-ink-soft"
                   href={bskyProfileUrl(ident)}

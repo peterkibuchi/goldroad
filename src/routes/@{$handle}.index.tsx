@@ -8,6 +8,7 @@ import {
   ReportLink,
 } from "~/components/document-article";
 import { SearchIcon } from "~/components/icons";
+import { ReaderEmailCapture } from "~/components/reader-email-capture";
 import { MAIN_CONTENT_ID } from "~/components/skip-link";
 import { SubscribeControl } from "~/components/subscribe-control";
 import { WriterSurface } from "~/components/writer-surface";
@@ -115,6 +116,10 @@ export const Route = createFileRoute("/@{$handle}/")({
         );
       return {
         ident,
+        // The author's DID: whose address an email left here would be held for
+        // (~/components/reader-email-capture). The publication's own url, which
+        // decides whether that offer is made at all, is on `publication`.
+        did,
         publication,
         publicationAtUri,
         // The author's own colours, if their publication record carries a
@@ -286,6 +291,7 @@ function PublicationPage() {
 /** The publication page itself, props-in — exported for tests, not a route. */
 export function PublicationView({
   ident,
+  did,
   publication,
   publicationAtUri,
   posts,
@@ -294,6 +300,8 @@ export function PublicationView({
   theme,
 }: {
   ident: string;
+  /** The author's DID — who an email left on this page is held for. */
+  did?: string | null;
   publication: StandardPublication | null;
   /** The publication record's URI — what a subscription points at. Null for an
    * author with no publication record, who has nothing to subscribe to yet. */
@@ -362,6 +370,19 @@ export function PublicationView({
               <SubscribeControl
                 className="mt-6"
                 publicationAtUri={publicationAtUri ?? null}
+              />
+              {/* The archive's capture moment. A reader who arrived from a
+                  Bluesky profile link has no post colophon to meet, so without
+                  this the publication page is the one surface where a writer's
+                  readers can't leave an address. Inside the masthead rule, under
+                  the identity it belongs to. */}
+              <ReaderEmailCapture
+                className="mt-6"
+                ident={ident}
+                publicationName={publication?.name ?? null}
+                publicationUrl={publication?.url ?? null}
+                source="publication"
+                writerDid={did}
               />
             </div>
           </div>

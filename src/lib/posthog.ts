@@ -17,8 +17,8 @@
  * Events (beyond `defaults`-captured pageviews): waitlist_joined,
  * post_published, post_announced, import_completed, post_scheduled,
  * theme_saved, publication_subscribed / publication_unsubscribed,
- * inline_image_uploaded, and autocaptured $exception (error tracking; the
- * worker-side counterpart lives in ~/lib/error-tracking).
+ * reader_email_left, inline_image_uploaded, and autocaptured $exception (error
+ * tracking; the worker-side counterpart lives in ~/lib/error-tracking).
  *
  * The last five were added 2026-08-01 because they were missing: every feature
  * shipped in the two days before that — theming, scheduling, subscriptions,
@@ -26,7 +26,10 @@
  * founding cohort used any of it. Adoption is not measurable retroactively,
  * which is why instrumenting a feature belongs in the PR that ships it.
  * Property policy: nothing beyond DID/handle + the post rkey (public data —
- * the rkey is already in the post's URL).
+ * the rkey is already in the post's URL), plus non-identifying facts about the
+ * surface an event came from. A reader's email address is not a property, and a
+ * reader is never a subject: `reader_email_left` reports the writer whose list
+ * grew and which page asked, never who left the address.
  */
 import { env } from "#/env";
 
