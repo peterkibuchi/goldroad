@@ -20,9 +20,9 @@
  * haven't fetched:
  *   - the PDS cursor ("Older posts →") is the real pagination, and it is the
  *     only thing that can load records we don't have;
- *   - the table runs in `manualPagination` mode over the page already loaded,
- *     which is TanStack Table's contract for exactly this arrangement — it
- *     sorts and filters what's here and never pretends to page beyond it.
+ *   - the table has no pagination feature registered at all, so it works over
+ *     the page already loaded — it sorts and filters what's here and has no
+ *     page boundary of its own to pretend to move.
  * Search therefore covers the loaded page, and the UI says so whenever more
  * pages exist rather than letting a writer conclude a post was deleted
  * because a search didn't surface it.
@@ -37,11 +37,14 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import {
   type ColumnDef,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getSortedRowModel,
+  columnFilteringFeature,
+  createFilteredRowModel,
+  createSortedRowModel,
+  globalFilteringFeature,
+  rowSortingFeature,
   type SortingState,
-  useReactTable,
+  tableFeatures,
+  useTable,
 } from "@tanstack/react-table";
 import { drizzle } from "drizzle-orm/d1";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -488,31 +491,48 @@ type ManagerRow = DashboardRow & {
 };
 
 /**
+ * Sorting and search, and deliberately nothing else. Registering only these
+ * features is what keeps paging somebody else's job (the PDS cursor's): with no
+ * pagination feature in the table there is no page boundary for it to disagree
+ * with, so it sorts and filters the loaded set and stops there.
+ *
+ * Declared once at module scope rather than per render — the features object is
+ * what the table's types are derived from, so it has to be a stable constant.
+ */
+const managerTableFeatures = tableFeatures({
+  // Global filtering is layered on column filtering, and the filtered row model
+  // is where the search actually gets applied.
+  columnFilteringFeature,
+  globalFilteringFeature,
+  rowSortingFeature,
+  filteredRowModel: createFilteredRowModel(),
+  sortedRowModel: createSortedRowModel(),
+});
+
+type ManagerTableFeatures = typeof managerTableFeatures;
+
+/**
  * The row pipeline both tabs share: TanStack Table in headless, controlled
- * mode. `manualPagination` declares that paging is somebody else's job (the
- * PDS cursor's), so the table sorts and filters the loaded set and leaves the
- * page boundary alone.
+ * mode. State is passed in without change handlers on purpose — the sort comes
+ * from the writer's select and the query from the search box, so the URL stays
+ * the one source of truth and the table never sorts itself out from under them.
  */
 function useManagerTable<
   T extends { title: string; description: string | null },
 >(
   data: T[],
-  columns: ColumnDef<T, unknown>[],
+  columns: ColumnDef<ManagerTableFeatures, T, unknown>[],
   sorting: SortingState,
   globalFilter: string,
 ) {
-  return useReactTable({
+  return useTable({
+    features: managerTableFeatures,
     data,
     columns,
     state: { sorting, globalFilter },
     // One definition of "matches", shared with the public archive's search.
     globalFilterFn: (row, _columnId, value: string) =>
       matchesPostQuery(row.original, value),
-    getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    manualPagination: true,
-    rowCount: data.length,
   });
 }
 
@@ -632,7 +652,9 @@ export function PostsManager({
     [rows, views, engagement],
   );
 
-  const postColumns = useMemo<ColumnDef<ManagerRow, unknown>[]>(
+  const postColumns = useMemo<
+    ColumnDef<ManagerTableFeatures, ManagerRow, unknown>[]
+  >(
     () => [
       // The only globally-filtered column: the filter reads the whole row, so
       // letting every column run it would just repeat identical work.
@@ -658,7 +680,9 @@ export function PostsManager({
     [],
   );
 
-  const draftColumns = useMemo<ColumnDef<DraftRow, unknown>[]>(
+  const draftColumns = useMemo<
+    ColumnDef<ManagerTableFeatures, DraftRow, unknown>[]
+  >(
     () => [
       { id: "post", accessorFn: (row) => row.title, enableGlobalFilter: true },
       {
