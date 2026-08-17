@@ -51,12 +51,26 @@ export const Route = createFileRoute("/@{$handle}/")({
     if (!isHandle(ident) && !isDid(ident)) throw notFound();
     try {
       const did = isDid(ident) ? ident : await resolveHandleToDid(ident);
+      // The takedown check (D1) and the DID-document fetch (plc.directory) both
+      // need only the DID and neither needs the other, so they wait together
+      // instead of in sequence. The check is still resolved before any PDS read
+      // below, so nothing of a hidden author's is ever fetched — only the
+      // waiting is shared.
+      const hiddenPromise = checkHidden({ data: { did } });
+      // NOT a `Promise.all`: that would reject with whichever settled first, so
+      // a hidden author on an unreachable directory would get the generic 404
+      // instead of the takedown notice. The error waits its turn instead.
+      const pdsPromise = resolveDidToPds(did).catch((err: unknown) => ({
+        pdsError: err,
+      }));
       // Author-level takedown: a hidden DID stops
       // serving its whole publication with a calm 404 + takedown notice.
-      if (await checkHidden({ data: { did } })) {
+      if (await hiddenPromise) {
         throw notFound({ data: { hidden: true } });
       }
-      const pds = await resolveDidToPds(did);
+      const resolvedPds = await pdsPromise;
+      if (typeof resolvedPds !== "string") throw resolvedPds.pdsError;
+      const pds = resolvedPds;
       const [pubs, docsPage] = await Promise.all([
         // Oldest publication = the author's original one; display-only here.
         listRecords<StandardPublication>(
