@@ -78,6 +78,13 @@
       "when": 1786231842637,
       "tag": "0010_mysterious_secret_warriors",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1786962362814,
+      "tag": "0011_odd_sugar_man",
+      "breakpoints": true
     }
   ]
 }
