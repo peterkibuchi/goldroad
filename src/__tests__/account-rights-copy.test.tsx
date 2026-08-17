@@ -37,6 +37,29 @@ describe("privacy policy — what we collect", () => {
   });
 });
 
+describe("privacy policy — the reader email a publication holds", () => {
+  it("discloses the address, which publication, and when", () => {
+    // `reader_emails` stores exactly three facts about a reader; an undisclosed
+    // collection is the same failure as an unreachable one.
+    const text = textOf();
+    expect(text).toMatch(/reader email/i);
+    expect(text).toMatch(/leave your address with a publication/i);
+    expect(text).toMatch(/which publication it was, and when/i);
+  });
+
+  it("says how long it is held, and does not promise a send date", () => {
+    const text = textOf();
+    expect(text).toMatch(/until email sending opens or you ask us to delete/i);
+    expect(text).not.toMatch(/\bsoon\b|\bshortly\b/i);
+  });
+
+  it("counts it among the things the account buttons can't reach", () => {
+    // The row is keyed to the WRITER's DID, never the reader's — so a reader's
+    // own export and deletion cannot see it, exactly like the waitlist row.
+    expect(textOf()).toMatch(/left with a publication you\s+read/i);
+  });
+});
+
 describe("privacy policy — your rights", () => {
   it("scopes the self-service claim to the account, and enumerates it", async () => {
     const text = textOf();

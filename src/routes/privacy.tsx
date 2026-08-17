@@ -55,6 +55,7 @@ export function PrivacyPage() {
         <LegalList
           items={[
             "Waitlist email — only if you enter it. It's stored in our database to tell you when Goldroad opens, and nowhere else.",
+            "Reader email — if you leave your address with a publication you're reading, we store the address, which publication it was, and when. It's held for that writer until email sending opens or you ask us to delete it.",
             "Abuse reports — if you use the report form we store the URL you reported and the note you wrote, plus your email if you chose to leave one, so a human can triage it and follow up with you. So that reports don't sit unread, the URL and the note are also sent to the private channel we use for operational alerts; your email is never included in that.",
             "Product analytics via PostHog, running cookieless (in-memory): no cookies, no localStorage, no cross-site tracking, and no consent banner needed. Events carry which environment they came from, never your email or personal details.",
             "Sign-in details: when you connect a Bluesky / atproto account, we act on your decentralized identifier (DID). Access tokens stay on our server; we never see or store your password.",
@@ -93,14 +94,15 @@ export function PrivacyPage() {
         </p>
         <p className="mt-3">
           One thing those buttons can't reach: an email you typed into the
-          waitlist form or left on an abuse report. Those are stored on their
-          own, keyed by the address and nothing else. We identify accounts by
-          DID and never ask for or receive your email address, so there is
-          genuinely nothing in our database that could tell us a given account
-          and a given email are the same person — which also means an export
-          can't include it and account deletion can't remove it. Email {privacy}{" "}
-          from or naming that address and we'll delete it by hand, whether or
-          not you also have an account here.
+          waitlist form, left on an abuse report, or left with a publication you
+          read. Those are stored on their own — by the address, plus (for a
+          publication) the writer you left it with. We identify accounts by DID
+          and never ask for or receive your email address, so there is genuinely
+          nothing in our database that could tell us a given account and a given
+          email are the same person — which also means an export can't include
+          it and account deletion can't remove it. Email {privacy} from or
+          naming that address and we'll delete it by hand, whether or not you
+          also have an account here.
         </p>
         <p className="mt-3">
           Wherever you live — including under the EU/UK GDPR — you can ask to
