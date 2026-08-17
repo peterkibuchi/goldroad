@@ -33,13 +33,13 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Publish where your readers already are. Goldroad turns your Bluesky handle into a publication: long-form on a page you own, sent to the timeline as a native card. Your posts, your name, your archive — portable, and when reader payments ship we take 0% of what readers pay you.",
+          "Your followers are already your readers. Goldroad turns your Bluesky handle into a publication: long-form on a page you own, sent to the timeline as a native card. Your posts, your name, your archive — portable, and when reader payments ship we take 0% of what readers pay you.",
       },
       { property: "og:title", content: "Goldroad" },
       {
         property: "og:description",
         content:
-          "Publish where your readers already are — long-form on a page you own, sent to the Bluesky timeline as a native card. When reader payments ship, we take 0% of what readers pay you.",
+          "Your followers are already your readers — long-form on a page you own, sent to the Bluesky timeline as a native card. When reader payments ship, we take 0% of what readers pay you.",
       },
       { property: "og:type", content: "website" },
       { property: "og:url", content: `${CANONICAL_ORIGIN}/` },
@@ -59,10 +59,10 @@ export const Route = createFileRoute("/")({
  * but noise. To run it: read the `landing_variant` flag, render
  * HERO_HEADLINES[variant] in the hero, and pass { landing_variant } to
  * capture("waitlist_joined") below. The control's spot-highlight span sits on
- * "already are"; a challenger render would highlight "0% taken".
+ * "your readers"; a challenger render would highlight "0% taken".
  */
 export const HERO_HEADLINES = {
-  control: "Publish where your readers already are.",
+  control: "Your followers are already your readers.",
   // NOT "your domain" — custom domains are not built, and a variant nobody has
   // rendered yet is exactly where a false claim hides until the day it ships.
   challenger: "Your publication. Your readers. Your name. 0% taken.",
@@ -361,14 +361,18 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
               <div>
                 <Kicker>For writers already on Bluesky</Kicker>
                 <h1 className="mt-5 max-w-[16ch] text-balance font-black font-display text-4xl text-ink leading-[1.05] tracking-tight md:text-5xl lg:text-6xl">
-                  Publish where your readers{" "}
-                  <span className="spot-highlight">already are</span>.
+                  Your followers are already{" "}
+                  <span className="spot-highlight">your readers</span>.
                 </h1>
+                {/* The card beside this paragraph already shows what a post
+                    looks like in the timeline, so the sub doesn't describe it
+                    again — it says what the writer does and what they keep.
+                    The editor's features and the no-cold-start argument have
+                    their own sections below; saying them here too made this
+                    four lines of feature tour. */}
                 <p className="mt-6 max-w-[46ch] text-pretty font-body text-ink-soft text-lg italic md:text-xl">
-                  You've built the audience. Write the long one here —
-                  footnotes, images, a scheduled send — and it goes up on a page
-                  you own, then lands in your followers' timeline as a card:
-                  title, cover, one tap to read.
+                  Write the long one here. It goes up on a page you own, and out
+                  to the timelines of everyone who follows you.
                 </p>
                 <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3">
                   <CtaLink href="#join">Join the founding writers</CtaLink>

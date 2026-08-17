@@ -15,7 +15,7 @@ describe("Landing", () => {
     // The distribution-first hero.
     expect(
       screen.getByRole("heading", {
-        name: /publish where your readers already are/i,
+        name: /your followers are already your readers/i,
       }),
     ).toBeDefined();
     // Signup form: labelled email + submit.
