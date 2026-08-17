@@ -33,7 +33,8 @@ afterEach(cleanup);
  * someone consciously decides the claim is now true.
  */
 
-const ROUTES = join(import.meta.dirname, "..", "routes");
+const SRC = join(import.meta.dirname, "..");
+const ROUTES = join(SRC, "routes");
 const read = (file: string) => readFileSync(join(ROUTES, file), "utf8");
 
 /**
@@ -217,6 +218,83 @@ describe("marketing copy makes no claim we cannot keep", () => {
       'the no-ads promise lost its scope: beside Substack\'s sponsorship launch, an unqualified "no ads" reads as "not yet"',
     ).toBe(true);
   });
+});
+
+/**
+ * THE SAME RULE, ON THE SURFACES THAT ASK A READER FOR SOMETHING.
+ *
+ * The pages above are where we talk about ourselves. The email capture is where
+ * we ask a stranger for their address on a writer's page, which is the harder
+ * place to be honest: sending is not built, so every fluent version of that ask
+ * ("your first issue", "you're on the list", "we'll be in touch shortly") is a
+ * promise about a date nobody has. And an invite is the specific temptation —
+ * scarcity reads well and there is no gate here at all, which is the phrasing
+ * FALSE_CLAIMS already carries for the homepage.
+ *
+ * Copy in a component isn't reachable by the page-based scan above, so these
+ * surfaces are listed by path from `src/`. A future capture surface belongs here
+ * on the day it is written.
+ */
+const CAPTURE_SURFACES = [
+  "components/reader-email-capture.tsx",
+  "routes/subscribed.tsx",
+] as const;
+
+/** Phrasings the capture must not use, with what each one would be claiming. */
+const UNKEEPABLE: ReadonlyArray<{ pattern: RegExp; why: string }> = [
+  {
+    pattern: /\binvit(e|es|ed|ation)\b/i,
+    why: "there is no invite gate behind this field — the same phrasing the homepage had to drop",
+  },
+  {
+    pattern: /\b(soon|shortly|any day now)\b/i,
+    why: "email sending has no date, and 'soon' is a date",
+  },
+  {
+    pattern: /\bcoming (soon|shortly|in)\b/i,
+    why: "same claim, different phrasing",
+  },
+  {
+    pattern: /\bfirst (issue|newsletter|email) (is|will|lands)/i,
+    why: "nothing sends yet, so nothing is queued to arrive",
+  },
+  {
+    pattern: /\bwe'll be in touch\b/i,
+    why: "we won't — the writer might, once sending exists",
+  },
+  {
+    pattern: /\bunsubscribe (any ?time|link|with one click)\b/i,
+    why: "there is no unsubscribe mechanism to offer while there is no sending; /privacy names the by-hand remedy",
+  },
+];
+
+/** The visible strings in a surface: comments explain why a claim is NOT made,
+ * and must not read as the claim. Same treatment page-accent-budget.test.tsx
+ * gives its class scan, and for the same reason. */
+function copy(file: string): string {
+  return readFileSync(join(SRC, file), "utf8")
+    .replaceAll(/\/\*[\s\S]*?\*\//g, "")
+    .replaceAll(/(?<!:)\/\/[^\n]*/g, "");
+}
+
+describe("the email capture claims nothing about a date, and offers no invite", () => {
+  for (const file of CAPTURE_SURFACES) {
+    it(`${file} keeps the ask honest`, () => {
+      const source = copy(file);
+      for (const { pattern, why } of UNKEEPABLE) {
+        expect(
+          pattern.test(source),
+          `${file} matches ${pattern} — ${why}`,
+        ).toBe(false);
+      }
+    });
+
+    it(`${file} says out loud that sending isn't switched on`, () => {
+      // The inverse guard: silence about the state of sending is its own
+      // dishonesty, because a reader assumes an email field sends email.
+      expect(copy(file)).toMatch(/isn't switched on/i);
+    });
+  }
 });
 
 /**

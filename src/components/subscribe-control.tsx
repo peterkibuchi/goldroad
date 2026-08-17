@@ -40,8 +40,19 @@ import { cn } from "~/lib/utils";
 /** What just happened, for the announcement and the instruction line. */
 type Note = "subscribed" | "unsubscribed" | "reconnect" | "failed";
 
-const BUTTON =
+/**
+ * The vocabulary for a reader's acts on a writer's page — this control and the
+ * email capture beside it (~/components/reader-email-capture), which are one
+ * family and must not drift into two. Stated once, here, where the reasoning
+ * above it lives: outlined ink that fills on hover, square corners, no shadow,
+ * 44px tall.
+ */
+export const READER_ACTION =
   "inline-flex min-h-11 cursor-pointer items-center px-4 font-display font-semibold text-sm transition-colors disabled:cursor-default disabled:opacity-60";
+
+/** The resting state of an offer that has not been taken yet. */
+export const READER_ACTION_OUTLINE =
+  "border border-ink text-ink hover:bg-ink hover:text-paper";
 
 export function SubscribeControl({
   publicationAtUri,
@@ -112,10 +123,7 @@ export function SubscribeControl({
         // A link, because it navigates. `pathname` comes back through the one
         // open-redirect guard on the /login POST (see signInHref).
         <a
-          className={cn(
-            BUTTON,
-            "border border-ink text-ink hover:bg-ink hover:text-paper",
-          )}
+          className={cn(READER_ACTION, READER_ACTION_OUTLINE)}
           href={signInHref(pathname)}
         >
           Sign in to subscribe
@@ -126,11 +134,10 @@ export function SubscribeControl({
           aria-busy={pending || undefined}
           aria-pressed={state.subscribed}
           className={cn(
-            BUTTON,
-            "border",
+            READER_ACTION,
             state.subscribed
-              ? "border-rule text-ink-soft hover:border-ink hover:text-ink"
-              : "border-ink text-ink hover:bg-ink hover:text-paper",
+              ? "border border-rule text-ink-soft hover:border-ink hover:text-ink"
+              : READER_ACTION_OUTLINE,
           )}
           disabled={pending}
           onClick={() => toggle(!state.subscribed)}
