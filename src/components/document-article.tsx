@@ -54,6 +54,36 @@ import { type BasicTheme, parseTheme } from "~/lib/theme";
 type CoverRef = { did: string; cid: string };
 
 /**
+ * Upstream budget for the two below-the-fold AppView reads on this page — the
+ * like/reply counts and the reply list.
+ *
+ * Both modules already cap their own fetches (5 s in ~/lib/engagement, 3 s in
+ * ~/lib/comments). Those ceilings are right for the dashboard's batched reads,
+ * where the writer is looking at their own numbers and waiting is the honest
+ * answer. They are far too long HERE: these two calls sit in the same
+ * `Promise.all` as the PDS reads, so on a cold render against a slow AppView it
+ * is the like count — not the writer's words — that decides TTFB, and a
+ * link-preview scraper has given up long before 5 s. Both already degrade to
+ * `null` on every failure including timeout, and each keeps its own 300 s edge
+ * cache, so the tighter leash costs a counts row on an unlucky cold render and
+ * buys back seconds on the render a stranger's first impression depends on.
+ */
+const READER_APPVIEW_BUDGET_MS = 1_500;
+
+/** `fetch` with this page's render budget layered ON TOP of whatever the calling
+ * module set, via AbortSignal.any — whichever deadline is shorter wins, so
+ * neither this nor the module's own ceiling can be silently defeated. */
+const budgetedFetch: typeof fetch = (input, init) =>
+  fetch(input, {
+    ...init,
+    signal: AbortSignal.any(
+      [init?.signal, AbortSignal.timeout(READER_APPVIEW_BUDGET_MS)].filter(
+        (signal): signal is AbortSignal => signal != null,
+      ),
+    ),
+  });
+
+/**
  * Public reading surface — calm register: serif body,
  * ~65ch measure, hairline rules, no vermillion. The writer's words dominate;
  * the platform disappears. Shared by /p/$handle/$rkey (v0 URL, kept alive —
@@ -77,18 +107,60 @@ export async function loadDocument(identParam: string, rkey: string) {
   if (!RKEY_RE.test(rkey)) throw notFound();
   try {
     const did = isDid(ident) ? ident : await resolveHandleToDid(ident);
+
+    // Two D1 reads and one plc.directory fetch, all of which need only the DID
+    // and none of which need each other. They used to run one after another,
+    // which put a D1 round trip on the critical path twice for no reason. The
+    // takedown check is STILL awaited before any PDS read below — see the
+    // Promise.all — so "no content is fetched for a hidden subject" holds
+    // exactly as before; only the waiting is shared.
+    const hiddenPromise = checkHidden({
+      data: { did, atUri: recordAtUri(did, "site.standard.document", rkey) },
+    });
+    // Mirror lookup (import ledger): a hit swaps the canonical tag for
+    // noindex and adds the "Originally published at …" line below. Null =
+    // native post, adopted mirror, or a flaked read (fail open). The `.catch`
+    // is new with the concurrency: this promise can now outlive an early
+    // throw below, and a floating rejection is an unhandled one.
+    const mirrorPromise = checkMirror({ data: { did, rkey } }).catch(
+      () => null,
+    );
+    // Deferred rather than awaited together, so the TAKEDOWN ANSWER STILL WINS
+    // over every other failure. A plain `Promise.all` would reject with
+    // whichever settled first, which for a hidden author on an unreachable
+    // directory means the generic 404 instead of the takedown notice — a
+    // regression in exactly the path that matters most. The error is held and
+    // re-thrown below, unchanged, once the check has had its say.
+    const pdsPromise = resolveDidToPds(did).catch((err: unknown) => ({
+      pdsError: err,
+    }));
+
     // Takedown check before the PDS reads: a hidden
     // author or record returns a calm 404 notice, never the writer's content.
-    if (
-      await checkHidden({
-        data: { did, atUri: recordAtUri(did, "site.standard.document", rkey) },
-      })
-    ) {
+    if (await hiddenPromise) {
       // Takedown → a 404 carrying a marker the notFoundComponent reads to show
       // the "unavailable" notice instead of the generic not-found copy.
       throw notFound({ data: { hidden: true } });
     }
-    const pds = await resolveDidToPds(did);
+    const resolvedPds = await pdsPromise;
+    if (typeof resolvedPds !== "string") throw resolvedPds.pdsError;
+    const pds = resolvedPds;
+
+    // "More from @handle" — same-writer only: a small extra page of the
+    // writer's own document records, the same call shape the archive page
+    // already makes. A short buffer over the display limit covers the current
+    // document (and a few unkeyed/untitled records) without a second round trip.
+    //
+    // Started HERE rather than after the document read, because it needs only
+    // `pds` + `did`: it is a second call to the same PDS and there is no reason
+    // for it to queue behind the first one.
+    const relatedPromise = listRecordsPage<StandardDocument>(
+      pds,
+      did,
+      "site.standard.document",
+      { limit: RELATED_POSTS_LIMIT + 3 },
+    ).catch(() => ({ records: [], cursor: null }));
+
     const entry = await getRecordEntry<StandardDocument>(
       pds,
       did,
@@ -113,36 +185,22 @@ export async function loadDocument(identParam: string, rkey: string) {
           ).catch(() => null)
         : Promise.resolve(null);
 
-    // "More from @handle" — same-writer only: a small extra page of the
-    // writer's own document records, the same call shape the archive page
-    // already makes. A short buffer over the display limit covers the current
-    // document (and a few unkeyed/untitled records) without a second round trip.
-    const relatedPromise = listRecordsPage<StandardDocument>(
-      pds,
-      did,
-      "site.standard.document",
-      { limit: RELATED_POSTS_LIMIT + 3 },
-    ).catch(() => ({ records: [], cursor: null }));
-
     // Cross-network engagement: announced posts only, cached, and NEVER
-    // allowed to fail the page — every error degrades to null.
-    const engagementPromise = getDocumentEngagement(doc.bskyPostRef).catch(
-      () => null,
-    );
+    // allowed to fail the page — every error degrades to null. Held to this
+    // page's render budget (see budgetedFetch) rather than the module's own
+    // 5 s, which on a cold render would let a like count set TTFB.
+    const engagementPromise = getDocumentEngagement(doc.bskyPostRef, {
+      fetcher: budgetedFetch,
+    }).catch(() => null);
 
     // The conversation: replies to the announcement, off the same ref. Runs
     // concurrently with the PDS reads above (so it costs no serial latency in
     // the common case) and degrades to null on absolutely everything —
     // ~/lib/comments already swallows its own failures; this .catch is the
     // belt to that braces, because nothing about replies may fail this page.
-    const conversationPromise = getPostConversation(doc.bskyPostRef).catch(
-      () => null,
-    );
-
-    // Mirror lookup (import ledger): a hit swaps the canonical tag for
-    // noindex and adds the "Originally published at …" line below. Null =
-    // native post, adopted mirror, or a flaked read (fail open).
-    const mirrorPromise = checkMirror({ data: { did, rkey } });
+    const conversationPromise = getPostConversation(doc.bskyPostRef, {
+      fetcher: budgetedFetch,
+    }).catch(() => null);
 
     const [pub, relatedPage, engagement, conversation, mirror] =
       await Promise.all([
