@@ -5,7 +5,9 @@ import {
   announcedPostUri,
   bskyPostUrl,
   bskyProfileUrl,
+  type DocumentEngagement,
   ENGAGEMENT_CACHE_TTL_SECONDS,
+  type EngagementCounts,
   fetchPostsEngagement,
   getDocumentEngagement,
   getPostsEngagement,
@@ -38,7 +40,7 @@ describe("announcedPostUri — bskyPostRef validation", () => {
     const ref = {
       uri: "at://did:plc:aaaaaaaaaaaaaaaaaaaaaaaa/app.bsky.feed.post/3lyk73wxnok2f",
     };
-    expect(announcedPostUri(ref)).toEqual({
+    expect(announcedPostUri(ref, "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa")).toEqual({
       uri: "at://did:plc:aaaaaaaaaaaaaaaaaaaaaaaa/app.bsky.feed.post/3lyk73wxnok2f",
       did: "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa",
       rkey: "3lyk73wxnok2f",
@@ -46,23 +48,76 @@ describe("announcedPostUri — bskyPostRef validation", () => {
   });
 
   it("rejects a missing ref (never announced)", () => {
-    expect(announcedPostUri(undefined)).toBeNull();
+    expect(
+      announcedPostUri(undefined, "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa"),
+    ).toBeNull();
   });
 
   it("rejects a ref pointing at a different collection", () => {
     expect(
-      announcedPostUri({
-        uri: "at://did:plc:aaaaaaaaaaaaaaaaaaaaaaaa/site.standard.document/abc",
-      }),
+      announcedPostUri(
+        {
+          uri: "at://did:plc:aaaaaaaaaaaaaaaaaaaaaaaa/site.standard.document/abc",
+        },
+        "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa",
+      ),
     ).toBeNull();
   });
 
   it("rejects a malformed/hostile uri without throwing", () => {
-    expect(announcedPostUri({ uri: "not-an-at-uri" })).toBeNull();
-    expect(announcedPostUri({ uri: 42 })).toBeNull();
-    expect(announcedPostUri({})).toBeNull();
+    expect(
+      announcedPostUri(
+        { uri: "not-an-at-uri" },
+        "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa",
+      ),
+    ).toBeNull();
+    expect(
+      announcedPostUri({ uri: 42 }, "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa"),
+    ).toBeNull();
+    expect(announcedPostUri({}, "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa")).toBeNull();
+  });
+
+  it("rejects a well-formed post ref in SOMEBODY ELSE'S repo", () => {
+    // The hole this closes: collection was checked and the repo wasn't. A
+    // document whose bskyPostRef names a stranger's post would have had that
+    // stranger's counts joined onto it and their thread rendered as its
+    // conversation — and bskyPostRef is a field in an untrusted record, so its
+    // value is whatever that record's author wrote there.
+    expect(
+      announcedPostUri(
+        {
+          uri: "at://did:plc:bbbbbbbbbbbbbbbbbbbbbbbb/app.bsky.feed.post/3lyk73wxnok2f",
+        },
+        "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa",
+      ),
+    ).toBeNull();
+  });
+
+  it("still accepts the writer's own post when the DIDs agree", () => {
+    const own =
+      "at://did:plc:aaaaaaaaaaaaaaaaaaaaaaaa/app.bsky.feed.post/3lyk73wxnok2f";
+    expect(
+      announcedPostUri({ uri: own }, "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa")?.uri,
+    ).toBe(own);
   });
 });
+
+/**
+ * The counts for one URI, asserting the AppView didn't report it `"gone"`.
+ *
+ * fetchPostsEngagement returns `EngagementCounts | "gone"` per URI, and every
+ * case below that reads a count is a case where the post WAS returned — so a
+ * `"gone"` here is a real regression and this fails loudly rather than
+ * narrowing it away with a cast.
+ */
+function countsFor(
+  result: Map<string, EngagementCounts | "gone">,
+  uri: string,
+): EngagementCounts | undefined {
+  const found = result.get(uri);
+  expect(found).not.toBe("gone");
+  return found === "gone" ? undefined : found;
+}
 
 describe("fetchPostsEngagement — batched getPosts", () => {
   // The `url` param is declared (even where a case ignores it) so
@@ -128,7 +183,7 @@ describe("fetchPostsEngagement — batched getPosts", () => {
       ["at://did:plc:aaaa/app.bsky.feed.post/1"],
       fetcher as unknown as typeof fetch,
     );
-    const counts = result.get("at://did:plc:aaaa/app.bsky.feed.post/1");
+    const counts = countsFor(result, "at://did:plc:aaaa/app.bsky.feed.post/1");
     expect(counts?.likeCount).toBeUndefined();
     expect(counts?.replyCount).toBeUndefined();
     expect(counts).toBeDefined(); // the post itself was still found
@@ -155,13 +210,13 @@ describe("fetchPostsEngagement — batched getPosts", () => {
       fetcher as unknown as typeof fetch,
     );
     expect(
-      result.get("at://did:plc:aaaa/app.bsky.feed.post/1")?.likeCount,
+      countsFor(result, "at://did:plc:aaaa/app.bsky.feed.post/1")?.likeCount,
     ).toBeUndefined();
     expect(
-      result.get("at://did:plc:aaaa/app.bsky.feed.post/2")?.likeCount,
+      countsFor(result, "at://did:plc:aaaa/app.bsky.feed.post/2")?.likeCount,
     ).toBeUndefined();
     expect(
-      result.get("at://did:plc:aaaa/app.bsky.feed.post/3")?.likeCount,
+      countsFor(result, "at://did:plc:aaaa/app.bsky.feed.post/3")?.likeCount,
     ).toBe(3);
   });
 
@@ -177,7 +232,10 @@ describe("fetchPostsEngagement — batched getPosts", () => {
       ["at://did:plc:aaaa/app.bsky.feed.post/1"],
       fetcher as unknown as typeof fetch,
     );
-    expect(result.size).toBe(0);
+    // The call ANSWERED — it just answered with nothing usable — so the URI is
+    // reported "gone" rather than absent. Absent is reserved for a batch we
+    // couldn't complete, which is the distinction the cases below assert.
+    expect(result.get("at://did:plc:aaaa/app.bsky.feed.post/1")).toBe("gone");
   });
 
   it("degrades to an empty result on network failure/timeout", async () => {
@@ -238,9 +296,13 @@ describe("getDocumentEngagement — the document-page entry point", () => {
 
   it("returns null for an unannounced post — no upstream call at all", async () => {
     const fetcher = vi.fn();
-    const result = await getDocumentEngagement(undefined, {
-      fetcher: fetcher as unknown as typeof fetch,
-    });
+    const result = await getDocumentEngagement(
+      undefined,
+      "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa",
+      {
+        fetcher: fetcher as unknown as typeof fetch,
+      },
+    );
     expect(result).toBeNull();
     expect(fetcher).not.toHaveBeenCalled();
   });
@@ -261,9 +323,13 @@ describe("getDocumentEngagement — the document-page entry point", () => {
           { status: 200, headers: { "content-type": "application/json" } },
         ),
     );
-    const result = await getDocumentEngagement(announcedRef, {
-      fetcher: fetcher as unknown as typeof fetch,
-    });
+    const result = await getDocumentEngagement(
+      announcedRef,
+      "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa",
+      {
+        fetcher: fetcher as unknown as typeof fetch,
+      },
+    );
     expect(result).toEqual({
       counts: {
         likeCount: 12,
@@ -280,9 +346,13 @@ describe("getDocumentEngagement — the document-page entry point", () => {
     const fetcher = vi.fn(async () => {
       throw new Error("network down");
     });
-    const result = await getDocumentEngagement(announcedRef, {
-      fetcher: fetcher as unknown as typeof fetch,
-    });
+    const result = await getDocumentEngagement(
+      announcedRef,
+      "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa",
+      {
+        fetcher: fetcher as unknown as typeof fetch,
+      },
+    );
     expect(result).toBeNull();
   });
 
@@ -304,14 +374,22 @@ describe("getDocumentEngagement — the document-page entry point", () => {
       }),
     } as unknown as Cache;
 
-    const first = await getDocumentEngagement(announcedRef, {
-      fetcher: fetcher as unknown as typeof fetch,
-      cache: fakeCache,
-    });
-    const second = await getDocumentEngagement(announcedRef, {
-      fetcher: fetcher as unknown as typeof fetch,
-      cache: fakeCache,
-    });
+    const first = await getDocumentEngagement(
+      announcedRef,
+      "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa",
+      {
+        fetcher: fetcher as unknown as typeof fetch,
+        cache: fakeCache,
+      },
+    );
+    const second = await getDocumentEngagement(
+      announcedRef,
+      "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa",
+      {
+        fetcher: fetcher as unknown as typeof fetch,
+        cache: fakeCache,
+      },
+    );
 
     expect(first?.counts.likeCount).toBe(7);
     expect(second?.counts.likeCount).toBe(7);
@@ -365,6 +443,17 @@ describe("getPostsEngagement — the list entry point", () => {
   const DID = "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa";
   const uriFor = (rkey: string) => `at://${DID}/app.bsky.feed.post/${rkey}`;
 
+  /** A row's engagement, asserting it wasn't reported `"gone"`. Same reasoning
+   * as countsFor above: the cases using this are cases where the post exists. */
+  function liveFor(
+    result: Map<string, DocumentEngagement | "gone">,
+    key: string,
+  ): DocumentEngagement | undefined {
+    const found = result.get(key);
+    expect(found).not.toBe("gone");
+    return found === "gone" ? undefined : found;
+  }
+
   function jsonResponse(posts: unknown[]) {
     return new Response(JSON.stringify({ posts }), {
       status: 200,
@@ -378,10 +467,11 @@ describe("getPostsEngagement — the list entry point", () => {
     );
     const result = await getPostsEngagement(
       [{ key: "row-aaa", ref: { uri: uriFor("aaa") } }],
+      DID,
       { fetcher: fetcher as unknown as typeof fetch },
     );
-    expect(result.get("row-aaa")?.counts.likeCount).toBe(3);
-    expect(result.get("row-aaa")?.threadUrl).toBe(
+    expect(liveFor(result, "row-aaa")?.counts.likeCount).toBe(3);
+    expect(liveFor(result, "row-aaa")?.threadUrl).toBe(
       `https://bsky.app/profile/${DID}/post/aaa`,
     );
   });
@@ -396,19 +486,74 @@ describe("getPostsEngagement — the list entry point", () => {
           ref: { uri: `at://${DID}/app.bsky.feed.like/x` },
         },
       ],
+      DID,
       { fetcher: fetcher as unknown as typeof fetch },
     );
     expect(result.size).toBe(0);
     expect(fetcher).not.toHaveBeenCalled();
   });
 
-  it("omits a row whose post the AppView didn't return, rather than zeroing it", async () => {
+  it("reports a row whose post the AppView didn't return as GONE, not zeroed", async () => {
+    // The dashboard defect this closes: the writer's own row went on offering
+    // an "Announced \u2197" link to a post they had deleted, forever, because
+    // this function used to fold "we looked and it isn't there" into the same
+    // absence as "we couldn't look". Absence still means the latter.
     const fetcher = vi.fn(async () => jsonResponse([]));
     const result = await getPostsEngagement(
       [{ key: "row-aaa", ref: { uri: uriFor("aaa") } }],
+      DID,
+      { fetcher: fetcher as unknown as typeof fetch },
+    );
+    expect(result.get("row-aaa")).toBe("gone");
+  });
+
+  it("leaves a row ABSENT when the batch could not be read at all", async () => {
+    // The other side of the same contract: a 502 is not evidence about the
+    // announcement, so the row must say nothing rather than "gone".
+    const fetcher = vi.fn(async () => new Response("boom", { status: 502 }));
+    const result = await getPostsEngagement(
+      [{ key: "row-aaa", ref: { uri: uriFor("aaa") } }],
+      DID,
       { fetcher: fetcher as unknown as typeof fetch },
     );
     expect(result.has("row-aaa")).toBe(false);
+  });
+
+  it("refuses a row whose ref points into another repo", async () => {
+    const fetcher = vi.fn(async () => jsonResponse([]));
+    const result = await getPostsEngagement(
+      [
+        {
+          key: "row-stranger",
+          ref: {
+            uri: "at://did:plc:bbbbbbbbbbbbbbbbbbbbbbbb/app.bsky.feed.post/aaa",
+          },
+        },
+      ],
+      DID,
+      { fetcher: fetcher as unknown as typeof fetch },
+    );
+    expect(result.size).toBe(0);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("does not cache gone-ness", async () => {
+    // A takedown can be reversed, and the cache read path only understands
+    // counts — so a "gone" must never be what a later read finds there.
+    const store = new Map<string, Response>();
+    const cache = {
+      match: async (key: string) => store.get(key)?.clone(),
+      put: async (key: string, res: Response) => {
+        store.set(key, res);
+      },
+    } as unknown as Cache;
+    const fetcher = vi.fn(async () => jsonResponse([]));
+    await getPostsEngagement(
+      [{ key: "row-aaa", ref: { uri: uriFor("aaa") } }],
+      DID,
+      { cache, fetcher: fetcher as unknown as typeof fetch },
+    );
+    expect(store.size).toBe(0);
   });
 
   it("asks for one URI once, even when two rows point at the same announcement", async () => {
@@ -422,14 +567,15 @@ describe("getPostsEngagement — the list entry point", () => {
         { key: "row-1", ref: { uri: uriFor("aaa") } },
         { key: "row-2", ref: { uri: uriFor("aaa") } },
       ],
+      DID,
       { fetcher: fetcher as unknown as typeof fetch },
     );
     expect(fetcher).toHaveBeenCalledTimes(1);
     const params = urls[0].split("?")[1];
     expect(new URLSearchParams(params).getAll("uris")).toHaveLength(1);
     // Both rows still get the answer.
-    expect(result.get("row-1")?.counts.likeCount).toBe(5);
-    expect(result.get("row-2")?.counts.likeCount).toBe(5);
+    expect(liveFor(result, "row-1")?.counts.likeCount).toBe(5);
+    expect(liveFor(result, "row-2")?.counts.likeCount).toBe(5);
   });
 
   it("ignores a URI the upstream echoed but nobody asked for", async () => {
@@ -441,10 +587,11 @@ describe("getPostsEngagement — the list entry point", () => {
     );
     const result = await getPostsEngagement(
       [{ key: "row-aaa", ref: { uri: uriFor("aaa") } }],
+      DID,
       { fetcher: fetcher as unknown as typeof fetch },
     );
     expect(result.size).toBe(1);
-    expect(result.get("row-aaa")?.counts.likeCount).toBe(1);
+    expect(liveFor(result, "row-aaa")?.counts.likeCount).toBe(1);
   });
 
   it("serves the second page of rows from the shared per-post cache", async () => {
@@ -460,16 +607,16 @@ describe("getPostsEngagement — the list entry point", () => {
     } as unknown as Cache;
     const refs = [{ key: "row-aaa", ref: { uri: uriFor("aaa") } }];
 
-    const first = await getPostsEngagement(refs, {
+    const first = await getPostsEngagement(refs, DID, {
       fetcher: fetcher as unknown as typeof fetch,
       cache: fakeCache,
     });
-    const second = await getPostsEngagement(refs, {
+    const second = await getPostsEngagement(refs, DID, {
       fetcher: fetcher as unknown as typeof fetch,
       cache: fakeCache,
     });
-    expect(first.get("row-aaa")?.counts.likeCount).toBe(8);
-    expect(second.get("row-aaa")?.counts.likeCount).toBe(8);
+    expect(liveFor(first, "row-aaa")?.counts.likeCount).toBe(8);
+    expect(liveFor(second, "row-aaa")?.counts.likeCount).toBe(8);
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
@@ -479,7 +626,7 @@ describe("getPostsEngagement — the list entry point", () => {
       ref: { uri: uriFor(`k${i}`) },
     }));
     const fetcher = vi.fn(async () => jsonResponse([]));
-    await getPostsEngagement(rows, {
+    await getPostsEngagement(rows, DID, {
       fetcher: fetcher as unknown as typeof fetch,
     });
     expect(fetcher).toHaveBeenCalledTimes(1);

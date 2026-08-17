@@ -422,10 +422,211 @@ describe("normalizeThread — malformed and hostile bodies", () => {
   });
 });
 
+describe("normalizeThread — replies the writer hid on Bluesky", () => {
+  /** The response's top-level threadgate, as the AppView sends it. */
+  function withThreadgate(
+    response: ReturnType<typeof threadResponse>,
+    hiddenReplies: unknown,
+  ) {
+    return {
+      ...response,
+      threadgate: {
+        uri: `at://${AUTHOR}/app.bsky.feed.threadgate/${ROOT_RKEY}`,
+        cid: "bafyreigatecid",
+        record: {
+          $type: "app.bsky.feed.threadgate",
+          post: ROOT_URI,
+          createdAt: "2026-02-01T09:00:00.000Z",
+          hiddenReplies,
+        },
+        lists: [],
+      },
+    };
+  }
+
+  it("drops exactly the hidden replies and keeps the rest", () => {
+    // Verified against the live AppView 2026-08-17: it does NOT filter these
+    // for an unauthenticated depth-1 caller. Across 370 busy public threads,
+    // 12 carried hiddenReplies and 20 of those 31 URIs came back in
+    // thread.replies regardless — so this has to be applied here.
+    const kept = reply({ rkey: "3lykept00001", text: "Kept." });
+    const hidden = reply({ rkey: "3lyhidden0001", text: "Hidden by writer." });
+    const alsoKept = reply({ rkey: "3lykept00002", text: "Also kept." });
+
+    const result = normalizeThread(
+      withThreadgate(threadResponse([kept, hidden, alsoKept]), [
+        hidden.post.uri,
+      ]),
+      EXPECTED,
+    );
+
+    expect(result?.replies.map((r) => r.text)).toEqual(["Kept.", "Also kept."]);
+    expect(result?.replies.map((r) => r.uri)).not.toContain(hidden.post.uri);
+  });
+
+  it("does not count a hidden reply as 'more to read over there'", () => {
+    // A hidden reply with its own children must not light up hasMore: the
+    // writer's answer to that subthread was no.
+    const hidden = reply({ rkey: "3lyhidden0002", replyCount: 4 });
+    const result = normalizeThread(
+      withThreadgate(threadResponse([reply({ text: "Kept." }), hidden]), [
+        hidden.post.uri,
+      ]),
+      EXPECTED,
+    );
+    expect(result?.hasMore).toBe(false);
+  });
+
+  it("returns nothing when every reply was hidden", () => {
+    // Back to having nothing to show — and deliberately NOT "some replies are
+    // hidden", which would report the writer's moderation to their readers.
+    const a = reply({ rkey: "3lyhidden0003" });
+    const b = reply({ rkey: "3lyhidden0004" });
+    expect(
+      normalizeThread(
+        withThreadgate(threadResponse([a, b]), [a.post.uri, b.post.uri]),
+        EXPECTED,
+      ),
+    ).toBeNull();
+  });
+
+  it("honours at most the 300 URIs the lexicon allows", () => {
+    // `record` is typed `unknown` in the lexicon, so the AppView is free to
+    // hand us any JSON at all there. A hostile 100k-entry array must not
+    // become a 100k-entry Set on a 10 ms CPU budget.
+    const hidden = reply({ rkey: "3lyhidden0005" });
+    const padding = Array.from(
+      { length: 400 },
+      (_, i) => `at://${AUTHOR}/app.bsky.feed.post/3pad${i}`,
+    );
+    const result = normalizeThread(
+      // The real URI sits past the cap, so it survives — which is the
+      // observable proof the cap is applied rather than the array trusted.
+      withThreadgate(threadResponse([hidden]), [...padding, hidden.post.uri]),
+      EXPECTED,
+    );
+    expect(result?.replies.map((r) => r.uri)).toEqual([hidden.post.uri]);
+  });
+
+  it("ignores a threadgate that is missing, empty or malformed", () => {
+    for (const hiddenReplies of [
+      undefined,
+      [],
+      "not-an-array",
+      [42, null, {}],
+      { 0: "not-an-array-either" },
+    ]) {
+      const result = normalizeThread(
+        withThreadgate(
+          threadResponse([reply({ text: "Kept." })]),
+          hiddenReplies,
+        ),
+        EXPECTED,
+      );
+      expect(result?.replies.map((r) => r.text)).toEqual(["Kept."]);
+    }
+    // And with no threadgate key at all — the overwhelmingly common case.
+    expect(
+      normalizeThread(threadResponse([reply({ text: "Kept." })]), EXPECTED)
+        ?.replies.length,
+    ).toBe(1);
+  });
+});
+
+describe("normalizeThread — labelled replies", () => {
+  /** A reply node carrying moderation labels on its post view. */
+  function labelled(vals: string[], opts: { rkey?: string } = {}) {
+    const node = reply({ rkey: opts.rkey, text: "Labelled content." });
+    return {
+      ...node,
+      post: {
+        ...node.post,
+        labels: vals.map((val) => ({
+          src: "did:plc:ar7c4by46qjdydhdevvrndac",
+          uri: node.post.uri,
+          val,
+          cts: "2026-02-01T10:00:02.000Z",
+        })),
+      },
+    };
+  }
+
+  it.each([
+    ["!hide"],
+    ["!warn"],
+    ["porn"],
+    ["sexual"],
+    ["nudity"],
+    ["graphic-media"],
+    ["spam"],
+  ])("drops a reply labelled %s", (val) => {
+    // #postView carries `labels` and this module read neither it nor the
+    // record's self-labels — so adult and taken-down content rendered as plain
+    // serif text under somebody's essay, with nothing to click through.
+    const result = normalizeThread(
+      threadResponse([
+        reply({ rkey: "3lyclean00001", text: "Clean." }),
+        labelled([val], { rkey: "3lylabelled001" }),
+      ]),
+      EXPECTED,
+    );
+    expect(result?.replies.map((r) => r.text)).toEqual(["Clean."]);
+  });
+
+  it("drops a reply whose label sits among harmless ones", () => {
+    const result = normalizeThread(
+      threadResponse([labelled(["dogs", "spam", "cats"])]),
+      EXPECTED,
+    );
+    expect(result).toBeNull();
+  });
+
+  it("keeps replies carrying labels that aren't on the list", () => {
+    // A floor, not a moderation product: topical and third-party-labeller
+    // values a reader may not even subscribe to are not ours to act on.
+    const result = normalizeThread(
+      threadResponse([labelled(["dogs", "politics", "spoiler"])]),
+      EXPECTED,
+    );
+    expect(result?.replies.map((r) => r.text)).toEqual(["Labelled content."]);
+  });
+
+  it("honours the author's own self-labels on the record", () => {
+    const node = reply({ rkey: "3lyself00001" });
+    const selfLabelled = {
+      ...node,
+      post: {
+        ...node.post,
+        record: {
+          ...node.post.record,
+          labels: {
+            $type: "com.atproto.label.defs#selfLabels",
+            values: [{ val: "nudity" }],
+          },
+        },
+      },
+    };
+    expect(
+      normalizeThread(threadResponse([selfLabelled]), EXPECTED),
+    ).toBeNull();
+  });
+
+  it("is unbothered by a malformed labels field", () => {
+    const node = reply({ text: "Kept." });
+    for (const labels of ["not-an-array", [null, 42, {}], { val: "!hide" }]) {
+      const result = normalizeThread(
+        threadResponse([{ ...node, post: { ...node.post, labels } }]),
+        EXPECTED,
+      );
+      expect(result?.replies.map((r) => r.text)).toEqual(["Kept."]);
+    }
+  });
+});
+
 describe("getPostConversation — the page-facing read", () => {
   it("asks the public AppView for one level of replies and no ancestors", async () => {
     const fetcher = okUpstream(threadResponse([reply()]));
-    await getPostConversation(REF, { fetcher });
+    await getPostConversation(REF, AUTHOR, { fetcher });
     const url = new URL(fetcher.mock.calls[0][0]);
     expect(url.origin).toBe("https://public.api.bsky.app");
     expect(url.pathname).toBe("/xrpc/app.bsky.feed.getPostThread");
@@ -436,14 +637,14 @@ describe("getPostConversation — the page-facing read", () => {
 
   it("sends no credentials — this is public, unauthenticated data", async () => {
     const fetcher = okUpstream(threadResponse([reply()]));
-    await getPostConversation(REF, { fetcher });
+    await getPostConversation(REF, AUTHOR, { fetcher });
     const init = fetcher.mock.calls[0][1];
     expect(init?.headers).toBeUndefined();
     expect(init?.credentials).toBeUndefined();
   });
 
   it("returns the replies plus the thread URL a reader can join at", async () => {
-    const result = await getPostConversation(REF, {
+    const result = await getPostConversation(REF, AUTHOR, {
       fetcher: okUpstream(threadResponse([reply({ text: "Good piece." })])),
     });
     expect(result?.threadUrl).toBe(THREAD_URL);
@@ -454,7 +655,9 @@ describe("getPostConversation — the page-facing read", () => {
 describe("getPostConversation — a post with no announcement", () => {
   it("makes no upstream call at all and returns nothing", async () => {
     const fetcher = stubFetch(async () => new Response(null));
-    expect(await getPostConversation(undefined, { fetcher })).toBeNull();
+    expect(
+      await getPostConversation(undefined, AUTHOR, { fetcher }),
+    ).toBeNull();
     expect(fetcher).not.toHaveBeenCalled();
   });
 
@@ -463,6 +666,7 @@ describe("getPostConversation — a post with no announcement", () => {
     expect(
       await getPostConversation(
         { uri: `at://${AUTHOR}/site.standard.document/abc` },
+        AUTHOR,
         { fetcher },
       ),
     ).toBeNull();
@@ -477,8 +681,26 @@ describe("getPostConversation — a post with no announcement", () => {
       { uri: "not-an-at-uri" },
       { uri: "" },
     ]) {
-      expect(await getPostConversation(ref, { fetcher })).toBeNull();
+      expect(await getPostConversation(ref, AUTHOR, { fetcher })).toBeNull();
     }
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("refuses a ref pointing at another account's post", async () => {
+    // The defect this closes: bskyPostRef is a field in a record we do not
+    // control, so a document can name ANY post as "its" announcement. Left
+    // unchecked, a stranger's thread renders as this article's conversation —
+    // and their replies to their own post get badged "· author" here.
+    const stranger = "did:plc:cccccccccccccccccccccccc";
+    const fetcher = stubFetch(async () => new Response(null));
+    expect(
+      await getPostConversation(
+        { uri: `at://${stranger}/app.bsky.feed.post/${ROOT_RKEY}` },
+        AUTHOR,
+        { fetcher },
+      ),
+    ).toBeNull();
+    // Not merely unrendered — never even fetched.
     expect(fetcher).not.toHaveBeenCalled();
   });
 });
@@ -488,33 +710,37 @@ describe("getPostConversation — when the network misbehaves", () => {
     const fetcher = stubFetch(
       async () => new Response("upstream boom", { status: 502 }),
     );
-    expect(await getPostConversation(REF, { fetcher })).toBeNull();
+    expect(await getPostConversation(REF, AUTHOR, { fetcher })).toBeNull();
   });
 
   it("degrades to silence on a rate limit", async () => {
     const fetcher = stubFetch(
       async () => new Response("slow down", { status: 429 }),
     );
-    expect(await getPostConversation(REF, { fetcher })).toBeNull();
+    expect(await getPostConversation(REF, AUTHOR, { fetcher })).toBeNull();
   });
 
   it("degrades to silence when the connection fails outright", async () => {
     const fetcher = stubFetch(async () => {
       throw new TypeError("network error");
     });
-    await expect(getPostConversation(REF, { fetcher })).resolves.toBeNull();
+    await expect(
+      getPostConversation(REF, AUTHOR, { fetcher }),
+    ).resolves.toBeNull();
   });
 
   it("degrades to silence when the request times out", async () => {
     const fetcher = stubFetch(async () => {
       throw Object.assign(new Error("timed out"), { name: "TimeoutError" });
     });
-    await expect(getPostConversation(REF, { fetcher })).resolves.toBeNull();
+    await expect(
+      getPostConversation(REF, AUTHOR, { fetcher }),
+    ).resolves.toBeNull();
   });
 
   it("passes an abort signal so a hung AppView can't hang the page", async () => {
     const fetcher = okUpstream(threadResponse([reply()]));
-    await getPostConversation(REF, { fetcher });
+    await getPostConversation(REF, AUTHOR, { fetcher });
     const init = fetcher.mock.calls[0][1];
     expect(init?.signal).toBeInstanceOf(AbortSignal);
   });
@@ -527,7 +753,7 @@ describe("getPostConversation — when the network misbehaves", () => {
           headers: { "content-type": "text/html" },
         }),
     );
-    expect(await getPostConversation(REF, { fetcher })).toBeNull();
+    expect(await getPostConversation(REF, AUTHOR, { fetcher })).toBeNull();
   });
 
   it("refuses an oversized body instead of parsing it", async () => {
@@ -543,7 +769,67 @@ describe("getPostConversation — when the network misbehaves", () => {
           },
         }),
     );
-    expect(await getPostConversation(REF, { fetcher })).toBeNull();
+    const result = await getPostConversation(REF, AUTHOR, { fetcher });
+    // Not parsed — but not silent either. See the over-cap suite below.
+    expect(result?.replies).toEqual([]);
+  });
+});
+
+describe("getPostConversation — a thread too big to read", () => {
+  /** An over-cap response: the AppView answered, the body is just too large. */
+  const overCap = () =>
+    stubFetch(
+      async () =>
+        new Response(JSON.stringify(threadResponse([reply()])), {
+          status: 200,
+          headers: {
+            "content-type": "application/json",
+            "content-length": "99999999",
+          },
+        }),
+    );
+
+  it("keeps the section as a link instead of deleting it", async () => {
+    // The defect: getPostThread has no `limit`, so a very busy thread blows the
+    // byte cap, which used to collapse to the same null as a network failure —
+    // the whole Conversation section vanished from exactly the posts with the
+    // most conversation to point at.
+    const result = await getPostConversation(REF, AUTHOR, {
+      fetcher: overCap(),
+    });
+    expect(result).toEqual({
+      replies: [],
+      threadUrl: THREAD_URL,
+      hasMore: true,
+    });
+  });
+
+  it("still says nothing at all when the network simply failed", async () => {
+    // The other half of the contract: only OVER-CAP earns a section. Every
+    // other failure keeps null-means-silence.
+    for (const fetcher of [
+      stubFetch(async () => new Response("boom", { status: 502 })),
+      stubFetch(async () => {
+        throw new TypeError("network error");
+      }),
+      stubFetch(async () => new Response("<html>nope</html>", { status: 200 })),
+    ]) {
+      expect(await getPostConversation(REF, AUTHOR, { fetcher })).toBeNull();
+    }
+  });
+
+  it("does not cache the link-only answer", async () => {
+    const store = new Map<string, Response>();
+    const cache = {
+      match: async (key: string) => store.get(key)?.clone(),
+      put: async (key: string, res: Response) => {
+        store.set(key, res);
+      },
+    } as unknown as Cache;
+    await getPostConversation(REF, AUTHOR, { cache, fetcher: overCap() });
+    // The cache read path treats a reply-less entry as malformed, so storing
+    // one would be writing something we'd refuse to read back.
+    expect(store.size).toBe(0);
   });
 });
 
@@ -566,8 +852,8 @@ describe("getPostConversation — edge cache", () => {
     const { cache } = fakeCache();
     const fetcher = okUpstream(threadResponse([reply({ text: "Cached." })]));
 
-    const first = await getPostConversation(REF, { cache, fetcher });
-    const second = await getPostConversation(REF, { cache, fetcher });
+    const first = await getPostConversation(REF, AUTHOR, { cache, fetcher });
+    const second = await getPostConversation(REF, AUTHOR, { cache, fetcher });
 
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(second).toEqual(first);
@@ -576,7 +862,7 @@ describe("getPostConversation — edge cache", () => {
 
   it("stores the entry publicly and cookie-independently", async () => {
     const { store, cache } = fakeCache();
-    await getPostConversation(REF, {
+    await getPostConversation(REF, AUTHOR, {
       cache,
       fetcher: okUpstream(threadResponse([reply()])),
     });
@@ -593,7 +879,7 @@ describe("getPostConversation — edge cache", () => {
 
   it("caches nothing when there is nothing to say", async () => {
     const { store, cache } = fakeCache();
-    await getPostConversation(REF, {
+    await getPostConversation(REF, AUTHOR, {
       cache,
       fetcher: okUpstream(threadResponse([])),
     });
@@ -604,11 +890,11 @@ describe("getPostConversation — edge cache", () => {
     const { store, cache } = fakeCache();
     const fetcher = okUpstream(threadResponse([reply({ text: "Fresh." })]));
     // Seed the exact key with a junk body, the way a shape change would leave it.
-    await getPostConversation(REF, { cache, fetcher });
+    await getPostConversation(REF, AUTHOR, { cache, fetcher });
     const key = [...store.keys()][0];
     store.set(key, new Response("not json at all"));
 
-    const result = await getPostConversation(REF, { cache, fetcher });
+    const result = await getPostConversation(REF, AUTHOR, { cache, fetcher });
     expect(fetcher).toHaveBeenCalledTimes(2);
     expect(result?.replies.map((r) => r.text)).toEqual(["Fresh."]);
   });
@@ -622,7 +908,7 @@ describe("getPostConversation — edge cache", () => {
         throw new Error("cache down");
       },
     } as unknown as Cache;
-    const result = await getPostConversation(REF, {
+    const result = await getPostConversation(REF, AUTHOR, {
       cache: broken,
       fetcher: okUpstream(threadResponse([reply({ text: "Still read." })])),
     });

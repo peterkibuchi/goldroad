@@ -51,14 +51,26 @@ export type DashboardRow = {
   announced: { did: string; postRkey: string } | null;
 };
 
-/** bskyPostRef → the announce link parts, or null. Only app.bsky.feed.post
- * refs count — the field is untrusted network data and could point anywhere. */
+/**
+ * bskyPostRef → the announce link parts, or null. Only app.bsky.feed.post refs
+ * IN THE WRITER'S OWN REPO count — the field is untrusted network data and
+ * could point anywhere, and "anywhere" includes a stranger's post, which this
+ * row would then link to as though the writer had announced it (and whose
+ * engagement counts would be joined onto their post). Same rule, same reason,
+ * as ~/lib/engagement's announcedPostUri.
+ *
+ * `expectedDid` undefined means the caller doesn't know whose repo these
+ * records came from, so no ref can be shown to belong to it: null for every
+ * row. The two real callers both pass the writer's DID.
+ */
 function announcedFromRef(
   ref: StandardDocument["bskyPostRef"],
+  expectedDid: string | undefined,
 ): DashboardRow["announced"] {
-  if (typeof ref?.uri !== "string") return null;
+  if (typeof ref?.uri !== "string" || expectedDid === undefined) return null;
   const parts = parseAtUri(ref.uri);
   if (parts?.collection !== "app.bsky.feed.post") return null;
+  if (parts.did !== expectedDid) return null;
   return { did: parts.did, postRkey: parts.rkey };
 }
 
@@ -66,9 +78,12 @@ function announcedFromRef(
  * without a usable rkey. Untitled records stay visible — they're still
  * deletable — under a placeholder title.
  *
- * `did` is what turns a cover blob into a servable /img path; omit it and
- * every row simply comes back cover-less (the monogram fallback covers that
- * case anyway), so callers that only need titles and dates can skip it. */
+ * `did` is whose repo these records came from. It turns a cover blob into a
+ * servable /img path, and it is what an announce ref has to point inside to be
+ * this writer's announcement; omit it and every row comes back cover-less and
+ * un-announced (the monogram fallback covers the first, and claiming nothing is
+ * the honest answer to the second), so callers that only need titles and dates
+ * can still skip it. */
 export function mapDashboardRows(
   records: ListedRecord<StandardDocument>[],
   did?: string,
@@ -102,7 +117,7 @@ export function mapDashboardRows(
           updatedAt:
             typeof r.value.updatedAt === "string" ? r.value.updatedAt : null,
           editable: !hasForeignContent(r.value),
-          announced: announcedFromRef(r.value.bskyPostRef),
+          announced: announcedFromRef(r.value.bskyPostRef, did),
         },
       ];
     })

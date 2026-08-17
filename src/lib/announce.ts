@@ -2,8 +2,7 @@
  * "Announce on Bluesky" record shaping — an app.bsky.feed.post in the
  * writer's own repo. Never called without an explicit user action.
  *
- * Two mechanisms ride in one post, both verified against live records
- * (2026-07-23, see PR):
+ * Two mechanisms ride in one post, both re-verified 2026-08-17:
  *
  * 1. text = title + "\n" + canonical URL, with a link facet over the URL.
  *    Facet indices are UTF-8 BYTE offsets, not JS string (UTF-16 code unit)
@@ -11,14 +10,21 @@
  *    lexicon: "byteSlice"). A facet alone does NOT produce a link card.
  * 2. embed = app.bsky.embed.external with `associatedRefs` strongRefs to the
  *    site.standard.document (and its publication). This is what makes Bluesky
- *    render the enriched standard.site reader card
- *    (github.com/bluesky-social/atproto discussion #4978; Leaflet's own
- *    announce posts, e.g. at://did:plc:ukp7pzzht32uigg6bg4vxr5t/
- *    app.bsky.feed.post/3lyk74buirc2f, carry the same embed shape).
+ *    render the enriched standard.site reader card.
  *
- * Shapes are hand-rolled minimally rather than pulling in @atcute/bluesky:
- * `associatedRefs` is newer than the published lexicon types anyway (unknown
- * object fields are legal in the atproto data model).
+ *    `associatedRefs` is no longer an undocumented field: it is IN the published
+ *    lexicon (lexicons/app/bsky/embed/external.json on bluesky-social/atproto,
+ *    `external.associatedRefs`, an array of com.atproto.repo.strongRef,
+ *    described as "StrongRefs (uri+cid) of the Atmosphere records that backed
+ *    this view"). Live confirmation too: 41 of 62 external-embed posts across
+ *    Leaflet's own accounts carry it, e.g.
+ *    at://did:plc:ukp7pzzht32uigg6bg4vxr5t/app.bsky.feed.post/3mrpug772jk2c.
+ *    The record cited here previously (…/3lyk74buirc2f) no longer carries the
+ *    field and is not evidence of anything — a dated citation to a mutable
+ *    record is worth re-checking before it is trusted.
+ *
+ * Shapes are still hand-rolled minimally rather than pulling in @atcute/bluesky:
+ * one optional field in one embed does not justify the dependency.
  */
 
 /** app.bsky.feed.post text limit (graphemes). The byte limit (3000) can't be

@@ -112,7 +112,7 @@ const getStats = createServerFn({ method: "GET" }).handler(async () => {
               typeof record.value.publishedAt === "string"
                 ? record.value.publishedAt
                 : null;
-            const announced = announcedPostUri(record.value.bskyPostRef);
+            const announced = announcedPostUri(record.value.bskyPostRef, did);
             return [
               {
                 rkey,

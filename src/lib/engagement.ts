@@ -65,16 +65,31 @@ export function bskyProfileUrl(actor: string): string {
   return `https://bsky.app/profile/${actor}`;
 }
 
-/** A document's bskyPostRef, validated down to the canonical at:// URI
+/**
+ * A document's bskyPostRef, validated down to the canonical at:// URI
  * app.bsky.feed.getPosts expects — or null (never announced, or the ref is
  * malformed/points somewhere else). Rebuilds the URI from parseAtUri's
- * validated parts rather than trusting the ref's raw string verbatim. */
+ * validated parts rather than trusting the ref's raw string verbatim.
+ *
+ * `expectedDid` is the DID of the repo the document itself lives in, and the
+ * ref must point INSIDE it. Collection alone is not enough: bskyPostRef is an
+ * ordinary field in someone else's repo record, so its value is whatever that
+ * repo's owner wrote there, and a well-formed ref aimed at a stranger's post
+ * would make us render a stranger's thread as this document's conversation —
+ * their replies attributed to this article, and their own words badged
+ * "· author". A cross-repo announcement is not a thing that exists (the
+ * announce path writes the ref back into the same repo it posted from), so
+ * required rather than optional: every caller has the document's DID in hand,
+ * and a default here would be a hole nobody would ever notice was open.
+ */
 export function announcedPostUri(
   ref: { uri?: unknown } | undefined,
+  expectedDid: string,
 ): { uri: string; did: Did; rkey: string } | null {
   if (typeof ref?.uri !== "string") return null;
   const parts = parseAtUri(ref.uri);
   if (parts?.collection !== "app.bsky.feed.post") return null;
+  if (parts.did !== expectedDid) return null;
   return {
     uri: `at://${parts.did}/${parts.collection}/${parts.rkey}`,
     did: parts.did,
@@ -165,21 +180,26 @@ async function fetchPostsBatch(
  * (non-2xx, network error, timeout, oversized/malformed body) drops just
  * that chunk's URIs from the result map rather than throwing — a partial
  * answer beats none, and the caller never blocks on this.
+ *
+ * ABSENT and `"gone"` are different answers and both are returned as such:
+ * absent means we couldn't look (that URI's batch failed), `"gone"` means we
+ * looked and the AppView doesn't have the post — deleted, taken down, or
+ * blocked. Surfaces that only render counts collapse the two into silence;
+ * the writer's own dashboard is the one place where "your announcement isn't
+ * there any more" is worth saying out loud, so the fact travels instead of
+ * being thrown away here.
  */
 export async function fetchPostsEngagement(
   uris: string[],
   fetcher: typeof fetch = fetch,
-): Promise<Map<string, EngagementCounts>> {
-  const result = new Map<string, EngagementCounts>();
+): Promise<Map<string, EngagementCounts | "gone">> {
+  const result = new Map<string, EngagementCounts | "gone">();
   const validUris = uris.filter((u) => u.startsWith("at://"));
   for (const batch of chunkUris(validUris)) {
     const body = await fetchPostsBatch(batch, fetcher);
     if (body === null) continue;
-    for (const [uri, counts] of mapGetPostsResponse(body, batch)) {
-      // The reading surfaces only care about posts that answered; a missing
-      // post gets silence there, exactly as an unannounced one does.
-      if (counts !== "gone") result.set(uri, counts);
-    }
+    for (const [uri, counts] of mapGetPostsResponse(body, batch))
+      result.set(uri, counts);
   }
   return result;
 }
@@ -342,9 +362,10 @@ async function writeCachedCounts(
  */
 export async function getDocumentEngagement(
   ref: { uri?: unknown } | undefined,
+  expectedDid: string,
   options: { fetcher?: typeof fetch; cache?: Cache } = {},
 ): Promise<DocumentEngagement | null> {
-  const announced = announcedPostUri(ref);
+  const announced = announcedPostUri(ref, expectedDid);
   if (!announced) return null;
   const threadUrl = bskyPostUrl(announced.did, announced.rkey);
 
@@ -357,7 +378,9 @@ export async function getDocumentEngagement(
   const fetcher = options.fetcher ?? fetch;
   const byUri = await fetchPostsEngagement([announced.uri], fetcher);
   const counts = byUri.get(announced.uri);
-  if (!counts) return null;
+  // A reading surface collapses "we couldn't look" and "the announcement is
+  // gone" into the same silence — a reader learns nothing from either.
+  if (!counts || counts === "gone") return null;
 
   if (cache) await writeCachedCounts(cache, announced.uri, counts);
 
@@ -376,17 +399,25 @@ export async function getDocumentEngagement(
  * A key is ABSENT from the returned map whenever there's nothing honest to
  * say about it: never announced, malformed ref, or every upstream attempt for
  * its batch failed. Callers render nothing for absent keys.
+ *
+ * A key present as `"gone"` is the fourth answer, and the only one this
+ * function has that getDocumentEngagement doesn't: we asked the AppView about
+ * the announcement and it doesn't have it. On the writer's own dashboard that
+ * is worth stating — the row would otherwise keep offering a link to a post
+ * the writer deleted months ago — so it is reported rather than folded into
+ * absence.
  */
 export async function getPostsEngagement(
   refs: ReadonlyArray<{ key: string; ref: { uri?: unknown } | undefined }>,
+  expectedDid: string,
   options: { fetcher?: typeof fetch; cache?: Cache } = {},
-): Promise<Map<string, DocumentEngagement>> {
-  const result = new Map<string, DocumentEngagement>();
+): Promise<Map<string, DocumentEngagement | "gone">> {
+  const result = new Map<string, DocumentEngagement | "gone">();
   // De-duplicate by URI: two rows pointing at the same announcement (a
   // re-announce that reused the ref) must not become two upstream lookups.
   const wanted = new Map<string, { key: string; did: Did; rkey: string }[]>();
   for (const { key, ref } of refs) {
-    const announced = announcedPostUri(ref);
+    const announced = announcedPostUri(ref, expectedDid);
     if (!announced) continue;
     const bucket = wanted.get(announced.uri);
     const entry = { key, did: announced.did, rkey: announced.rkey };
@@ -395,9 +426,14 @@ export async function getPostsEngagement(
   }
   if (wanted.size === 0) return result;
 
-  function record(uri: string, counts: EngagementCounts) {
+  function record(uri: string, counts: EngagementCounts | "gone") {
     for (const { key, did, rkey } of wanted.get(uri) ?? []) {
-      result.set(key, { counts, threadUrl: bskyPostUrl(did, rkey) });
+      result.set(
+        key,
+        counts === "gone"
+          ? "gone"
+          : { counts, threadUrl: bskyPostUrl(did, rkey) },
+      );
     }
   }
 
@@ -424,7 +460,11 @@ export async function getPostsEngagement(
     // Guard against an upstream echoing a URI we never asked for.
     if (!wanted.has(uri)) continue;
     record(uri, counts);
-    if (cache) await writeCachedCounts(cache, uri, counts);
+    // Gone-ness is deliberately NOT cached: a takedown can be reversed and a
+    // post can be re-indexed, and the cache read path only understands counts
+    // anyway. It costs one upstream lookup per dashboard load, on rows whose
+    // announcement is missing — a small bill, paid only in the rare case.
+    if (cache && counts !== "gone") await writeCachedCounts(cache, uri, counts);
   }
   return result;
 }

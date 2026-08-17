@@ -105,8 +105,6 @@ const ERROR_MESSAGES: Record<string, string> = {
     "Deleting needs a permission your current sign-in doesn't include yet — re-connect your account to enable deletion.",
   announce_scope:
     "Posting to Bluesky needs a permission your current sign-in doesn't include yet — re-connect your account to enable announcing.",
-  announce_no_url:
-    "This post has no public URL to announce — it may belong to a publication Goldroad can't resolve right now.",
   move_no_publication:
     "There's no publication to move yet — it's created when you publish your first post.",
   schedule_in_flight:
@@ -226,8 +224,9 @@ const getDashboard = createServerFn({ method: "GET" })
                 ]
               : [],
           ),
-        ).catch(() => new Map<string, DocumentEngagement>())
-      : new Map<string, DocumentEngagement>();
+          did,
+        ).catch(() => new Map<string, DocumentEngagement | "gone">())
+      : new Map<string, DocumentEngagement | "gone">();
     return {
       ident: handle ?? did,
       handle,
@@ -484,10 +483,15 @@ export function DeletePostForm({
 
 /** A published row with whatever quick metrics we actually have for it.
  * `views` undefined and `engagement` null both mean "nothing to say" — they
- * are never rendered as zero. */
+ * are never rendered as zero.
+ *
+ * `announceGone` is a different claim from either: the AppView was asked about
+ * this row's announcement and does not have it. Not "no counts yet" and not
+ * "we couldn't reach Bluesky" — the post isn't there. */
 type ManagerRow = DashboardRow & {
   views?: number;
   engagement: DocumentEngagement | null;
+  announceGone: boolean;
 };
 
 /**
@@ -617,7 +621,7 @@ export function PostsManager({
   ident: string;
   /** null = the PDS read flaked. Never the same claim as "no posts". */
   rows: DashboardRow[] | null;
-  engagement: Map<string, DocumentEngagement>;
+  engagement: Map<string, DocumentEngagement | "gone">;
   /** null = the drafts read flaked. */
   drafts: DraftRow[] | null;
   /** Queued and failed posts; null = the read flaked. */
@@ -644,11 +648,15 @@ export function PostsManager({
 
   const postRows = useMemo<ManagerRow[]>(
     () =>
-      (rows ?? []).map((row) => ({
-        ...row,
-        views: views.get(row.rkey),
-        engagement: engagement.get(row.rkey) ?? null,
-      })),
+      (rows ?? []).map((row) => {
+        const found = engagement.get(row.rkey);
+        return {
+          ...row,
+          views: views.get(row.rkey),
+          engagement: found === "gone" ? null : (found ?? null),
+          announceGone: found === "gone",
+        };
+      }),
     [rows, views, engagement],
   );
 
@@ -1039,7 +1047,17 @@ export function PostsManager({
   );
 }
 
-function PublishedRow({ ident, row }: { ident: string; row: ManagerRow }) {
+/**
+ * One published post and the actions on it.
+ * Exported for tests (dashboard-announce-gone.test.tsx) — not a route.
+ */
+export function PublishedRow({
+  ident,
+  row,
+}: {
+  ident: string;
+  row: ManagerRow;
+}) {
   const date = formatDate(row.publishedAt ?? undefined);
   const readingLabel = formatReadingTime(row.readingMinutes);
   const href = `/@${encodeURIComponent(ident)}/${encodeURIComponent(row.rkey)}`;
@@ -1088,20 +1106,43 @@ function PublishedRow({ ident, row }: { ident: string; row: ManagerRow }) {
             </a>
           )}
           {row.announced ? (
-            <>
-              <ExternalLink
-                className={INLINE_ACTION}
-                href={bskyPostUrl(row.announced.did, row.announced.postRkey)}
-                title="View the announcement post on Bluesky"
-              >
-                Announced ↗
-              </ExternalLink>
-              <AnnounceButton
-                confirmMessage="Already announced — post again?"
-                label="Announce again"
-                rkey={row.rkey}
-              />
-            </>
+            /* Announced, and the announcement is still on Bluesky — link to it.
+               Announced but GONE (deleted by the writer, or taken down) is the
+               third state: the row used to keep offering that link forever, so
+               the writer clicked their own history into a Bluesky 404 with no
+               hint of why. State it, drop the link, and say what "again" means
+               in the confirm — re-announcing here is a NEW post, not a repair
+               of the old one. */
+            row.announceGone ? (
+              <>
+                <span
+                  className="font-display text-ink-soft text-sm"
+                  title="Goldroad asked Bluesky about this announcement and it isn't there — it was deleted or taken down."
+                >
+                  Announcement gone from Bluesky
+                </span>
+                <AnnounceButton
+                  confirmMessage="The earlier announcement is gone from Bluesky. Post a new one?"
+                  label="Announce again"
+                  rkey={row.rkey}
+                />
+              </>
+            ) : (
+              <>
+                <ExternalLink
+                  className={INLINE_ACTION}
+                  href={bskyPostUrl(row.announced.did, row.announced.postRkey)}
+                  title="View the announcement post on Bluesky"
+                >
+                  Announced ↗
+                </ExternalLink>
+                <AnnounceButton
+                  confirmMessage="Already announced — post again?"
+                  label="Announce again"
+                  rkey={row.rkey}
+                />
+              </>
+            )
           ) : (
             <AnnounceButton label="Announce" rkey={row.rkey} />
           )}

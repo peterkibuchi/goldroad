@@ -299,7 +299,7 @@ export const Route = createFileRoute("/api/stats")({
                 publishedAt < window.from
               )
                 continue;
-              const ref = announcedPostUri(record.value.bskyPostRef);
+              const ref = announcedPostUri(record.value.bskyPostRef, did);
               if (ref === null) {
                 unannouncedCount++;
                 continue;

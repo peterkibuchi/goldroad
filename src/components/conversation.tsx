@@ -12,6 +12,12 @@ import type { PostConversation, Reply } from "~/lib/comments";
  * renders when there is something to read — the caller passes null otherwise
  * and nothing appears at all.
  *
+ * "Something to read" includes one row-less case: a thread over ~/lib/comments'
+ * byte cap, which arrives with no replies and `hasMore`. That renders as the
+ * heading and the link alone. It is not an empty state in the usual sense —
+ * there is no "be the first to reply", because there is plainly a conversation
+ * and we simply couldn't carry it here.
+ *
  * Avatars are deliberately absent. They'd be ornament in this register, and
  * they'd mean every reader's browser fetching images from Bluesky's CDN just
  * to read a post — the reading surfaces route the writer's own images through
@@ -35,16 +41,27 @@ export function Conversation({
         Conversation
       </h2>
       {/* The one line of explanation this needs, in plain words: where the
-          replies came from, and that we are not the ones moderating them. */}
+          replies came from, and that we are not the ones moderating them. With
+          no rows to introduce, the same sentence would promise replies that
+          aren't below it, so the empty state says the true thing instead. */}
       <p className="mt-2 font-display text-ink-soft/80 text-xs">
-        Replies from Bluesky, where this post was shared. Bluesky moderates
-        them, not Goldroad.
+        {replies.length > 0
+          ? "Replies from Bluesky, where this post was shared. Bluesky moderates them, not Goldroad."
+          : "This post's conversation is on Bluesky, where it was shared."}
       </p>
-      <ul className="mt-6">
-        {replies.map((reply) => (
-          <ReplyRow key={reply.uri} reply={reply} />
-        ))}
-      </ul>
+      {/* No rows is a real state, and exactly one thing produces it: a thread
+          too big for ~/lib/comments to read. The heading and the link still
+          render — a reader on a much-discussed post gets a door instead of a
+          section that quietly isn't there — but an empty <ul> would be a
+          list element announcing zero items to a screen reader, so the list
+          itself only exists when it has contents. */}
+      {replies.length > 0 && (
+        <ul className="mt-6">
+          {replies.map((reply) => (
+            <ReplyRow key={reply.uri} reply={reply} />
+          ))}
+        </ul>
+      )}
       <p className="mt-8 font-display text-sm">
         {/* Labelled by outcome. When the thread holds more than we render,
             the label says so rather than making the reader discover it. */}

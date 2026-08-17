@@ -102,7 +102,7 @@ const getOverview = createServerFn({ method: "GET" }).handler(async () => {
     ? docsPage?.records.find((r) => r.uri.endsWith(`/${latest.rkey}`))
     : undefined;
   const engagement = latestRecord
-    ? await getDocumentEngagement(latestRecord.value.bskyPostRef).catch(
+    ? await getDocumentEngagement(latestRecord.value.bskyPostRef, did).catch(
         () => null,
       )
     : null;
