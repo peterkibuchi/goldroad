@@ -38,3 +38,22 @@ TURNSTILE_SECRET=""
 # - POSTHOG_PROJECT_ID: the numeric PostHog project id the pageviews live in
 POSTHOG_QUERY_API_KEY=""
 POSTHOG_PROJECT_ID=""
+
+# OPTIONAL bearer token for POST /api/cache-purge — the takedown hook that drops
+# taken-down reading surfaces out of the edge cache. EMPTY means the route 404s
+# and no purge surface exists, which is the right default for a self-host.
+# The reader pages check the hide list inside their loader and a cache HIT skips
+# the loader, so inserting a hidden_content row alone leaves the page served for
+# up to the read-cache TTL. This endpoint is the other half of that operation.
+#   openssl rand -hex 32 | pnpm wrangler secret put TAKEDOWN_PURGE_TOKEN
+TAKEDOWN_PURGE_TOKEN=""
+
+# OPTIONAL Cloudflare credentials that make a purge GLOBAL rather than one-colo.
+# The Workers Cache API can only delete in the data center the Worker ran in, so
+# without these /api/cache-purge evicts locally and reports the residual window
+# honestly instead of claiming a purge it did not perform. Set BOTH:
+# - CF_PURGE_ZONE_ID: the zone id serving the canonical origin
+# - CF_PURGE_API_TOKEN: an API token scoped to that zone with cache-purge rights
+#   (prod: echo "…" | pnpm wrangler secret put CF_PURGE_API_TOKEN)
+CF_PURGE_ZONE_ID=""
+CF_PURGE_API_TOKEN=""

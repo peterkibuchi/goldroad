@@ -28,6 +28,7 @@ import { Route as WriteRouteImport } from './routes/write'
 import { Route as AtChar123handleChar125IndexRouteImport } from './routes/@{$handle}.index'
 import { Route as AtChar123handleChar125RkeyRouteImport } from './routes/@{$handle}.$rkey'
 import { Route as AtChar123handleChar125RssDotxmlRouteImport } from './routes/@{$handle}.rss[.]xml'
+import { Route as ApiCachePurgeRouteImport } from './routes/api.cache-purge'
 import { Route as ApiDraftsRouteImport } from './routes/api.drafts'
 import { Route as ApiImportRouteImport } from './routes/api.import'
 import { Route as ApiPublishRouteImport } from './routes/api.publish'
@@ -143,6 +144,11 @@ const AtChar123handleChar125RssDotxmlRoute =
     path: '/@{$handle}/rss.xml',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiCachePurgeRoute = ApiCachePurgeRouteImport.update({
+  id: '/api/cache-purge',
+  path: '/api/cache-purge',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiDraftsRoute = ApiDraftsRouteImport.update({
   id: '/api/drafts',
   path: '/api/drafts',
@@ -244,6 +250,7 @@ export interface FileRoutesByFullPath {
   '/write': typeof WriteRoute
   '/@{$handle}/$rkey': typeof AtChar123handleChar125RkeyRoute
   '/@{$handle}/rss.xml': typeof AtChar123handleChar125RssDotxmlRoute
+  '/api/cache-purge': typeof ApiCachePurgeRoute
   '/api/drafts': typeof ApiDraftsRoute
   '/api/import': typeof ApiImportRouteWithChildren
   '/api/publish': typeof ApiPublishRoute
@@ -281,6 +288,7 @@ export interface FileRoutesByTo {
   '/write': typeof WriteRoute
   '/@{$handle}/$rkey': typeof AtChar123handleChar125RkeyRoute
   '/@{$handle}/rss.xml': typeof AtChar123handleChar125RssDotxmlRoute
+  '/api/cache-purge': typeof ApiCachePurgeRoute
   '/api/drafts': typeof ApiDraftsRoute
   '/api/import': typeof ApiImportRouteWithChildren
   '/api/publish': typeof ApiPublishRoute
@@ -319,6 +327,7 @@ export interface FileRoutesById {
   '/write': typeof WriteRoute
   '/@{$handle}/$rkey': typeof AtChar123handleChar125RkeyRoute
   '/@{$handle}/rss.xml': typeof AtChar123handleChar125RssDotxmlRoute
+  '/api/cache-purge': typeof ApiCachePurgeRoute
   '/api/drafts': typeof ApiDraftsRoute
   '/api/import': typeof ApiImportRouteWithChildren
   '/api/publish': typeof ApiPublishRoute
@@ -358,6 +367,7 @@ export interface FileRouteTypes {
     | '/write'
     | '/@{$handle}/$rkey'
     | '/@{$handle}/rss.xml'
+    | '/api/cache-purge'
     | '/api/drafts'
     | '/api/import'
     | '/api/publish'
@@ -395,6 +405,7 @@ export interface FileRouteTypes {
     | '/write'
     | '/@{$handle}/$rkey'
     | '/@{$handle}/rss.xml'
+    | '/api/cache-purge'
     | '/api/drafts'
     | '/api/import'
     | '/api/publish'
@@ -432,6 +443,7 @@ export interface FileRouteTypes {
     | '/write'
     | '/@{$handle}/$rkey'
     | '/@{$handle}/rss.xml'
+    | '/api/cache-purge'
     | '/api/drafts'
     | '/api/import'
     | '/api/publish'
@@ -470,6 +482,7 @@ export interface RootRouteChildren {
   WriteRoute: typeof WriteRoute
   AtChar123handleChar125RkeyRoute: typeof AtChar123handleChar125RkeyRoute
   AtChar123handleChar125RssDotxmlRoute: typeof AtChar123handleChar125RssDotxmlRoute
+  ApiCachePurgeRoute: typeof ApiCachePurgeRoute
   ApiDraftsRoute: typeof ApiDraftsRoute
   ApiImportRoute: typeof ApiImportRouteWithChildren
   ApiPublishRoute: typeof ApiPublishRoute
@@ -622,6 +635,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AtChar123handleChar125RssDotxmlRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/cache-purge': {
+      id: '/api/cache-purge'
+      path: '/api/cache-purge'
+      fullPath: '/api/cache-purge'
+      preLoaderRoute: typeof ApiCachePurgeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/drafts': {
       id: '/api/drafts'
       path: '/api/drafts'
@@ -770,6 +790,7 @@ const rootRouteChildren: RootRouteChildren = {
   WriteRoute: WriteRoute,
   AtChar123handleChar125RkeyRoute: AtChar123handleChar125RkeyRoute,
   AtChar123handleChar125RssDotxmlRoute: AtChar123handleChar125RssDotxmlRoute,
+  ApiCachePurgeRoute: ApiCachePurgeRoute,
   ApiDraftsRoute: ApiDraftsRoute,
   ApiImportRoute: ApiImportRouteWithChildren,
   ApiPublishRoute: ApiPublishRoute,
