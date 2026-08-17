@@ -36,6 +36,7 @@ import { ThemeEditor } from "../components/theme-editor";
 import { PostsManager } from "../routes/dashboard";
 import { Overview } from "../routes/home";
 import { SourcePicker } from "../routes/import";
+import { ThreadPicker } from "../routes/import_.threads";
 import { DeleteAccountForm } from "../routes/settings";
 import { VIEWS_OFF } from "./support/views-envelope";
 import { readFileSync } from "node:fs";
@@ -45,6 +46,9 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
+
+/** Any valid DID — the thread picker builds bsky.app links from one. */
+const ACCENT_DID = "did:plc:fake2222222222writer2222";
 
 /** Both page bodies read /api/stats on mount; neither test is about views. */
 function stubStats() {
@@ -142,6 +146,35 @@ describe("rendered: a signed-in page spends no accent of its own", () => {
     expectInkVocabulary(find.className, "Find my posts");
   });
 
+  it("/import/threads — 'Import N to drafts' is ink", () => {
+    render(
+      <ThreadPicker
+        data={{
+          draftSlotsRemaining: 50,
+          threads: [
+            {
+              alreadyImported: false,
+              createdAt: "2026-02-04T10:00:00.000Z",
+              guidHash: "a".repeat(64),
+              postCount: 12,
+              rootUri: `at://${ACCENT_DID}/app.bsky.feed.post/3aaa1`,
+              title: "On leaving",
+              url: `https://bsky.app/profile/${ACCENT_DID}/post/3aaa1`,
+            },
+          ],
+          truncated: false,
+        }}
+        onImport={() => {}}
+        onToggle={() => {}}
+        onToggleAll={() => {}}
+        selected={new Set([`${"a".repeat(64)}`])}
+      />,
+    );
+    expect(restingSpotElements(document.body)).toEqual([]);
+    const primary = screen.getByRole("button", { name: /import 1 to drafts/i });
+    expectInkVocabulary(primary.className, "Import 1 to drafts");
+  });
+
   it("/settings — 'Save colours' is ink, and the writer's own accent doesn't count", () => {
     render(<ThemeEditor publicationName="Field Notes" theme={null} />);
     expect(restingSpotElements(document.body)).toEqual([]);
@@ -193,6 +226,7 @@ const SURFACES = [
   "routes/settings.tsx",
   "routes/stats.tsx",
   "routes/import.tsx",
+  "routes/import_.threads.tsx",
   "routes/write.tsx",
   "components/theme-editor.tsx",
 ];
