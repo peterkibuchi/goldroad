@@ -440,9 +440,67 @@ describe("facets → markdown (never a regex over the text)", () => {
         linkFacet(9, 4, "https://e.example"), // inverted
         linkFacet(4, 999, "https://f.example"), // past the end
       ],
-      10,
+      new TextEncoder().encode("abcdefghij"),
     );
     expect(resolved).toEqual([{ start: 0, end: 4, href: "https://a.example" }]);
+  });
+
+  /**
+   * Two ranges that are perfectly in-bounds and still wrong. Facet offsets come
+   * from other people's clients and some of them count wrong, so "inside the
+   * text" is not the same as "usable".
+   *
+   * Both drop the FACET and keep the TEXT: the words are the writer's and always
+   * survive; only the link decoration is refused.
+   */
+  it("drops a range that cuts a codepoint in half", () => {
+    // "café" — the é is two bytes (0xC3 0xA9) at offsets 3 and 4. A range
+    // ending at 4 lands INSIDE that character, so decoding either side emits
+    // U+FFFD: the writer's own word arrives corrupted, welded to a link label,
+    // permanently, in a record published under their name.
+    const text = "café time";
+    const bytes = new TextEncoder().encode(text);
+    expect(bytes[3]).toBe(0xc3); // lead byte
+    expect(bytes[4]).toBe(0xa9); // continuation byte
+
+    expect(
+      resolveFacets([linkFacet(0, 4, "https://a.example")], bytes),
+    ).toEqual([]);
+    // Starting mid-character is refused for the same reason.
+    expect(
+      resolveFacets([linkFacet(4, 9, "https://a.example")], bytes),
+    ).toEqual([]);
+    // The whole character is fine — this is a boundary check, not a ban.
+    expect(
+      resolveFacets([linkFacet(0, 5, "https://a.example")], bytes),
+    ).toEqual([{ start: 0, end: 5, href: "https://a.example" }]);
+  });
+
+  it("drops a range that spans a newline", () => {
+    // Every newline starts a new paragraph here, so a label containing one
+    // would be split across two blocks with its markdown torn in half — `[half`
+    // in one paragraph and `](url)` in the next, rendering as literal brackets.
+    const text = "first line\nsecond line";
+    const bytes = new TextEncoder().encode(text);
+    expect(
+      resolveFacets([linkFacet(6, 17, "https://a.example")], bytes),
+    ).toEqual([]);
+    // Wholly within one line, still fine.
+    expect(
+      resolveFacets([linkFacet(0, 5, "https://a.example")], bytes),
+    ).toEqual([{ start: 0, end: 5, href: "https://a.example" }]);
+  });
+
+  it("keeps the words when it refuses the facet", () => {
+    // The text is never the casualty — only the link decoration is dropped.
+    const post = ownPost(
+      postView({
+        rkey: "3j9",
+        text: "café time",
+        facets: [linkFacet(0, 4, "https://a.example")],
+      }),
+    );
+    expect(postTextMarkdown(post)).toEqual(["café time"]);
   });
 });
 
@@ -780,6 +838,73 @@ describe("assembleThread", () => {
     });
     expect(result?.postCount).toBe(MAX_THREAD_POSTS);
     expect(result?.truncated).toBe(true);
+  });
+
+  /**
+   * A SPINE CUT IN THE MIDDLE IS A CUT, not an ending.
+   *
+   * When the writer deleted a mid-thread post — or a block hides one — the
+   * AppView returns `#notFoundPost` / `#blockedPost`, which carries a uri and
+   * deliberately nothing else. There is no author on it, so there is no way to
+   * know whether it WAS the writer's own continuation. The spine used to walk
+   * straight past it and stop, and `truncated` stayed false: an import that
+   * dropped the second half of a piece while reporting it came across whole.
+   *
+   * Any early termination that is not a natural end-of-spine counts, so the
+   * unreadable node is reported and the picker says so.
+   */
+  it("reports a spine stopped by a deleted post as truncated", () => {
+    const data = {
+      thread: node(postView({ rkey: "3d1", text: "root" }), [
+        node(
+          postView({
+            rkey: "3d2",
+            text: "second",
+            parent: uri(ME, "3d1"),
+            createdAt: "2026-02-04T10:01:00.000Z",
+          }),
+          // The writer deleted the third post; everything past it is lost.
+          [{ $type: "app.bsky.feed.defs#notFoundPost", notFound: true }],
+        ),
+      ]),
+    };
+    const result = assembleThread(data, {
+      rootUri: uri(ME, "3d1"),
+      author: ME,
+    });
+    // What survived still comes across — the words are not the casualty.
+    expect(result?.postCount).toBe(2);
+    expect(result?.truncated).toBe(true);
+  });
+
+  it("reports a spine stopped by a blocked post as truncated", () => {
+    const data = {
+      thread: node(postView({ rkey: "3b1", text: "root" }), [
+        node(
+          postView({
+            rkey: "3b2",
+            text: "second",
+            parent: uri(ME, "3b1"),
+            createdAt: "2026-02-04T10:01:00.000Z",
+          }),
+          [{ $type: "app.bsky.feed.defs#blockedPost", blocked: true }],
+        ),
+      ]),
+    };
+    expect(
+      assembleThread(data, { rootUri: uri(ME, "3b1"), author: ME })?.truncated,
+    ).toBe(true);
+  });
+
+  it("does NOT call a thread that simply ended truncated", () => {
+    // The counter-case: without it the check above could pass by marking
+    // everything truncated, which would make the picker's warning meaningless.
+    const result = assembleThread(threadOf("root", "second", "third"), {
+      rootUri: ROOT,
+      author: ME,
+    });
+    expect(result?.postCount).toBe(3);
+    expect(result?.truncated).toBe(false);
   });
 
   it("carries the video flag up from whichever post held it", () => {
