@@ -35,6 +35,9 @@ type Row = {
   draftId: string;
   attempts: number;
   claimed: boolean;
+  /** The announce decision the row captured at scheduling time. The pass never
+   * looks at it — it belongs to the publisher — but it is part of a due row. */
+  announce?: boolean;
 };
 
 /** A store over plain objects, recording the terminal writes. */
@@ -53,7 +56,12 @@ function fakeStore(rows: Row[]) {
       return rows
         .filter((row) => !row.claimed)
         .slice(0, limit)
-        .map(({ id, did, draftId }) => ({ id, did, draftId }));
+        .map(({ id, did, draftId, announce }) => ({
+          id,
+          did,
+          draftId,
+          announce: announce ?? false,
+        }));
     },
     async claim(id) {
       const row = rows.find((r) => r.id === id);
@@ -204,8 +212,29 @@ describe("the per-tick cap is bounded AND reported", () => {
     expect(calls.dueLimits).toEqual([6]);
   });
 
-  it("defaults the cap to five", async () => {
-    expect(MAX_PUBLISHES_PER_TICK).toBe(5);
+  /**
+   * The cap is a share of the tick's 50-subrequest allowance, so it has to move
+   * when the cost of a publish moves. Announcing made each published post spend
+   * two more outbound writes — the announce createRecord and the putRecord that
+   * writes its ref back — taking one post from four fetches to six, or seven on
+   * a first-ever publish that also creates the publication.
+   *
+   * At five that is 5 x 7 = 35 of 50, leaving 15 for the five jobs that run
+   * after this one — while the follower sample alone asks for up to 50. At three
+   * it is 21, leaving 29. The number is pinned here because it is arithmetic
+   * about a platform limit, not a preference: if a future change makes a publish
+   * cheaper or dearer, this test is the thing that should fail.
+   */
+  it("defaults the cap to three, the share announcing left it", async () => {
+    expect(MAX_PUBLISHES_PER_TICK).toBe(3);
+    const FETCHES_PER_FIRST_PUBLISH = 7;
+    const TICK_SUBREQUEST_BUDGET = 50;
+    expect(MAX_PUBLISHES_PER_TICK * FETCHES_PER_FIRST_PUBLISH).toBe(21);
+    // Headroom for everything downstream, the follower sample included.
+    expect(
+      TICK_SUBREQUEST_BUDGET -
+        MAX_PUBLISHES_PER_TICK * FETCHES_PER_FIRST_PUBLISH,
+    ).toBeGreaterThanOrEqual(29);
     const { store, calls } = fakeStore([row("a")]);
     await runScheduledPublishPass({
       store,
@@ -390,5 +419,80 @@ describe("nothing is stranded, and nothing accumulates", () => {
       failed: 0,
       pruned: false,
     });
+  });
+});
+
+/**
+ * Announce failures are collected, not swallowed, and not confused with publish
+ * failures.
+ *
+ * The pass has one channel for "this post did not go out" — the row, in words
+ * the writer reads — and it is the wrong one for "this post went out but its
+ * announcement did not". Writing the second onto the row would make the posts
+ * manager report a live post as broken, so the pass hands those sentences back
+ * to its caller, which puts them on the operator alert list (~/lib/scheduled).
+ */
+describe("announce failures ride out separately", () => {
+  const withProblem = (problem: string): PublishAttempt => ({
+    ok: true,
+    rkey: "3lyk73wxnok2f",
+    announceProblem: problem,
+  });
+
+  it("collects the problem while still marking the row published", async () => {
+    const { store, calls } = fakeStore([row("a")]);
+    const result = await runScheduledPublishPass({
+      store,
+      publish: async () => withProblem("row a could not be announced"),
+      now: NOW,
+    });
+    // The post went out. That is what the row says, and it is the truth.
+    expect(calls.published).toEqual([{ id: "a", rkey: "3lyk73wxnok2f" }]);
+    expect(calls.failed).toEqual([]);
+    expect(result.published).toBe(1);
+    expect(result.failed).toBe(0);
+    // And the announce problem is still somebody's to hear about.
+    expect(result.announceFailures).toEqual(["row a could not be announced"]);
+  });
+
+  it("stays empty when every announce did what it was asked", async () => {
+    const { store } = fakeStore([row("a"), row("b")]);
+    const result = await runScheduledPublishPass({
+      store,
+      publish: async () => published,
+      now: NOW,
+    });
+    expect(result.published).toBe(2);
+    expect(result.announceFailures).toEqual([]);
+  });
+
+  it("collects one per post rather than one per tick", async () => {
+    const { store } = fakeStore([row("a"), row("b")]);
+    const result = await runScheduledPublishPass({
+      store,
+      publish: async (post) => withProblem(`${post.id} could not be announced`),
+      now: NOW,
+    });
+    expect(result.announceFailures).toEqual([
+      "a could not be announced",
+      "b could not be announced",
+    ]);
+  });
+
+  it("never collects one for a post that failed to publish at all", async () => {
+    // There is nothing to announce, and the writer is already being told the
+    // real problem on their row.
+    const { store, calls } = fakeStore([row("a")]);
+    const result = await runScheduledPublishPass({
+      store,
+      publish: async () => ({
+        ok: false as const,
+        retry: false,
+        reason: "Your data server refused the post.",
+      }),
+      now: NOW,
+    });
+    expect(calls.failed).toHaveLength(1);
+    expect(result.announceFailures).toEqual([]);
   });
 });

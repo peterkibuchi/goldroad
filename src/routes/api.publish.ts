@@ -5,10 +5,22 @@ import type { OAuthSession } from "@atcute/oauth-node-client";
 import { createFileRoute } from "@tanstack/react-router";
 import { drizzle } from "drizzle-orm/d1";
 
-import { type AssociatedRef, buildAnnouncePost } from "~/lib/announce";
+import {
+  type AnnounceIntent,
+  type AssociatedRef,
+  buildAnnouncePost,
+  createAnnouncement,
+  hasAnnouncement,
+} from "~/lib/announce";
+import {
+  announceDefaultFor,
+  selectWriterPrefs,
+  setAutoAnnounce,
+} from "~/lib/announce-prefs";
 import {
   getRecordEntry,
   isDid,
+  isInsufficientScope,
   listRecordPages,
   parseAtUri,
   RKEY_RE,
@@ -64,6 +76,8 @@ import {
   withBasicTheme,
 } from "~/lib/publish";
 import {
+  type AnnounceReport,
+  announceNewDocument,
   findOwnPublication,
   publishStoredDraft,
   resolvePublicationSite,
@@ -115,7 +129,10 @@ function backToDraft(draftId: string, error: string): Response {
  * without it the two are indistinguishable to anything downstream (the page
  * reads it to capture adoption of a specific feature, not to change the copy).
  */
-function backToSettings(error?: string, kind?: "theme"): Response {
+function backToSettings(
+  error?: string,
+  kind?: "theme" | "announcing",
+): Response {
   if (error) return redirectTo(`/settings?error=${encodeURIComponent(error)}`);
   return redirectTo(
     kind ? `/settings?saved=1&kind=${kind}` : "/settings?saved=1",
@@ -162,15 +179,58 @@ function warmingReaderPages(
 }
 
 /**
- * Was this XRPC write rejected for missing OAuth permission? Tokens carry the
- * scope granted at consent time, so sessions created before a scope addition
- * (delete action, app.bsky.feed.post — see SCOPES in ~/lib/oauth) hit this.
- * The PDS answers 401/403 (error naming varies across implementations — the
- * session was just restored, so a 401 here is a stale grant, not a stale
- * token). Fixed by a fresh sign-in: re-consent picks up the current scope.
+ * The per-post announce decision, off the form.
+ *
+ * ABSENT MEANS NO. Every surface that can publish renders the checkbox — the
+ * editor's publish form and the schedule panel beside it, both pre-filled from
+ * the writer's account setting — so a request that carries nothing carries an
+ * unticked box, which is a writer who said no. Reading the account setting as
+ * the fallback here would mean a caller could announce by omission, and
+ * "publishing quietly put a post in my followers' timelines" is the one failure
+ * this feature cannot afford. Silence is the safe answer, so silence is the
+ * answer.
+ *
+ * Nothing about this mutates the account setting: it is a pre-fill, not a
+ * two-way binding.
  */
-function isInsufficientScope(res: { ok: boolean; status: number }): boolean {
-  return !res.ok && (res.status === 401 || res.status === 403);
+function announceRequested(form: FormData): boolean {
+  return form.get("announce") === "1";
+}
+
+/**
+ * A published post's redirect, carrying whatever announcing did.
+ *
+ * The states are separate params rather than one, because the notices they drive
+ * answer different questions: `announced` is "your followers have it, here it
+ * is", `announceFailed` is "the post is live and the announcement is not, and
+ * here is what to do", and none of them is present when the writer turned
+ * announcing off — the absence is the honest state, not a message.
+ *
+ * `announcedNoLink` is the fourth state and the reason this isn't a single param:
+ * the announce SUCCEEDED but its rkey didn't parse out of the URI the PDS
+ * answered with (`rkeyFromUri` → null). Reporting that as a plain publish was a
+ * small lie with a real cost — the notice would offer "Announce" for a post that
+ * has already been announced, and the server, seeing `bskyPostRef` on the
+ * document, would refuse it as `announce_already`. A control whose only outcome
+ * is a refusal is exactly what the published notice's doc says must not render,
+ * so this says "announced, and we can't link it" instead: no offer, no dead
+ * link, no fiction.
+ */
+function publishedQuery(
+  rkey: string,
+  announce: AnnounceReport,
+): Record<string, string> {
+  if (announce.state === "announced")
+    return announce.postRkey
+      ? { published: rkey, announced: announce.postRkey }
+      : { published: rkey, announcedNoLink: "1" };
+  if (announce.state === "failed")
+    return {
+      published: rkey,
+      announceFailed:
+        announce.reason === "scope" ? "announce_scope" : "announce_failed",
+    };
+  return { published: rkey };
 }
 
 /**
@@ -248,6 +308,7 @@ export const Route = createFileRoute("/api/publish")({
           intentField === "uploadImage" ||
           intentField === "schedule" ||
           intentField === "unschedule" ||
+          intentField === "announce-prefs" ||
           intentField === "subscribe" ||
           intentField === "unsubscribe" ||
           intentField === "publish-now"
@@ -271,6 +332,9 @@ export const Route = createFileRoute("/api/publish")({
         // the race documented in ~/lib/scheduled-posts) for no write at all.
         if (intent === "schedule") return scheduleDraft(form, did);
         if (intent === "unschedule") return unscheduleDraft(form, did);
+        // Same reasoning, one row in our own D1: saving a preference must not
+        // spend a token refresh on the writer's PDS.
+        if (intent === "announce-prefs") return saveAnnouncePrefs(form, did);
 
         const client = createOAuthClient(url.origin);
         let session: OAuthSession;
@@ -355,6 +419,13 @@ export const Route = createFileRoute("/api/publish")({
  * Times arrive as the writer's wall clock plus the zone offset in effect AT
  * THAT MOMENT, and are converted once, here, at the write door
  * (~/lib/schedule-time). Only UTC is stored.
+ *
+ * THE ANNOUNCE DECISION IS THE ONE THING SNAPSHOT HERE. Everything else is read
+ * from the draft at publish time so editing a scheduled draft changes what goes
+ * out; whether it reaches the writer's followers is a decision they made with
+ * this post in front of them, and it rides the row (see `announce` in
+ * ~/db/schema) so the cron never has to guess it from a setting they may have
+ * changed since, for a different post.
  */
 async function scheduleDraft(form: FormData, did: string): Promise<Response> {
   const draftId = String(form.get("draftId") ?? "");
@@ -387,6 +458,7 @@ async function scheduleDraft(form: FormData, did: string): Promise<Response> {
       did,
       draftId,
       dueAt: new Date(dueAt),
+      announce: announceRequested(form),
     });
   } catch (err) {
     console.error("schedule write failed", err);
@@ -395,6 +467,33 @@ async function scheduleDraft(form: FormData, did: string): Promise<Response> {
   // Land on the queue, not back in the editor: the writer's next question is
   // "is it really going out, and when", and this is the page that answers it.
   return backToDashboard({ tab: "scheduled", scheduled: "1" });
+}
+
+/**
+ * `intent=announce-prefs` — the account-level "announce new posts" switch on
+ * /settings.
+ *
+ * NOT A PDS WRITE, and deliberately not a record. This is an instruction to
+ * Goldroad about Goldroad's own behaviour: it belongs in our database, not
+ * broadcast into the writer's public repo where a theme legitimately lives (see
+ * `writerPrefs` in ~/db/schema). It runs before the session restore for the same
+ * reason scheduling does — saving a checkbox must not spend a refresh token.
+ *
+ * A checkbox that is off submits nothing, which is precisely the value we want
+ * to store, so absence is read as "off" rather than as "no change".
+ */
+async function saveAnnouncePrefs(
+  form: FormData,
+  did: string,
+): Promise<Response> {
+  const on = form.get("autoAnnounce") === "1";
+  try {
+    await setAutoAnnounce(drizzle(env.DB), did, on);
+  } catch (err) {
+    console.error("announce preference save failed", err);
+    return backToSettings("announce_prefs_failed");
+  }
+  return backToSettings(undefined, "announcing");
 }
 
 /** `intent=unschedule` — cancel. The row is deleted (see cancelSchedule), so
@@ -609,7 +708,7 @@ async function publishDocument({
   // same resolution the scheduled and publish-now paths use, so all three
   // attach documents identically (~/lib/publish-document).
   const rkey = originalAt ? generateTid(originalAt.getTime()) : generateTid();
-  const site = await resolvePublicationSite({
+  const publication = await resolvePublicationSite({
     rpc,
     did,
     ident,
@@ -665,7 +764,7 @@ async function publishDocument({
     title,
     body: publishBody,
     dek,
-    site,
+    site: publication.site,
     path: `/${rkey}`,
     coverImage: coverBlob,
     // Rehosted blobs need a record reference exactly as uploaded ones do.
@@ -716,11 +815,45 @@ async function publishDocument({
     ]);
   }
 
-  // Success lands on the dashboard: the new post on top, a "view it live"
-  // link, and the explicit opt-in "Announce on Bluesky" action. The new page
-  // and the archive index are warmed behind that redirect, so the link the
-  // writer is about to share is already rendered at the edge.
-  return warmingReaderPages(backToDashboard({ published: rkey }), {
+  // ---- Announce, LAST, and never at the publish's expense.
+  //
+  // The post is already live in the writer's repo and every piece of
+  // bookkeeping that follows from it is done. Nothing below can change that:
+  // `announceNewDocument` reports rather than throws, and the redirect says
+  // "published" either way. A Bluesky card that didn't happen is a smaller
+  // problem than a publish that appears to have failed — and the writer is
+  // standing right here, so the notice on the other side of this redirect is
+  // where they find out, with the button to do it by hand.
+  //
+  // FIRST PUBLISH ONLY: this is the create branch. The edit path above returns
+  // long before here, and must keep doing so — see the write-back residual on
+  // `createAnnouncement` for what an edit-time auto announce would cost.
+  const intent: AnnounceIntent = {
+    requested: announceRequested(form),
+    source: "publish",
+  };
+  const announce = await announceNewDocument({
+    rpc,
+    db: drizzle(env.DB),
+    did,
+    ident,
+    rkey,
+    record,
+    created: { uri: res.data.uri, cid: res.data.cid },
+    publication,
+    origin,
+    intent,
+    imported: importRow !== undefined,
+  }).catch((err) => {
+    console.error("auto announce threw after publish", rkey, err);
+    return { state: "failed", reason: "refused" } as const;
+  });
+
+  // Success lands on the dashboard: the new post on top, a "view it live" link,
+  // and — when announcing was off or didn't land — the button to announce it by
+  // hand. The new page and the archive index are warmed behind that redirect, so
+  // the link the writer is about to share is already rendered at the edge.
+  return warmingReaderPages(backToDashboard(publishedQuery(rkey, announce)), {
     origin,
     ident,
     rkey,
@@ -932,6 +1065,14 @@ async function unsubscribeFromPublication({
  * rather than races. The cost of taking the row first is that a publish which
  * then fails leaves the writer with a draft and no schedule (they are told, and
  * the draft is untouched); the cost of the other order is publishing twice.
+ *
+ * WHICH IS ALSO A TRAP, and the announce decision walked straight into it. That
+ * decision is captured ON THE SCHEDULE ROW, and the first thing this function
+ * does is delete that row — so it must be read out of the delete's RETURNING
+ * clause (see `deleteUnclaimedSchedulesForDraft`) and not looked up afterwards,
+ * because afterwards there is nothing to look up. Reversing the two statements
+ * to make the read easy is not an option: the delete-first ordering is the
+ * double-publish guard.
  */
 async function publishNow({
   rpc,
@@ -966,6 +1107,20 @@ async function publishNow({
   if (!draft)
     return backToDashboard({ error: "draft_not_found", tab: "scheduled" });
 
+  // The captured decision, taken out of the row before it was deleted above.
+  //
+  // No row released means there was no schedule — "publish now" is reachable
+  // from the queue, but a plain draft published this way has never had a
+  // decision captured for it. The writer's account setting is the honest answer
+  // there and only there: they are pressing a button in front of us, this second,
+  // which is exactly the situation the cron is never in. A read that flakes falls
+  // back to the same default an absent row means (~/lib/announce-prefs).
+  let requested = released?.announce ?? false;
+  if (!released) {
+    const [prefs] = await selectWriterPrefs(db, did).catch(() => []);
+    requested = announceDefaultFor(prefs);
+  }
+
   const outcome = await publishStoredDraft({
     rpc,
     db,
@@ -975,14 +1130,14 @@ async function publishNow({
     origin,
     origins,
     draft,
+    announce: { requested, source: "publish-now" },
   });
   if (!outcome.ok)
     return backToDashboard({ error: outcome.code, tab: "scheduled" });
-  return warmingReaderPages(backToDashboard({ published: outcome.rkey }), {
-    origin,
-    ident,
-    rkey: outcome.rkey,
-  });
+  return warmingReaderPages(
+    backToDashboard(publishedQuery(outcome.rkey, outcome.announce)),
+    { origin, ident, rkey: outcome.rkey },
+  );
 }
 
 /**
@@ -1026,11 +1181,22 @@ async function deleteDocument({ rpc, form, did, ident, origin }: WriteContext) {
 }
 
 /**
- * "Announce on Bluesky": creates an app.bsky.feed.post in the writer's repo —
- * title + canonical URL with a link facet, plus an app.bsky.embed.external
- * carrying associatedRefs strongRefs to the standard.site records (what makes
- * Bluesky render the enriched reader card — see ~/lib/announce). Explicit
- * user action only; nothing here is called from a publish flow automatically.
+ * `intent=announce` — the BY-HAND announce: the row action on the dashboard, and
+ * the button in the published notice when the automatic one didn't fire.
+ *
+ * It exists alongside the auto path rather than being replaced by it, because a
+ * writer has to be able to announce a post the auto path deliberately skipped
+ * (an import they do want to share) or that it failed on. It reads the document
+ * back from the PDS because an rkey is genuinely all it has — the auto path,
+ * which already holds the record it just wrote, does not (see
+ * `announceNewDocument`).
+ *
+ * IDEMPOTENT UNLESS A HUMAN INSISTS. A document carrying a `bskyPostRef` has
+ * been announced, and announcing again is refused — `force=1`, which only the
+ * confirmed "Announce again" sends, is the one way past it. The reason is the
+ * scope we hold: `app.bsky.feed.post` is create-only (~/lib/oauth-scopes), so a
+ * duplicate card is one WE cannot take down, and the writer has to leave the app
+ * to do it themselves.
  */
 async function announceDocument({
   rpc,
@@ -1043,6 +1209,7 @@ async function announceDocument({
   const rkey = String(form.get("rkey") ?? "");
   if (!RKEY_RE.test(rkey)) return backToDashboard({ error: "missing_rkey" });
   if (!pds) return backToDashboard({ error: "announce_failed:pds_unresolved" });
+  const force = form.get("force") === "1";
 
   let doc: Awaited<ReturnType<typeof getRecordEntry<StandardDocument>>>;
   try {
@@ -1055,6 +1222,12 @@ async function announceDocument({
   } catch {
     return backToDashboard({ error: "not_found" });
   }
+
+  // Checked HERE as well as inside `createAnnouncement`, and not only there: the
+  // work between this line and that one is two PDS reads and a record build, and
+  // a double-submitted form should not pay for them to be told no.
+  if (!force && hasAnnouncement(doc.value))
+    return backToDashboard({ error: "announce_already" });
 
   // Resolve the document's publication when `site` is an at:// URI — it gives
   // both the canonical-URL base and the publication strongRef. Only same-repo
@@ -1108,53 +1281,36 @@ async function announceDocument({
     thumb: thumbFromCover(doc.value.coverImage) ?? undefined,
   });
 
-  const res = await rpc.post("com.atproto.repo.createRecord", {
-    input: { repo: did, collection: "app.bsky.feed.post", record: post },
+  // One write path, shared with the auto one (~/lib/announce): the create, the
+  // strongRef write-back, and the swapRecord that stops it clobbering a
+  // concurrent edit all live there, so there is one place a duplicate could ever
+  // come from and one place that refuses to make one.
+  const result = await createAnnouncement({
+    rpc,
+    did,
+    rkey,
+    post,
+    document: {
+      record: { ...doc.value } as Record<string, unknown>,
+      cid: doc.cid,
+    },
+    force,
   });
-  if (!res.ok) {
-    if (isInsufficientScope(res))
+  if (!result.ok) {
+    if (result.reason === "already_announced")
+      return backToDashboard({ error: "announce_already" });
+    if (result.reason === "scope")
       return backToDashboard({ error: "announce_scope" });
-    console.error("announce createRecord failed", res.status, res.data);
-    return backToDashboard({ error: `announce_failed:${res.data.error}` });
+    return backToDashboard({
+      error: `announce_failed:${result.detail ?? "refused"}`,
+    });
   }
 
-  // Honest announce status (auto-announce is deferred): write the created post's
-  // strongRef into the document's lexicon-native `bskyPostRef` slot, so the
-  // dashboard can show "Announced" and the state travels with the record
-  // (readable by any app, not just ours). This is NOT an edit of the
-  // document's content — every field including a foreign `content` union is
-  // preserved — so the not_editable rule doesn't apply.
-  // swapRecord pins the version we read: a concurrent edit wins, we never
-  // clobber. Requires doc.cid — without it swapRecord would be undefined and
-  // the put unconditional, the one way this could stomp a concurrent edit.
-  // Best-effort — the announce itself already succeeded, so a failed
-  // write-back only costs status honesty; the writer can announce again.
-  if (res.data.uri && res.data.cid && doc.cid) {
-    const writeBack = await rpc
-      .post("com.atproto.repo.putRecord", {
-        input: {
-          repo: did,
-          collection: "site.standard.document",
-          rkey,
-          record: {
-            ...doc.value,
-            $type: "site.standard.document",
-            bskyPostRef: { uri: res.data.uri, cid: res.data.cid },
-          },
-          swapRecord: doc.cid,
-        },
-      })
-      .catch(() => null);
-    if (!writeBack?.ok)
-      console.warn("bskyPostRef write-back failed", writeBack?.data);
-  }
-
-  const postRkey = rkeyFromUri(res.data.uri);
   // The document now carries a bskyPostRef, which is what unlocks the counts and
   // the reply thread on the reading surface — and this is the moment the link is
   // about to be seen by strangers. Re-render it so the first scrape lands warm.
   return warmingReaderPages(
-    backToDashboard(postRkey ? { announced: postRkey } : {}),
+    backToDashboard(result.postRkey ? { announced: result.postRkey } : {}),
     { origin, ident, rkey },
   );
 }

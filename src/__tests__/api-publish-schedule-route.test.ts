@@ -37,8 +37,20 @@ const publishing = vi.hoisted(() => ({
   publishStoredDraft: vi.fn(),
   resolvePublicationSite: vi.fn(),
   findOwnPublication: vi.fn(),
+  announceNewDocument: vi.fn(),
 }));
 vi.mock("~/lib/publish-document", () => publishing);
+
+/** The announce preference — read only to PRE-FILL a control, never to decide
+ * anything on this path. */
+const prefs = vi.hoisted(() => ({
+  selectWriterPrefs: vi.fn(),
+  setAutoAnnounce: vi.fn(),
+}));
+vi.mock("~/lib/announce-prefs", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/announce-prefs")>()),
+  ...prefs,
+}));
 
 const atproto = vi.hoisted(() => ({
   resolveDidIdentity: vi.fn(),
@@ -130,6 +142,7 @@ beforeEach(() => {
   posted.length = 0;
   for (const fn of Object.values(schedules)) fn.mockReset();
   for (const fn of Object.values(publishing)) fn.mockReset();
+  for (const fn of Object.values(prefs)) fn.mockReset();
   for (const fn of Object.values(store)) fn.mockReset();
   restore.mockClear();
   store.selectDraft.mockResolvedValue([draftRow()]);
@@ -138,18 +151,32 @@ beforeEach(() => {
   schedules.cancelSchedule.mockResolvedValue([{ id: ROW_ID }]);
   schedules.deleteSchedulesForDraft.mockResolvedValue([{ id: ROW_ID }]);
   schedules.deleteUnclaimedSchedulesForDraft.mockResolvedValue([
-    { id: ROW_ID, status: "failed" },
+    // `announce` rides out on this RETURNING clause because the row it came
+    // from is deleted by the same statement — see the publish-now trap below.
+    { id: ROW_ID, status: "failed", announce: true },
   ]);
   schedules.selectScheduleForDraft.mockResolvedValue([]);
   publishing.publishStoredDraft.mockResolvedValue({
     ok: true,
     rkey: "3lyk73wxnok2f",
+    announce: { state: "skipped", reason: "not_requested" },
   });
+  publishing.announceNewDocument.mockResolvedValue({
+    state: "skipped",
+    reason: "not_requested",
+  });
+  prefs.selectWriterPrefs.mockResolvedValue([]);
+  prefs.setAutoAnnounce.mockResolvedValue([{ autoAnnounce: true }]);
   // The shared core is mocked here; the interactive publish still calls its
   // site resolution for real, so it needs an answer.
-  publishing.resolvePublicationSite.mockResolvedValue(
-    `at://${DID}/site.standard.publication/3lyk73wxnok2f`,
-  );
+  publishing.resolvePublicationSite.mockResolvedValue({
+    site: `at://${DID}/site.standard.publication/3lyk73wxnok2f`,
+    publicationUrl: "https://trygoldroad.com/@writer.example",
+    ref: {
+      uri: `at://${DID}/site.standard.publication/3lyk73wxnok2f`,
+      cid: "bafyreipublication",
+    },
+  });
   atproto.resolveDidIdentity.mockResolvedValue({
     handle: "writer.example",
     pds: "https://pds.example.com",
@@ -328,11 +355,15 @@ describe("intent=publish-now", () => {
     const order: string[] = [];
     schedules.deleteUnclaimedSchedulesForDraft.mockImplementation(async () => {
       order.push("dequeue");
-      return [{ id: ROW_ID, status: "failed" }];
+      return [{ id: ROW_ID, status: "failed", announce: true }];
     });
     publishing.publishStoredDraft.mockImplementation(async () => {
       order.push("publish");
-      return { ok: true, rkey: "3lyk73wxnok2f" };
+      return {
+        ok: true,
+        rkey: "3lyk73wxnok2f",
+        announce: { state: "skipped", reason: "not_requested" },
+      };
     });
     await call(fields);
     // A row that no longer exists cannot be claimed by a tick a moment later.
@@ -422,5 +453,177 @@ describe("intent=document — pressing Publish on a post you had scheduled", () 
       DID,
       DRAFT_ID,
     );
+  });
+});
+
+/**
+ * The announce decision, captured when the writer schedules and read back out
+ * when something publishes.
+ *
+ * WHY IT IS CAPTURED AT ALL. Everything else about a scheduled post is a
+ * reference to a draft, so editing the draft changes what goes out — which is
+ * what a writer means by "this piece publishes on Tuesday". Whether it reaches
+ * their followers is different: they decided that with this post in front of
+ * them, and a cron re-reading their account setting at 09:00 would apply a
+ * preference they may have changed on Wednesday, for a different post, to this
+ * one.
+ */
+describe("the announce decision on a schedule", () => {
+  const fields = {
+    intent: "schedule",
+    draftId: DRAFT_ID,
+    dueAtLocal: "2026-08-04T09:00",
+    dueTzOffset: EAT,
+  };
+
+  function capturedAnnounce(): boolean {
+    const row = schedules.upsertSchedule.mock.calls[0]?.[1] as
+      | { announce?: boolean }
+      | undefined;
+    if (!row) throw new Error("nothing was scheduled");
+    return row.announce as boolean;
+  }
+
+  it("stores the decision the publish surface submitted", async () => {
+    await call({ ...fields, announce: "1" });
+    expect(capturedAnnounce()).toBe(true);
+  });
+
+  it("stores an explicit no as a no", async () => {
+    await call({ ...fields, announce: "0" });
+    expect(capturedAnnounce()).toBe(false);
+  });
+
+  it("reads a MISSING decision as no, never as the account setting", async () => {
+    // Every surface that can schedule renders the checkbox, so nothing legitimate
+    // omits the field. Falling back to the account setting here would let a
+    // caller announce by omission, and "scheduling quietly posted to my
+    // followers" is the one failure this feature cannot afford.
+    await call(fields);
+    expect(capturedAnnounce()).toBe(false);
+    expect(prefs.selectWriterPrefs).not.toHaveBeenCalled();
+  });
+
+  it("never restores a session to save it", async () => {
+    // Still true with the new field: this writes one row in our own database.
+    await call({ ...fields, announce: "1" });
+    expect(restore).not.toHaveBeenCalled();
+    expect(posted).toHaveLength(0);
+  });
+});
+
+/**
+ * THE TRAP, pinned. "Publish now" deletes the schedule row before it reads the
+ * draft, because delete-first is the entire double-publish guard on that path.
+ * The announce decision lives on that row — so it has to leave on the delete's
+ * RETURNING clause, or it is gone by the time anything could ask for it.
+ *
+ * A test that only checked "the right value was used" would pass against a
+ * lookup placed after the delete on a mock that still answers. So these check
+ * the value AND that no second lookup was made.
+ */
+describe("intent=publish-now — the captured decision survives the delete", () => {
+  const fields = { intent: "publish-now", draftId: DRAFT_ID };
+
+  function intentOf(): { requested: boolean; source: string } {
+    const input = publishing.publishStoredDraft.mock.calls[0][0] as {
+      announce: { requested: boolean; source: string };
+    };
+    return input.announce;
+  }
+
+  it("publishes with the decision the deleted row was carrying", async () => {
+    schedules.deleteUnclaimedSchedulesForDraft.mockResolvedValue([
+      { id: ROW_ID, status: "pending", announce: true },
+    ]);
+    await call(fields);
+    expect(intentOf()).toEqual({ requested: true, source: "publish-now" });
+    // The row was the only source. Asking the account setting instead would
+    // publish a preference the writer never applied to this post.
+    expect(prefs.selectWriterPrefs).not.toHaveBeenCalled();
+  });
+
+  it("honours a row that captured 'no', even when the account setting says yes", async () => {
+    prefs.selectWriterPrefs.mockResolvedValue([{ autoAnnounce: true }]);
+    schedules.deleteUnclaimedSchedulesForDraft.mockResolvedValue([
+      { id: ROW_ID, status: "pending", announce: false },
+    ]);
+    await call(fields);
+    expect(intentOf().requested).toBe(false);
+    expect(prefs.selectWriterPrefs).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the account setting ONLY when there was no row to capture from", async () => {
+    // A plain draft published this way never had a decision captured for it, and
+    // the writer is pressing the button in front of us — which is exactly the
+    // situation the cron is never in.
+    schedules.deleteUnclaimedSchedulesForDraft.mockResolvedValue([]);
+    schedules.selectScheduleForDraft.mockResolvedValue([]);
+    prefs.selectWriterPrefs.mockResolvedValue([{ autoAnnounce: false }]);
+    await call(fields);
+    expect(prefs.selectWriterPrefs).toHaveBeenCalledTimes(1);
+    expect(intentOf().requested).toBe(false);
+  });
+
+  it("treats no row and no readable setting as the default: on", async () => {
+    schedules.deleteUnclaimedSchedulesForDraft.mockResolvedValue([]);
+    schedules.selectScheduleForDraft.mockResolvedValue([]);
+    prefs.selectWriterPrefs.mockRejectedValue(new Error("d1 down"));
+    await call(fields);
+    expect(intentOf().requested).toBe(true);
+  });
+
+  it("names the announced post in the redirect when the publish announced it", async () => {
+    publishing.publishStoredDraft.mockResolvedValue({
+      ok: true,
+      rkey: "3lyk73wxnok2f",
+      announce: {
+        state: "announced",
+        postRkey: "3lz9999999999",
+        wroteBack: true,
+      },
+    });
+    const res = await call(fields);
+    expect(location(res).searchParams.get("published")).toBe("3lyk73wxnok2f");
+    expect(location(res).searchParams.get("announced")).toBe("3lz9999999999");
+  });
+
+  it("says the post is live and the announce is not, rather than reporting a failure", async () => {
+    publishing.publishStoredDraft.mockResolvedValue({
+      ok: true,
+      rkey: "3lyk73wxnok2f",
+      announce: {
+        state: "failed",
+        reason: "refused",
+        detail: "InvalidRequest",
+      },
+    });
+    const res = await call(fields);
+    const url = location(res);
+    expect(url.searchParams.get("published")).toBe("3lyk73wxnok2f");
+    expect(url.searchParams.get("announceFailed")).toBe("announce_failed");
+    // NOT `error=`: the publish succeeded, and a writer whose post is live must
+    // never be told it failed.
+    expect(url.searchParams.get("error")).toBeNull();
+  });
+
+  it("names an insufficient grant separately, so the page can offer re-connect", async () => {
+    publishing.publishStoredDraft.mockResolvedValue({
+      ok: true,
+      rkey: "3lyk73wxnok2f",
+      announce: { state: "failed", reason: "scope" },
+    });
+    const res = await call(fields);
+    expect(location(res).searchParams.get("announceFailed")).toBe(
+      "announce_scope",
+    );
+  });
+
+  it("says nothing at all when announcing was simply off", async () => {
+    const res = await call(fields);
+    const url = location(res);
+    expect(url.searchParams.get("published")).toBe("3lyk73wxnok2f");
+    expect(url.searchParams.get("announced")).toBeNull();
+    expect(url.searchParams.get("announceFailed")).toBeNull();
   });
 });

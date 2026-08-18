@@ -47,7 +47,9 @@ import {
 
 const DID = "did:plc:fake2222222222writer2222";
 const DRAFT_ID = "11111111-2222-4333-8444-555555555555";
-const POST = { id: "row-1", did: DID, draftId: DRAFT_ID };
+/** A due row as the cron reads it. `announce` is the decision captured when
+ * the writer scheduled the post — the cron never re-derives it. */
+const POST = { id: "row-1", did: DID, draftId: DRAFT_ID, announce: true };
 // biome-ignore lint/suspicious/noExplicitAny: the store calls are all mocked
 const db = {} as any;
 
@@ -74,6 +76,11 @@ beforeEach(() => {
   publishing.publishStoredDraft.mockResolvedValue({
     ok: true,
     rkey: "3lyk73wxnok2f",
+    announce: {
+      state: "announced",
+      postRkey: "3lz9999999999",
+      wroteBack: true,
+    },
   });
   vi.spyOn(console, "warn").mockImplementation(() => {});
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -150,6 +157,7 @@ describe("publishing", () => {
     expect(await publishDuePost(db, POST)).toEqual({
       ok: true,
       rkey: "3lyk73wxnok2f",
+      announceProblem: undefined,
     });
   });
 
@@ -193,5 +201,109 @@ describe("publishing", () => {
     const result = await publishDuePost(db, { ...POST, did: "not-a-did" });
     expect(result).toMatchObject({ ok: false, retry: false });
     expect(createOAuthClient).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Announcing, from a tick with nobody watching.
+ *
+ * Two rules, and both are about a decision made hours earlier by somebody who
+ * has since gone to bed:
+ *
+ *  1. THE DECISION RIDES THE ROW. The cron publishes what the writer chose when
+ *     they scheduled the post, not what their account setting says at 09:00 — a
+ *     preference changed on Wednesday for a different post must not reach into
+ *     Tuesday's schedule. So nothing on this path may read the writer's
+ *     preferences at all, and the value handed down comes from `post.announce`.
+ *  2. A FAILURE IS NOT SILENT AND NOT ON THE ROW. The post published; the row is
+ *     about to say so. The announce failure therefore travels out as an operator
+ *     sentence, because the only other option is a log line at 09:00.
+ */
+describe("announcing a scheduled post", () => {
+  function intentOf(): { requested: boolean; source: string } {
+    const input = publishing.publishStoredDraft.mock.calls[0][0] as {
+      announce: { requested: boolean; source: string };
+    };
+    return input.announce;
+  }
+
+  it("hands down the decision captured on the row, not a fresh reading", async () => {
+    await publishDuePost(db, POST);
+    expect(intentOf()).toEqual({ requested: true, source: "schedule" });
+  });
+
+  it("stays quiet for a row scheduled with announcing off", async () => {
+    await publishDuePost(db, { ...POST, announce: false });
+    expect(intentOf()).toEqual({ requested: false, source: "schedule" });
+  });
+
+  it("reports nothing when a skip was the point", async () => {
+    // "The writer turned it off" and "this was an import" are the guards
+    // working. Alerting on those would train an operator to ignore the channel.
+    for (const reason of ["not_requested", "imported", "over_budget"]) {
+      publishing.publishStoredDraft.mockResolvedValue({
+        ok: true,
+        rkey: "3lyk73wxnok2f",
+        announce: { state: "skipped", reason },
+      });
+      expect(await publishDuePost(db, POST)).toEqual({
+        ok: true,
+        rkey: "3lyk73wxnok2f",
+        announceProblem: undefined,
+      });
+    }
+  });
+
+  it("surfaces a refused announce as an operator sentence, still reporting the publish", async () => {
+    publishing.publishStoredDraft.mockResolvedValue({
+      ok: true,
+      rkey: "3lyk73wxnok2f",
+      announce: {
+        state: "failed",
+        reason: "refused",
+        detail: "InvalidRequest",
+      },
+    });
+    const result = await publishDuePost(db, POST);
+    // The post went out. That is not in doubt and must not be reported as
+    // anything else — a writer whose post is live must never be told it failed.
+    expect(result).toMatchObject({ ok: true, rkey: "3lyk73wxnok2f" });
+    expect((result as { announceProblem?: string }).announceProblem).toBe(
+      "scheduled post row-1 published but its announce was refused (InvalidRequest)",
+    );
+  });
+
+  it("names an insufficient grant as such rather than as a rejection", async () => {
+    // A grant that predates the Bluesky post scope is fixed by the writer
+    // signing in again; a refused record is not. An operator reading one line
+    // should not have to guess which of the two they are looking at.
+    publishing.publishStoredDraft.mockResolvedValue({
+      ok: true,
+      rkey: "3lyk73wxnok2f",
+      announce: { state: "failed", reason: "scope" },
+    });
+    const result = (await publishDuePost(db, POST)) as {
+      announceProblem?: string;
+    };
+    expect(result.announceProblem).toMatch(/sign-in predates/i);
+  });
+
+  it("surfaces a lost write-back — the state a later duplicate comes from", async () => {
+    // The post exists and the document does not reference it, so nothing
+    // downstream knows it was announced. Pressing "Announce" then makes a
+    // second card, and the create-only scope means nobody here can delete it.
+    publishing.publishStoredDraft.mockResolvedValue({
+      ok: true,
+      rkey: "3lyk73wxnok2f",
+      announce: {
+        state: "announced",
+        postRkey: "3lz9999999999",
+        wroteBack: false,
+      },
+    });
+    const result = (await publishDuePost(db, POST)) as {
+      announceProblem?: string;
+    };
+    expect(result.announceProblem).toMatch(/could not be written back/i);
   });
 });

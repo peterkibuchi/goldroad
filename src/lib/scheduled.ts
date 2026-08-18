@@ -11,13 +11,20 @@
  *    posts per tick — and says in its log line when it left a queue behind.
  *
  *    THE COST OF GOING FIRST, stated plainly: the tick's subrequest budget is
- *    shared, so a full five publishes spend roughly half of it before anything
- *    below starts, and an exhausted budget now lands on those jobs — including
- *    the self-check that feeds the alert webhook. That trade is deliberate (a
- *    missed self-check is one missed hour of a backstop whose primary is the
- *    external uptime monitor; a missed publish is a writer's post going out
- *    late), but it is a trade, and the per-tick cap is the dial to turn if the
- *    budget ever actually bites.
+ *    shared, and a published post is not cheap. Each one spends six outbound
+ *    fetches — token refresh, DID document, publication lookup, the document's
+ *    createRecord, and since announcing became the default, the announce
+ *    createRecord and the putRecord that writes its ref back — or seven on a
+ *    first-ever publish, which also creates the publication. A full tick is
+ *    therefore 3 × 7 = 21 of the 50, leaving 29 for the five jobs below.
+ *    Announcing is what took the cap from five to three: five publishes would
+ *    now claim 35 and leave 15, which is not enough to be honest about (see
+ *    MAX_PUBLISHES_PER_TICK). An exhausted budget still lands on those jobs —
+ *    including the self-check that feeds the alert webhook — and that trade is
+ *    deliberate (a missed self-check is one missed hour of a backstop whose
+ *    primary is the external uptime monitor; a missed publish is a writer's post
+ *    going out late), but it is a trade, and the per-tick cap is the dial to
+ *    turn if the budget ever actually bites.
  * 2. Purge expired oauth_kv rows. `D1Store.get` only deletes an
  *    expired row when that exact key is read again, so abandoned authorize
  *    `state:` rows — every login started but never completed — accumulate
@@ -234,6 +241,12 @@ export async function runScheduled(env: CronEnv): Promise<void> {
   // below. A revoked grant is the writer's to fix, not something the operator
   // should be alerted about; systemic trouble shows up as a run of them in
   // this log line.
+  //
+  // ONE EXCEPTION, arriving with auto-announce: a post that published but could
+  // not be announced. That failure cannot be written on the row — the row is
+  // about to be marked published, and `last_error` is what the posts manager
+  // renders as "this didn't go out" — so it joins the operator failure list
+  // below instead of being lost to a log line nobody reads at 09:00.
   const scheduled = await runScheduledPublishPass({
     store: d1ScheduledPostStore(db),
     publish: cronPublisher(db),
@@ -287,6 +300,13 @@ export async function runScheduled(env: CronEnv): Promise<void> {
     ...backup.failures,
     ...snapshotFailures(snapshots),
     ...reported.failures,
+    // A scheduled post that went out but could not be announced. It is NOT a
+    // publish failure — the post is live — which is exactly why it has to come
+    // here: the row is terminal and successful, so the writer-facing channel
+    // (`last_error`, shown in the posts manager) is not available to say it, and
+    // a console line at 09:00 reaches nobody. This is the channel an operator
+    // already watches, and announcing on a writer's behalf is a promise we made.
+    ...scheduled.announceFailures,
   ];
   if (failures.length > 0) console.error("cron self-check failures", failures);
   // This is the last job in the pass, so there is no later failure list for a

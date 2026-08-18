@@ -2,7 +2,7 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { drizzle } from "drizzle-orm/d1";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { AppearanceControl } from "~/components/appearance-control";
 import { ExternalLink } from "~/components/external-link";
@@ -11,6 +11,7 @@ import { Notice } from "~/components/notice";
 import { AppShell } from "~/components/site-chrome";
 import { MAIN_CONTENT_ID } from "~/components/skip-link";
 import { ThemeEditor } from "~/components/theme-editor";
+import { announceDefaultFor, selectWriterPrefs } from "~/lib/announce-prefs";
 import {
   listRecords,
   NotFoundError,
@@ -45,6 +46,8 @@ const ERROR_MESSAGES: Record<string, string> = {
     "Your colours are stored with your publication, and there isn't one yet — it's created when you publish your first post.",
   theme_invalid:
     "Those colours didn't come through. Pick them again and save — nothing was changed.",
+  announce_prefs_failed:
+    "That setting couldn't be saved just now, so nothing changed. Try again in a moment.",
   delete_account_failed:
     "Deleting your account didn't go through. Refresh the page and try again.",
   // Named ahead of the two prefix fallbacks below, which would otherwise print
@@ -144,6 +147,12 @@ const getSettings = createServerFn({ method: "GET" }).handler(async () => {
     }))
     .catch(() => null);
 
+  // The announce default. An absent row means every default (~/lib/announce-prefs),
+  // and a flaked read lands on the same answer — which is safe here in a way it
+  // would not be on a publish path: this renders a checkbox the writer can see
+  // and correct, and nothing is posted anywhere on the strength of it.
+  const [prefs] = await selectWriterPrefs(drizzle(env.DB), did).catch(() => []);
+
   return {
     ident,
     exists,
@@ -155,6 +164,7 @@ const getSettings = createServerFn({ method: "GET" }).handler(async () => {
     onLegacyUrl,
     theme,
     dataCounts,
+    announceDefault: announceDefaultFor(prefs),
   };
 });
 
@@ -164,14 +174,18 @@ export const Route = createFileRoute("/settings")({
       error?: string;
       saved?: boolean;
       moved?: boolean;
-      kind?: "theme";
+      kind?: "theme" | "announcing";
     } = {};
     if (typeof search.error === "string") out.error = search.error;
     if (search.saved === "1" || search.saved === 1) out.saved = true;
     if (search.moved === "1" || search.moved === 1) out.moved = true;
-    // Which save it was. Only "theme" is distinguished, because that is the
-    // feature whose adoption we cannot otherwise see.
-    if (search.kind === "theme") out.kind = "theme";
+    // Which save it was, for two reasons now: adoption we cannot otherwise see
+    // (theming), and a confirmation that would otherwise LIE. Every other save
+    // on this page writes to the writer's repo and the notice says so; the
+    // announce default is a row in our database, and telling a writer it went to
+    // their repo would be false.
+    if (search.kind === "theme" || search.kind === "announcing")
+      out.kind = search.kind;
     return out;
   },
   loader: async () => {
@@ -381,6 +395,154 @@ export function IconField({
   );
 }
 
+/**
+ * The account-level announce switch.
+ *
+ * ONE CHECKBOX AND ONE SENTENCE, and the sentence is the whole design problem.
+ * Announcing is on by default, so the only decision a writer makes here is to
+ * turn it OFF — and they should be able to make that decision knowing what it
+ * costs, before they press Save, not discover it a week later when a post
+ * reached nobody. So the consequence is rendered the moment the box is unticked
+ * and stays rendered while it is off.
+ *
+ * Its register is deliberate: ink-soft body text, not an alert, not the accent,
+ * no icon. This is a fact about what happens, not a warning about a mistake —
+ * publishing quietly is a legitimate thing to want, and a page that flinches
+ * when you choose it is a page arguing with you.
+ *
+ * The checkbox is controlled so the sentence can follow it. Without JavaScript
+ * the form still posts and still saves; the consequence line then simply appears
+ * on the reload, which is the same words one moment later.
+ *
+ * Exported for tests (settings-announcing.test.tsx) — not a route.
+ */
+export function AnnounceSetting({ enabled }: { enabled: boolean }) {
+  const [on, setOn] = useState(enabled);
+  return (
+    <form action="/api/publish" className="flex flex-col gap-4" method="post">
+      <input name="intent" type="hidden" value="announce-prefs" />
+      <div className="flex flex-col gap-2">
+        <label className="flex min-h-9 cursor-pointer items-start gap-3 font-display text-ink text-sm">
+          {/* accent-ink so the checked state is the page's own ink rather than
+              the browser's blue — a control we didn't draw still carries the
+              design (docs/DESIGN.md). */}
+          <input
+            aria-describedby="auto-announce-help"
+            checked={on}
+            className="mt-0.5 size-4 shrink-0 accent-ink"
+            name="autoAnnounce"
+            onChange={(event) => setOn(event.target.checked)}
+            type="checkbox"
+            value="1"
+          />
+          <span className="font-bold">Announce new posts on Bluesky</span>
+        </label>
+        <p className={FIELD_HELP} id="auto-announce-help">
+          Applies to posts you publish and posts you schedule. You can turn it
+          off for a single post on the publish screen — that never changes this
+          setting.
+        </p>
+      </div>
+      {/* aria-live, so a writer using a screen reader hears the consequence at
+          the moment they choose it rather than only if they go looking. */}
+      <p
+        aria-live="polite"
+        className="max-w-prose font-display text-ink-soft text-xs leading-relaxed"
+      >
+        {on
+          ? ""
+          : "Posts published without an announcement don't reach your followers' timelines and have no conversation on Bluesky. You can still announce any post by hand from your posts page, whenever you like."}
+      </p>
+      <div>
+        <button
+          className="min-h-11 cursor-pointer bg-ink px-8 py-2.5 font-bold font-display text-base text-paper transition-colors hover:bg-spot"
+          type="submit"
+        >
+          Save announcing
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/** The one-shot outcome of a save. A redirect from /api/publish appends these
+ * (`?saved=1&kind=theme`, `?moved=1`); they are read once, into a confirmation
+ * notice and at most one analytics event. */
+export type SettingsOutcome = {
+  saved?: boolean;
+  moved?: boolean;
+  kind?: "theme" | "announcing";
+};
+
+/** Drops the outcome params and nothing else — `error` is durable URL state a
+ * writer can reload into, the same split ~/routes/dashboard makes. */
+export function withoutSettingsOutcomeParams<T extends object>(
+  search: T,
+): Omit<T, keyof SettingsOutcome> {
+  const { saved, moved, kind, ...rest } = search as T & SettingsOutcome;
+  return rest;
+}
+
+/**
+ * Consume the outcome params: fire the matching analytics event at most once per
+ * redirect, and hand back what the notices need so they keep rendering after the
+ * params leave the URL.
+ *
+ * THE PARAMS HAVE TO LEAVE, for the same reason they do on the dashboard. The
+ * redirect target is an ordinary reloadable address, so a refresh or a back-nav
+ * replays whatever the query string still says — and analytics here is cookieless
+ * with memory persistence, so nothing downstream collapses the repeats. Left in
+ * place, one writer who turns announcing off and then reloads twice reads as
+ * three writers turning it off, in the one metric a default-on feature is judged
+ * by.
+ *
+ * Two guards, covering different things: `strip` rewrites the URL so a fresh page
+ * load has nothing left to replay, and the ref pins the event to the params that
+ * produced it so a re-render before that rewrite lands (React's double-invoked
+ * effects in development, a changing `navigate` identity) cannot fire it twice.
+ *
+ * Exported for tests (settings-outcome-params.test.tsx) — not a route.
+ */
+export function useSettingsOutcome(
+  search: SettingsOutcome,
+  ident: string,
+  announceDefault: boolean,
+  strip: () => void,
+): SettingsOutcome {
+  const { saved, moved, kind } = search;
+  // Seeded from the URL so the notice is on screen in the first paint, not one
+  // frame after it.
+  const [outcome, setOutcome] = useState<SettingsOutcome>(() => ({
+    saved,
+    moved,
+    kind,
+  }));
+  const consumed = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!(saved || moved)) return;
+    const key = `${saved ? "1" : ""}|${moved ? "1" : ""}|${kind ?? ""}`;
+    if (consumed.current === key) return;
+    consumed.current = key;
+
+    // Theme adoption, captured where the save LANDS rather than where it was
+    // submitted: the form posts to /api/publish and redirects, so the browser
+    // that submitted it is gone by the time the write succeeds. Fires once per
+    // arrival with kind=theme, never on a plain profile save.
+    if (saved && kind === "theme") capture("theme_saved", { ident });
+    // The number that matters for a default-on feature is how many writers turn
+    // it OFF, and this is the only place that decision is visible. The value
+    // comes from the loader, i.e. from the row the save just wrote.
+    if (saved && kind === "announcing")
+      capture("announce_default_changed", { ident, enabled: announceDefault });
+
+    setOutcome({ saved, moved, kind });
+    strip();
+  }, [saved, moved, kind, ident, announceDefault, strip]);
+
+  return outcome;
+}
+
 function SettingsPage() {
   const {
     ident,
@@ -393,19 +555,25 @@ function SettingsPage() {
     onLegacyUrl,
     theme,
     dataCounts,
+    announceDefault,
   } = Route.useLoaderData();
-  const { error, saved, moved, kind } = Route.useSearch();
+  const search = Route.useSearch();
+  const { error } = search;
+  const navigate = Route.useNavigate();
   const message = errorMessage(error);
   const [iconBusy, setIconBusy] = useState(false);
 
-  // Theme adoption, captured where the save LANDS rather than where it was
-  // submitted: the form posts to /api/publish and redirects, so the browser
-  // that submitted it is gone by the time the write succeeds. Same pattern the
-  // dashboard uses for post_published. Fires once per arrival with kind=theme,
-  // never on a plain profile save.
-  useEffect(() => {
-    if (saved && kind === "theme") capture("theme_saved", { ident });
-  }, [saved, kind, ident]);
+  // `replace`, so Back still goes where the writer came from rather than to the
+  // pre-strip URL — which would put the consumed params right back.
+  const stripOutcomeParams = useCallback(() => {
+    void navigate({ replace: true, search: withoutSettingsOutcomeParams });
+  }, [navigate]);
+  const { saved, moved, kind } = useSettingsOutcome(
+    search,
+    ident,
+    announceDefault,
+    stripOutcomeParams,
+  );
 
   return (
     <AppShell header={{ variant: "signed-in", ident, active: "settings" }}>
@@ -417,7 +585,16 @@ function SettingsPage() {
         <h1 className="font-black font-display text-3xl text-ink tracking-tight">
           Settings
         </h1>
-        {saved && (
+        {/* Two confirmations, because there are two kinds of save on this page
+            and one sentence cannot be true of both: the publication and its
+            colours are records in the writer's repo, and the announce default is
+            a row in ours that changes nothing anyone can go and look at. */}
+        {saved && kind === "announcing" && (
+          <Notice>
+            Saved — it applies to the next post you publish or schedule.
+          </Notice>
+        )}
+        {saved && kind !== "announcing" && (
           <Notice>
             Saved to your repo.{" "}
             {/* New tab: the writer keeps their settings context. */}
@@ -561,13 +738,24 @@ function SettingsPage() {
           </p>
         </SettingsSection>
 
+        {/* Beside the public address rather than beside the colours: both bands
+            answer "how do readers reach this", which is a different question
+            from "what does it look like". */}
+        <SettingsSection
+          id="announcing"
+          intro="A post you publish goes to your Bluesky followers as a card that links back to your page — the readers you already have, without a list to build first. Replies to that card become the conversation under your post."
+          title="Announcing"
+        >
+          <AnnounceSetting enabled={announceDefault} />
+        </SettingsSection>
+
         <SettingsSection id="appearance" title="Appearance">
           <AppearanceControl />
         </SettingsSection>
 
         <SettingsSection
           id="your-data"
-          intro="Goldroad stores remarkably little for your account: drafts, your import history, your daily follower count, and your sign-in session. That's everything keyed to your account. What you've published lives in your own data repo, not here, so nothing below touches it."
+          intro="Goldroad stores remarkably little for your account: drafts, your import history, your daily follower count, your announcing setting, any reader addresses left with your publication, and your sign-in session. That's everything keyed to your account. What you've published lives in your own data repo, not here, so nothing below touches it."
           title="Your data"
         >
           <p className="font-display text-ink-soft text-sm">
@@ -600,7 +788,7 @@ function SettingsPage() {
         <SettingsSection
           id="delete-account"
           rule="heavy"
-          intro="Deletes your drafts, import history, follower history, and sign-in from our servers, permanently. Your published posts and any Bluesky announces stay exactly where they are — they're records in your own repo, not ours."
+          intro="Deletes your drafts, import history, follower history, settings, any reader addresses left with your publication, and your sign-in from our servers, permanently. Your published posts and any Bluesky announces stay exactly where they are — they're records in your own repo, not ours."
           title="Delete your account"
         >
           <DeleteAccountForm ident={ident} />
@@ -721,11 +909,12 @@ export function DeleteAccountForm({ ident }: { ident: string }) {
           className="mt-3 text-ink-soft leading-relaxed"
           id="delete-account-desc"
         >
-          This deletes your drafts, import history, follower history, and
-          sign-in from our servers — it can't be undone. It does NOT delete
-          anything you've published: those records live in your own repo and
-          stay exactly where they are, and any posts announcing them on Bluesky
-          stay up too.
+          This deletes your drafts, import history, follower history, any reader
+          email addresses left with your publication, and your sign-in from our
+          servers — it can't be undone, so download your data first if you want
+          that list. It does NOT delete anything you've published: those records
+          live in your own repo and stay exactly where they are, and any posts
+          announcing them on Bluesky stay up too.
         </p>
         <p className="mt-2 font-display text-sm">
           <ExternalLink

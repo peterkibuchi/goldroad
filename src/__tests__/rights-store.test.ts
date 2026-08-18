@@ -11,13 +11,17 @@ import {
   deleteImportFetchesForDid,
   deleteImportItemsForDid,
   deleteOAuthSessionForDid,
+  deleteReaderEmailsForDid,
   deleteScheduledPostsForDid,
+  deleteWriterPrefsForDid,
   MAX_LEDGER_ROWS_PER_EXPORT,
   MAX_SNAPSHOT_ROWS_PER_EXPORT,
   selectDraftsForExport,
   selectFollowerSnapshotsForExport,
   selectImportItemsForExport,
+  selectReaderEmailsForExport,
   selectScheduledPostsForExport,
+  selectWriterPrefsForExport,
 } from "../lib/rights-store";
 
 /**
@@ -133,6 +137,68 @@ describe("account-deletion deletes — DID-scoped, RETURNing so callers can see 
     const { sql, params } = deleteScheduledPostsForDid(db, DID).toSQL();
     expectDidBound(sql, params);
     expect(sql.toLowerCase()).toContain('delete from "scheduled_posts"');
+    expect(sql.toLowerCase()).toContain("returning");
+  });
+
+  /**
+   * The seventh place a writer's DID appears in our D1, and the newest. This
+   * file's own note says anything storing a DID belongs in BOTH halves of it in
+   * the same change that creates it — a table that ships without its export and
+   * delete wiring is how an instance ends up holding rows nobody can reach.
+   */
+  it("selectWriterPrefsForExport reads the writer's own settings row", () => {
+    const { sql, params } = selectWriterPrefsForExport(db, DID).toSQL();
+    expectDidBound(sql, params);
+    expect(sql.toLowerCase()).toContain('from "writer_prefs"');
+    // Their instruction to us, and our own count of what we did on their
+    // behalf — both go out, because a number we would not show them is a
+    // number they should be suspicious of.
+    expect(sql).toContain('"auto_announce"');
+    expect(sql).toContain('"auto_count"');
+  });
+
+  it("deleteWriterPrefsForDid removes the settings row too", () => {
+    const { sql, params } = deleteWriterPrefsForDid(db, DID).toSQL();
+    expectDidBound(sql, params);
+    expect(sql.toLowerCase()).toContain('delete from "writer_prefs"');
+    expect(sql.toLowerCase()).toContain("returning");
+  });
+
+  /**
+   * `reader_emails` is keyed on `writer_did` rather than `did`, so it needs its
+   * own binding check — `expectDidBound` looks for the `"did"` column and would
+   * pass vacuously here while the WHERE clause pointed anywhere.
+   *
+   * This table is the reason the invariant at the top of rights-store.ts is
+   * written down: it shipped with neither half of that file, and an account
+   * deletion consequently left other people's addresses behind. It also holds
+   * the only third-party personal data an account touches, which is why both
+   * queries below are pinned rather than assumed.
+   */
+  function expectWriterDidBound(sql: string, params: unknown[]) {
+    expect(sql.toLowerCase()).toContain("where");
+    expect(sql).toContain('"writer_did"');
+    expect(params).toContain(DID);
+    expect(params).not.toContain(OTHER_DID);
+  }
+
+  it("selectReaderEmailsForExport reads only this writer's list", () => {
+    const { sql, params } = selectReaderEmailsForExport(db, DID).toSQL();
+    expectWriterDidBound(sql, params);
+    expect(sql.toLowerCase()).toContain('from "reader_emails"');
+    // The consent timestamp is the lawful basis for holding each address, so it
+    // travels with the address rather than staying behind in our database.
+    expect(sql).toContain('"consented_at"');
+    expect(sql).toContain('"source"');
+    // Bounded like every other export read — one writer's list is not a reason
+    // to build an unbounded result set.
+    expect(params).toContain(MAX_LEDGER_ROWS_PER_EXPORT);
+  });
+
+  it("deleteReaderEmailsForDid sweeps this writer's list and no one else's", () => {
+    const { sql, params } = deleteReaderEmailsForDid(db, DID).toSQL();
+    expectWriterDidBound(sql, params);
+    expect(sql.toLowerCase()).toContain('delete from "reader_emails"');
     expect(sql.toLowerCase()).toContain("returning");
   });
 

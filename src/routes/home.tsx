@@ -483,8 +483,9 @@ function FirstRun() {
       </h2>
       <p className="mt-3 text-ink-soft leading-relaxed">
         Whatever you publish goes straight into your own data repo and appears
-        on your public page. Announce it and your Bluesky followers see it as a
-        card linking back to you — no cold start, no list to build first.
+        on your public page. Your Bluesky followers see it as a card linking
+        back to you — no cold start, no list to build first. It's on by default,
+        and off whenever you say so.
       </p>
       <p className="mt-4 font-display text-ink-soft text-sm">
         Already writing somewhere else?{" "}

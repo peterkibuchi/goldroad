@@ -19,6 +19,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  *     identity's repo must not send us fetching their PDS.
  *  4. A REFUSED ANNOUNCE IS REPORTED. A writer who is told nothing presses the
  *     button again, and a scope failure needs a different answer from a retry.
+ *  5. ONE POST PER DOCUMENT, unless a human insists. A document carrying a
+ *     `bskyPostRef` has been announced, and announcing it again is refused —
+ *     `force=1`, which only a confirmed "Announce again" sends, is the one way
+ *     past that. This matters more than it looks: the OAuth scope is
+ *     create-only, so a duplicate card is one nobody in this app can delete.
  */
 
 const atproto = vi.hoisted(() => ({
@@ -443,5 +448,98 @@ describe("POST /api/publish — intent=announce, refusals write nothing", () => 
     expect(res.status).toBe(303);
     expect(res.headers.get("location")).toBe("/write?error=session_expired");
     expect(posted).toHaveLength(0);
+  });
+});
+
+describe("POST /api/publish — intent=announce, once and only once", () => {
+  const REF = { uri: POST_URI, cid: POST_CID };
+
+  it("refuses a document that already carries a post reference", async () => {
+    repoHolds({
+      document: document({ bskyPostRef: REF }),
+      publication: publication(),
+    });
+    const res = await announce();
+    // Nothing was written. This is the whole guard: the scope we hold is
+    // create-only, so a second card is one we cannot take back down.
+    expect(posted).toHaveLength(0);
+    expect(errorFrom(res)).toBe("announce_already");
+    expect(location(res).searchParams.get("announced")).toBeNull();
+  });
+
+  it("refuses BEFORE reading the publication — a double-submit costs one read", async () => {
+    repoHolds({
+      document: document({ bskyPostRef: REF }),
+      publication: publication(),
+    });
+    await announce();
+    // The document, and nothing else: no publication fetch, no record build.
+    expect(atproto.getRecordEntry).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses on a reference it cannot even parse", async () => {
+    // Any app may have written this field. The question is whether somebody
+    // announced, not whether we understand what they wrote.
+    for (const ref of [{ nonsense: true }, "at://x/y/z", 42]) {
+      posted.length = 0;
+      repoHolds({
+        document: document({ bskyPostRef: ref }),
+        publication: publication(),
+      });
+      const res = await announce();
+      expect(posted).toHaveLength(0);
+      expect(errorFrom(res)).toBe("announce_already");
+    }
+  });
+
+  it("announces again when force=1 says a human asked for it", async () => {
+    repoHolds({
+      document: document({ bskyPostRef: REF }),
+      publication: publication(),
+    });
+    const res = await announce({ force: "1" });
+    expect(callOf("com.atproto.repo.createRecord")).toBeDefined();
+    expect(errorFrom(res)).toBeNull();
+    expect(location(res).searchParams.get("announced")).toBe("3lz9999999999");
+  });
+
+  it("points the document at the NEWEST post when re-announced", async () => {
+    // The document holds one reference, so the second announce replaces it. The
+    // older card stays up on Bluesky and stops being findable from here, which
+    // is the honest consequence of a create-only scope and is said in the
+    // confirm the writer had to pass.
+    repoHolds({
+      document: document({
+        bskyPostRef: { uri: "at://old/post/1", cid: "old" },
+      }),
+      publication: publication(),
+    });
+    await announce({ force: "1" });
+    const record = callOf("com.atproto.repo.putRecord")?.options.input
+      .record as Record<string, unknown>;
+    expect(record.bskyPostRef).toEqual({ uri: POST_URI, cid: POST_CID });
+  });
+
+  it("treats anything but force=1 as no", async () => {
+    for (const force of ["", "0", "true", "yes"]) {
+      posted.length = 0;
+      repoHolds({
+        document: document({ bskyPostRef: REF }),
+        publication: publication(),
+      });
+      const res = await announce({ force });
+      expect(posted).toHaveLength(0);
+      expect(errorFrom(res)).toBe("announce_already");
+    }
+  });
+
+  it("still announces a document with no reference, force or not", async () => {
+    const cases: Record<string, string>[] = [{}, { force: "1" }];
+    for (const extra of cases) {
+      posted.length = 0;
+      const res = await announce(extra);
+      expect(callOf("com.atproto.repo.createRecord")).toBeDefined();
+      expect(location(res).searchParams.get("announced")).toBe("3lz9999999999");
+    }
   });
 });

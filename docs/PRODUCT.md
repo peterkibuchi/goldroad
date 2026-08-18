@@ -64,7 +64,16 @@ not around it.
   `site.standard.document` records into the writer's own repository.
 - Publication and post pages that render **any** atproto author's `standard.site`
   records, not only ours. Edge-cached and cookie-independent.
-- Announce a post to Bluesky as a native rich card.
+- Announce a post to Bluesky as a native rich card. **On by default**, at three
+  levels of control: an account setting, a per-post toggle on the publish surface
+  that never changes that setting, and — for a scheduled post — the decision
+  captured at scheduling time, so the cron publishes what the writer chose then
+  rather than what their settings say hours later. Nothing announces an import, a
+  taken-down post, or an edit, and the automatic paths — a publish and the cron —
+  cannot post more than a handful of cards an hour for one writer. A writer's own
+  confirmed "Announce again" is deliberately outside that budget: a person
+  pressing a button and reading the result is the thing the cap exists to stand
+  in for.
 - RSS per publication, plus a sitemap — every publication has a machine-readable twin.
 - Import an archive from Substack, Ghost, Medium, or WordPress, parsed in the browser and
   landing as private drafts.
@@ -96,6 +105,16 @@ Publications created, then posts published and announced. The qualitative north 
 matters more than any count: **a writer who leaves says "that was easy, I kept
 everything."** A platform that is painless to leave has to earn the stay, which is the
 correct incentive to be under.
+
+**What `post_published` and `post_announced` do and don't count.** Both are captured in
+the browser, so both count only what a writer was present for — a scheduled publish has
+no browser, and neither does the announce that follows it. That is a floor, not a gap:
+the two numbers stay comparable to each other, which is the only comparison made with
+them ("of the posts we can see published, how many were announced"), and
+`post_announced` carries a `mode` of `auto` or `manual` so the default flipping doesn't
+read as writers suddenly pressing more buttons. Unattended announce failures are an
+operations question and ride the cron's alert webhook instead. The reasoning is written
+out at `useOutcomeParams` in `src/routes/dashboard.tsx`.
 
 ## Messaging
 

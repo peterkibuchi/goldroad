@@ -124,6 +124,8 @@ describe("consuming the outcome params", () => {
     expect(capture).toHaveBeenCalledWith("post_announced", {
       rkey: RKEY,
       ident: IDENT,
+      // `announced` alone means the writer pressed the button.
+      mode: "manual",
     });
     expect(url().announced).toBeUndefined();
     unmount();
@@ -133,6 +135,32 @@ describe("consuming the outcome params", () => {
     expect(capture).toHaveBeenCalledWith("post_scheduled", { ident: IDENT });
     expect(url().scheduled).toBeUndefined();
     expect(url().cursor).toBe("abc");
+  });
+
+  /**
+   * The property that keeps this metric readable now that publishing announces
+   * by default. Without it, `post_announced` would stop being comparable to its
+   * own history the moment the default flipped — every announce would look like
+   * a writer choosing to press a button, and nobody could tell how many were
+   * simply the new default working.
+   */
+  it("distinguishes an announce the publish made from one the writer pressed", () => {
+    const { unmount } = render(
+      <Harness
+        initialSearch={{ published: "3bbb2bbb2bbb2", announced: RKEY }}
+      />,
+    );
+    expect(capture).toHaveBeenCalledWith("post_announced", {
+      rkey: RKEY,
+      ident: IDENT,
+      mode: "auto",
+    });
+    // Both events fire: one post published, one post announced.
+    expect(capture).toHaveBeenCalledWith("post_published", {
+      rkey: "3bbb2bbb2bbb2",
+      ident: IDENT,
+    });
+    unmount();
   });
 
   it("does not capture again when the page remounts on the stripped URL", () => {
@@ -171,6 +199,25 @@ describe("consuming the outcome params", () => {
     expect(capture).toHaveBeenCalledTimes(2);
   });
 
+  /**
+   * An announce whose rkey didn't parse still happened. Dropping the event would
+   * understate the announce rate in the one metric this exists to measure, so it
+   * fires with `rkey: null` — which also marks exactly which ones those were.
+   */
+  it("counts an announce that has no rkey to report", () => {
+    render(
+      <Harness initialSearch={{ published: RKEY, announcedNoLink: true }} />,
+    );
+    expect(capture).toHaveBeenCalledWith("post_announced", {
+      rkey: null,
+      ident: IDENT,
+      mode: "auto",
+    });
+    expect(url().announcedNoLink).toBeUndefined();
+    // The notice still needs it after the strip.
+    expect(outcome().announcedNoLink).toBe(true);
+  });
+
   it("captures once under double-invoked effects", () => {
     render(
       <StrictMode>
@@ -205,11 +252,12 @@ describe("consuming the outcome params", () => {
 });
 
 describe("withoutOutcomeParams", () => {
-  it("removes only the three one-shot params", () => {
+  it("removes only the one-shot params", () => {
     expect(
       withoutOutcomeParams({
         published: RKEY,
         announced: RKEY,
+        announcedNoLink: true,
         scheduled: true,
         tab: "drafts",
         cursor: "abc",

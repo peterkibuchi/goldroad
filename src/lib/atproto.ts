@@ -396,6 +396,26 @@ export function parseAtUri(
   return { did, collection, rkey };
 }
 
+/**
+ * Was this XRPC write rejected for missing OAuth permission? Tokens carry the
+ * scope granted at consent time, so sessions created before a scope addition
+ * (delete action, app.bsky.feed.post — see SCOPES in ~/lib/oauth-scopes) hit
+ * this. The PDS answers 401/403 (error naming varies across implementations —
+ * the session was just restored, so a 401 here is a stale grant, not a stale
+ * token). Fixed by a fresh sign-in: re-consent picks up the current scope.
+ *
+ * Lives here rather than beside the one handler that used to own it: the
+ * announce runner (~/lib/announce) has to draw the same distinction, and a
+ * scope failure that reads as an ordinary refusal sends a writer pressing a
+ * button that cannot work until they sign in again.
+ */
+export function isInsufficientScope(res: {
+  ok: boolean;
+  status: number;
+}): boolean {
+  return !res.ok && (res.status === 401 || res.status === 403);
+}
+
 export class NotFoundError extends Error {}
 
 /** site.standard.document — metadata + plaintext lexicon. Field shapes match

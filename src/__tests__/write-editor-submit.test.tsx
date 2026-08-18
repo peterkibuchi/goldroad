@@ -76,6 +76,7 @@ afterEach(cleanup);
 beforeAll(async () => {
   render(
     <Compose
+      announceDefault={false}
       draft={null}
       error={undefined}
       reconnectHandle={null}
@@ -110,6 +111,7 @@ describe("/write — editor buttons must never submit the publish form", () => {
   async function renderCompose() {
     render(
       <Compose
+        announceDefault={false}
         draft={null}
         error={undefined}
         reconnectHandle={null}
@@ -188,6 +190,7 @@ describe("/write — publishing flushes the draft first", () => {
   async function composeAndPublish() {
     render(
       <Compose
+        announceDefault={false}
         draft={null}
         error={undefined}
         reconnectHandle={null}
@@ -231,6 +234,7 @@ describe("/write — publishing flushes the draft first", () => {
     });
     render(
       <Compose
+        announceDefault={false}
         draft={null}
         error={undefined}
         reconnectHandle={null}
@@ -276,6 +280,7 @@ describe("/write — publishing flushes the draft first", () => {
     });
     render(
       <Compose
+        announceDefault={false}
         draft={null}
         error={undefined}
         reconnectHandle={null}
@@ -325,6 +330,7 @@ describe("/write — publishing flushes the draft first", () => {
     });
     render(
       <Compose
+        announceDefault={false}
         draft={null}
         error={undefined}
         reconnectHandle={null}
@@ -375,6 +381,7 @@ describe("/write — a post too long to store is refused without navigating", ()
     markdown.current = "x".repeat(MAX_BODY_LENGTH + 1);
     render(
       <Compose
+        announceDefault={false}
         draft={null}
         error={undefined}
         reconnectHandle={null}
@@ -404,6 +411,7 @@ describe("/write — a post too long to store is refused without navigating", ()
     markdown.current = "x".repeat(MAX_BODY_LENGTH + 1);
     render(
       <Compose
+        announceDefault={false}
         draft={null}
         error={undefined}
         reconnectHandle={null}
@@ -439,6 +447,7 @@ describe("/write — resuming a draft keeps the images it already uploaded", () 
       .mockImplementation(() => {});
     render(
       <Compose
+        announceDefault={false}
         draft={null}
         error={undefined}
         reconnectHandle={null}
@@ -480,6 +489,7 @@ describe("/write — a dead draft pointer is not hidden by the publish error", (
     // try again with.
     render(
       <Compose
+        announceDefault={false}
         draft={null}
         draftError="draft_not_found"
         error="publish_failed:UpstreamFailure"
@@ -496,6 +506,7 @@ describe("/write — a dead draft pointer is not hidden by the publish error", (
   it("does not print the same notice twice", async () => {
     render(
       <Compose
+        announceDefault={false}
         draft={null}
         draftError="not_found"
         error="not_found"

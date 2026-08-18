@@ -15,10 +15,22 @@
  * critical bundle — events fired before it loads are queued on the promise.
  *
  * Events (beyond `defaults`-captured pageviews): waitlist_joined,
- * post_published, post_announced, import_completed, post_scheduled,
- * theme_saved, publication_subscribed / publication_unsubscribed,
- * reader_email_left, inline_image_uploaded, and autocaptured $exception (error
- * tracking; the worker-side counterpart lives in ~/lib/error-tracking).
+ * post_published, post_announced, announce_default_changed, import_completed,
+ * post_scheduled, theme_saved, publication_subscribed /
+ * publication_unsubscribed, reader_email_left, inline_image_uploaded, and
+ * autocaptured $exception (error tracking; the worker-side counterpart lives in
+ * ~/lib/error-tracking).
+ *
+ * EVERY EVENT HERE IS CLIENT-SIDE, WHICH MEANS EVERY EVENT HERE COUNTS ONLY
+ * WHAT A WRITER WAS PRESENT FOR. That was implicit until publishing started
+ * announcing on its own: `post_published` has never counted a scheduled publish
+ * (a cron has no browser), and `post_announced` now doesn't count a cron's
+ * announce for exactly the same reason. It is a deliberate floor rather than a
+ * gap — the two events stay comparable to each other, which is the only
+ * comparison made with them — and the reasoning is written out where the event
+ * fires, in `useOutcomeParams` (~/routes/dashboard). Unattended failures are an
+ * operations question, not a product-analytics one, and they ride the cron's
+ * alert channel instead (~/lib/scheduled).
  *
  * The last five were added 2026-08-01 because they were missing: every feature
  * shipped in the two days before that — theming, scheduling, subscriptions,

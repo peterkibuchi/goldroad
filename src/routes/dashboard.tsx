@@ -105,6 +105,15 @@ const ERROR_MESSAGES: Record<string, string> = {
     "Deleting needs a permission your current sign-in doesn't include yet — re-connect your account to enable deletion.",
   announce_scope:
     "Posting to Bluesky needs a permission your current sign-in doesn't include yet — re-connect your account to enable announcing.",
+  announce_no_url:
+    "This post has no public URL to announce — it may belong to a publication Goldroad can't resolve right now.",
+  // The idempotency refusal. It reads as information rather than as a failure
+  // because that is what it is: the thing the writer asked for has happened.
+  // The Bluesky post permission is create-only, so a duplicate card is one
+  // nobody here can take back down — which is why this refuses rather than
+  // obliges, and why the way past it is a confirmed "Announce again".
+  announce_already:
+    "This post has already been announced on Bluesky — nothing was posted again. Use “Announce again” on the post below if you really want a second post.",
   move_no_publication:
     "There's no publication to move yet — it's created when you publish your first post.",
   schedule_in_flight:
@@ -140,6 +149,13 @@ function errorMessage(code: string | undefined): string | null {
 /** Scope errors are fixed by a fresh sign-in (new consent = new scope grant). */
 function needsReconnect(code: string | undefined): boolean {
   return code === "delete_scope" || code === "announce_scope";
+}
+
+/** An error that is not a failure: the writer asked for something that had
+ * already happened. Rendered in the neutral tone rather than the alert one —
+ * nothing went wrong and nothing needs fixing. */
+function isInformational(code: string | undefined): boolean {
+  return code === "announce_already";
 }
 
 const getDashboard = createServerFn({ method: "GET" })
@@ -270,6 +286,8 @@ export const Route = createFileRoute("/dashboard")({
       error?: string;
       published?: string;
       announced?: string;
+      announcedNoLink?: boolean;
+      announceFailed?: string;
       deleted?: boolean;
       moved?: boolean;
       scheduled?: boolean;
@@ -283,6 +301,18 @@ export const Route = createFileRoute("/dashboard")({
       out.published = search.published;
     if (typeof search.announced === "string" && TID_RE.test(search.announced))
       out.announced = search.announced;
+    // Announced, but without an rkey to link to (~/routes/api.publish's
+    // publishedQuery). A flag, not an rkey: there is nothing to interpolate.
+    if (search.announcedNoLink === "1" || search.announcedNoLink === 1)
+      out.announcedNoLink = true;
+    // The publish landed and the announce did not. A closed set, not free text:
+    // it reaches the page as a message and a re-connect form, and the two
+    // outcomes need different words (see the published notice).
+    if (
+      search.announceFailed === "announce_scope" ||
+      search.announceFailed === "announce_failed"
+    )
+      out.announceFailed = search.announceFailed;
     if (search.deleted === "1" || search.deleted === 1) out.deleted = true;
     if (search.moved === "1" || search.moved === 1) out.moved = true;
     if (search.scheduled === "1" || search.scheduled === 1)
@@ -318,8 +348,18 @@ export const Route = createFileRoute("/dashboard")({
   component: DashboardPage,
 });
 
+/**
+ * What announcing does, for the tooltip on the by-hand button and for the notice
+ * offering it.
+ *
+ * Rewritten when announcing became the default: it used to introduce a feature
+ * ("Share this post to your Bluesky followers"), and it now explains an action a
+ * writer is reaching for BECAUSE the automatic one didn't happen — they turned it
+ * off for this post, it was skipped, or it failed. So it names the outcome and
+ * says nothing about defaults, which the publish surface and Settings own.
+ */
 const ANNOUNCE_EXPLAINER =
-  "Share this post to your Bluesky followers — it appears as a rich card linking here.";
+  "Post this to Bluesky now — your followers see a card linking here, and their replies become the conversation under your post.";
 
 /** Shared shape for the inline actions on a row and in the notices. */
 const INLINE_ACTION =
@@ -327,7 +367,21 @@ const INLINE_ACTION =
 const DESTRUCTIVE_ACTION =
   "-my-2 inline-flex min-h-9 cursor-pointer items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-spot";
 
-function AnnounceButton({
+/**
+ * The by-hand announce. Two shapes, and the difference between them is the whole
+ * duplicate-prevention story on this page:
+ *
+ * - Without `confirmMessage`, it announces a post that has no announcement, and
+ *   the server refuses if that turns out to be untrue.
+ * - With one, it is "Announce again" on a post that HAS one, and it sends
+ *   `force=1` — the only thing in the app that does. That flag is what gets past
+ *   the server's idempotency refusal, and it is paired with the confirm on
+ *   purpose: the Bluesky post permission is create-only, so a second card is one
+ *   we cannot delete for the writer afterwards.
+ *
+ * Exported for tests (dashboard-announce.test.tsx) — not a route.
+ */
+export function AnnounceButton({
   rkey,
   label,
   confirmMessage,
@@ -349,6 +403,8 @@ function AnnounceButton({
     >
       <input name="intent" type="hidden" value="announce" />
       <input name="rkey" type="hidden" value={rkey} />
+      {/* Only the confirmed re-announce carries it. */}
+      {confirmMessage && <input name="force" type="hidden" value="1" />}
       <button
         className={cn(INLINE_ACTION, "cursor-pointer")}
         title={ANNOUNCE_EXPLAINER}
@@ -356,6 +412,30 @@ function AnnounceButton({
       >
         {label ?? "Announce on Bluesky"}
       </button>
+    </form>
+  );
+}
+
+/**
+ * One-press re-sign-in, for the two places a scope error surfaces: the error
+ * notice, and the published notice when a post went out but its announce hit an
+ * old grant. Extracted rather than copied when the second caller arrived — the
+ * one sentence about approving on your own server should not exist twice.
+ *
+ * Exported for tests (dashboard-announce.test.tsx) — not a route.
+ */
+export function ReconnectForm({ handle }: { handle: string }) {
+  return (
+    <form action="/login" className="mt-2" method="post">
+      <input name="handle" type="hidden" value={handle} />
+      <input name="returnTo" type="hidden" value="/dashboard" />
+      <button
+        className="cursor-pointer font-bold underline underline-offset-2"
+        type="submit"
+      >
+        Re-connect your account
+      </button>{" "}
+      — you'll approve the new permission on your own server.
     </form>
   );
 }
@@ -1137,7 +1217,7 @@ export function PublishedRow({
                   Announced ↗
                 </ExternalLink>
                 <AnnounceButton
-                  confirmMessage="Already announced — post again?"
+                  confirmMessage="This post already has an announcement on Bluesky. Post a second one? Goldroad can't delete it for you afterwards — you'd remove it on Bluesky yourself."
                   label="Announce again"
                   rkey={row.rkey}
                 />
@@ -1329,9 +1409,10 @@ function FirstRun() {
         No posts yet.
       </h2>
       <p className="mt-3 text-ink-soft leading-relaxed">
-        Your first post publishes straight to your own data repo and goes live
-        on your public page. Announce it and it reaches your Bluesky followers
-        as a rich card linking back here.
+        Your first post publishes straight to your own data repo, goes live on
+        your public page, and reaches your Bluesky followers as a card linking
+        back here. You can turn that off for any post, or by default in
+        Settings.
       </p>
       <a
         className="mt-6 inline-flex min-h-11 items-center bg-ink px-6 font-bold font-display text-base text-paper transition-colors hover:bg-spot"
@@ -1354,14 +1435,15 @@ function FirstRun() {
 }
 
 /**
- * The one-shot outcome of a write. A server redirect appends exactly one of
- * these to /dashboard (`?published=<rkey>`, `?announced=<rkey>`,
+ * The one-shot outcome of a write. A server redirect appends these to
+ * /dashboard (`?published=<rkey>`, `?announced=<rkey>`, `?announcedNoLink=1`,
  * `?scheduled=1`) and they are read once: into the confirmation notice, and
  * into a single analytics event.
  */
 export type DashboardOutcome = {
   published?: string;
   announced?: string;
+  announcedNoLink?: boolean;
   scheduled?: boolean;
 };
 
@@ -1370,8 +1452,8 @@ export type DashboardOutcome = {
 export function withoutOutcomeParams<T extends object>(
   search: T,
 ): Omit<T, keyof DashboardOutcome> {
-  const { published, announced, scheduled, ...rest } = search as T &
-    DashboardOutcome;
+  const { published, announced, announcedNoLink, scheduled, ...rest } =
+    search as T & DashboardOutcome;
   return rest;
 }
 
@@ -1379,6 +1461,28 @@ export function withoutOutcomeParams<T extends object>(
  * Consume the outcome params: fire the matching analytics event at most once
  * per redirect, and hand back what the notices need so they keep rendering
  * after the params leave the URL.
+ *
+ * WHERE `post_announced` COMES FROM, decided once and written down here because
+ * auto-announce raised the question and a wrong answer would read as a collapse
+ * in the metric.
+ *
+ * It stays HERE — one client-side event, fired off `?announced=`, for every
+ * announce a writer is present for, whether they pressed the button or their
+ * publish did it for them. `mode` says which. The alternative was capturing
+ * server-side so that cron announces counted too, and that was rejected: it
+ * means a PostHog HTTP call from a Worker whose hourly tick already shares a
+ * 50-subrequest budget across six jobs, one of which is publishing writers'
+ * posts. Announcing analytics is not worth spending a subrequest that a
+ * scheduled publish might need.
+ *
+ * So a cron announce is invisible to product analytics, deliberately — and it is
+ * invisible in exactly the same way `post_published` has always been, because a
+ * scheduled publish has no browser either. The two events therefore stay
+ * comparable to each other, which is the only comparison anyone makes with them:
+ * "of the posts we can see published, how many were announced". The cron's
+ * announces are not unmonitored, they are monitored somewhere else — a failure
+ * goes on the operator alert list (~/lib/scheduled), which is the channel that
+ * actually matters when nobody is watching.
  *
  * They have to leave. The redirect target is an ordinary reloadable address,
  * so a refresh, a back-nav or any remount replays whatever the query string
@@ -1399,19 +1503,20 @@ export function useOutcomeParams(
   ident: string,
   strip: () => void,
 ): DashboardOutcome {
-  const { published, announced, scheduled } = search;
+  const { published, announced, announcedNoLink, scheduled } = search;
   // Seeded from the URL so the notice is on screen in the first paint, not one
   // frame after it.
   const [outcome, setOutcome] = useState<DashboardOutcome>(() => ({
     published,
     announced,
+    announcedNoLink,
     scheduled,
   }));
   const consumed = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!(published || announced || scheduled)) return;
-    const key = `${published ?? ""}|${announced ?? ""}|${scheduled ? "1" : ""}`;
+    if (!(published || announced || announcedNoLink || scheduled)) return;
+    const key = `${published ?? ""}|${announced ?? ""}|${announcedNoLink ? "1" : ""}|${scheduled ? "1" : ""}`;
     if (consumed.current === key) return;
     consumed.current = key;
 
@@ -1419,16 +1524,101 @@ export function useOutcomeParams(
     // client-side moment to the actual PDS write. Properties stay within
     // DID/handle policy.
     if (published) capture("post_published", { rkey: published, ident });
-    if (announced) capture("post_announced", { rkey: announced, ident });
+    // `mode` is the property that makes this readable after the default
+    // flipped: an announce arriving alongside a `published` param came from the
+    // publish itself, and one arriving alone came from the button.
+    // An announce whose rkey didn't parse still happened, so it still counts —
+    // dropping it would understate the announce rate in the one metric this
+    // event exists for. `rkey: null` says which ones those were.
+    if (announced || announcedNoLink)
+      capture("post_announced", {
+        rkey: announced ?? null,
+        ident,
+        mode: published ? "auto" : "manual",
+      });
     // Scheduling adoption. No rkey to attach — a scheduled post has not been
     // published yet, so there is no record to name.
     if (scheduled) capture("post_scheduled", { ident });
 
-    setOutcome({ published, announced, scheduled });
+    setOutcome({ published, announced, announcedNoLink, scheduled });
     strip();
-  }, [published, announced, scheduled, ident, strip]);
+  }, [published, announced, announcedNoLink, scheduled, ident, strip]);
 
   return outcome;
+}
+
+/**
+ * "Published." — and, right under it, the truth about the announcement.
+ *
+ * THE BUTTON IS THE PART THAT NEEDS CARE. It used to render unconditionally,
+ * which was correct while a publish could never have announced anything.
+ * Publishing now announces by default, so the notice has three states and only
+ * one of them is an offer:
+ *
+ *  - Announced (`announced` set): NO button. The document carries the post's
+ *    reference now, so the server would refuse a second announce — a control
+ *    whose only outcome is a refusal is a control that does nothing, and one
+ *    that invites a writer to keep pressing. The "Announced" notice beside this
+ *    one is what this state says instead.
+ *  - Announced, without a link (`announcedNoLink`): the same rule, for the same
+ *    reason. The post went out and its rkey didn't parse, so there is no link to
+ *    offer and still no second announce to offer either. It says both things.
+ *  - Announcing failed: the post is live and the card is not. The words say so
+ *    in that order, and the button is the fix — except for a scope failure,
+ *    which no button can fix and which gets the re-connect form instead.
+ *  - Announcing was off: the plain offer, as before.
+ *
+ * None of these words may imply the publish failed, because it did not.
+ *
+ * Exported for tests (dashboard-announce.test.tsx) — not a route.
+ */
+export function PublishedNotice({
+  ident,
+  rkey,
+  announced,
+  announcedNoLink,
+  announceFailed,
+  handle,
+}: {
+  ident: string;
+  rkey: string;
+  /** The announce post's rkey, when publishing announced it. */
+  announced: string | undefined;
+  /** Announced, but with no rkey to link to. */
+  announcedNoLink?: boolean;
+  /** Why it didn't, when it was asked to and couldn't. */
+  announceFailed: string | undefined;
+  /** For the re-connect form; absent when the handle wouldn't resolve. */
+  handle: string | null;
+}) {
+  return (
+    <Notice tone="info">
+      Published. {/* New tab: the writer keeps their dashboard context. */}
+      <ExternalLink
+        className="underline underline-offset-2"
+        href={`/@${encodeURIComponent(ident)}/${rkey}`}
+      >
+        View it live
+      </ExternalLink>
+      {!(announced || announcedNoLink) && (
+        <span className="mt-1 block">
+          {announceFailed === "announce_scope" ? (
+            <>
+              Announcing it needs a permission your current sign-in doesn't
+              include yet. {handle && <ReconnectForm handle={handle} />}
+            </>
+          ) : (
+            <>
+              {announceFailed
+                ? "Announcing it on Bluesky didn't go through."
+                : ANNOUNCE_EXPLAINER}{" "}
+              <AnnounceButton rkey={rkey} />
+            </>
+          )}
+        </span>
+      )}
+    </Notice>
+  );
 }
 
 function DashboardPage() {
@@ -1443,7 +1633,7 @@ function DashboardPage() {
     scheduled,
   } = Route.useLoaderData();
   const search = Route.useSearch();
-  const { error, deleted, moved, cursor } = search;
+  const { error, deleted, moved, cursor, announceFailed } = search;
   const navigate = Route.useNavigate();
   const message = errorMessage(error);
   const tab: PostsTab = search.tab ?? "published";
@@ -1477,19 +1667,13 @@ function DashboardPage() {
         </div>
 
         {outcome.published && (
-          <Notice tone="info">
-            Published.{" "}
-            {/* New tab: the writer keeps their dashboard context. */}
-            <ExternalLink
-              className="underline underline-offset-2"
-              href={`/@${encodeURIComponent(ident)}/${outcome.published}`}
-            >
-              View it live
-            </ExternalLink>
-            <span className="mt-1 block">
-              {ANNOUNCE_EXPLAINER} <AnnounceButton rkey={outcome.published} />
-            </span>
-          </Notice>
+          <PublishedNotice
+            announceFailed={announceFailed}
+            announced={outcome.announced}
+            handle={handle}
+            ident={ident}
+            rkey={outcome.published}
+          />
         )}
         {outcome.announced && (
           <Notice tone="info">
@@ -1526,20 +1710,10 @@ function DashboardPage() {
           <MovePublicationNotice returnTo="dashboard" />
         )}
         {message && (
-          <Notice tone="alert">
+          <Notice tone={isInformational(error) ? "info" : "alert"}>
             {message}
             {needsReconnect(error) && handle && (
-              <form action="/login" className="mt-2" method="post">
-                <input name="handle" type="hidden" value={handle} />
-                <input name="returnTo" type="hidden" value="/dashboard" />
-                <button
-                  className="cursor-pointer font-bold underline underline-offset-2"
-                  type="submit"
-                >
-                  Re-connect your account
-                </button>{" "}
-                — you'll approve the new permission on your own server.
-              </form>
+              <ReconnectForm handle={handle} />
             )}
           </Notice>
         )}

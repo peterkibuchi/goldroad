@@ -29,7 +29,10 @@ import { isDid, resolveDidIdentity } from "~/lib/atproto";
 import { selectDraft } from "~/lib/drafts";
 import { createOAuthClient } from "~/lib/oauth";
 import { CANONICAL_ORIGIN, ownOrigins } from "~/lib/origin";
-import { publishStoredDraft } from "~/lib/publish-document";
+import {
+  type AnnounceReport,
+  publishStoredDraft,
+} from "~/lib/publish-document";
 import type {
   DuePost,
   PublishAttempt,
@@ -111,9 +114,46 @@ export async function publishDuePost(
     origin: CANONICAL_ORIGIN,
     origins: ownOrigins(CANONICAL_ORIGIN),
     draft,
+    // The decision the writer made when they scheduled this, read off the row
+    // (~/lib/scheduled-posts). Their account setting is deliberately not
+    // consulted here — see `announce` in ~/db/schema.
+    announce: { requested: post.announce, source: "schedule" },
   });
-  if (outcome.ok) return { ok: true, rkey: outcome.rkey };
+  if (outcome.ok)
+    return {
+      ok: true,
+      rkey: outcome.rkey,
+      announceProblem: announceProblem(post, outcome.announce),
+    };
   return { ok: false, retry: outcome.retry, reason: outcome.reason };
+}
+
+/**
+ * The operator's sentence when a scheduled post published but its announce did
+ * not — or undefined when there is nothing to say.
+ *
+ * A SKIP IS NOT A FAILURE and never appears here. "This was an import" and "the
+ * writer turned announcing off" are the guards working; alerting on them would
+ * teach an operator to ignore the channel. `over_budget` is the interesting
+ * middle case and is deliberately also silent: it is a cap we chose, it is in the
+ * pass's log line, and the writer can see the post has no announcement and press
+ * the button. What alerts is a broken promise — a refused write, a grant that has
+ * gone stale, or a post that exists while the document does not say so.
+ */
+function announceProblem(
+  post: DuePost,
+  report: AnnounceReport,
+): string | undefined {
+  if (report.state === "skipped") return undefined;
+  if (report.state === "failed")
+    return report.reason === "scope"
+      ? `scheduled post ${post.id} published but could not be announced: the writer's sign-in predates the Bluesky post permission`
+      : `scheduled post ${post.id} published but its announce was refused (${report.detail ?? report.reason})`;
+  // Announced, but the document does not carry the reference — the state that
+  // makes a later duplicate possible (see ~/lib/announce).
+  if (!report.wroteBack)
+    return `scheduled post ${post.id} was announced but the post reference could not be written back to the document`;
+  return undefined;
 }
 
 /** The publisher the cron pass calls, bound to a database. */

@@ -25,6 +25,7 @@ const scheduledPosts = vi.hoisted(() => ({
     releasedStale: 0,
     capped: false,
     pruned: true,
+    announceFailures: [] as string[],
   })),
 }));
 vi.mock("~/lib/scheduled-posts", () => scheduledPosts);
@@ -99,6 +100,7 @@ beforeEach(() => {
     releasedStale: 0,
     capped: false,
     pruned: true,
+    announceFailures: [],
   });
 });
 
@@ -211,6 +213,7 @@ describe("runScheduled — six jobs, one hourly trigger, none able to sink anoth
         releasedStale: 0,
         capped: false,
         pruned: true,
+        announceFailures: [],
       };
     });
     snapshots.runFollowerSnapshotPass.mockImplementation(async () => {
@@ -248,6 +251,7 @@ describe("runScheduled — six jobs, one hourly trigger, none able to sink anoth
       releasedStale: 0,
       capped: true,
       pruned: true,
+      announceFailures: [],
     });
 
     await runScheduled(envWithHook());
@@ -283,6 +287,7 @@ describe("runScheduled — six jobs, one hourly trigger, none able to sink anoth
       releasedStale: 0,
       capped: false,
       pruned: true,
+      announceFailures: [],
     });
 
     await runScheduled(envWithHook());
@@ -290,6 +295,59 @@ describe("runScheduled — six jobs, one hourly trigger, none able to sink anoth
     // The writer is the person who can fix a revoked grant, and the posts
     // manager tells them. The webhook is for invariants nobody else watches.
     expect(posts).toHaveLength(0);
+  });
+
+  /**
+   * The counterpart of the test above, and the reason the two sit together: a
+   * scheduled post that FAILED belongs to the writer, and one that PUBLISHED but
+   * could not be announced belongs to the operator.
+   *
+   * The difference is not severity, it is who can act. A revoked grant is fixed
+   * by the writer signing in again, and the posts manager shows them the reason.
+   * An announce that was refused cannot be told to them at all: the row is about
+   * to be marked published and `last_error` is what the manager renders as "this
+   * didn't go out", so writing it there would report a live post as broken. That
+   * leaves a console line at 09:00, which reaches nobody — hence this channel.
+   */
+  it("pages the operator when a scheduled post published but could not be announced", async () => {
+    const posts: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes("hook.example")) {
+          posts.push(String(init?.body));
+          return new Response(null);
+        }
+        return url.includes("client-metadata")
+          ? Response.json({
+              client_id: "https://trygoldroad.com/oauth/client-metadata.json",
+            })
+          : new Response("<html>Goldroad</html>");
+      }),
+    );
+    quiet();
+    scheduledPosts.runScheduledPublishPass.mockResolvedValue({
+      attempted: 1,
+      published: 1,
+      failed: 0,
+      retrying: 0,
+      contended: 0,
+      releasedStale: 0,
+      capped: false,
+      pruned: true,
+      announceFailures: [
+        "scheduled post row-1 published but its announce was refused (InvalidRequest)",
+      ],
+    });
+
+    await runScheduled(envWithHook());
+
+    expect(posts).toHaveLength(1);
+    const body = JSON.parse(posts[0]) as { failures: string[] };
+    expect(body.failures).toContain(
+      "scheduled post row-1 published but its announce was refused (InvalidRequest)",
+    );
   });
 
   it("samples follower counts even when the oauth_kv purge blows up", async () => {

@@ -7,10 +7,18 @@
  * (awaitable), unit-testable via .toSQL() without a live D1.
  *
  * Scope, deliberately narrow (see AGENTS.md architectural note): these are
- * the ONLY six places a writer's DID appears in our D1 — drafts,
- * import_items, import_fetches, follower_snapshots, scheduled_posts, and the
- * oauth_kv session row. Published posts live in the writer's own atproto repo
- * and are never touched here; deleting an account purges our copies only.
+ * the ONLY eight places a writer's DID appears in our D1 — drafts,
+ * import_items, import_fetches, follower_snapshots, scheduled_posts,
+ * writer_prefs, reader_emails, and the oauth_kv session row. Published posts
+ * live in the writer's own atproto repo and are never touched here; deleting an
+ * account purges our copies only.
+ *
+ * `reader_emails` is keyed by `writer_did` — the writer is the controller of
+ * every address on their list — and it was the table that proved the rule below
+ * is worth writing down: it shipped without either half of this file, so for a
+ * while an account deletion left other people's email addresses in our database
+ * attached to a DID that no longer had an account to reach them through. Both
+ * halves are wired now, and the reader-email tests assert the SQL.
  *
  * Anything new that stores a DID belongs in both halves of this file, in the
  * same change that creates it. A table that ships without its export and
@@ -39,7 +47,9 @@ import {
   importFetches,
   importItems,
   oauthKv,
+  readerEmails,
   scheduledPosts,
+  writerPrefs,
 } from "~/db/schema";
 import { MAX_DRAFTS_PER_USER } from "~/lib/drafts-schema";
 import { SNAPSHOT_RETENTION_DAYS } from "~/lib/follower-snapshots";
@@ -159,6 +169,77 @@ export function deleteScheduledPostsForDid(db: DrizzleD1, did: string) {
     .delete(scheduledPosts)
     .where(eq(scheduledPosts.did, did))
     .returning({ id: scheduledPosts.id });
+}
+
+/**
+ * The writer's account preferences — currently the announce default and the
+ * budget counter behind it (~/db/schema's `writerPrefs`).
+ *
+ * In the export because it is a setting the writer chose and we act on: if we
+ * hold an instruction of theirs, they get to read it back. The budget columns go
+ * out with it rather than being filtered — they are our account of what we did
+ * on their behalf and when, and a number we would not show them is a number they
+ * should be suspicious of.
+ */
+export function selectWriterPrefsForExport(db: DrizzleD1, did: string) {
+  return db
+    .select({
+      autoAnnounce: writerPrefs.autoAnnounce,
+      autoCount: writerPrefs.autoCount,
+      autoWindowAt: writerPrefs.autoWindowAt,
+      updatedAt: writerPrefs.updatedAt,
+    })
+    .from(writerPrefs)
+    .where(eq(writerPrefs.did, did))
+    .limit(1);
+}
+
+/** Deletes the writer's preferences row (account deletion). Nothing recreates
+ * it: the only writers it is written for are ones with a live session. */
+export function deleteWriterPrefsForDid(db: DrizzleD1, did: string) {
+  return db
+    .delete(writerPrefs)
+    .where(eq(writerPrefs.did, did))
+    .returning({ did: writerPrefs.did });
+}
+
+/**
+ * The reader addresses left with this writer's publication (~/db/schema's
+ * `readerEmails`).
+ *
+ * In the export because it is the writer's subscriber list, not ours: they are
+ * the controller, the addresses were given to their publication, and a
+ * publishing tool that held a writer's list where they could not read it would
+ * be the exact lock-in this project exists to refuse. Oldest consent first, so
+ * the list reads in the order it was built.
+ */
+export function selectReaderEmailsForExport(db: DrizzleD1, did: string) {
+  return db
+    .select({
+      email: readerEmails.email,
+      source: readerEmails.source,
+      consentedAt: readerEmails.consentedAt,
+    })
+    .from(readerEmails)
+    .where(eq(readerEmails.writerDid, did))
+    .orderBy(asc(readerEmails.consentedAt))
+    .limit(MAX_LEDGER_ROWS_PER_EXPORT);
+}
+
+/**
+ * Deletes every reader address held for this writer (account deletion).
+ *
+ * These rows are third parties' personal data, and the only thing that made
+ * holding them lawful was a publication here to send from. Once the account is
+ * gone there is no controller, no sending path, and nobody the readers could ask
+ * — so the addresses go with it rather than outliving the relationship they were
+ * given for.
+ */
+export function deleteReaderEmailsForDid(db: DrizzleD1, did: string) {
+  return db
+    .delete(readerEmails)
+    .where(eq(readerEmails.writerDid, did))
+    .returning({ id: readerEmails.id });
 }
 
 /** Deletes every draft a writer owns (account deletion, not the single-draft

@@ -54,11 +54,23 @@ describe("DeleteAccountForm — the highest-stakes confirm on the page", () => {
     render(<DeleteAccountForm ident="sana.example" />);
     fireEvent.click(screen.getByRole("button", { name: "Delete account" }));
     const dialog = screen.getByRole("alertdialog");
-    // Every category of row we hold is named, so the dialog can't quietly
-    // fall out of date with what account deletion actually removes.
-    expect(dialog.textContent).toContain(
-      "drafts, import history, follower history, and sign-in",
-    );
+    // Every category of row we hold is named, so the dialog can't quietly fall
+    // out of date with what account deletion actually removes. Asserted one
+    // category at a time rather than as a single sentence: the list grows, and
+    // a test that pins the prose fails on a comma while the omission it exists
+    // to catch — a category deleted but never named — sails through.
+    for (const category of [
+      "drafts",
+      "import history",
+      "follower history",
+      "reader email addresses left with your publication",
+      "sign-in",
+    ]) {
+      expect(dialog.textContent).toContain(category);
+    }
+    // A list the writer loses on deletion is a list worth exporting first, and
+    // the dialog is the last place that can say so.
+    expect(dialog.textContent).toContain("download your data first");
     expect(dialog.textContent).toContain(
       "does NOT delete anything you've published",
     );

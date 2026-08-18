@@ -109,6 +109,15 @@ describe("selectDuePosts — the cron's lookup", () => {
     expect(sql).not.toContain('"content"');
     expect(sql).not.toContain('"markdown"');
   });
+
+  it("reads the captured announce decision off the row", () => {
+    // The one thing on this row that a cron cannot re-derive: the writer decided
+    // whether this post reaches their followers when they scheduled it, and the
+    // publisher must be handed THAT rather than whatever their account setting
+    // says an unknown number of hours later.
+    const { sql } = selectDuePosts(db, NOW).toSQL();
+    expect(sql).toContain('"announce"');
+  });
 });
 
 describe("the writer-facing queries are bound to the writer", () => {
@@ -165,6 +174,20 @@ describe("the writer-facing queries are bound to the writer", () => {
     expect(sql.toLowerCase()).toContain("returning");
   });
 
+  /**
+   * THE TRAP THIS CLOSES. "Publish now" deletes the schedule row before it reads
+   * the draft, because delete-first is the whole double-publish guard on that
+   * path — so the announce decision captured on the row is unreadable a
+   * statement later. It has to leave on this RETURNING clause or not at all, and
+   * a refactor that trims the clause back to `id, status` would silently start
+   * publishing every by-hand post without its announcement.
+   */
+  it("deleteUnclaimedSchedulesForDraft returns the captured announce decision", () => {
+    const { sql } = deleteUnclaimedSchedulesForDraft(db, DID, DRAFT_ID).toSQL();
+    expect(sql.toLowerCase()).toContain("returning");
+    expect(sql).toContain('"announce"');
+  });
+
   it("selectScheduleForDraft answers 'is one in flight' for this writer only", () => {
     const { sql, params } = selectScheduleForDraft(db, DID, DRAFT_ID).toSQL();
     expectDidBound(sql, params);
@@ -184,7 +207,7 @@ describe("the writer-facing queries are bound to the writer", () => {
   it("upsertSchedule writes the writer's DID and reschedules in one statement", () => {
     const { sql, params } = upsertSchedule(
       db,
-      { id: ROW_ID, did: DID, draftId: DRAFT_ID, dueAt: NOW },
+      { id: ROW_ID, did: DID, draftId: DRAFT_ID, dueAt: NOW, announce: true },
       NOW,
     ).toSQL();
     const lower = sql.toLowerCase();
