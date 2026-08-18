@@ -47,16 +47,72 @@ describe("privacy policy — the reader email a publication holds", () => {
     expect(text).toMatch(/which publication it was, and when/i);
   });
 
-  it("says how long it is held, and does not promise a send date", () => {
+  it("names all three ways it goes away, and promises no send date", () => {
     const text = textOf();
-    expect(text).toMatch(/until email sending opens or you ask us to delete/i);
+    // Three, not two: account deletion now sweeps this table, so a policy that
+    // still said "until sending opens or you ask" would be describing a
+    // retention rule we no longer follow.
+    expect(text).toMatch(/until email sending opens/i);
+    expect(text).toMatch(/until they delete their Goldroad account/i);
+    expect(text).toMatch(/until you ask us to delete it/i);
     expect(text).not.toMatch(/\bsoon\b|\bshortly\b/i);
   });
 
-  it("counts it among the things the account buttons can't reach", () => {
-    // The row is keyed to the WRITER's DID, never the reader's — so a reader's
-    // own export and deletion cannot see it, exactly like the waitlist row.
-    expect(textOf()).toMatch(/left with a publication you\s+read/i);
+  it("places it on the writer's side of the self-service line, not the reader's", () => {
+    // The row is keyed to the WRITER's DID, never the reader's. That cuts both
+    // ways and the page has to say both halves: it travels with the writer's
+    // export and deletion, and a READER's own buttons still cannot see it —
+    // which is why the by-hand remedy below it has to exist.
+    const text = textOf();
+    expect(text).toMatch(/left with a publication you were reading/i);
+    expect(text).toMatch(/goes out in their export/i);
+    expect(text).toMatch(/deleted when they\s+delete their account/i);
+    expect(text).toMatch(/your own buttons can't see it/i);
+  });
+});
+
+/**
+ * Announcing is default-ON, and turning a default on means we now write down a
+ * preference and a running count of what we did under it. That is a setting
+ * plus timestamped publishing-activity metadata about a named person, so it is
+ * a collection like any other and gets disclosed like any other — the
+ * reader_emails line is the precedent this follows.
+ */
+describe("privacy policy — the announcing preference we store", () => {
+  it("discloses the setting, the counter, and what the counter is for", () => {
+    const text = textOf();
+    expect(text).toMatch(/announcing preferences/i);
+    // Not just "a setting": the hourly counter is the part a reader would not
+    // guess, and it is activity metadata, not configuration.
+    expect(text).toMatch(/count of the announcements/i);
+    expect(text).toMatch(/current hour/i);
+    // Why it exists, so the counter reads as a limit on us rather than
+    // surveillance of them.
+    expect(text).toMatch(/cap/i);
+  });
+
+  it("says it is reachable — in the export, and gone on deletion", () => {
+    const text = textOf();
+    expect(text).toMatch(
+      /in your data export, and deleting your account deletes it/i,
+    );
+  });
+});
+
+/**
+ * The reader-email line had a true sentence that became incomplete the moment
+ * account deletion started sweeping the table: "held until sending opens or you
+ * ask" left out the third way an address goes away.
+ */
+describe("privacy policy — reader email retention after this change", () => {
+  it("names account deletion as a way the address goes away", () => {
+    expect(textOf()).toMatch(/until they delete their Goldroad account/i);
+  });
+
+  it("keeps the reader's own remedy, and says no account is needed to ask", () => {
+    const text = textOf();
+    expect(text).toMatch(/we'll remove it/i);
+    expect(text).toMatch(/don't need an account here to ask/i);
   });
 });
 
@@ -70,6 +126,8 @@ describe("privacy policy — your rights", () => {
       /drafts/i,
       /import history/i,
       /follower history/i,
+      /announcing preferences/i,
+      /reader addresses left with your publication/i,
       /sign-in session/i,
     ]) {
       expect(text).toMatch(category);
