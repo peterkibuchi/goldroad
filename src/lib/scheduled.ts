@@ -11,13 +11,20 @@
  *    posts per tick — and says in its log line when it left a queue behind.
  *
  *    THE COST OF GOING FIRST, stated plainly: the tick's subrequest budget is
- *    shared, so a full five publishes spend roughly half of it before anything
- *    below starts, and an exhausted budget now lands on those jobs — including
- *    the self-check that feeds the alert webhook. That trade is deliberate (a
- *    missed self-check is one missed hour of a backstop whose primary is the
- *    external uptime monitor; a missed publish is a writer's post going out
- *    late), but it is a trade, and the per-tick cap is the dial to turn if the
- *    budget ever actually bites.
+ *    shared, and a published post is not cheap. Each one spends six outbound
+ *    fetches — token refresh, DID document, publication lookup, the document's
+ *    createRecord, and since announcing became the default, the announce
+ *    createRecord and the putRecord that writes its ref back — or seven on a
+ *    first-ever publish, which also creates the publication. A full tick is
+ *    therefore 3 × 7 = 21 of the 50, leaving 29 for the five jobs below.
+ *    Announcing is what took the cap from five to three: five publishes would
+ *    now claim 35 and leave 15, which is not enough to be honest about (see
+ *    MAX_PUBLISHES_PER_TICK). An exhausted budget still lands on those jobs —
+ *    including the self-check that feeds the alert webhook — and that trade is
+ *    deliberate (a missed self-check is one missed hour of a backstop whose
+ *    primary is the external uptime monitor; a missed publish is a writer's post
+ *    going out late), but it is a trade, and the per-tick cap is the dial to
+ *    turn if the budget ever actually bites.
  * 2. Purge expired oauth_kv rows. `D1Store.get` only deletes an
  *    expired row when that exact key is read again, so abandoned authorize
  *    `state:` rows — every login started but never completed — accumulate

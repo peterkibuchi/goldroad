@@ -36,14 +36,29 @@ type DrizzleD1 = ReturnType<typeof drizzle>;
  * Due posts published per tick.
  *
  * The cron handler shares one hourly invocation — a ~10 ms CPU budget and 50
- * subrequests — with four other jobs (~/lib/scheduled), and a single publish
- * spends several subrequests: an OAuth token refresh, a DID/PDS resolution, the
- * publication lookup, the createRecord. Five is what fits beside the rest with
- * room to spare. Anything over the cap waits for the next tick, and the pass
- * SAYS SO in its result and its log line — a silent cap reads as "handled
- * everything", which is the same lie as a silent failure.
+ * subrequests — with five other jobs (~/lib/scheduled), so this cap is really a
+ * share of that allowance. Counted honestly, one published post now spends SIX
+ * outbound fetches, and seven on a writer's first-ever publish:
+ *
+ *   1. the OAuth token refresh (`client.restore`)
+ *   2. the DID document, for the handle and the PDS
+ *   3. listRecords, to find the writer's publication
+ *   4. createRecord, the document itself
+ *   5. createRecord, the announcement on Bluesky
+ *   6. putRecord, writing that post's ref back onto the document
+ *   (+ createRecord for a publication that doesn't exist yet — first publish only)
+ *
+ * Announcing added items 5 and 6, and that is why this dropped from five to
+ * three: 5 × 7 is 35 of the 50, leaving 15 for everything below — while the
+ * follower sample alone asks for up to 50 (MAX_SAMPLES_PER_RUN). 3 × 7 is 21,
+ * which leaves 29 and keeps the headroom ~/lib/scheduled claims for the jobs it
+ * puts second. The cap is the dial to turn if that trade ever needs revisiting.
+ *
+ * Anything over the cap waits for the next tick, and the pass SAYS SO in its
+ * result and its log line — a silent cap reads as "handled everything", which is
+ * the same lie as a silent failure.
  */
-export const MAX_PUBLISHES_PER_TICK = 5;
+export const MAX_PUBLISHES_PER_TICK = 3;
 
 /**
  * Attempts before a post is failed for good.

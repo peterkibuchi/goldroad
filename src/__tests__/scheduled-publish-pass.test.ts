@@ -212,8 +212,29 @@ describe("the per-tick cap is bounded AND reported", () => {
     expect(calls.dueLimits).toEqual([6]);
   });
 
-  it("defaults the cap to five", async () => {
-    expect(MAX_PUBLISHES_PER_TICK).toBe(5);
+  /**
+   * The cap is a share of the tick's 50-subrequest allowance, so it has to move
+   * when the cost of a publish moves. Announcing made each published post spend
+   * two more outbound writes — the announce createRecord and the putRecord that
+   * writes its ref back — taking one post from four fetches to six, or seven on
+   * a first-ever publish that also creates the publication.
+   *
+   * At five that is 5 x 7 = 35 of 50, leaving 15 for the five jobs that run
+   * after this one — while the follower sample alone asks for up to 50. At three
+   * it is 21, leaving 29. The number is pinned here because it is arithmetic
+   * about a platform limit, not a preference: if a future change makes a publish
+   * cheaper or dearer, this test is the thing that should fail.
+   */
+  it("defaults the cap to three, the share announcing left it", async () => {
+    expect(MAX_PUBLISHES_PER_TICK).toBe(3);
+    const FETCHES_PER_FIRST_PUBLISH = 7;
+    const TICK_SUBREQUEST_BUDGET = 50;
+    expect(MAX_PUBLISHES_PER_TICK * FETCHES_PER_FIRST_PUBLISH).toBe(21);
+    // Headroom for everything downstream, the follower sample included.
+    expect(
+      TICK_SUBREQUEST_BUDGET -
+        MAX_PUBLISHES_PER_TICK * FETCHES_PER_FIRST_PUBLISH,
+    ).toBeGreaterThanOrEqual(29);
     const { store, calls } = fakeStore([row("a")]);
     await runScheduledPublishPass({
       store,
