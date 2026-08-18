@@ -16,6 +16,7 @@ const store = vi.hoisted(() => ({
   deleteOAuthSessionForDid: vi.fn(),
   deleteScheduledPostsForDid: vi.fn(),
   deleteWriterPrefsForDid: vi.fn(),
+  deleteReaderEmailsForDid: vi.fn(),
 }));
 vi.mock("~/lib/rights-store", () => store);
 
@@ -114,6 +115,25 @@ describe("deletion", () => {
     // A pending scheduled post is queued WORK, not just a record: leaving one
     // behind would have the cron publishing for a deleted account.
     expect(store.deleteScheduledPostsForDid).toHaveBeenCalledWith(
+      expect.anything(),
+      DID,
+    );
+  });
+
+  /**
+   * `reader_emails` is the row category that proved the comment above is worth
+   * enforcing: it shipped without a delete, so for a while an account deletion
+   * left other people's email addresses in our database, attached to a DID with
+   * no account left to reach them through and no self-service way to ask.
+   *
+   * These rows are also the only third-party personal data an account holds. The
+   * writer was their controller, and the lawful basis for holding them was a
+   * publication here to send from — remove the account and neither exists, so
+   * the addresses go too.
+   */
+  it("deletes the reader addresses left with the writer's publication", async () => {
+    await call();
+    expect(store.deleteReaderEmailsForDid).toHaveBeenCalledWith(
       expect.anything(),
       DID,
     );

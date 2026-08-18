@@ -2,7 +2,9 @@
  * Account deletion — the destructive action beneath "Your data" on /settings.
  * Purges OUR copies only: drafts, import ledger + rate-limit rows, the daily
  * follower snapshots, any scheduled posts (a pending one is an instruction to
- * publish, and must not outlive the account), their account preferences, and the
+ * publish, and must not outlive the account), their account preferences, the
+ * reader addresses left with their publication (other people's personal data,
+ * lawful to hold only while there was a publication here to send from), and the
  * D1-side OAuth session, then clears the session cookie. Session-authed POST, re-verified here (never trust a
  * client-supplied identity for a delete).
  *
@@ -38,6 +40,7 @@ import {
   deleteImportFetchesForDid,
   deleteImportItemsForDid,
   deleteOAuthSessionForDid,
+  deleteReaderEmailsForDid,
   deleteScheduledPostsForDid,
   deleteWriterPrefsForDid,
 } from "~/lib/rights-store";
@@ -84,6 +87,7 @@ export const Route = createFileRoute("/api/account/delete")({
           deleteFollowerSnapshotsForDid(db, did),
           deleteScheduledPostsForDid(db, did),
           deleteWriterPrefsForDid(db, did),
+          deleteReaderEmailsForDid(db, did),
         ]);
 
         // Upstream token revocation is best-effort (same posture as

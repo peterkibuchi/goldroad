@@ -13,6 +13,7 @@ const store = vi.hoisted(() => ({
   selectImportItemsForExport: vi.fn(),
   selectScheduledPostsForExport: vi.fn(),
   selectWriterPrefsForExport: vi.fn(),
+  selectReaderEmailsForExport: vi.fn(),
 }));
 vi.mock("~/lib/rights-store", () => store);
 
@@ -76,6 +77,7 @@ beforeEach(() => {
   // No row is the common case (a writer who never opened the setting), and the
   // export has to describe that as the default rather than as an absence.
   store.selectWriterPrefsForExport.mockResolvedValue([]);
+  store.selectReaderEmailsForExport.mockResolvedValue([]);
   atproto.resolveDidIdentity.mockResolvedValue({ handle: null, pds: null });
 });
 
@@ -206,6 +208,56 @@ describe("response shape", () => {
     // The manifest is the writer's plain-language index of what we hold, so it
     // has to name this too — it can't quietly list only the older categories.
     expect(body.manifest).toMatch(/follower/i);
+  });
+
+  /**
+   * The writer's subscriber list, in the writer's export.
+   *
+   * These addresses are third parties' personal data, which is exactly why they
+   * belong here rather than nowhere: the writer is their controller, the readers
+   * gave them to that publication, and a publishing tool that held a writer's
+   * list somewhere the writer could not read it would be the lock-in this
+   * project exists to refuse. The consent timestamp goes with each one because
+   * it is the lawful basis for holding it, and a list without it is a list a
+   * writer cannot honestly use.
+   */
+  it("includes the reader addresses left with the writer's publication", async () => {
+    store.selectReaderEmailsForExport.mockResolvedValue([
+      {
+        email: "reader@example.com",
+        source: "post",
+        consentedAt: new Date("2026-08-17T09:00:00.000Z"),
+      },
+      {
+        email: "another@example.com",
+        source: "publication",
+        consentedAt: new Date("2026-08-18T09:00:00.000Z"),
+      },
+    ]);
+    const res = await call();
+    expect(store.selectReaderEmailsForExport).toHaveBeenCalledWith(
+      expect.anything(),
+      DID,
+    );
+    const body = (await res.json()) as {
+      readerEmails: { email: string; source: string; consentedAt: string }[];
+      manifest: string;
+    };
+    expect(body.readerEmails).toEqual([
+      {
+        email: "reader@example.com",
+        source: "post",
+        consentedAt: "2026-08-17T09:00:00.000Z",
+      },
+      {
+        email: "another@example.com",
+        source: "publication",
+        consentedAt: "2026-08-18T09:00:00.000Z",
+      },
+    ]);
+    // The manifest claims to be everything we hold keyed to this DID. A category
+    // it does not name makes that sentence untrue.
+    expect(body.manifest).toMatch(/reader email/i);
   });
 
   it("includes the scheduled posts we hold, failure reasons and all", async () => {
