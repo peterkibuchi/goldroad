@@ -118,6 +118,7 @@ export function PrivacyPage() {
             "Abuse reports: the report, and any email left with it, kept while we may still need it for moderation and appeals, then discarded — or sooner if you ask. The alert copy described above lives in that channel's own history, so removing a report here doesn't reach back into it.",
             "Analytics: aggregated, not tied to your identity.",
             "Drafts and import history: kept until you delete them (Settings → Your data) or delete your account, which removes both immediately.",
+            "Reader emails left with a publication: kept for that writer until email sending opens or the address is deleted on request — and deleted immediately, in full, if that writer deletes their Goldroad account. They are never included in a writer's data export: the addresses belong to the readers who left them, not to the publication, so a writer's download reports only how many there are.",
             "Follower counts: while you have an account we record your public Bluesky follower count once a day, so you can see your own growth over time — Bluesky only reports today's number, and the past can't be recovered later. It's in your data export, and deleting your account deletes it.",
             "Sign-in sessions: kept until you sign out, delete your account, or the session expires.",
             "Server logs: short-lived (days), then discarded.",

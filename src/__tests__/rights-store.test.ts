@@ -6,11 +6,13 @@ import { MAX_DRAFTS_PER_USER } from "../lib/drafts-schema";
 import {
   countDraftsForDid,
   countImportItemsForDid,
+  countReaderEmailsForDid,
   deleteDraftsForDid,
   deleteFollowerSnapshotsForDid,
   deleteImportFetchesForDid,
   deleteImportItemsForDid,
   deleteOAuthSessionForDid,
+  deleteReaderEmailsForDid,
   deleteScheduledPostsForDid,
   MAX_LEDGER_ROWS_PER_EXPORT,
   MAX_SNAPSHOT_ROWS_PER_EXPORT,
@@ -134,6 +136,34 @@ describe("account-deletion deletes — DID-scoped, RETURNing so callers can see 
     expectDidBound(sql, params);
     expect(sql.toLowerCase()).toContain('delete from "scheduled_posts"');
     expect(sql.toLowerCase()).toContain("returning");
+  });
+
+  /**
+   * `reader_emails` is keyed by `writer_did`, and for as long as it existed
+   * neither half of this store knew about it: a deleted account went on
+   * holding a list of other people's email addresses, unreachable by anyone.
+   * It is deleted, and — unlike every other table here — deliberately not
+   * exported; the addresses are the readers'.
+   */
+  it("deleteReaderEmailsForDid deletes only this publication's rows", () => {
+    const { sql, params } = deleteReaderEmailsForDid(db, DID).toSQL();
+    expect(sql.toLowerCase()).toContain('delete from "reader_emails"');
+    expect(sql.toLowerCase()).toContain("where");
+    expect(sql).toContain('"writer_did"');
+    expect(sql.toLowerCase()).toContain("returning");
+    expect(params).toContain(DID);
+    expect(params).not.toContain(OTHER_DID);
+  });
+
+  it("countReaderEmailsForDid counts only this publication's rows", () => {
+    const { sql, params } = countReaderEmailsForDid(db, DID).toSQL();
+    expect(sql.toLowerCase()).toContain('from "reader_emails"');
+    expect(sql).toContain('"writer_did"');
+    expect(params).toContain(DID);
+    expect(params).not.toContain(OTHER_DID);
+    // A count, never the addresses: the export must not be able to select one
+    // even by accident.
+    expect(sql.toLowerCase()).not.toContain('"email"');
   });
 
   it("deleteOAuthSessionForDid targets the exact sess:<did> key, not a prefix scan", () => {

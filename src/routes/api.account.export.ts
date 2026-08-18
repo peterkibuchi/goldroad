@@ -1,10 +1,16 @@
 /**
  * Account data export — the "Download your data" action on /settings ("Your
- * data" section). Assembles everything WE hold for the signed-in DID into one
- * JSON attachment: full draft content, the import ledger, and the daily
- * follower-count history, all from our D1 (ownership enforced in
+ * data" section). Assembles what WE hold for the signed-in DID into one
+ * JSON attachment: full draft content, the import ledger, scheduled posts, and
+ * the daily follower-count history, all from our D1 (ownership enforced in
  * ~/lib/rights-store's SQL, same contract as ~/lib/drafts and
  * ~/lib/import-store).
+ *
+ * ONE DELIBERATE OMISSION, stated in the manifest and reported as a count:
+ * the addresses readers left with this writer's publication. They are keyed to
+ * the writer's DID, so the account DELETION reaches them — but they are third
+ * parties' personal data, and a subject-access export is not a lawful route to
+ * a list of other people's email addresses. See ~/lib/rights-store.
  *
  * ARCHITECTURAL NOTE, worth restating here: your published posts are NOT in
  * this export, because they are not in our database — they live in your own
@@ -32,6 +38,7 @@ import { readLiveSessionDid } from "~/lib/live-session";
 import { canonicalOrigin, isCrossSite } from "~/lib/origin";
 import { privateJson } from "~/lib/private-json";
 import {
+  countReaderEmailsForDid,
   selectDraftsForExport,
   selectFollowerSnapshotsForExport,
   selectImportItemsForExport,
@@ -73,12 +80,16 @@ export const Route = createFileRoute("/api/account/export")({
           ledgerRows,
           followerRows,
           scheduleRows,
+          readerEmailRows,
           { handle, pds },
         ] = await Promise.all([
           selectDraftsForExport(db, did),
           selectImportItemsForExport(db, did),
           selectFollowerSnapshotsForExport(db, did),
           selectScheduledPostsForExport(db, did),
+          // Counted, never listed — see ~/lib/rights-store for why an export
+          // of your data is not a place to hand you other people's addresses.
+          countReaderEmailsForDid(db, did),
           resolveDidIdentity(did),
         ]);
         const ident = handle ?? did;
@@ -123,8 +134,15 @@ export const Route = createFileRoute("/api/account/export")({
           manifest:
             "Goldroad stores remarkably little for your account: your drafts, " +
             "import history, scheduled posts and daily follower counts below, " +
-            "plus a record of your sign-in session. That is everything we hold keyed to your " +
-            "DID. It does NOT include an email address you may have given our " +
+            "plus a record of your sign-in session. One more thing is keyed to " +
+            "your DID and is deliberately NOT reproduced here: the email " +
+            "addresses readers have left with your publication (see " +
+            "`readerList` for how many). Those addresses are the readers', not " +
+            "yours — they gave them to your publication, and an export of your " +
+            "data is not the place we hand over other people's. They are " +
+            "deleted along with everything else if you delete your account. " +
+            "Nothing else we hold is keyed to your " +
+            "DID. This file does NOT include an email address you may have given our " +
             "waitlist form or left on an abuse report: those rows are keyed by " +
             "the email alone, with no DID, so nothing here can prove they are " +
             "yours — mail privacy@trygoldroad.com to have one deleted by hand. " +
@@ -169,6 +187,15 @@ export const Route = createFileRoute("/api/account/export")({
             followers: row.followers,
             posts: row.posts,
           })),
+          // The count is a fact about YOUR publication and yours to have; the
+          // addresses are the readers'. Stated as a field rather than left to
+          // the manifest prose so the omission is visible in the data, not
+          // only in a paragraph.
+          readerList: {
+            count: readerEmailRows.length,
+            addressesIncluded: false,
+            note: "Readers' email addresses are not exported: they are the readers' personal data, left with your publication. They are deleted when you delete your account.",
+          },
           ownPosts: {
             publicPage: `${origin}/@${encodeURIComponent(ident)}`,
             pdsRepoExportUrl: pds

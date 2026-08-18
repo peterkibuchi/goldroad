@@ -7,14 +7,29 @@
  * (awaitable), unit-testable via .toSQL() without a live D1.
  *
  * Scope, deliberately narrow (see AGENTS.md architectural note): these are
- * the ONLY six places a writer's DID appears in our D1 — drafts,
- * import_items, import_fetches, follower_snapshots, scheduled_posts, and the
- * oauth_kv session row. Published posts live in the writer's own atproto repo
- * and are never touched here; deleting an account purges our copies only.
+ * the ONLY seven places a writer's DID appears in our D1 — drafts,
+ * import_items, import_fetches, follower_snapshots, scheduled_posts,
+ * reader_emails, and the oauth_kv session row. Published posts live in the
+ * writer's own atproto repo and are never touched here; deleting an account
+ * purges our copies only.
  *
  * Anything new that stores a DID belongs in both halves of this file, in the
  * same change that creates it. A table that ships without its export and
- * delete wiring is how an instance ends up holding rows nobody can reach.
+ * delete wiring is how an instance ends up holding rows nobody can reach —
+ * which is exactly what happened to `reader_emails`, keyed by `writer_did`
+ * and missed by both halves for as long as it existed.
+ *
+ * READER EMAILS ARE THE ONE ASYMMETRIC CASE, and the asymmetry is the point.
+ * The rows are keyed to the writer's DID, so deletion reaches them and must:
+ * a closed account cannot go on holding other people's addresses. The EXPORT
+ * does not include them. They are a list of third parties' email addresses,
+ * given to a publication rather than to its owner's data file, and handing
+ * them over on a button press would be a disclosure of other people's
+ * personal data dressed up as the writer's own subject-access right. The
+ * export names the COUNT — which is a fact about the writer's publication —
+ * and says plainly that the addresses go when the account goes. When sending
+ * ships, a writer-facing subscriber list is a deliberate feature with its own
+ * consent story, not a side effect of this file.
  *
  * DELIBERATELY UNREACHABLE FROM HERE: `waitlist` and `reports` also hold an
  * email a writer may have typed, and neither can ever be covered by these
@@ -39,6 +54,7 @@ import {
   importFetches,
   importItems,
   oauthKv,
+  readerEmails,
   scheduledPosts,
 } from "~/db/schema";
 import { MAX_DRAFTS_PER_USER } from "~/lib/drafts-schema";
@@ -143,6 +159,39 @@ export function selectScheduledPostsForExport(db: DrizzleD1, did: string) {
     .where(eq(scheduledPosts.did, did))
     .orderBy(asc(scheduledPosts.dueAt))
     .limit(MAX_LEDGER_ROWS_PER_EXPORT);
+}
+
+/**
+ * How many readers have left an address with this writer's publication.
+ *
+ * The only thing about `reader_emails` the export reports, and deliberately so
+ * — the count is a fact about the writer's own publication, while the
+ * addresses belong to the readers who typed them. See the note at the top of
+ * this file.
+ */
+export function countReaderEmailsForDid(db: DrizzleD1, did: string) {
+  return db
+    .select({ id: readerEmails.id })
+    .from(readerEmails)
+    .where(eq(readerEmails.writerDid, did));
+}
+
+/**
+ * Deletes every reader address left with this writer's publication (account
+ * deletion).
+ *
+ * Not housekeeping. These are third parties' email addresses that we hold for
+ * one reason only — that this writer has a publication people wanted to hear
+ * from — and when the publication's account is gone that reason is gone with
+ * it. Rows that outlived it would be a list of personal data with no purpose,
+ * no controller and nobody able to reach them: the exact shape of the leak
+ * this file's contract exists to prevent.
+ */
+export function deleteReaderEmailsForDid(db: DrizzleD1, did: string) {
+  return db
+    .delete(readerEmails)
+    .where(eq(readerEmails.writerDid, did))
+    .returning({ id: readerEmails.id });
 }
 
 /**

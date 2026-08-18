@@ -14,6 +14,7 @@ const store = vi.hoisted(() => ({
   deleteImportItemsForDid: vi.fn(),
   deleteImportFetchesForDid: vi.fn(),
   deleteOAuthSessionForDid: vi.fn(),
+  deleteReaderEmailsForDid: vi.fn(),
   deleteScheduledPostsForDid: vi.fn(),
 }));
 vi.mock("~/lib/rights-store", () => store);
@@ -113,6 +114,18 @@ describe("deletion", () => {
     // A pending scheduled post is queued WORK, not just a record: leaving one
     // behind would have the cron publishing for a deleted account.
     expect(store.deleteScheduledPostsForDid).toHaveBeenCalledWith(
+      expect.anything(),
+      DID,
+    );
+  });
+
+  it("deletes the addresses readers left with the writer's publication", async () => {
+    // The table is keyed by `writer_did` and was missed by this sweep for as
+    // long as it existed: a deleted account went on holding a list of other
+    // people's email addresses, with nothing left that could justify keeping
+    // them and no one able to reach them.
+    await call();
+    expect(store.deleteReaderEmailsForDid).toHaveBeenCalledWith(
       expect.anything(),
       DID,
     );
