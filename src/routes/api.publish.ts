@@ -650,6 +650,7 @@ async function publishDocument({
   // trusted. Best-effort per image: a miss keeps the original URL.
   let publishBody = body;
   let rehostedBlobs: unknown[] = [];
+  let imagesKept = 0;
   if (importRow) {
     const rehosted = await rehostBodyImages({
       body,
@@ -673,6 +674,11 @@ async function publishDocument({
     if (rehosted) {
       publishBody = rehosted.body;
       rehostedBlobs = rehosted.blobs;
+      // Images that stayed on the source CDN — past the cap, too big, refused,
+      // or the wrong type. Not an error, and the post is fine, but the writer
+      // imported precisely to stop depending on that server. Saying nothing
+      // would let them believe the archive is theirs when part of it isn't.
+      imagesKept = rehosted.skipped;
     }
   }
 
@@ -747,12 +753,13 @@ async function publishDocument({
       : null;
   // Success lands on the dashboard: the new post on top and a "view it live"
   // link. The archive index and feed are purged, so they list the new post.
-  return purgingReaderPages(backToDashboard(afterPublish(rkey, announced)), {
-    origin,
-    did,
-    ident,
-    rkey,
-  });
+  return purgingReaderPages(
+    backToDashboard({
+      ...afterPublish(rkey, announced),
+      ...(imagesKept > 0 ? { imagesKept: String(imagesKept) } : {}),
+    }),
+    { origin, did, ident, rkey },
+  );
 }
 
 /**
