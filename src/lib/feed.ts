@@ -70,28 +70,141 @@ export function stripMarkdown(
   text: string,
   scanChars = EXCERPT_SCAN_CHARS,
 ): string {
-  return stripMarkdownConstructs(text, scanChars).replace(/\s+/g, " ").trim();
+  return stripMarkdownConstructs(text, scanChars, "drop-url")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * What becomes of a link's destination.
+ *
+ * `drop-url` for the excerpt: a URL inside a 300-character card description is
+ * noise, and the description sits beside a link to the post anyway.
+ *
+ * `keep-url` for the whole-document projection: `textContent` is the post as
+ * every reader outside Goldroad sees it, and a link whose destination has been
+ * deleted is not a lossy rendition of that post — it is a wrong one. The
+ * reader is left with underlined-looking words pointing nowhere and no way to
+ * find where they pointed.
+ */
+type LinkMode = "drop-url" | "keep-url";
+
+/** One link as plain text. Handles both destination spellings markdown allows
+ * — a bare URL with an optional `"title"`, and the angle-bracket form — and
+ * says nothing twice when the text already IS the URL. */
+function linkAsText(text: string, destination: string, mode: LinkMode): string {
+  const label = text.trim();
+  if (mode === "drop-url") return label;
+  const raw = destination.trim();
+  // `<…>` is the spelling that exists precisely so a URL may contain spaces,
+  // so the whitespace split below must not be applied to it.
+  const angled = /^<([^>]*)>/.exec(raw);
+  const url = angled ? angled[1] : (raw.split(/\s+/)[0] ?? "");
+  if (!url) return label;
+  if (!label || label === url) return url;
+  return `${label} (${url})`;
+}
+
+/** A GFM table's delimiter row (`|---|:--:|`): pipes, dashes, colons and
+ * spaces, and nothing else. Pure punctuation — there is no reading of it that
+ * belongs in plain text. */
+function isTableDelimiterRow(line: string): boolean {
+  return /^[\s:|-]+$/.test(line) && line.includes("|") && line.includes("-");
+}
+
+/** A setext heading underline (`====`, `----`) or a thematic break (`***`,
+ * `___`, `- - -`). The heading's own words are the line above and are kept;
+ * the underline is a formatting instruction with no text in it. */
+const RULE_LINE_RE = /^(?:={2,}|(?:[-*_][ \t]*){2,})$/;
+
+/** A link reference definition (`[label]: https://… "Title"`) — machinery for
+ * links written elsewhere in the document, carrying no prose of its own. */
+const LINK_DEFINITION_RE = /^\[[^\]^]+\]:\s*\S+(?:\s+["'(].*)?$/;
+
+/** A footnote definition (`[^1]: the note itself`). Unlike the definition
+ * above this DOES carry prose, so the marker goes and the words stay. */
+const FOOTNOTE_DEFINITION_RE = /^\[\^[^[\]]*\]:\s*(.*)$/;
+
+/** Cells of one table row, pipe grid removed. Leading/trailing pipes are
+ * frame, not empty cells; an escaped `\|` is content and must not split. */
+function tableRowAsText(line: string): string {
+  return line
+    .replace(/^\||\|$/g, "")
+    .split(/(?<!\\)\|/)
+    .map((cell) => cell.replace(/\\\|/g, "|").trim())
+    .filter((cell) => cell !== "")
+    .join(" · ");
+}
+
+/**
+ * The markdown whose meaning lives in whole LINES rather than in delimiters
+ * inside one — which the inline ladder below cannot see, and therefore used to
+ * pass through verbatim into a field the lexicon says holds no markdown at
+ * all: pipe grids, `---|---` rows, `====` underlines and reference
+ * definitions, all sitting in the plaintext every non-Goldroad reader falls
+ * back to.
+ *
+ * Line-oriented and single-pass, so it stays linear on any input.
+ */
+function stripBlockConstructs(text: string): string {
+  const out: string[] = [];
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (isTableDelimiterRow(trimmed)) continue;
+    if (RULE_LINE_RE.test(trimmed)) continue;
+    if (LINK_DEFINITION_RE.test(trimmed)) continue;
+    const footnote = FOOTNOTE_DEFINITION_RE.exec(trimmed);
+    if (footnote) {
+      if (footnote[1]) out.push(footnote[1]);
+      continue;
+    }
+    // A row of a pipe table. Leading OR trailing pipe is the shape every
+    // editor that emits tables produces, and prose does not start or end a
+    // line with one.
+    if (trimmed.includes("|") && /^\||\|$/.test(trimmed)) {
+      out.push(tableRowAsText(trimmed));
+      continue;
+    }
+    out.push(line);
+  }
+  return out.join("\n");
 }
 
 /**
  * The markdown-construct removal itself, with whitespace left exactly as it
  * was found. Factored out because the excerpt strip above and the full-body
- * projection below differ ONLY in how much whitespace they keep — which is
- * precisely the kind of near-duplicate that would otherwise get forked, and
- * this ladder is hardened against hostile input (see the note above); a fork
- * of it would not stay hardened.
+ * projection below differ ONLY in how much whitespace they keep and in what
+ * they do with a link's destination — which is precisely the kind of
+ * near-duplicate that would otherwise get forked, and this ladder is hardened
+ * against hostile input (see the note above); a fork of it would not stay
+ * hardened.
  */
-function stripMarkdownConstructs(text: string, scanChars: number): string {
-  return text
-    .slice(0, scanChars)
-    .replace(/```[\s\S]*?(```|$)/g, " ") // fenced code blocks
-    .replace(/`([^`]*)`/g, "$1") // inline code
-    .replace(/!\[([^[\]]*)\]\([^()]*\)/g, "$1") // images → alt text
-    .replace(/\[([^[\]]*)\]\([^()]*\)/g, "$1") // links → link text
-    .replace(/^#{1,6}\s+/gm, "") // heading markers
-    .replace(/^\s{0,3}>\s?/gm, "") // blockquote markers
-    .replace(/^\s*(?:[-*+]|\d+[.)])\s+/gm, "") // list markers
-    .replace(/(\*{1,3}|_{1,3}|~~)/g, ""); // emphasis markers
+function stripMarkdownConstructs(
+  text: string,
+  scanChars: number,
+  links: LinkMode,
+): string {
+  return (
+    stripBlockConstructs(text.slice(0, scanChars))
+      .replace(/```[\s\S]*?(```|$)/g, " ") // fenced code blocks
+      .replace(/`([^`]*)`/g, "$1") // inline code
+      .replace(/!\[([^[\]]*)\]\([^()]*\)/g, "$1") // images → alt text
+      .replace(
+        /\[([^[\]]*)\]\(([^()]*)\)/g, // links → text, or "text (url)"
+        (_whole, text: string, destination: string) =>
+          linkAsText(text, destination, links),
+      )
+      .replace(/\[([^[\]]*)\]\[[^[\]]*\]/g, "$1") // reference links → link text
+      // Footnote markers; their notes survive as endnote lines. `[` is excluded
+      // from the label class for the same reason it is excluded from the link
+      // classes above: a flood of unclosed `[^` must fail at the next bracket
+      // rather than scan to the end of the document from every position.
+      .replace(/\[\^[^[\]]*\]/g, "")
+      .replace(/^#{1,6}\s+/gm, "") // heading markers
+      .replace(/^\s{0,3}>\s?/gm, "") // blockquote markers
+      .replace(/^\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s*)?/gm, "") // list + task markers
+      .replace(/(\*{1,3}|_{1,3}|~~)/g, "")
+  ); // emphasis markers
 }
 
 /**
@@ -113,6 +226,16 @@ function stripMarkdownConstructs(text: string, scanChars: number): string {
  *   The code then goes through the same emphasis and list passes as prose, so
  *   code carrying markdown punctuation comes out lightly mangled — the lossless
  *   source is in the content union, which is what having one is for.
+ * - **A link keeps its destination**, as `text (url)`. See LinkMode.
+ *
+ * LOSSY IS FINE; MANGLED IS NOT. That distinction is the whole standard this
+ * function is held to, and it is what a construct-by-construct strip gets
+ * wrong by omission: anything the ladder does not recognize survives verbatim,
+ * so a GFM table used to be written into `textContent` as a pipe grid with a
+ * `---|---` row in it — markdown, in the one field the lexicon says holds no
+ * markdown, and unreadable prose besides. Tables now degrade to their cells,
+ * footnote markers go while their notes stay, and reference definitions and
+ * setext underlines drop out (see stripBlockConstructs).
  *
  * `scanChars` is REQUIRED here, unlike on the excerpt strip. This result is
  * stored in a record rather than rendered once, so a default window would mean
@@ -126,7 +249,7 @@ export function plainTextBody(markdown: string, scanChars: number): string {
   const unfenced = markdown
     .slice(0, scanChars)
     .replace(/^ {0,3}(?:```|~~~)[^\n]*$/gm, "");
-  return stripMarkdownConstructs(unfenced, scanChars)
+  return stripMarkdownConstructs(unfenced, scanChars, "keep-url")
     .replace(/[^\S\n]+/g, " ") // runs of spaces/tabs → one space
     .replace(/ ?\n ?/g, "\n") // no leading/trailing space on any line
     .replace(/\n{3,}/g, "\n\n") // at most one blank line between blocks
