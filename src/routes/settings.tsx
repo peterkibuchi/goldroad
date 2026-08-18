@@ -2,7 +2,7 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { drizzle } from "drizzle-orm/d1";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { AppearanceControl } from "~/components/appearance-control";
 import { ExternalLink } from "~/components/external-link";
@@ -465,6 +465,84 @@ export function AnnounceSetting({ enabled }: { enabled: boolean }) {
   );
 }
 
+/** The one-shot outcome of a save. A redirect from /api/publish appends these
+ * (`?saved=1&kind=theme`, `?moved=1`); they are read once, into a confirmation
+ * notice and at most one analytics event. */
+export type SettingsOutcome = {
+  saved?: boolean;
+  moved?: boolean;
+  kind?: "theme" | "announcing";
+};
+
+/** Drops the outcome params and nothing else — `error` is durable URL state a
+ * writer can reload into, the same split ~/routes/dashboard makes. */
+export function withoutSettingsOutcomeParams<T extends object>(
+  search: T,
+): Omit<T, keyof SettingsOutcome> {
+  const { saved, moved, kind, ...rest } = search as T & SettingsOutcome;
+  return rest;
+}
+
+/**
+ * Consume the outcome params: fire the matching analytics event at most once per
+ * redirect, and hand back what the notices need so they keep rendering after the
+ * params leave the URL.
+ *
+ * THE PARAMS HAVE TO LEAVE, for the same reason they do on the dashboard. The
+ * redirect target is an ordinary reloadable address, so a refresh or a back-nav
+ * replays whatever the query string still says — and analytics here is cookieless
+ * with memory persistence, so nothing downstream collapses the repeats. Left in
+ * place, one writer who turns announcing off and then reloads twice reads as
+ * three writers turning it off, in the one metric a default-on feature is judged
+ * by.
+ *
+ * Two guards, covering different things: `strip` rewrites the URL so a fresh page
+ * load has nothing left to replay, and the ref pins the event to the params that
+ * produced it so a re-render before that rewrite lands (React's double-invoked
+ * effects in development, a changing `navigate` identity) cannot fire it twice.
+ *
+ * Exported for tests (settings-outcome-params.test.tsx) — not a route.
+ */
+export function useSettingsOutcome(
+  search: SettingsOutcome,
+  ident: string,
+  announceDefault: boolean,
+  strip: () => void,
+): SettingsOutcome {
+  const { saved, moved, kind } = search;
+  // Seeded from the URL so the notice is on screen in the first paint, not one
+  // frame after it.
+  const [outcome, setOutcome] = useState<SettingsOutcome>(() => ({
+    saved,
+    moved,
+    kind,
+  }));
+  const consumed = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!(saved || moved)) return;
+    const key = `${saved ? "1" : ""}|${moved ? "1" : ""}|${kind ?? ""}`;
+    if (consumed.current === key) return;
+    consumed.current = key;
+
+    // Theme adoption, captured where the save LANDS rather than where it was
+    // submitted: the form posts to /api/publish and redirects, so the browser
+    // that submitted it is gone by the time the write succeeds. Fires once per
+    // arrival with kind=theme, never on a plain profile save.
+    if (saved && kind === "theme") capture("theme_saved", { ident });
+    // The number that matters for a default-on feature is how many writers turn
+    // it OFF, and this is the only place that decision is visible. The value
+    // comes from the loader, i.e. from the row the save just wrote.
+    if (saved && kind === "announcing")
+      capture("announce_default_changed", { ident, enabled: announceDefault });
+
+    setOutcome({ saved, moved, kind });
+    strip();
+  }, [saved, moved, kind, ident, announceDefault, strip]);
+
+  return outcome;
+}
+
 function SettingsPage() {
   const {
     ident,
@@ -479,23 +557,23 @@ function SettingsPage() {
     dataCounts,
     announceDefault,
   } = Route.useLoaderData();
-  const { error, saved, moved, kind } = Route.useSearch();
+  const search = Route.useSearch();
+  const { error } = search;
+  const navigate = Route.useNavigate();
   const message = errorMessage(error);
   const [iconBusy, setIconBusy] = useState(false);
 
-  // Theme adoption, captured where the save LANDS rather than where it was
-  // submitted: the form posts to /api/publish and redirects, so the browser
-  // that submitted it is gone by the time the write succeeds. Same pattern the
-  // dashboard uses for post_published. Fires once per arrival with kind=theme,
-  // never on a plain profile save.
-  useEffect(() => {
-    if (saved && kind === "theme") capture("theme_saved", { ident });
-    // The number that matters for a default-on feature is how many writers turn
-    // it OFF, and this is the only place that decision is visible. The value
-    // comes from the loader, i.e. from the row the save just wrote.
-    if (saved && kind === "announcing")
-      capture("announce_default_changed", { ident, enabled: announceDefault });
-  }, [saved, kind, ident, announceDefault]);
+  // `replace`, so Back still goes where the writer came from rather than to the
+  // pre-strip URL — which would put the consumed params right back.
+  const stripOutcomeParams = useCallback(() => {
+    void navigate({ replace: true, search: withoutSettingsOutcomeParams });
+  }, [navigate]);
+  const { saved, moved, kind } = useSettingsOutcome(
+    search,
+    ident,
+    announceDefault,
+    stripOutcomeParams,
+  );
 
   return (
     <AppShell header={{ variant: "signed-in", ident, active: "settings" }}>
@@ -677,7 +755,7 @@ function SettingsPage() {
 
         <SettingsSection
           id="your-data"
-          intro="Goldroad stores remarkably little for your account: drafts, your import history, your daily follower count, your announcing setting, and your sign-in session. That's everything keyed to your account. What you've published lives in your own data repo, not here, so nothing below touches it."
+          intro="Goldroad stores remarkably little for your account: drafts, your import history, your daily follower count, your announcing setting, any reader addresses left with your publication, and your sign-in session. That's everything keyed to your account. What you've published lives in your own data repo, not here, so nothing below touches it."
           title="Your data"
         >
           <p className="font-display text-ink-soft text-sm">
@@ -710,7 +788,7 @@ function SettingsPage() {
         <SettingsSection
           id="delete-account"
           rule="heavy"
-          intro="Deletes your drafts, import history, follower history, settings, and sign-in from our servers, permanently. Your published posts and any Bluesky announces stay exactly where they are — they're records in your own repo, not ours."
+          intro="Deletes your drafts, import history, follower history, settings, any reader addresses left with your publication, and your sign-in from our servers, permanently. Your published posts and any Bluesky announces stay exactly where they are — they're records in your own repo, not ours."
           title="Delete your account"
         >
           <DeleteAccountForm ident={ident} />
@@ -831,11 +909,12 @@ export function DeleteAccountForm({ ident }: { ident: string }) {
           className="mt-3 text-ink-soft leading-relaxed"
           id="delete-account-desc"
         >
-          This deletes your drafts, import history, follower history, and
-          sign-in from our servers — it can't be undone. It does NOT delete
-          anything you've published: those records live in your own repo and
-          stay exactly where they are, and any posts announcing them on Bluesky
-          stay up too.
+          This deletes your drafts, import history, follower history, any reader
+          email addresses left with your publication, and your sign-in from our
+          servers — it can't be undone, so download your data first if you want
+          that list. It does NOT delete anything you've published: those records
+          live in your own repo and stay exactly where they are, and any posts
+          announcing them on Bluesky stay up too.
         </p>
         <p className="mt-2 font-display text-sm">
           <ExternalLink
