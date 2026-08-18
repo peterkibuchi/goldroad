@@ -28,7 +28,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { drizzle } from "drizzle-orm/d1";
 import { z } from "zod";
 
-import { isDid } from "~/lib/atproto";
+import { isDid, parseAtUri } from "~/lib/atproto";
 import { readBodyCapped } from "~/lib/blob";
 import { countDrafts, insertDraft } from "~/lib/drafts";
 import { MAX_DRAFT_BODY_BYTES, MAX_DRAFTS_PER_USER } from "~/lib/drafts-schema";
@@ -65,15 +65,41 @@ const importDraftPayload = z.object({
       .nullish(),
     publishedAt: z.iso.datetime({ offset: true }).nullish(),
     /**
-     * Which import this came from. Recorded on the ledger row because it
-     * decides how the published page states its origin — see `source_kind` in
-     * ~/db/schema. Defaults to `feed` so a client that predates thread import
-     * (a tab left open across a deploy) keeps making valid, correctly-labelled
-     * requests.
+     * Which import this came from — a CLAIM, checked against the guid below
+     * rather than believed (see `derivedKind`). Recorded on the ledger row
+     * because it decides how the published page states its origin (`source_kind`
+     * in ~/db/schema). Defaults to `feed` so a client that predates thread
+     * import — a tab left open across a deploy — keeps making valid requests;
+     * such a client never sends an at:// guid, so the default and the derivation
+     * agree.
      */
     kind: z.enum(["feed", "thread"]).default("feed"),
   }),
 });
+
+/**
+ * What this item ACTUALLY is, decided from the guid and the session — never
+ * from the `kind` the client sent.
+ *
+ * `source_kind` is not bookkeeping: it decides what a published page says about
+ * where the words came from ("originally posted on Bluesky" versus a link to
+ * somebody else's publication), and that sentence is permanent and public. A
+ * client-supplied enum meant anyone with a session could mint a thread-labelled
+ * provenance for arbitrary text — or, in the other direction, launder a real
+ * thread as a generic feed import.
+ *
+ * A thread is exactly one thing: an `app.bsky.feed.post` in the SESSION'S OWN
+ * repo. The repo check is the half that matters — without it, a writer could
+ * claim someone else's thread as self-imported, which is the provenance line
+ * asserting a relationship that does not exist. Everything else is a feed.
+ */
+function derivedKind(guid: string, did: string): "feed" | "thread" {
+  const uri = parseAtUri(guid);
+  if (!uri) return "feed";
+  return uri.collection === "app.bsky.feed.post" && uri.did === did
+    ? "thread"
+    : "feed";
+}
 
 export const Route = createFileRoute("/api/import/draft")({
   server: {
@@ -103,6 +129,14 @@ export const Route = createFileRoute("/api/import/draft")({
         if (!parsed.success)
           return privateJson({ ok: false, error: "invalid" }, 400);
         const { title, content, source } = parsed.data;
+
+        // The claim has to match the evidence. Refused rather than coerced: a
+        // client sending the wrong kind is either stale in a way we cannot see
+        // or lying, and silently rewriting the label would file a provenance the
+        // caller never agreed to under a request they believe succeeded.
+        const kind = derivedKind(source.guid, did);
+        if (source.kind !== kind)
+          return privateJson({ ok: false, error: "invalid" }, 400);
 
         // Re-serialize for storage (stored strings are always our own
         // stringify output); pathological nesting is a 400, not a crash.
@@ -170,7 +204,7 @@ export const Route = createFileRoute("/api/import/draft")({
             ? reviveImportItem(db, did, hash, {
                 draftId,
                 sourceUrl,
-                sourceKind: source.kind,
+                sourceKind: kind,
                 originalAt,
               })
             : insertImportItem(db, {
@@ -178,7 +212,7 @@ export const Route = createFileRoute("/api/import/draft")({
                 did,
                 guidHash: hash,
                 sourceUrl,
-                sourceKind: source.kind,
+                sourceKind: kind,
                 originalAt,
                 draftId,
               }),
