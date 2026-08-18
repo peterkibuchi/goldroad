@@ -616,6 +616,40 @@ describe("extractImageUrls", () => {
   it("ignores links that are not images", () => {
     expect(extractImageUrls("[a link](https://cdn.example/1.jpg)")).toEqual([]);
   });
+
+  /**
+   * ALT TEXT WITH BRACKETS IN IT.
+   *
+   * Anything generating this markdown escapes the markdown-significant
+   * characters in alt text, brackets included — thread import does it via
+   * `escapeMarkdownText`, and the alt is the writer's own description of their
+   * own picture. The escape leaves a literal `[` behind, which the old alt class
+   * (`[^[\]]*`) excluded, so the whole image line stopped being recognised as
+   * an image: not rehosted at publish, not a cover candidate, still loading from
+   * somebody else's CDN. The only symptom was a square bracket in a caption.
+   */
+  it("sees images whose alt text contains escaped brackets", () => {
+    const escapeAlt = (text: string) =>
+      text.replace(/([\\`*_[\]<>|])/g, "\\$1");
+    const alts = ["a photo", "chart [2026]", "figure 1] of 3", "*bold* claim"];
+    const body = alts
+      .map((alt, i) => `![${escapeAlt(alt)}](https://cdn.example/${i}.jpg)`)
+      .join("\n\n");
+
+    // All four, not the two that happen to contain no brackets.
+    expect(extractImageUrls(body)).toEqual([
+      "https://cdn.example/0.jpg",
+      "https://cdn.example/1.jpg",
+      "https://cdn.example/2.jpg",
+      "https://cdn.example/3.jpg",
+    ]);
+  });
+
+  it("still stops at an unescaped bracket rather than running past the image", () => {
+    // The class tolerates ESCAPED brackets only. A raw `]` still ends the alt,
+    // which is what keeps one malformed line from swallowing the next image.
+    expect(extractImageUrls("![a]b](https://cdn.example/1.jpg)")).toEqual([]);
+  });
 });
 
 describe("rehostBodyImages", () => {
