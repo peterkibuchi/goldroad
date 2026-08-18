@@ -400,11 +400,40 @@ type ResolvedFacet = { start: number; end: number; href: string };
  * validates in bytes: a range outside the text, inverted, or overlapping one
  * already accepted is dropped rather than clamped, because a half-applied
  * range would move a link onto words it doesn't belong to.
+ *
+ * TWO RANGES ARE IN-BOUNDS AND STILL WRONG, which is why this takes the bytes
+ * and not just their length:
+ *
+ *  - **A range that splits a codepoint.** Facet offsets are produced by other
+ *    people's clients and some of them count wrong. Cutting mid-sequence makes
+ *    `TextDecoder` emit U+FFFD on both sides, so the writer's own words come
+ *    across corrupted — a mojibake character welded to the start of a link
+ *    label, permanently, in a record they will publish under their name.
+ *  - **A range spanning a newline.** Every newline starts a new paragraph here,
+ *    so a link label containing one would be split across two blocks with the
+ *    markdown syntax torn in half — `[half` in one paragraph and the rest in
+ *    the next, which renders as literal brackets rather than a link.
+ *
+ * Both drop the FACET and keep the TEXT: the words are the writer's and always
+ * survive; only the link decoration is refused.
  */
 export function resolveFacets(
   facets: unknown[],
-  byteLength: number,
+  bytes: Uint8Array,
 ): ResolvedFacet[] {
+  const byteLength = bytes.length;
+  /** A UTF-8 continuation byte is 10xxxxxx; an index landing on one is inside a
+   * character rather than between two. The end of the buffer is a boundary. */
+  const onBoundary = (i: number) =>
+    i === byteLength || (bytes[i] & 0xc0) !== 0x80;
+  /** 0x0a/0x0d cannot occur inside a multi-byte sequence, so a raw byte scan
+   * is exact here. */
+  const spansNewline = (start: number, end: number) => {
+    for (let i = start; i < end; i++)
+      if (bytes[i] === 0x0a || bytes[i] === 0x0d) return true;
+    return false;
+  };
+
   const resolved: ResolvedFacet[] = [];
   for (const facet of facets) {
     if (!isRecord(facet)) continue;
@@ -414,6 +443,8 @@ export function resolveFacets(
     if (typeof start !== "number" || typeof end !== "number") continue;
     if (!Number.isInteger(start) || !Number.isInteger(end)) continue;
     if (start < 0 || end > byteLength || start >= end) continue;
+    if (!onBoundary(start) || !onBoundary(end)) continue;
+    if (spansNewline(start, end)) continue;
     const features = Array.isArray(facet.features) ? facet.features : [];
     const href = features.map(facetHref).find((candidate) => candidate != null);
     if (!href) continue;
@@ -443,7 +474,7 @@ export function postTextMarkdown(post: ThreadPost): string[] {
   const text = post.text;
   if (text.trim() === "") return [];
   const bytes = new TextEncoder().encode(text);
-  const facets = resolveFacets(post.facets, bytes.length);
+  const facets = resolveFacets(post.facets, bytes);
   const decoder = new TextDecoder();
 
   // Rebuilt span by span in byte space, so a facet's range lands on exactly
@@ -515,7 +546,7 @@ export function embedMarkdown(post: ThreadPost): EmbedResult {
       : [embed];
 
   const linkedHrefs = new Set(
-    resolveFacets(post.facets, new TextEncoder().encode(post.text).length).map(
+    resolveFacets(post.facets, new TextEncoder().encode(post.text)).map(
       (facet) => facet.href,
     ),
   );
@@ -592,7 +623,8 @@ export type AssembledThread = {
   createdAt: string;
   /** The root post on bsky.app — the provenance link. */
   sourceUrl: string;
-  /** The spine was longer than MAX_THREAD_POSTS and was cut. */
+  /** The spine did not end on its own: it was longer than MAX_THREAD_POSTS,
+   * or it ran into a deleted or blocked post it could not read past. */
   truncated: boolean;
   /** Some post in the thread carried a video, which cannot come across. */
   droppedVideo: boolean;
@@ -633,16 +665,21 @@ export function assembleThread(
   let truncated = false;
   while (spine.length < MAX_THREAD_POSTS) {
     const node = nodes[nodes.length - 1];
-    const next = nextSelfReply(node, expected.author, seen);
-    if (!next) break;
-    seen.add(next.post.uri);
-    spine.push(next.post);
-    nodes.push(next.node);
+    const step = nextSelfReply(node, expected.author, seen);
+    if (!step.next) {
+      // The spine stopped, and a dead node is why it might have. See `dead`.
+      truncated = truncated || step.dead;
+      break;
+    }
+    seen.add(step.next.post.uri);
+    spine.push(step.next.post);
+    nodes.push(step.next.node);
   }
-  // Anything left on the spine past the cap is a cut, said out loud.
+  // Anything left on the spine past the cap is a cut, said out loud — and so is
+  // a spine that ran into something it could not read past.
   if (spine.length >= MAX_THREAD_POSTS) {
-    truncated =
-      nextSelfReply(nodes[nodes.length - 1], expected.author, seen) !== null;
+    const step = nextSelfReply(nodes[nodes.length - 1], expected.author, seen);
+    truncated = truncated || step.next !== null || step.dead;
   }
   if (spine.length < 2) return null;
 
@@ -671,17 +708,40 @@ export function assembleThread(
   };
 }
 
-/** The earliest not-yet-used self-reply under a threadViewPost node. */
+/**
+ * The earliest not-yet-used self-reply under a threadViewPost node, and whether
+ * anything under it was unreadable.
+ *
+ * `dead` is the half that exists for honesty. A `#notFoundPost` (the writer
+ * deleted that post) or `#blockedPost` in the replies carries a uri and nothing
+ * else — no author, by design — so there is no way to know whether it WAS the
+ * writer's own continuation. If the spine then ends here, the import would
+ * otherwise present a thread cut in the middle as a thread that simply ended,
+ * which is the one thing a provenance-carrying import must not do. Any early
+ * termination that is not a natural end-of-spine counts as a cut, so a dead
+ * sibling is reported and the caller decides.
+ *
+ * It is deliberately not narrowed to "dead AND no live next": a dead node
+ * alongside a live continuation means the writer had a branch we did not
+ * follow, and the caller only consults `dead` when the spine actually stopped.
+ */
 function nextSelfReply(
   node: Record<string, unknown>,
   author: string,
   seen: Set<string>,
-): { post: ThreadPost; node: Record<string, unknown> } | null {
+): {
+  next: { post: ThreadPost; node: Record<string, unknown> } | null;
+  dead: boolean;
+} {
   const replies = Array.isArray(node.replies) ? node.replies : [];
   const candidates: { post: ThreadPost; node: Record<string, unknown> }[] = [];
+  let dead = false;
   for (const reply of replies) {
     if (!isRecord(reply)) continue;
-    if (reply.notFound === true || reply.blocked === true) continue;
+    if (reply.notFound === true || reply.blocked === true) {
+      dead = true;
+      continue;
+    }
     const replyType = str(reply.$type);
     if (replyType && replyType !== THREAD_VIEW_POST) continue;
     const post = normalizePost(reply.post, author);
@@ -689,7 +749,7 @@ function nextSelfReply(
     candidates.push({ post, node: reply });
   }
   candidates.sort((a, b) => a.post.createdAt.localeCompare(b.post.createdAt));
-  return candidates[0] ?? null;
+  return { next: candidates[0] ?? null, dead };
 }
 
 /**
