@@ -69,8 +69,11 @@ not around it.
   that never changes that setting, and — for a scheduled post — the decision
   captured at scheduling time, so the cron publishes what the writer chose then
   rather than what their settings say hours later. Nothing announces an import, a
-  taken-down post, or an edit, and no path can post more than a handful of cards
-  an hour for one writer.
+  taken-down post, or an edit, and the automatic paths — a publish and the cron —
+  cannot post more than a handful of cards an hour for one writer. A writer's own
+  confirmed "Announce again" is deliberately outside that budget: a person
+  pressing a button and reading the result is the thing the cap exists to stand
+  in for.
 - RSS per publication, plus a sitemap — every publication has a machine-readable twin.
 - Import an archive from Substack, Ghost, Medium, or WordPress, parsed in the browser and
   landing as private drafts.
