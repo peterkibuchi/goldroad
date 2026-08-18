@@ -111,9 +111,11 @@ type Draft = {
   markdown: string;
   /** Same-origin /img path for the existing cover, when the record has one. */
   coverPath: string | null;
-  /** Set when this published post is a mirror (imported; original elsewhere):
-   * the edit form then offers "make this the Goldroad original". */
-  mirror: { sourceUrl: string | null } | null;
+  /** Set when this published post came in through an import: the edit form then
+   * offers to drop the provenance note. `kind` decides what that note claims —
+   * a mirror also carries an indexing consequence, a thread self-import does
+   * not (see ~/lib/mirror). */
+  mirror: { sourceUrl: string | null; kind: "feed" | "thread" } | null;
 };
 
 /** A pending schedule on the draft being resumed. `dueAt` is an ISO string —
@@ -250,7 +252,7 @@ const getWriteContext = createServerFn({ method: "GET" })
         if (hasForeignContent(doc)) draftError = "not_editable";
         else {
           const coverCid = coverImageCid(doc.coverImage);
-          // Mirror lookup (import ledger): editing a mirrored post offers
+          // Provenance lookup (import ledger): editing an imported post offers
           // adoption. Best-effort — a flaked read just hides the offer.
           const [mirror] = await selectMirror(
             drizzle(env.DB),
@@ -263,7 +265,12 @@ const getWriteContext = createServerFn({ method: "GET" })
             dek: writerDek(doc),
             markdown: documentBodyMarkdown(doc),
             coverPath: coverCid ? blobImagePath(did, coverCid) : null,
-            mirror: mirror ? { sourceUrl: mirror.sourceUrl } : null,
+            mirror: mirror
+              ? {
+                  sourceUrl: mirror.sourceUrl,
+                  kind: mirror.sourceKind === "thread" ? "thread" : "feed",
+                }
+              : null,
           };
         }
       } catch {
@@ -1397,14 +1404,15 @@ export function Compose({
           {editing && draft.mirror && (
             <div className="mb-6 border border-rule px-4 py-3">
               <p className="font-display text-ink-soft text-sm leading-relaxed">
-                This post is a mirror — readers see a note pointing to the
-                original{mirrorHost ? ` at ${mirrorHost}` : ""}, and search
-                engines are told to index the original, not this copy.
+                {draft.mirror.kind === "thread"
+                  ? "This post came from one of your threads — readers see a line saying it was first published as a thread on Bluesky. This page is already the original, so search engines index it as normal."
+                  : `This post is a mirror — readers see a note pointing to the original${mirrorHost ? ` at ${mirrorHost}` : ""}, and search engines are told to index the original, not this copy.`}
               </p>
               <label className="mt-2 flex min-h-9 cursor-pointer items-center gap-2 font-display text-ink text-sm">
                 <input name="adoptOriginal" type="checkbox" value="1" />
-                Make this the Goldroad original — remove the note and let this
-                page be indexed
+                {draft.mirror.kind === "thread"
+                  ? "Drop the line about the thread — this stands on its own now"
+                  : "Make this the Goldroad original — remove the note and let this page be indexed"}
               </label>
             </div>
           )}

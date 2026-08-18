@@ -486,9 +486,25 @@ export async function fetchImportableImage(
   }
 }
 
-/** Markdown images in a body. Shared by the extractors below so the cover
- * candidate and the rehost list can never disagree about what an image is. */
-const MARKDOWN_IMAGE_RE = /!\[[^[\]]*\]\(\s*([^()\s]+)[^()]*\)/g;
+/**
+ * Markdown images in a body. Shared by the extractors below so the cover
+ * candidate and the rehost list can never disagree about what an image is.
+ *
+ * THE ALT CLASS HAS TO TOLERATE ESCAPES. Alt text is the writer's own words, so
+ * anything producing this markdown escapes the markdown-significant characters
+ * in it — brackets included, as `\[` and `\]`. The class used to be
+ * `[^[\]]*`, which excludes the literal `[` an escape leaves behind, so an alt
+ * like "chart \[2026\]" failed to match and the whole image line went
+ * unrecognised: not rehosted at publish, not a cover candidate. The image kept
+ * pointing at somebody else's CDN, and the only clue was a square bracket in a
+ * description.
+ *
+ * So an alt is now any run of escaped-anything (`\\.`) or ordinary
+ * non-bracket, non-backslash characters. Unescaped brackets are still excluded,
+ * which is what keeps this from running past the end of one image and swallowing
+ * the next.
+ */
+const MARKDOWN_IMAGE_RE = /!\[(?:\\.|[^[\]\\])*\]\(\s*([^()\s]+)[^()]*\)/g;
 
 /**
  * How many body images one publish will rehost. A bound on the fetches and

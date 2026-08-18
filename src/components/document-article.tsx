@@ -39,7 +39,7 @@ import {
   isWorthShowing,
 } from "~/lib/engagement";
 import { buildArticleJsonLd, jsonLdScriptContent } from "~/lib/json-ld";
-import { checkMirror, type MirrorInfo } from "~/lib/mirror";
+import { checkMirror, keepsCanonical, type MirrorInfo } from "~/lib/mirror";
 import { checkHidden, recordAtUri } from "~/lib/moderation";
 import { CANONICAL_ORIGIN } from "~/lib/origin";
 import { composeDocumentUrl } from "~/lib/publish";
@@ -307,12 +307,18 @@ export function documentHead(
   const imageUrl = cover
     ? `${CANONICAL_ORIGIN}${blobImagePath(cover.did, cover.cid)}`
     : null;
-  // Mirrored posts (the original lives elsewhere): noindex INSTEAD of a
-  // canonical tag — search engines index the original, not this copy; a
-  // cross-domain canonical is no longer the recommended syndication signal
-  // and could never verify against a domain the writer doesn't control.
-  // The at:// link tags stay: they're record discovery, not SEO.
-  const isMirror = mirror != null;
+  // Mirrored posts (the original is SOMEONE ELSE'S publication, still up):
+  // noindex INSTEAD of a canonical tag — search engines index the original, not
+  // this copy; a cross-domain canonical is no longer the recommended
+  // syndication signal and could never verify against a domain the writer
+  // doesn't control. The at:// link tags stay: they're record discovery, not SEO.
+  //
+  // A thread self-import is NOT that case and keeps its canonical: the original
+  // is the writer's own Bluesky thread, which was never an indexed web page
+  // competing for the same query. noindex there would suppress the only
+  // long-form copy of the writer's own words in favour of nothing at all. See
+  // ~/lib/mirror.
+  const isMirror = !keepsCanonical(mirror);
   return {
     meta: [
       { title },
@@ -492,6 +498,35 @@ function provenanceHost(url: string | null): string | null {
   }
 }
 
+/**
+ * The provenance line an imported post carries, or null for a native one.
+ *
+ * Two shapes, because the two imports mean different things (see ~/lib/mirror):
+ * a mirror names the host that still holds the original, while a thread
+ * self-import names the SHAPE the words first appeared in — the writer isn't
+ * pointing readers away, they are showing the piece's own history. Null when
+ * there is nothing honest to say, which includes a mirror whose stored URL
+ * won't parse: a sentence promising an original and linking nowhere is worse
+ * than silence.
+ *
+ * Exported for tests — it is the whole of this decision in one place.
+ */
+export function provenanceLine(
+  mirror: MirrorInfo | null | undefined,
+): { lead: string; label: string; href: string } | null {
+  if (!mirror?.sourceUrl) return null;
+  if (mirror.kind === "thread")
+    return {
+      lead: "First published as",
+      label: "a thread on Bluesky",
+      href: mirror.sourceUrl,
+    };
+  const host = provenanceHost(mirror.sourceUrl);
+  return host
+    ? { lead: "Originally published at", label: host, href: mirror.sourceUrl }
+    : null;
+}
+
 /** Quiet like/reply/repost+quote row — only the reply count is a link, to the
  * bsky.app thread, because the conversation lives on the network. Plain
  * ink-soft icon+number pairs, never a colored badge: this must not read as
@@ -580,7 +615,7 @@ export function DocumentArticle({
   const date = formatDate(doc.publishedAt);
   const updated = formatDate(doc.updatedAt);
   const publicationHref = `/@${encodeURIComponent(ident)}`;
-  const mirrorHost = mirror ? provenanceHost(mirror.sourceUrl) : null;
+  const provenance = provenanceLine(mirror);
   const readingLabel = formatReadingTime(documentReadingMinutes(body));
   // The dek is ALWAYS shown when set — not just as a no-body fallback — as its
   // own line under the H1.
@@ -718,17 +753,20 @@ export function DocumentArticle({
               {updated && updated !== date && <> · updated {updated}</>}
             </p>
           </div>
-          {/* Provenance for mirrored posts (import ledger): the original
-              lives elsewhere and this page says so, visibly — the honest
-              half of "keep your Substack". Calm register, no ornament. */}
-          {mirror && mirrorHost && mirror.sourceUrl && (
+          {/* Provenance for imported posts (import ledger). Two sentences, not
+              one, because they say different things: a mirror admits the
+              original lives elsewhere (the honest half of "keep your
+              Substack"), while a thread self-import names the shape the piece
+              first appeared in — the writer isn't deferring to anyone, they
+              are showing their work. Calm register, no ornament. */}
+          {provenance && (
             <p className="mt-2 font-display text-ink-soft text-sm">
-              Originally published at{" "}
+              {provenance.lead}{" "}
               <ExternalLink
                 className="underline underline-offset-2 transition-colors hover:text-ink"
-                href={mirror.sourceUrl}
+                href={provenance.href}
               >
-                {mirrorHost}
+                {provenance.label}
               </ExternalLink>
             </p>
           )}
