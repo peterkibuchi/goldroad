@@ -235,7 +235,7 @@ describe("ThreadProgress — partial failure is a row, not a dead end", () => {
         done={true}
         selected={selected}
         status={{
-          "hash-3aa1": { kind: "saved" },
+          "hash-3aa1": { kind: "saved", notes: [] },
           "hash-3aa2": {
             kind: "failed",
             reason: "no longer a thread on Bluesky",
@@ -260,6 +260,45 @@ describe("ThreadProgress — partial failure is a row, not a dead end", () => {
     expect(
       screen.getByRole("link", { name: /review your drafts/i }),
     ).toBeDefined();
+  });
+
+  /**
+   * A draft that came across imperfectly still says so.
+   *
+   * `truncated` and `droppedVideo` were already crossing the wire on every
+   * assembled thread and were being dropped here, which meant the one moment a
+   * writer is looking at the outcome was also the moment we knew something was
+   * missing and said nothing. They find out from a reader instead — or never.
+   *
+   * Said on the SAVED row rather than as a skip, because the draft is real: the
+   * note is what to check before publishing, not a failure.
+   */
+  it("says what didn't come across on a thread that still saved", () => {
+    render(
+      <ThreadProgress
+        data={data}
+        done={true}
+        selected={selected}
+        status={{
+          "hash-3aa1": {
+            kind: "saved",
+            notes: [
+              "some posts further down didn't come across",
+              "a video couldn't come across",
+            ],
+          },
+          "hash-3aa2": { kind: "saved", notes: [] },
+          "hash-3aa3": { kind: "skipped", reason: "already in your drafts" },
+        }}
+      />,
+    );
+    expect(
+      screen.getByText(
+        /saved to drafts — some posts further down didn't come across; a video couldn't come across/i,
+      ),
+    ).toBeDefined();
+    // A clean import stays a plain line — the note is information, not noise.
+    expect(screen.getByText("Saved to drafts")).toBeDefined();
   });
 
   it("announces progress politely while it runs, and offers no finish link yet", () => {

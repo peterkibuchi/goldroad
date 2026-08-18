@@ -187,7 +187,14 @@ type ItemStatus =
   | { kind: "pending" }
   | { kind: "reading" }
   | { kind: "saving" }
-  | { kind: "saved" }
+  /**
+   * `notes` are things that came across imperfectly but still came across —
+   * the thread saved, and something about it is worth knowing before the writer
+   * publishes it. They ride on the SAVED state rather than becoming a skip,
+   * because the draft is real and the alternative (saying nothing) means the
+   * writer finds out from a reader.
+   */
+  | { kind: "saved"; notes: string[] }
   | { kind: "skipped"; reason: string }
   | { kind: "failed"; reason: string };
 
@@ -364,7 +371,15 @@ function ThreadImportPage() {
         const failure = errorCodeOf(body);
         if (res.ok && isOkBody(body)) {
           imported++;
-          setOne(thread.guidHash, { kind: "saved" });
+          // Both facts already crossed the wire on the assembled thread and were
+          // being dropped here. One calm line each: what is missing from the
+          // draft, in the writer's terms, stated once and not dressed up.
+          const notes: string[] = [];
+          if (assembled.thread.truncated)
+            notes.push("some posts further down didn't come across");
+          if (assembled.thread.droppedVideo)
+            notes.push("a video couldn't come across");
+          setOne(thread.guidHash, { kind: "saved", notes });
         } else if (failure === "draft_limit") {
           limitHit = true;
           setOne(thread.guidHash, { kind: "skipped", reason: "draft limit" });
@@ -705,7 +720,9 @@ export function ThreadProgress({
               ) : (
                 <span className="font-display text-ink-soft text-sm">
                   {state.kind === "saved"
-                    ? "Saved to drafts"
+                    ? state.notes.length > 0
+                      ? `Saved to drafts — ${state.notes.join("; ")}`
+                      : "Saved to drafts"
                     : state.kind === "skipped"
                       ? `Skipped — ${state.reason}`
                       : `Couldn't import — ${state.reason}`}
