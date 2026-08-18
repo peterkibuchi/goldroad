@@ -90,9 +90,11 @@ describe("emission: the body is written as both formats", () => {
       $type: "pub.goldroad.content.markdown",
       markdown: input.body,
     });
-    // textContent is what the lexicon says it is: no markdown syntax left.
+    // textContent is what the lexicon says it is: no markdown syntax left —
+    // and the link's destination survives in plain-text form rather than
+    // being deleted along with its brackets.
     expect(record.textContent).toBe(
-      "Heading\n\nA paragraph with bold and a link.\n\nSecond paragraph.",
+      "Heading\n\nA paragraph with bold and a link (https://example.com).\n\nSecond paragraph.",
     );
     expect(record.textContent).not.toContain("**");
     expect(record.textContent).not.toContain("](");
@@ -285,5 +287,98 @@ describe("plainTextBody: the projection written into textContent", () => {
     expect(plainTextBody("x".repeat(MAX_BODY_LENGTH))).toHaveLength(
       MAX_BODY_LENGTH,
     );
+  });
+});
+
+/**
+ * The projection is allowed to be lossy. It is not allowed to be MANGLED —
+ * and every case below used to be, because a construct-by-construct strip
+ * passes through anything it does not recognize. `textContent` is what every
+ * reader outside Goldroad falls back to, so markdown left standing in it is
+ * the field failing at its only job.
+ */
+describe("plainTextBody: constructs the strip used to leave standing", () => {
+  const plainTextBody = (markdown: string) =>
+    projectBody(markdown, MAX_BODY_LENGTH);
+
+  it("degrades a GFM table to readable lines instead of a pipe grid", () => {
+    const body = [
+      "| Plan | Price | Notes |",
+      "| --- | ---: | :--- |",
+      "| Free | $0 | Forever |",
+      "| Pro | $9 | Monthly |",
+    ].join("\n");
+    const plain = plainTextBody(body);
+    expect(plain).not.toContain("|");
+    expect(plain).not.toContain("---");
+    expect(plain).toBe(
+      "Plan · Price · Notes\nFree · $0 · Forever\nPro · $9 · Monthly",
+    );
+  });
+
+  it("keeps a cell's own escaped pipe as text", () => {
+    expect(plainTextBody("| a \\| b | c |")).toBe("a | b · c");
+  });
+
+  it("keeps where a link pointed instead of deleting it", () => {
+    // Losing the destination is not lossiness: the reader is left with words
+    // that look like a link, point nowhere, and cannot be recovered.
+    expect(plainTextBody("See [the docs](https://example.com/docs).")).toBe(
+      "See the docs (https://example.com/docs).",
+    );
+    // A titled destination and the angle-bracket form are both legal spellings.
+    expect(plainTextBody('[x](https://example.com "Title")')).toBe(
+      "x (https://example.com)",
+    );
+    expect(plainTextBody("[x](<https://example.com/a b>)")).toBe(
+      "x (https://example.com/a b)",
+    );
+    // Never says the same URL twice.
+    expect(plainTextBody("[https://a.example](https://a.example)")).toBe(
+      "https://a.example",
+    );
+  });
+
+  it("leaves the excerpt's links as bare text, where a URL is only noise", () => {
+    expect(stripMarkdown("See [the docs](https://example.com/docs).")).toBe(
+      "See the docs.",
+    );
+  });
+
+  it("resolves a reference link to its text and drops the definition", () => {
+    const body = "Read [the paper][p] today.\n\n[p]: https://example.com/paper";
+    expect(plainTextBody(body)).toBe("Read the paper today.");
+  });
+
+  it("drops footnote markers but keeps the notes themselves", () => {
+    const body = "A claim.[^1]\n\n[^1]: The evidence for it.";
+    const plain = plainTextBody(body);
+    expect(plain).not.toContain("[^1]");
+    expect(plain).toBe("A claim.\n\nThe evidence for it.");
+  });
+
+  it("drops setext underlines and thematic breaks, keeping the heading", () => {
+    expect(plainTextBody("A Title\n=======\n\nBody.")).toBe("A Title\n\nBody.");
+    expect(plainTextBody("A Sub\n-----\n\nBody.")).toBe("A Sub\n\nBody.");
+    expect(plainTextBody("One.\n\n---\n\nTwo.")).toBe("One.\n\nTwo.");
+    expect(plainTextBody("One.\n\n* * *\n\nTwo.")).toBe("One.\n\nTwo.");
+  });
+
+  it("turns task-list markers into plain lines", () => {
+    expect(plainTextBody("- [ ] not done\n- [x] done")).toBe("not done\ndone");
+  });
+
+  it("stays linear on a hostile flood of the new constructs", () => {
+    const hostiles = [
+      "|".repeat(100_000),
+      "[^".repeat(50_000),
+      "[a][b".repeat(20_000),
+      "|a\\|b|\n".repeat(10_000),
+    ];
+    for (const hostile of hostiles) {
+      const start = performance.now();
+      projectBody(hostile, MAX_BODY_LENGTH);
+      expect(performance.now() - start).toBeLessThan(250);
+    }
   });
 });
