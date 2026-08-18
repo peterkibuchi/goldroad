@@ -200,18 +200,30 @@ function announceRequested(form: FormData): boolean {
 /**
  * A published post's redirect, carrying whatever announcing did.
  *
- * The three states are separate params rather than one, because the notices they
- * drive answer different questions: `announced` is "your followers have it, here
- * it is", `announceFailed` is "the post is live and the announcement is not, and
- * here is what to do", and neither is present when the writer turned announcing
- * off — the absence is the honest state, not a message.
+ * The states are separate params rather than one, because the notices they drive
+ * answer different questions: `announced` is "your followers have it, here it
+ * is", `announceFailed` is "the post is live and the announcement is not, and
+ * here is what to do", and none of them is present when the writer turned
+ * announcing off — the absence is the honest state, not a message.
+ *
+ * `announcedNoLink` is the fourth state and the reason this isn't a single param:
+ * the announce SUCCEEDED but its rkey didn't parse out of the URI the PDS
+ * answered with (`rkeyFromUri` → null). Reporting that as a plain publish was a
+ * small lie with a real cost — the notice would offer "Announce" for a post that
+ * has already been announced, and the server, seeing `bskyPostRef` on the
+ * document, would refuse it as `announce_already`. A control whose only outcome
+ * is a refusal is exactly what the published notice's doc says must not render,
+ * so this says "announced, and we can't link it" instead: no offer, no dead
+ * link, no fiction.
  */
 function publishedQuery(
   rkey: string,
   announce: AnnounceReport,
 ): Record<string, string> {
-  if (announce.state === "announced" && announce.postRkey)
-    return { published: rkey, announced: announce.postRkey };
+  if (announce.state === "announced")
+    return announce.postRkey
+      ? { published: rkey, announced: announce.postRkey }
+      : { published: rkey, announcedNoLink: "1" };
   if (announce.state === "failed")
     return {
       published: rkey,

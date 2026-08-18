@@ -182,6 +182,21 @@ describe("the post-publish notice", () => {
     expect(screen.queryByText(/post this to bluesky now/i)).toBeNull();
   });
 
+  /**
+   * The same rule, for the state that used to slip through it. When the announce
+   * worked but its rkey didn't parse, the redirect carried a bare `published`
+   * and this notice happily offered "Announce" — for a post the server would
+   * then refuse as `announce_already`, because the document already carries a
+   * `bskyPostRef`. The button was guaranteed to do nothing.
+   */
+  it("offers NO button when it announced without a linkable rkey", () => {
+    notice({ announcedNoLink: true });
+    expect(screen.queryByRole("button", { name: /announce/i })).toBeNull();
+    expect(screen.queryByText(/post this to bluesky now/i)).toBeNull();
+    // The publish is still confirmed — this state is about the card's link.
+    expect(screen.getByText(/Published\./)).toBeTruthy();
+  });
+
   it("says the post is live and the card is not, and offers the fix", () => {
     notice({ announceFailed: "announce_failed" });
     // The publish is confirmed first; the failure is about the announcement.

@@ -286,6 +286,7 @@ export const Route = createFileRoute("/dashboard")({
       error?: string;
       published?: string;
       announced?: string;
+      announcedNoLink?: boolean;
       announceFailed?: string;
       deleted?: boolean;
       moved?: boolean;
@@ -300,6 +301,10 @@ export const Route = createFileRoute("/dashboard")({
       out.published = search.published;
     if (typeof search.announced === "string" && TID_RE.test(search.announced))
       out.announced = search.announced;
+    // Announced, but without an rkey to link to (~/routes/api.publish's
+    // publishedQuery). A flag, not an rkey: there is nothing to interpolate.
+    if (search.announcedNoLink === "1" || search.announcedNoLink === 1)
+      out.announcedNoLink = true;
     // The publish landed and the announce did not. A closed set, not free text:
     // it reaches the page as a message and a re-connect form, and the two
     // outcomes need different words (see the published notice).
@@ -1430,14 +1435,15 @@ function FirstRun() {
 }
 
 /**
- * The one-shot outcome of a write. A server redirect appends exactly one of
- * these to /dashboard (`?published=<rkey>`, `?announced=<rkey>`,
+ * The one-shot outcome of a write. A server redirect appends these to
+ * /dashboard (`?published=<rkey>`, `?announced=<rkey>`, `?announcedNoLink=1`,
  * `?scheduled=1`) and they are read once: into the confirmation notice, and
  * into a single analytics event.
  */
 export type DashboardOutcome = {
   published?: string;
   announced?: string;
+  announcedNoLink?: boolean;
   scheduled?: boolean;
 };
 
@@ -1446,8 +1452,8 @@ export type DashboardOutcome = {
 export function withoutOutcomeParams<T extends object>(
   search: T,
 ): Omit<T, keyof DashboardOutcome> {
-  const { published, announced, scheduled, ...rest } = search as T &
-    DashboardOutcome;
+  const { published, announced, announcedNoLink, scheduled, ...rest } =
+    search as T & DashboardOutcome;
   return rest;
 }
 
@@ -1497,19 +1503,20 @@ export function useOutcomeParams(
   ident: string,
   strip: () => void,
 ): DashboardOutcome {
-  const { published, announced, scheduled } = search;
+  const { published, announced, announcedNoLink, scheduled } = search;
   // Seeded from the URL so the notice is on screen in the first paint, not one
   // frame after it.
   const [outcome, setOutcome] = useState<DashboardOutcome>(() => ({
     published,
     announced,
+    announcedNoLink,
     scheduled,
   }));
   const consumed = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!(published || announced || scheduled)) return;
-    const key = `${published ?? ""}|${announced ?? ""}|${scheduled ? "1" : ""}`;
+    if (!(published || announced || announcedNoLink || scheduled)) return;
+    const key = `${published ?? ""}|${announced ?? ""}|${announcedNoLink ? "1" : ""}|${scheduled ? "1" : ""}`;
     if (consumed.current === key) return;
     consumed.current = key;
 
@@ -1520,9 +1527,12 @@ export function useOutcomeParams(
     // `mode` is the property that makes this readable after the default
     // flipped: an announce arriving alongside a `published` param came from the
     // publish itself, and one arriving alone came from the button.
-    if (announced)
+    // An announce whose rkey didn't parse still happened, so it still counts —
+    // dropping it would understate the announce rate in the one metric this
+    // event exists for. `rkey: null` says which ones those were.
+    if (announced || announcedNoLink)
       capture("post_announced", {
-        rkey: announced,
+        rkey: announced ?? null,
         ident,
         mode: published ? "auto" : "manual",
       });
@@ -1530,9 +1540,9 @@ export function useOutcomeParams(
     // published yet, so there is no record to name.
     if (scheduled) capture("post_scheduled", { ident });
 
-    setOutcome({ published, announced, scheduled });
+    setOutcome({ published, announced, announcedNoLink, scheduled });
     strip();
-  }, [published, announced, scheduled, ident, strip]);
+  }, [published, announced, announcedNoLink, scheduled, ident, strip]);
 
   return outcome;
 }
@@ -1550,6 +1560,9 @@ export function useOutcomeParams(
  *    whose only outcome is a refusal is a control that does nothing, and one
  *    that invites a writer to keep pressing. The "Announced" notice beside this
  *    one is what this state says instead.
+ *  - Announced, without a link (`announcedNoLink`): the same rule, for the same
+ *    reason. The post went out and its rkey didn't parse, so there is no link to
+ *    offer and still no second announce to offer either. It says both things.
  *  - Announcing failed: the post is live and the card is not. The words say so
  *    in that order, and the button is the fix — except for a scope failure,
  *    which no button can fix and which gets the re-connect form instead.
@@ -1563,6 +1576,7 @@ export function PublishedNotice({
   ident,
   rkey,
   announced,
+  announcedNoLink,
   announceFailed,
   handle,
 }: {
@@ -1570,6 +1584,8 @@ export function PublishedNotice({
   rkey: string;
   /** The announce post's rkey, when publishing announced it. */
   announced: string | undefined;
+  /** Announced, but with no rkey to link to. */
+  announcedNoLink?: boolean;
   /** Why it didn't, when it was asked to and couldn't. */
   announceFailed: string | undefined;
   /** For the re-connect form; absent when the handle wouldn't resolve. */
@@ -1584,7 +1600,7 @@ export function PublishedNotice({
       >
         View it live
       </ExternalLink>
-      {!announced && (
+      {!(announced || announcedNoLink) && (
         <span className="mt-1 block">
           {announceFailed === "announce_scope" ? (
             <>

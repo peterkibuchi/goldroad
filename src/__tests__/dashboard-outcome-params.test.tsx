@@ -199,6 +199,25 @@ describe("consuming the outcome params", () => {
     expect(capture).toHaveBeenCalledTimes(2);
   });
 
+  /**
+   * An announce whose rkey didn't parse still happened. Dropping the event would
+   * understate the announce rate in the one metric this exists to measure, so it
+   * fires with `rkey: null` — which also marks exactly which ones those were.
+   */
+  it("counts an announce that has no rkey to report", () => {
+    render(
+      <Harness initialSearch={{ published: RKEY, announcedNoLink: true }} />,
+    );
+    expect(capture).toHaveBeenCalledWith("post_announced", {
+      rkey: null,
+      ident: IDENT,
+      mode: "auto",
+    });
+    expect(url().announcedNoLink).toBeUndefined();
+    // The notice still needs it after the strip.
+    expect(outcome().announcedNoLink).toBe(true);
+  });
+
   it("captures once under double-invoked effects", () => {
     render(
       <StrictMode>
@@ -233,11 +252,12 @@ describe("consuming the outcome params", () => {
 });
 
 describe("withoutOutcomeParams", () => {
-  it("removes only the three one-shot params", () => {
+  it("removes only the one-shot params", () => {
     expect(
       withoutOutcomeParams({
         published: RKEY,
         announced: RKEY,
+        announcedNoLink: true,
         scheduled: true,
         tab: "drafts",
         cursor: "abc",

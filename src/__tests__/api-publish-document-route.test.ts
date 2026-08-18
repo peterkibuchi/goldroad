@@ -972,6 +972,43 @@ describe("POST /api/publish — intent=document, announcing the new post", () =>
     expect(url.searchParams.get("error")).toBeNull();
   });
 
+  /**
+   * The announce SUCCEEDED and its rkey did not parse.
+   *
+   * `rkeyFromUri` returns null for a URI it cannot read the last segment of, and
+   * this used to fall through to a plain `{published}` redirect — which reads as
+   * "published, not announced". The cost was not cosmetic: the published notice
+   * would then offer an "Announce" button for a post that HAS been announced,
+   * and the server, seeing `bskyPostRef` already on the document, would refuse
+   * it as `announce_already`. A control whose only outcome is a refusal is
+   * exactly what that notice's own doc comment says must never render.
+   *
+   * So the fourth state exists: announced, and we cannot link it. No offer, no
+   * dead link, no fiction.
+   */
+  it("says announced-without-a-link when the PDS returns an unparseable uri", async () => {
+    replies.set("com.atproto.repo.createRecord", {
+      ok: true,
+      status: 200,
+      // A trailing slash leaves an empty last segment, so there is no rkey to
+      // read — the shape of a PDS answering with something we can't use.
+      data: { uri: `at://${DID}/app.bsky.feed.post/`, cid: "bafyreibskypost" },
+    });
+    const res = await publish({ announce: "1" });
+    const url = location(res);
+
+    // The post itself is unaffected — it published, and it announced.
+    expect(url.searchParams.get("published")).toBeTruthy();
+    expect(announceCall()).toBeDefined();
+    // The honest pair: no rkey to link, and a flag saying why it is missing.
+    expect(url.searchParams.get("announced")).toBeNull();
+    expect(url.searchParams.get("announcedNoLink")).toBe("1");
+    // Not a failure. Saying so would send the writer to fix something that
+    // already worked.
+    expect(url.searchParams.get("announceFailed")).toBeNull();
+    expect(url.searchParams.get("error")).toBeNull();
+  });
+
   it("links the card at the canonical URL composed from the publication", async () => {
     announcingReplies();
     const res = await publish({ announce: "1" });
