@@ -34,8 +34,10 @@ import {
 } from "~/lib/inline-images";
 import { readLiveSessionDid } from "~/lib/live-session";
 import {
+  documentRecordByteLength,
   MAX_BODY_LENGTH,
   MAX_DEK_LENGTH,
+  MAX_RECORD_BYTES,
   parseInlineImagesField,
   RECOMMENDED_DEK_LENGTH,
   writerDek,
@@ -76,6 +78,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   missing_title: "Give it a title before publishing.",
   too_long:
     "That's longer than one post can hold — the limit is about 100,000 characters. Nothing here is lost: trim it down, or split it into two posts.",
+  too_large:
+    "This post is too large to store as a single record. Data servers cap a record at about 140,000 bytes, and bytes aren't characters: accents, emoji and non-Latin scripts cost several each, and the post is kept twice over — once formatted, once as plain text — so other apps on the network can read it. Nothing here is lost: trim it down, or split it into two posts.",
   not_found: "That post couldn't be loaded, so you're starting a new one.",
   not_editable:
     "That post was written in another app with a rich content format Goldroad can't edit yet — edit it where it was written.",
@@ -1268,6 +1272,22 @@ export function Compose({
     const markdown = editor.blocksToMarkdownLossy(editor.document);
     if (markdown.length > MAX_BODY_LENGTH) {
       setLocalError("too_long");
+      return;
+    }
+    // And the limit that actually binds, for the same reason and with the same
+    // remedy: a data server counts the BYTES of the stored record, not
+    // characters, and the body goes in twice (formatted + plain text). A post
+    // well inside the character cap can still be one a PDS refuses — measured
+    // rather than guessed, because the ratio depends on the writer's script.
+    if (
+      documentRecordByteLength({
+        title: titleRef.current?.value ?? "",
+        body: markdown,
+        dek: dekRef.current?.value ?? "",
+        inlineImageSources: parseInlineImagesField(imageStore.toField()),
+      }) > MAX_RECORD_BYTES
+    ) {
+      setLocalError("too_large");
       return;
     }
     setLocalError(undefined);

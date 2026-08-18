@@ -52,6 +52,7 @@ import {
   composeDocumentUrl,
   generateTid,
   type IconBlob,
+  isOverRecordByteLimit,
   isOwnPublicationUrl,
   MAX_BODY_LENGTH,
   MAX_DEK_LENGTH,
@@ -555,6 +556,13 @@ async function publishDocument({
       console.warn("record merge refused", err);
       return backToWrite("publish_failed:invalid_record", editRkey);
     }
+    // Defense in depth behind the editor's own pre-submit measurement: a PDS
+    // counts BYTES of serialized JSON, and an edit can cross that ceiling
+    // without crossing the character cap (~/lib/publish's MAX_RECORD_BYTES).
+    // Refused here with its own code so the writer reads what actually
+    // happened rather than the PDS's 413 relabelled as a publish failure.
+    if (isOverRecordByteLimit(record))
+      return backToWrite("too_large", editRkey);
     // swapRecord pins the version we merged from (adopted from review): an
     // unconditional put here could silently drop a concurrent announce
     // write-back's bskyPostRef. On a swap conflict the PDS answers
@@ -672,6 +680,11 @@ async function publishDocument({
     inlineImageSources: [...inlineImageSources, ...rehostedBlobs],
     publishedAt: originalAt ?? undefined,
   });
+  // Same byte ceiling as the edit path above, and the same reason: the
+  // character cap the form already passed counts UTF-16 units, the PDS counts
+  // serialized bytes, and a rehosted import can add inline-image references on
+  // top of a body that only just fit.
+  if (isOverRecordByteLimit(record)) return reject("too_large");
 
   const res = await rpc.post("com.atproto.repo.createRecord", {
     input: {

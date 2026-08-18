@@ -24,7 +24,9 @@ import {
   buildDocumentRecord,
   buildPublicationRecord,
   generateTid,
+  isOverRecordByteLimit,
   isOwnPublicationUrl,
+  MAX_RECORD_BYTES,
   parseInlineImagesField,
   toRecordInput,
 } from "~/lib/publish";
@@ -214,6 +216,17 @@ export async function publishStoredDraft(input: {
       code: "publish_failed:invalid_record",
     };
   }
+  // The byte ceiling, checked on the record that is about to be sent. This
+  // path has no editor in front of it — a scheduled post is measured here or
+  // nowhere — and a PDS answering 413 an hour after the writer went to bed is
+  // the failure this feature must never produce silently.
+  if (isOverRecordByteLimit(record))
+    return {
+      ok: false,
+      retry: false,
+      reason: `This post is too large for one record: stored, it comes to more than ${MAX_RECORD_BYTES.toLocaleString("en-US")} bytes, which is the most a data server will take. Accents, emoji and non-Latin scripts each cost several bytes. Trim it, or split it into two posts, and schedule it again.`,
+      code: "too_large",
+    };
 
   const res = await rpc.post("com.atproto.repo.createRecord", {
     input: {

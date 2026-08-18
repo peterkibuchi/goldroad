@@ -117,6 +117,8 @@ const ERROR_MESSAGES: Record<string, string> = {
     "That schedule couldn't be cancelled just now. Try again in a moment.",
   missing_title:
     "That draft has no title, so it couldn't be published. Open it, give it a title, and schedule it again.",
+  too_large:
+    "That post is too large to store as a single record — data servers cap one at about 140,000 bytes, and accents, emoji and non-Latin scripts cost several bytes each. Your draft is safe: open it, trim it or split it in two, and publish again.",
   // Named ahead of the prefix fallbacks below, which would print the raw code.
   "move_failed:publication_unreadable":
     "We couldn't reach your publication just now, so nothing was moved. Refresh the page and try again.",

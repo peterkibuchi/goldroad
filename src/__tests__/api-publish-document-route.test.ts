@@ -739,6 +739,53 @@ describe("POST /api/publish — intent=document, refusals write nothing", () => 
     expect(posted).toHaveLength(0);
   });
 
+  it("refuses a post that fits the character cap but not the record's byte cap", async () => {
+    // Half the character budget, and nowhere near the byte one: the body is
+    // stored twice, so this serializes to ~160 KB against a 140 KB ceiling.
+    // Before the guard existed the record went to the PDS and came back 413 as
+    // an unexplained `publish_failed`.
+    const res = await publish({
+      body: "x".repeat(80_000),
+      draftId: DRAFT_ID,
+    });
+    expect(errorFrom(res)).toBe("too_large");
+    expect(
+      posted.some(
+        (p) =>
+          p.nsid === "com.atproto.repo.createRecord" &&
+          p.options.input.collection === "site.standard.document",
+      ),
+    ).toBe(false);
+    // The words are still in the draft, and the redirect says where.
+    expect(location(res).searchParams.get("draft")).toBe(DRAFT_ID);
+  });
+
+  it("refuses a non-Latin post far short of the character cap", async () => {
+    // 25,000 characters — a short essay — at three bytes each, twice over.
+    const res = await publish({ body: "字".repeat(25_000) });
+    expect(errorFrom(res)).toBe("too_large");
+    expect(posted).toHaveLength(0);
+  });
+
+  it("refuses an EDIT that crosses the byte cap, without writing the record", async () => {
+    const rkey = "3lyk7wxnok2fb";
+    atproto.getRecordEntry.mockResolvedValue({
+      uri: `at://${DID}/site.standard.document/${rkey}`,
+      cid: "bafyreiexisting",
+      value: {
+        $type: "site.standard.document",
+        title: "Old",
+        site: PUB_URI,
+        path: `/${rkey}`,
+        publishedAt: "2026-01-01T00:00:00.000Z",
+      },
+    });
+    const res = await publish({ rkey, body: "x".repeat(80_000) });
+    expect(errorFrom(res)).toBe("too_large");
+    expect(location(res).searchParams.get("edit")).toBe(rkey);
+    expect(callOf("com.atproto.repo.putRecord")).toBeUndefined();
+  });
+
   it("refuses a cross-site post before reading the session", async () => {
     const res = await publish({}, { origin: "https://evil.example" });
     expect(res.status).toBe(403);
