@@ -107,4 +107,29 @@ describe("privacy policy — retention", () => {
   it("states a retention position for abuse reports", async () => {
     expect(textOf()).toMatch(/moderation and appeals/i);
   });
+
+  /**
+   * The gap this closes: `reader_emails` had no Retention line at all, and the
+   * suite above greened over the omission because it only ever asserted the
+   * lines that DID exist. Retention is the section a reader goes to for "what
+   * happens when the writer leaves", and the answer — the addresses go — was
+   * true of the policy's intent and false of the code, in both directions at
+   * once: deletion did not reach the table, and the export claimed to hold
+   * nothing else keyed to the DID.
+   */
+  it("says what account deletion does to the reader addresses a writer holds", async () => {
+    const text = textOf();
+    expect(text).toMatch(/reader emails? left with a publication/i);
+    expect(text).toMatch(
+      /deleted immediately, in full, if that writer deletes their Goldroad account/i,
+    );
+  });
+
+  it("says the addresses are never in the writer's export, and why", async () => {
+    const text = textOf();
+    expect(text).toMatch(/never included in a writer's data export/i);
+    // The reason, not just the fact: they are the readers' addresses.
+    expect(text).toMatch(/belong to the readers who left them/i);
+    expect(text).toMatch(/only how many there are/i);
+  });
 });

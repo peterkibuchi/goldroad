@@ -12,6 +12,7 @@ const store = vi.hoisted(() => ({
   selectFollowerSnapshotsForExport: vi.fn(),
   selectImportItemsForExport: vi.fn(),
   selectScheduledPostsForExport: vi.fn(),
+  countReaderEmailsForDid: vi.fn(),
 }));
 vi.mock("~/lib/rights-store", () => store);
 
@@ -72,6 +73,7 @@ beforeEach(() => {
   store.selectImportItemsForExport.mockResolvedValue([]);
   store.selectFollowerSnapshotsForExport.mockResolvedValue([]);
   store.selectScheduledPostsForExport.mockResolvedValue([]);
+  store.countReaderEmailsForDid.mockResolvedValue([]);
   atproto.resolveDidIdentity.mockResolvedValue({ handle: null, pds: null });
 });
 
@@ -305,5 +307,47 @@ describe("response shape", () => {
     expect(manifest).toMatch(/privacy@trygoldroad\.com/);
     // And it must not claim completeness in the same breath.
     expect(manifest).not.toMatch(/that's it/i);
+  });
+
+  /**
+   * `reader_emails` IS keyed by the writer's DID, so the old manifest's "that
+   * is everything we hold keyed to your DID" was simply false the day the
+   * table shipped. The remedy is not to start exporting the addresses: those
+   * are the readers' personal data, left with a publication, and a
+   * subject-access download is not a lawful route to a list of other people's
+   * email addresses. So the export reports the COUNT and says what it is
+   * withholding and why.
+   */
+  it("reports how many readers left an address, and no addresses at all", async () => {
+    store.countReaderEmailsForDid.mockResolvedValue([
+      { id: 1 },
+      { id: 2 },
+      { id: 3 },
+    ]);
+    const res = await call();
+    const raw = await res.text();
+    const body = JSON.parse(raw) as {
+      manifest: string;
+      readerList: { count: number; addressesIncluded: boolean; note: string };
+    };
+
+    expect(store.countReaderEmailsForDid).toHaveBeenCalledWith(
+      expect.anything(),
+      DID,
+    );
+    expect(body.readerList.count).toBe(3);
+    expect(body.readerList.addressesIncluded).toBe(false);
+    expect(body.readerList.note).toMatch(/not exported/i);
+    // Nothing that looks like an address anywhere in the payload.
+    expect(raw).not.toMatch(/@(?!trygoldroad\.com)[a-z0-9.-]+\.[a-z]{2,}/i);
+  });
+
+  it("no longer claims the file is everything keyed to the DID", async () => {
+    const res = await call();
+    const { manifest } = (await res.json()) as { manifest: string };
+    expect(manifest).not.toMatch(/that is everything we hold keyed to your/i);
+    // It names the omission instead, and what happens to it on deletion.
+    expect(manifest).toMatch(/readerList/);
+    expect(manifest).toMatch(/deleted along with everything else/i);
   });
 });
