@@ -24,11 +24,8 @@
  * error (null = treat as not-imported): a transient store outage must not
  * blank canonical tags across the reader; the check re-runs on the next
  * uncached request. Same freshness caveat as moderation: the read cache can
- * serve a stale verdict for up to its TTL (≤60 s).
- *
- * Server function for the same reason as ~/lib/moderation's checkHidden: the
- * reader loaders are isomorphic, and wrapping the D1 read keeps the
- * `cloudflare:workers` binding out of the client bundle. Fail-open on a D1
+ * serve a stale verdict for up to READ_CACHE_TTL_SECONDS (~/lib/read-cache) —
+ * named rather than quoted, because that number has already moved once.
  */
 import { createServerFn } from "@tanstack/react-start";
 import { drizzle } from "drizzle-orm/d1";
