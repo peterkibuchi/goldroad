@@ -55,8 +55,48 @@ export function generateTid(
 }
 
 export const MAX_TITLE_LENGTH = 1000; // lexicon: 5000 bytes / 500 graphemes; be conservative
-export const MAX_BODY_LENGTH = 100_000; // stay well under PDS record-size limits
+export const MAX_BODY_LENGTH = 100_000; // an editor-side bound on the words; see MAX_RECORD_BYTES for the binding one
 const DESCRIPTION_EXCERPT_LENGTH = 300; // lexicon allows 3000 graphemes; keep it brief
+
+/**
+ * Hard ceiling on ONE serialized record, in BYTES — the limit that actually
+ * binds, and the reason MAX_BODY_LENGTH above is not it.
+ *
+ * `MAX_BODY_LENGTH` counts UTF-16 code units. A PDS counts the bytes of the
+ * JSON it is handed, and the two come apart in both directions at once:
+ *
+ * - The body is stored TWICE, on purpose — markdown into the `content` union
+ *   and its plaintext projection into `textContent` (see buildDocumentRecord).
+ *   So even pure ASCII prose weighs roughly twice its character count.
+ * - Anything outside ASCII weighs more per character: two bytes for Latin
+ *   accents and Greek/Cyrillic, three for CJK, four for emoji. JSON escaping of
+ *   quotes, backslashes and newlines adds a little on top.
+ *
+ * The reference PDS refuses a `com.atproto.repo.*` request body over 150 KB. A
+ * 100,000-character Latin post therefore serializes to ~201 KB and comes back
+ * 413 — the character cap admits posts the network will not take, and the
+ * writer sees a bare publish failure with nothing to act on.
+ *
+ * 140,000 rather than 150,000 leaves ~10 KB of margin for the XRPC envelope the
+ * record travels inside (`repo`, `collection`, `rkey`, `validate`), for the
+ * cover and inline-image blob references, and for implementations that count
+ * slightly differently. What it leaves a writer is roughly 68,000 characters of
+ * Latin prose and around 22,000 of CJK — both far more than one post, and both
+ * enforced by measurement rather than guessed at.
+ */
+export const MAX_RECORD_BYTES = 140_000;
+
+/** Bytes a value occupies once serialized as UTF-8 JSON — what a PDS counts,
+ * as against what `String.length` counts. */
+export function jsonByteLength(value: unknown): number {
+  return new TextEncoder().encode(JSON.stringify(value)).length;
+}
+
+/** Is this built record heavier than a PDS will accept? Measured on the record
+ * that will actually be sent, never estimated from the body. */
+export function isOverRecordByteLimit(record: unknown): boolean {
+  return jsonByteLength(record) > MAX_RECORD_BYTES;
+}
 
 /**
  * Hard cap on a writer-written subtitle — the lexicon's own limit for
@@ -377,6 +417,59 @@ export function buildDocumentRecord(input: DocumentInput): DocumentRecord {
   const inline = inlineImagesForBody(body, input.inlineImageSources ?? []);
   if (inline.length > 0) record.goldroadInlineImages = inline;
   return record;
+}
+
+/**
+ * Stand-ins for the two fields a pre-publish measurement cannot know: the
+ * document's `site` (the writer's publication record, whose URI is only
+ * resolved during the publish itself) and its `path` (minted from the rkey,
+ * which does not exist yet). Both are written at the longest shape this app
+ * ever produces — a `did:plc` publication URI and a 13-character TID path — so
+ * a measurement can come out larger than the record that ships, never smaller.
+ * `publishedAt` is fixed for the same reason: every ISO timestamp is the same
+ * length, so a constant one measures identically to the real one.
+ */
+const MEASURED_SITE = `at://did:plc:${"x".repeat(24)}/site.standard.publication/${"3".repeat(13)}`;
+const MEASURED_PATH = `/${"3".repeat(13)}`;
+const MEASURED_PUBLISHED_AT = new Date(0);
+
+/**
+ * What a draft will weigh as a record, in bytes — the measurement the EDITOR
+ * makes before it lets a publish navigate.
+ *
+ * It has to happen there and not only on the server, for the same reason the
+ * character cap is checked there: once the form submits, the only copy of a
+ * long essay is a redirect away, and the draft row cannot hold an over-length
+ * body either. A refusal that leaves every word on screen is the only one a
+ * writer can act on.
+ *
+ * Builds the real record through the real builder rather than adding up field
+ * lengths, so the number tracks the record shape automatically — including the
+ * body being stored twice, which is the whole reason a character count is not
+ * an answer here.
+ */
+export function documentRecordByteLength(input: {
+  title: string;
+  body: string;
+  dek?: string;
+  inlineImageSources?: readonly unknown[];
+}): number {
+  try {
+    return jsonByteLength(
+      buildDocumentRecord({
+        ...input,
+        site: MEASURED_SITE,
+        path: MEASURED_PATH,
+        publishedAt: MEASURED_PUBLISHED_AT,
+      }),
+    );
+  } catch {
+    // A record that cannot be built has no size to report, and the caller's
+    // own refusal — no title, body past the character cap — is the one that
+    // applies. Answering "too large" here would be a wrong answer to a
+    // different question.
+    return 0;
+  }
 }
 
 /**

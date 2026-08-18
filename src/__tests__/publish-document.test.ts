@@ -369,6 +369,28 @@ describe("publishStoredDraft", () => {
     expect(posted).toHaveLength(0);
   });
 
+  it("refuses a draft that fits the character cap but not the record's byte cap", async () => {
+    // Nobody is watching at 09:00, so this is measured here or not at all —
+    // otherwise the PDS answers 413 and the writer wakes to a post that
+    // silently never went out.
+    const { rpc, posted } = fakeRpc();
+    const result = await publishStoredDraft(
+      input(rpc, { draft: { ...DRAFT, markdown: "x".repeat(80_000) } }),
+    );
+    if (result.ok) throw new Error("expected a refusal");
+    expect(result.code).toBe("too_large");
+    // Final, not retried: it will be exactly this large next hour.
+    expect(result.retry).toBe(false);
+    // The sentence stored on the row and shown in the posts manager names the
+    // limit and what to do about it.
+    expect(result.reason).toMatch(/140,000 bytes/);
+    expect(result.reason).toMatch(/split it into two posts/i);
+    expect(
+      posted.filter((p) => p.nsid === "com.atproto.repo.createRecord"),
+    ).toHaveLength(0);
+    expect(drafts.deleteDraft).not.toHaveBeenCalled();
+  });
+
   it("treats a 5xx as worth another hour", async () => {
     const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
     const { rpc } = fakeRpc([

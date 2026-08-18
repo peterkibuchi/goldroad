@@ -400,6 +400,61 @@ describe("/write — a post too long to store is refused without navigating", ()
     expect(publish.hasAttribute("disabled")).toBe(false);
   });
 
+  it("refuses a post inside the character cap but past the record's byte cap", async () => {
+    // Half the character budget. The body is stored twice in the record —
+    // formatted and as plain text — so it serializes to ~160 KB against a
+    // 140 KB ceiling, and a data server answers 413. The character check above
+    // waves this straight through; only measuring the record catches it.
+    markdown.current = "x".repeat(80_000);
+    render(
+      <Compose
+        draft={null}
+        error={undefined}
+        reconnectHandle={null}
+        resumed={null}
+      />,
+    );
+    await screen.findByRole("button", { name: "+" });
+    const publish = screen.getByRole("button", { name: "Publish" });
+    await waitFor(() => expect(publish.hasAttribute("disabled")).toBe(false));
+    fireEvent.change(screen.getByLabelText("Title"), {
+      target: { value: "A heavy post" },
+    });
+    fireEvent.click(publish);
+
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+    const alert = screen.getByRole("alert").textContent ?? "";
+    // Names the real limit, and why bytes are not characters — otherwise a
+    // writer counts their words, finds 40,000, and concludes we are lying.
+    expect(alert).toContain("140,000 bytes");
+    expect(alert).toMatch(/bytes aren't characters/i);
+    expect(submitSpy).not.toHaveBeenCalled();
+    expect(publish.hasAttribute("disabled")).toBe(false);
+  });
+
+  it("refuses a non-Latin post at a quarter of the character cap", async () => {
+    markdown.current = "字".repeat(25_000);
+    render(
+      <Compose
+        draft={null}
+        error={undefined}
+        reconnectHandle={null}
+        resumed={null}
+      />,
+    );
+    await screen.findByRole("button", { name: "+" });
+    const publish = screen.getByRole("button", { name: "Publish" });
+    await waitFor(() => expect(publish.hasAttribute("disabled")).toBe(false));
+    fireEvent.change(screen.getByLabelText("Title"), {
+      target: { value: "随筆" },
+    });
+    fireEvent.click(publish);
+
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+    expect(screen.getByRole("alert").textContent).toContain("140,000 bytes");
+    expect(submitSpy).not.toHaveBeenCalled();
+  });
+
   it("publishes once the post is back under the limit", async () => {
     markdown.current = "x".repeat(MAX_BODY_LENGTH + 1);
     render(
