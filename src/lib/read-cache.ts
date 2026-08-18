@@ -233,6 +233,33 @@ export async function purgeLocalReadCache(
 const WARM_FETCH_TIMEOUT_MS = 15_000;
 
 /**
+ * The reading surfaces one document write changes: the author's archive index,
+ * and the document's own page when the write names one.
+ *
+ * Lives here rather than in the publish handler because it now has two callers
+ * that reach `warmReadSurfaces` by different roads — the request path, which
+ * hands its URLs to the Worker entry through a response header, and the CRON,
+ * which has no response to hang a header on and calls the warm directly. Two
+ * spellings of "which pages did this publish change" would drift, and the one
+ * that drifted would be the cron's: nobody is watching at 09:00.
+ *
+ * `ident` is spelled exactly as our own links mint it (announce URLs, the
+ * canonical composed URL), because that is the key a shared link will actually
+ * be cached under.
+ *
+ * The archive index goes on the list whenever a document does: publishing,
+ * editing a title, or deleting all change the list it renders.
+ */
+export function readSurfaceWarmUrls(opts: {
+  origin: string;
+  ident: string;
+  rkey?: string;
+}): string[] {
+  const base = `${opts.origin}/@${encodeURIComponent(opts.ident)}`;
+  return [base, ...(opts.rkey ? [`${base}/${opts.rkey}`] : [])];
+}
+
+/**
  * Pre-renders read surfaces into THIS colo's cache: delete, then fetch.
  *
  * The delete is not optional. `serveWithReadCache` answers a warm key from the

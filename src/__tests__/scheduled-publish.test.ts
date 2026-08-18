@@ -31,6 +31,16 @@ vi.mock("~/lib/atproto", async (importOriginal) => ({
 const publishing = vi.hoisted(() => ({ publishStoredDraft: vi.fn() }));
 vi.mock("~/lib/publish-document", () => publishing);
 
+// The warm itself is real HTTP against our own origin; only the URL list and
+// the fact that it happens belong to this module. `readSurfaceWarmUrls` is
+// left as the real implementation so a drift between what the cron warms and
+// what the request path warms would show up here.
+const readCache = vi.hoisted(() => ({ warmReadSurfaces: vi.fn() }));
+vi.mock("~/lib/read-cache", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/read-cache")>()),
+  ...readCache,
+}));
+
 vi.mock("@atcute/client", () => ({
   Client: class {
     constructor(readonly options: unknown) {}
@@ -75,6 +85,7 @@ beforeEach(() => {
     ok: true,
     rkey: "3lyk73wxnok2f",
   });
+  readCache.warmReadSurfaces.mockResolvedValue(undefined);
   vi.spyOn(console, "warn").mockImplementation(() => {});
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
@@ -193,5 +204,78 @@ describe("publishing", () => {
     const result = await publishDuePost(db, { ...POST, did: "not-a-did" });
     expect(result).toMatchObject({ ok: false, retry: false });
     expect(createOAuthClient).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Warm-on-publish used to ride a response header, which the cron has not got —
+ * so a scheduled post went out behind an archive page and an RSS feed that
+ * stayed stale for the whole read-cache TTL. That is precisely the window in
+ * which anyone is pointed at a freshly published piece, and the one an
+ * auto-announce would send scrapers into.
+ */
+describe("warming the pages a scheduled publish changed", () => {
+  it("warms the author's archive page and the new post's page", async () => {
+    await publishDuePost(db, POST);
+    expect(readCache.warmReadSurfaces).toHaveBeenCalledTimes(1);
+    const [urls, opts] = readCache.warmReadSurfaces.mock.calls[0] as [
+      string[],
+      { origin: string },
+    ];
+    expect(urls).toEqual([
+      `${CANONICAL_ORIGIN}/@writer.example`,
+      `${CANONICAL_ORIGIN}/@writer.example/3lyk73wxnok2f`,
+    ]);
+    // Same origin allowlist the request path passes — and the canonical one,
+    // because there is no request here to read an origin from.
+    expect(opts.origin).toBe(CANONICAL_ORIGIN);
+  });
+
+  it("warms the DID spelling when the handle would not resolve", async () => {
+    atproto.resolveDidIdentity.mockResolvedValue({
+      handle: null,
+      pds: "https://pds.example.com",
+    });
+    await publishDuePost(db, POST);
+    const [urls] = readCache.warmReadSurfaces.mock.calls[0] as [string[]];
+    // encodeURIComponent, exactly as our own links mint it — that is the key
+    // the page will actually be cached under.
+    expect(urls[0]).toBe(`${CANONICAL_ORIGIN}/@${encodeURIComponent(DID)}`);
+  });
+
+  it("hands the warm to waitUntil rather than holding up the next post", async () => {
+    const waitUntil = vi.fn();
+    let settle: (() => void) | undefined;
+    readCache.warmReadSurfaces.mockReturnValue(
+      new Promise<void>((resolve) => {
+        settle = resolve;
+      }),
+    );
+    // Resolves even though the warm has not: a slow render of one writer's
+    // page must never delay another writer's scheduled post.
+    const result = await publishDuePost(db, POST, waitUntil);
+    expect(result).toEqual({ ok: true, rkey: "3lyk73wxnok2f" });
+    expect(waitUntil).toHaveBeenCalledTimes(1);
+    settle?.();
+  });
+
+  it("never warms a publish that did not happen", async () => {
+    publishing.publishStoredDraft.mockResolvedValue({
+      ok: false,
+      retry: false,
+      reason: "Your data server refused the post (InvalidRequest).",
+      code: "publish_failed:InvalidRequest",
+    });
+    await publishDuePost(db, POST);
+    expect(readCache.warmReadSurfaces).not.toHaveBeenCalled();
+  });
+
+  it("does not fail the post when the warm itself throws", async () => {
+    // The record is already live in the writer's repo. A cache that did not
+    // get warmed costs one cold render; reporting a failure would cost the
+    // writer a post they can see is published.
+    readCache.warmReadSurfaces.mockRejectedValue(new Error("cache gone"));
+    const result = await publishDuePost(db, POST);
+    expect(result).toEqual({ ok: true, rkey: "3lyk73wxnok2f" });
   });
 });

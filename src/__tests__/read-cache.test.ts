@@ -8,6 +8,7 @@ import {
   READ_CACHE_TTL_SECONDS,
   readCacheKey,
   readSurfaceUrlsForSubject,
+  readSurfaceWarmUrls,
   serveWithReadCache,
   takeWarmTargets,
   WARM_TARGETS_HEADER,
@@ -413,6 +414,48 @@ describe("warmReadSurfaces", () => {
         fetchImpl: fetchImpl as unknown as typeof fetch,
       }),
     ).resolves.toBeUndefined();
+  });
+});
+
+/**
+ * The list itself, now that two callers reach the warm by different roads: the
+ * request path stamps these onto a response header for the entry to pick up,
+ * and the cron — which has no response — calls warmReadSurfaces with them
+ * directly. One function, so the two cannot drift.
+ */
+describe("readSurfaceWarmUrls — what one document write changes", () => {
+  it("names the archive index and the document's own page", () => {
+    expect(
+      readSurfaceWarmUrls({
+        origin: "https://trygoldroad.com",
+        ident: "writer.example",
+        rkey: "3lyk73wxnok2f",
+      }),
+    ).toEqual([
+      "https://trygoldroad.com/@writer.example",
+      "https://trygoldroad.com/@writer.example/3lyk73wxnok2f",
+    ]);
+  });
+
+  it("names the index alone when no record is involved", () => {
+    expect(
+      readSurfaceWarmUrls({
+        origin: "https://trygoldroad.com",
+        ident: "writer.example",
+      }),
+    ).toEqual(["https://trygoldroad.com/@writer.example"]);
+  });
+
+  it("encodes a DID ident the way our own links mint it", () => {
+    // `/@did%3Aplc%3A…` is the key the page is cached under when a handle
+    // won't resolve; the raw form is a different cache key entirely.
+    const [index] = readSurfaceWarmUrls({
+      origin: "https://trygoldroad.com",
+      ident: "did:plc:fake2222222222writer2222",
+    });
+    expect(index).toBe(
+      "https://trygoldroad.com/@did%3Aplc%3Afake2222222222writer2222",
+    );
   });
 });
 
