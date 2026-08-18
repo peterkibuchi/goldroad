@@ -83,6 +83,11 @@ export default {
     return outgoing;
   },
   scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(runScheduled(env));
+    // The context goes down with it, not just around it: a scheduled publish
+    // has to warm the pages it changed, and — unlike the fetch path above,
+    // which carries its URLs out on a response header — the cron has no
+    // response to hang one on. Without this a post that went out at 09:00 sat
+    // behind a stale archive page and RSS feed for the whole cache TTL.
+    ctx.waitUntil(runScheduled(env, (promise) => ctx.waitUntil(promise)));
   },
 };

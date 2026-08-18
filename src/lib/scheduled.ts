@@ -2,7 +2,8 @@
  * Workers Cron body (free tier: up to 5 triggers/account). SIX jobs, run
  * hourly from ONE trigger:
  *
- * 1. Publish scheduled posts that are due (~/lib/scheduled-posts). It runs
+ * 1. Publish scheduled posts that are due (~/lib/scheduled-posts), warming the
+ *    reading surfaces each one changes (~/lib/scheduled-publish). It runs
  *    FIRST, and that ordering is deliberate: it is the only job here a reader
  *    will ever notice, since a tick that runs out of budget before reaching it
  *    is a writer's post going out late. Everything below it is either
@@ -63,7 +64,7 @@ import {
   d1ScheduledPostStore,
   runScheduledPublishPass,
 } from "~/lib/scheduled-posts";
-import { cronPublisher } from "~/lib/scheduled-publish";
+import { cronPublisher, type WaitUntil } from "~/lib/scheduled-publish";
 
 type DrizzleD1 = ReturnType<typeof drizzle>;
 
@@ -225,7 +226,10 @@ function snapshotFailures(result: SnapshotPassResult): string[] {
  * check the backup heartbeat, alert on new abuse reports, self-check, alert.
  * Never throws (a cron that throws just retries; we'd rather log and move on),
  * and each job is independent — a failure in one still leaves the others run. */
-export async function runScheduled(env: CronEnv): Promise<void> {
+export async function runScheduled(
+  env: CronEnv,
+  waitUntil?: WaitUntil,
+): Promise<void> {
   const db = drizzle(env.DB);
   // Scheduled posts first — the one job whose lateness a reader can see. The
   // pass never throws and reports what it did, including whether it hit its
@@ -234,9 +238,12 @@ export async function runScheduled(env: CronEnv): Promise<void> {
   // below. A revoked grant is the writer's to fix, not something the operator
   // should be alerted about; systemic trouble shows up as a run of them in
   // this log line.
+  // `waitUntil` is passed through so a publish can warm the reading surfaces it
+  // just changed without holding up the next due post — the entry's context is
+  // the only place it exists (src/server.ts).
   const scheduled = await runScheduledPublishPass({
     store: d1ScheduledPostStore(db),
-    publish: cronPublisher(db),
+    publish: cronPublisher(db, waitUntil),
   });
   console.log("scheduled publish pass", scheduled);
   try {

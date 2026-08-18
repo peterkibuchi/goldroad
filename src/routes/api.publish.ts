@@ -69,7 +69,7 @@ import {
   publishStoredDraft,
   resolvePublicationSite,
 } from "~/lib/publish-document";
-import { withWarmTargets } from "~/lib/read-cache";
+import { readSurfaceWarmUrls, withWarmTargets } from "~/lib/read-cache";
 import { dueAtProblem, localToUtcMs } from "~/lib/schedule-time";
 import {
   cancelSchedule,
@@ -146,20 +146,15 @@ function backToDashboard(query: Record<string, string>): Response {
  *   deletes the key before it re-fetches, which is what makes it a refresh
  *   rather than a no-op cache HIT.
  *
- * The archive index goes on the list whenever a document does: publishing,
- * editing a title, or deleting all change the list it renders.
+ * Which URLs those are is `readSurfaceWarmUrls` (~/lib/read-cache), shared
+ * with the cron publisher — which reaches the same warm by a different road,
+ * having no response to hang a header on.
  */
 function warmingReaderPages(
   response: Response,
   opts: { origin: string; ident: string; rkey?: string },
 ): Response {
-  // Same spelling our own links mint (announce URLs, the canonical composed
-  // URL) — that is the key a shared link will actually be cached under.
-  const base = `${opts.origin}/@${encodeURIComponent(opts.ident)}`;
-  return withWarmTargets(response, [
-    base,
-    ...(opts.rkey ? [`${base}/${opts.rkey}`] : []),
-  ]);
+  return withWarmTargets(response, readSurfaceWarmUrls(opts));
 }
 
 /**
