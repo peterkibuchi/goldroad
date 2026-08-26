@@ -205,10 +205,11 @@ describe("consuming the outcome params", () => {
 });
 
 describe("withoutOutcomeParams", () => {
-  it("removes only the three one-shot params", () => {
+  it("removes only the one-shot params", () => {
     expect(
       withoutOutcomeParams({
         published: RKEY,
+        imagesKept: 3,
         announced: RKEY,
         scheduled: true,
         tab: "drafts",

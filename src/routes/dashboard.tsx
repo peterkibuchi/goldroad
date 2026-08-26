@@ -88,6 +88,7 @@ import {
   type DocumentEngagement,
   getPostsEngagement,
 } from "~/lib/engagement";
+import { MAX_REHOSTED_IMAGES } from "~/lib/import";
 import { readLiveSessionDid } from "~/lib/live-session";
 import { LEGACY_ORIGINS, ownOrigins } from "~/lib/origin";
 import { capture } from "~/lib/posthog";
@@ -272,6 +273,7 @@ export const Route = createFileRoute("/dashboard")({
       error?: string;
       published?: string;
       announced?: string;
+      imagesKept?: number;
       deleted?: boolean;
       moved?: boolean;
       scheduled?: boolean;
@@ -285,6 +287,13 @@ export const Route = createFileRoute("/dashboard")({
       out.published = search.published;
     if (typeof search.announced === "string" && TID_RE.test(search.announced))
       out.announced = search.announced;
+    // How many body images stayed on the source CDN (~/routes/api.publish).
+    // A count we minted, but it arrives as URL text like everything else, so
+    // it is parsed and bounded rather than trusted — it renders into a
+    // sentence, and a NaN or a negative there is a nonsense the writer reads.
+    const kept = Number(search.imagesKept);
+    if (Number.isInteger(kept) && kept > 0 && kept <= MAX_REHOSTED_IMAGES)
+      out.imagesKept = kept;
     if (search.deleted === "1" || search.deleted === 1) out.deleted = true;
     if (search.moved === "1" || search.moved === 1) out.moved = true;
     if (search.scheduled === "1" || search.scheduled === 1)
@@ -881,6 +890,16 @@ export function PostsManager({
             >
               Import…
             </a>
+            {/* Its own link rather than a step inside /import: a Bluesky-native
+                writer's archive IS their threads, so this is a first-class
+                door, not a variant of "bring your publication over". Same
+                secondary weight, immediately beside it. */}
+            <a
+              className="inline-flex min-h-11 items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
+              href="/import/threads"
+            >
+              Import threads…
+            </a>
           </div>
         </div>
       )}
@@ -1364,6 +1383,8 @@ function FirstRun() {
 export type DashboardOutcome = {
   published?: string;
   announced?: string;
+  /** Body images left on the source CDN by the publish that just happened. */
+  imagesKept?: number;
   scheduled?: boolean;
 };
 
@@ -1372,7 +1393,7 @@ export type DashboardOutcome = {
 export function withoutOutcomeParams<T extends object>(
   search: T,
 ): Omit<T, keyof DashboardOutcome> {
-  const { published, announced, scheduled, ...rest } = search as T &
+  const { published, announced, imagesKept, scheduled, ...rest } = search as T &
     DashboardOutcome;
   return rest;
 }
@@ -1401,12 +1422,13 @@ export function useOutcomeParams(
   ident: string,
   strip: () => void,
 ): DashboardOutcome {
-  const { published, announced, scheduled } = search;
+  const { published, announced, imagesKept, scheduled } = search;
   // Seeded from the URL so the notice is on screen in the first paint, not one
   // frame after it.
   const [outcome, setOutcome] = useState<DashboardOutcome>(() => ({
     published,
     announced,
+    imagesKept,
     scheduled,
   }));
   const consumed = useRef<string | null>(null);
@@ -1426,9 +1448,9 @@ export function useOutcomeParams(
     // published yet, so there is no record to name.
     if (scheduled) capture("post_scheduled", { ident });
 
-    setOutcome({ published, announced, scheduled });
+    setOutcome({ published, announced, imagesKept, scheduled });
     strip();
-  }, [published, announced, scheduled, ident, strip]);
+  }, [published, announced, imagesKept, scheduled, ident, strip]);
 
   return outcome;
 }
@@ -1488,6 +1510,18 @@ function DashboardPage() {
             >
               View it live
             </ExternalLink>
+            {/* Said here rather than swallowed: the writer imported this post
+                to stop depending on somebody else's server, and some of its
+                images are still on it. Calm and specific — a count, the
+                consequence, and no instruction, because there is nothing they
+                need to do today. */}
+            {outcome.imagesKept ? (
+              <span className="mt-1 block">
+                {outcome.imagesKept === 1
+                  ? "One image couldn't be copied into your repo and still loads from the original site."
+                  : `${outcome.imagesKept} images couldn't be copied into your repo and still load from the original site.`}
+              </span>
+            ) : null}
             <span className="mt-1 block">
               {ANNOUNCE_EXPLAINER} <AnnounceButton rkey={outcome.published} />
             </span>

@@ -159,24 +159,21 @@ export const drafts = sqliteTable(
 );
 
 /**
- * Import ledger — one row per feed item a writer has imported (RSS import →
- * drafts). It carries three responsibilities:
+ * Import ledger — one row per item a writer has imported (a feed/export post,
+ * or one of their own Bluesky threads). It carries three responsibilities:
  *
  *  1. Idempotency: re-running an import skips items already brought across —
  *     the (did, guid_hash) unique key is the dedupe check.
  *  2. Provenance: `source_url` + `original_at` let publishing backdate the
- *     record to the original date and let the reader page say "Originally
- *     published at …".
- *  3. Mirror flag: a row with `published_rkey` set and `adopted_at` null marks
- *     the published record as a mirror — the reader swaps its canonical tag
- *     for noindex (current search-engine syndication etiquette: noindex the
- *     republished copy rather than cross-domain canonical) and shows the
- *     provenance line. "Adopting" the post (making Goldroad the original)
- *     sets `adopted_at` — the row stays for idempotency, the mirror
- *     treatment stops.
+ *     record to the original date and let the reader page name where the
+ *     piece first appeared.
+ *  3. Provenance treatment: a row with `published_rkey` set and `adopted_at`
+ *     null makes the reader page state its origin. What that means depends on
+ *     `source_kind` — see the field.
  *
- * `guid_hash` is SHA-256 hex of the item's guid (falling back to its link):
- * fixed-width, safe to index, and never trusts arbitrary-length feed guids.
+ * `guid_hash` is SHA-256 hex of the item's identity — a feed guid (falling
+ * back to its link), or a thread's root at:// URI: fixed-width, safe to index,
+ * and never trusts an arbitrary-length string from the network.
  * Rows are keyed to the writer's DID; every query pairs id fields with `did`
  * so one writer can never reach another's ledger (same policy as drafts).
  */
@@ -188,6 +185,28 @@ export const importItems = sqliteTable(
     guidHash: text("guid_hash").notNull(),
     /** The item's original public URL (https, validated) — provenance. */
     sourceUrl: text("source_url"),
+    /**
+     * Where this row came from, and therefore how the published page treats
+     * its origin. NOT derivable from `source_url` — the difference is a
+     * permanent, user-visible rendering decision and does not belong on a
+     * hostname match.
+     *
+     * - `feed` (the default, and every row written before thread import): the
+     *   original is SOMEONE ELSE'S PUBLICATION. The copy here is a mirror, so
+     *   the reader page drops its canonical tag for noindex (current
+     *   syndication etiquette: noindex the republished copy) and says
+     *   "Originally published at …".
+     * - `thread`: the original is the writer's own Bluesky thread. A thread
+     *   was never a canonical web page, so there is no competing URL to defer
+     *   to and the canonical STAYS HERE — noindex-ing this page would hide the
+     *   only long-form version of the writer's own words. The page still
+     *   states its origin ("First published as a thread on Bluesky"), because
+     *   that is true and worth saying.
+     *
+     * Either way "adopting" the post clears the note (`adopted_at`) and the
+     * row stays for idempotency.
+     */
+    sourceKind: text("source_kind").notNull().default("feed"),
     /** The item's original publication date, for backdated publishing. */
     originalAt: integer("original_at", { mode: "timestamp_ms" }),
     /** The draft this item landed in (draft rows may be deleted later). */
@@ -293,23 +312,42 @@ export const scheduledPosts = sqliteTable(
 );
 
 /**
- * Import rate-limit ledger: one row per /api/import feed-fetch run. The
- * endpoint is session-gated, so the abuser is an authenticated writer — a
- * cheap per-DID count over the last hour bounds how much SSRF-guarded
- * fetching one account can spend. Rows older than the window are pruned
- * inline on each check (no cron needed; the table stays tiny by
- * construction).
+ * Import rate-limit ledger: one row per outbound import fetch run. These
+ * endpoints are session-gated, so the abuser is an authenticated writer — a
+ * cheap per-DID count over the last hour bounds how much fetching one account
+ * can spend. Rows older than the window are pruned inline on each check (no
+ * cron needed; the table stays tiny by construction).
  */
 export const importFetches = sqliteTable(
   "import_fetches",
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
     did: text("did").notNull(),
+    /**
+     * Which import spends this row — `feed` (the default, and every row
+     * written before thread import) or `thread`.
+     *
+     * The two get SEPARATE hourly budgets off one table, because one run means
+     * very different things: a feed fetch is one expensive SSRF-guarded pull of
+     * a stranger's server (6/hour), while thread import spends a row per
+     * discovery page-walk AND per thread assembled from the public AppView, so
+     * bringing twenty threads across is one ordinary session rather than
+     * abuse (60/hour). Sharing one counter would have meant either throttling
+     * a normal thread import at three threads or handing the feed importer a
+     * tenfold raise it never asked for.
+     */
+    kind: text("kind").notNull().default("feed"),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .notNull()
       .$defaultFn(() => new Date()),
   },
   (table) => [
+    // Leading (did, kind) so a per-kind window count is one index range scan.
+    index("import_fetches_did_kind_created_idx").on(
+      table.did,
+      table.kind,
+      table.createdAt,
+    ),
     index("import_fetches_did_created_idx").on(table.did, table.createdAt),
   ],
 );
