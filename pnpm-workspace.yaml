@@ -9,7 +9,7 @@ overrides:
   # GHSA-5p4m-2wfm-xmqj — quadratic CPU on !!omap resolution. Build-time only
   # (xmlbuilder2, under the Start plugin), so this is hygiene rather than an
   # exposed surface.
-  js-yaml: "^4.3.1"
+  js-yaml: "^4.3.2"
 
 allowBuilds:
   # core-js (via posthog-js) postinstall only prints a funding banner — skip it.
