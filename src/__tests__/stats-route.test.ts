@@ -33,6 +33,7 @@ vi.mock("~/lib/follower-snapshots", async (importOriginal) => {
   };
 });
 
+import { shiftDay, utcDay } from "~/lib/follower-snapshots";
 import { signSession } from "~/lib/session";
 import type { StatsEnvelope } from "~/lib/stats-sections";
 import { Route } from "../routes/api.stats";
@@ -276,9 +277,12 @@ describe("/api/stats — failure isolation", () => {
               ["2026-07-30", 60],
             ],
       );
+      // The route drops samples outside the default 30-day window, so these
+      // days are relative to today. Fixed dates age out and read as "empty".
+      const today = utcDay();
       selectSnapshotRange.mockResolvedValue([
-        { day: "2026-07-29", followers: 5 },
-        { day: "2026-07-30", followers: 9 },
+        { day: shiftDay(today, -1), followers: 5 },
+        { day: today, followers: 9 },
       ]);
       const { body, res } = await envelopeFor(DID_A);
       expect(res.status).toBe(200);
