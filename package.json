@@ -55,7 +55,7 @@
     "drizzle-orm": "^0.45.3",
     "fflate": "^0.8.3",
     "htmlparser2": "^12.0.0",
-    "posthog-js": "^1.434.17",
+    "posthog-js": "^1.435.5",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-markdown": "^10.1.0",
