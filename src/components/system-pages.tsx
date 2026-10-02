@@ -41,7 +41,7 @@ export function NotFoundPage() {
   );
 }
 
-export function ErrorPage({ error }: { error: Error }) {
+export function ErrorPage({ error }: { error: unknown }) {
   return (
     <AppShell header={{ variant: "signed-out" }}>
       <main
@@ -77,7 +77,7 @@ export function ErrorPage({ error }: { error: Error }) {
         </div>
         {import.meta.env.DEV && (
           <pre className="mt-10 overflow-x-auto border border-rule p-4 font-mono text-ink-soft text-xs">
-            {error.message}
+            {error instanceof Error ? error.message : String(error)}
           </pre>
         )}
       </main>
