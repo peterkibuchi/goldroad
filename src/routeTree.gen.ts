@@ -37,7 +37,9 @@ import { Route as ApiReportRouteImport } from './routes/api.report'
 import { Route as ApiStatsRouteImport } from './routes/api.stats'
 import { Route as ApiSubscribeRouteImport } from './routes/api.subscribe'
 import { Route as ApiSubscriptionRouteImport } from './routes/api.subscription'
+import { Route as ApiThreadsRouteImport } from './routes/api.threads'
 import { Route as ApiWaitlistRouteImport } from './routes/api.waitlist'
+import { Route as ImportThreadsRouteImport } from './routes/import_.threads'
 import { Route as OauthCallbackRouteImport } from './routes/oauth.callback'
 import { Route as OauthClientMetadataDotjsonRouteImport } from './routes/oauth.client-metadata[.]json'
 import { Route as OauthJwksDotjsonRouteImport } from './routes/oauth.jwks[.]json'
@@ -45,6 +47,7 @@ import { Route as ApiAccountDeleteRouteImport } from './routes/api.account.delet
 import { Route as ApiAccountExportRouteImport } from './routes/api.account.export'
 import { Route as ApiImportDraftRouteImport } from './routes/api.import.draft'
 import { Route as ApiImportStatusRouteImport } from './routes/api.import.status'
+import { Route as ApiThreadsAssembleRouteImport } from './routes/api.threads.assemble'
 import { Route as ImgDidCidRouteImport } from './routes/img.$did.$cid'
 import { Route as PHandleRkeyRouteImport } from './routes/p.$handle.$rkey'
 
@@ -191,9 +194,19 @@ const ApiSubscriptionRoute = ApiSubscriptionRouteImport.update({
   path: '/api/subscription',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiThreadsRoute = ApiThreadsRouteImport.update({
+  id: '/api/threads',
+  path: '/api/threads',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiWaitlistRoute = ApiWaitlistRouteImport.update({
   id: '/api/waitlist',
   path: '/api/waitlist',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ImportThreadsRoute = ImportThreadsRouteImport.update({
+  id: '/import_/threads',
+  path: '/import/threads',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OauthCallbackRoute = OauthCallbackRouteImport.update({
@@ -231,6 +244,11 @@ const ApiImportStatusRoute = ApiImportStatusRouteImport.update({
   id: '/status',
   path: '/status',
   getParentRoute: () => ApiImportRoute,
+} as any)
+const ApiThreadsAssembleRoute = ApiThreadsAssembleRouteImport.update({
+  id: '/assemble',
+  path: '/assemble',
+  getParentRoute: () => ApiThreadsRoute,
 } as any)
 const ImgDidCidRoute = ImgDidCidRouteImport.update({
   id: '/img/$did/$cid',
@@ -271,7 +289,9 @@ export interface FileRoutesByFullPath {
   '/api/stats': typeof ApiStatsRoute
   '/api/subscribe': typeof ApiSubscribeRoute
   '/api/subscription': typeof ApiSubscriptionRoute
+  '/api/threads': typeof ApiThreadsRouteWithChildren
   '/api/waitlist': typeof ApiWaitlistRoute
+  '/import/threads': typeof ImportThreadsRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/oauth/client-metadata.json': typeof OauthClientMetadataDotjsonRoute
   '/oauth/jwks.json': typeof OauthJwksDotjsonRoute
@@ -280,6 +300,7 @@ export interface FileRoutesByFullPath {
   '/api/account/export': typeof ApiAccountExportRoute
   '/api/import/draft': typeof ApiImportDraftRoute
   '/api/import/status': typeof ApiImportStatusRoute
+  '/api/threads/assemble': typeof ApiThreadsAssembleRoute
   '/img/$did/$cid': typeof ImgDidCidRoute
   '/p/$handle/$rkey': typeof PHandleRkeyRoute
 }
@@ -311,7 +332,9 @@ export interface FileRoutesByTo {
   '/api/stats': typeof ApiStatsRoute
   '/api/subscribe': typeof ApiSubscribeRoute
   '/api/subscription': typeof ApiSubscriptionRoute
+  '/api/threads': typeof ApiThreadsRouteWithChildren
   '/api/waitlist': typeof ApiWaitlistRoute
+  '/import/threads': typeof ImportThreadsRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/oauth/client-metadata.json': typeof OauthClientMetadataDotjsonRoute
   '/oauth/jwks.json': typeof OauthJwksDotjsonRoute
@@ -320,6 +343,7 @@ export interface FileRoutesByTo {
   '/api/account/export': typeof ApiAccountExportRoute
   '/api/import/draft': typeof ApiImportDraftRoute
   '/api/import/status': typeof ApiImportStatusRoute
+  '/api/threads/assemble': typeof ApiThreadsAssembleRoute
   '/img/$did/$cid': typeof ImgDidCidRoute
   '/p/$handle/$rkey': typeof PHandleRkeyRoute
 }
@@ -352,7 +376,9 @@ export interface FileRoutesById {
   '/api/stats': typeof ApiStatsRoute
   '/api/subscribe': typeof ApiSubscribeRoute
   '/api/subscription': typeof ApiSubscriptionRoute
+  '/api/threads': typeof ApiThreadsRouteWithChildren
   '/api/waitlist': typeof ApiWaitlistRoute
+  '/import_/threads': typeof ImportThreadsRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/oauth/client-metadata.json': typeof OauthClientMetadataDotjsonRoute
   '/oauth/jwks.json': typeof OauthJwksDotjsonRoute
@@ -361,6 +387,7 @@ export interface FileRoutesById {
   '/api/account/export': typeof ApiAccountExportRoute
   '/api/import/draft': typeof ApiImportDraftRoute
   '/api/import/status': typeof ApiImportStatusRoute
+  '/api/threads/assemble': typeof ApiThreadsAssembleRoute
   '/img/$did/$cid': typeof ImgDidCidRoute
   '/p/$handle/$rkey': typeof PHandleRkeyRoute
 }
@@ -394,7 +421,9 @@ export interface FileRouteTypes {
     | '/api/stats'
     | '/api/subscribe'
     | '/api/subscription'
+    | '/api/threads'
     | '/api/waitlist'
+    | '/import/threads'
     | '/oauth/callback'
     | '/oauth/client-metadata.json'
     | '/oauth/jwks.json'
@@ -403,6 +432,7 @@ export interface FileRouteTypes {
     | '/api/account/export'
     | '/api/import/draft'
     | '/api/import/status'
+    | '/api/threads/assemble'
     | '/img/$did/$cid'
     | '/p/$handle/$rkey'
   fileRoutesByTo: FileRoutesByTo
@@ -434,7 +464,9 @@ export interface FileRouteTypes {
     | '/api/stats'
     | '/api/subscribe'
     | '/api/subscription'
+    | '/api/threads'
     | '/api/waitlist'
+    | '/import/threads'
     | '/oauth/callback'
     | '/oauth/client-metadata.json'
     | '/oauth/jwks.json'
@@ -443,6 +475,7 @@ export interface FileRouteTypes {
     | '/api/account/export'
     | '/api/import/draft'
     | '/api/import/status'
+    | '/api/threads/assemble'
     | '/img/$did/$cid'
     | '/p/$handle/$rkey'
   id:
@@ -474,7 +507,9 @@ export interface FileRouteTypes {
     | '/api/stats'
     | '/api/subscribe'
     | '/api/subscription'
+    | '/api/threads'
     | '/api/waitlist'
+    | '/import_/threads'
     | '/oauth/callback'
     | '/oauth/client-metadata.json'
     | '/oauth/jwks.json'
@@ -483,6 +518,7 @@ export interface FileRouteTypes {
     | '/api/account/export'
     | '/api/import/draft'
     | '/api/import/status'
+    | '/api/threads/assemble'
     | '/img/$did/$cid'
     | '/p/$handle/$rkey'
   fileRoutesById: FileRoutesById
@@ -515,7 +551,9 @@ export interface RootRouteChildren {
   ApiStatsRoute: typeof ApiStatsRoute
   ApiSubscribeRoute: typeof ApiSubscribeRoute
   ApiSubscriptionRoute: typeof ApiSubscriptionRoute
+  ApiThreadsRoute: typeof ApiThreadsRouteWithChildren
   ApiWaitlistRoute: typeof ApiWaitlistRoute
+  ImportThreadsRoute: typeof ImportThreadsRoute
   OauthCallbackRoute: typeof OauthCallbackRoute
   OauthClientMetadataDotjsonRoute: typeof OauthClientMetadataDotjsonRoute
   OauthJwksDotjsonRoute: typeof OauthJwksDotjsonRoute
@@ -724,11 +762,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiSubscriptionRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/threads': {
+      id: '/api/threads'
+      path: '/api/threads'
+      fullPath: '/api/threads'
+      preLoaderRoute: typeof ApiThreadsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/waitlist': {
       id: '/api/waitlist'
       path: '/api/waitlist'
       fullPath: '/api/waitlist'
       preLoaderRoute: typeof ApiWaitlistRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/import_/threads': {
+      id: '/import_/threads'
+      path: '/import/threads'
+      fullPath: '/import/threads'
+      preLoaderRoute: typeof ImportThreadsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/oauth/callback': {
@@ -780,6 +832,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiImportStatusRouteImport
       parentRoute: typeof ApiImportRoute
     }
+    '/api/threads/assemble': {
+      id: '/api/threads/assemble'
+      path: '/assemble'
+      fullPath: '/api/threads/assemble'
+      preLoaderRoute: typeof ApiThreadsAssembleRouteImport
+      parentRoute: typeof ApiThreadsRoute
+    }
     '/img/$did/$cid': {
       id: '/img/$did/$cid'
       path: '/img/$did/$cid'
@@ -811,6 +870,18 @@ const ApiImportRouteWithChildren = ApiImportRoute._addFileChildren(
   ApiImportRouteChildren,
 )
 
+interface ApiThreadsRouteChildren {
+  ApiThreadsAssembleRoute: typeof ApiThreadsAssembleRoute
+}
+
+const ApiThreadsRouteChildren: ApiThreadsRouteChildren = {
+  ApiThreadsAssembleRoute: ApiThreadsAssembleRoute,
+}
+
+const ApiThreadsRouteWithChildren = ApiThreadsRoute._addFileChildren(
+  ApiThreadsRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   DashboardRoute: DashboardRoute,
@@ -839,7 +910,9 @@ const rootRouteChildren: RootRouteChildren = {
   ApiStatsRoute: ApiStatsRoute,
   ApiSubscribeRoute: ApiSubscribeRoute,
   ApiSubscriptionRoute: ApiSubscriptionRoute,
+  ApiThreadsRoute: ApiThreadsRouteWithChildren,
   ApiWaitlistRoute: ApiWaitlistRoute,
+  ImportThreadsRoute: ImportThreadsRoute,
   OauthCallbackRoute: OauthCallbackRoute,
   OauthClientMetadataDotjsonRoute: OauthClientMetadataDotjsonRoute,
   OauthJwksDotjsonRoute: OauthJwksDotjsonRoute,

@@ -688,6 +688,48 @@ describe("POST /api/publish — intent=document, a post that arrived by import",
     expect(ledger.setPublishedRkey).not.toHaveBeenCalled();
   });
 
+  /**
+   * WHEN AN IMAGE STAYS ON SOMEBODY ELSE'S SERVER, THE WRITER IS TOLD.
+   *
+   * Rehosting is the point of importing: the copy on the source CDN is exactly
+   * the one that vanishes when the writer leaves that platform. It is
+   * best-effort per image — past the cap, too big, refused, wrong type — and
+   * that is fine, but it was silent. The writer published, saw "Published.",
+   * and believed the archive was now theirs while part of it still loaded from
+   * the site they were leaving.
+   *
+   * The count rides back on the redirect so the confirmation can say it. Not an
+   * error and not a warning to act on — there is nothing they can do today —
+   * just the true state of what they just published.
+   */
+  it("tells the writer how many images stayed on the source", async () => {
+    // Every fetch refused, so every image is skipped: deterministic, and no
+    // network. The publish itself is unaffected, which is the other half.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("no", { status: 404 })),
+    );
+    const res = await publish({
+      ...fields,
+      body: [
+        "![one](https://cdn.example/1.jpg)",
+        "![two](https://cdn.example/2.jpg)",
+      ].join("\n\n"),
+    });
+    vi.unstubAllGlobals();
+
+    expect(location(res).searchParams.get("published")).toBeTruthy();
+    expect(location(res).searchParams.get("imagesKept")).toBe("2");
+  });
+
+  it("says nothing when every image came across", async () => {
+    // The counter-case: a silent success stays silent. A notice that always
+    // appeared would train the writer to ignore it.
+    const res = await publish({ ...fields, body: "Just words." });
+    expect(location(res).searchParams.get("published")).toBeTruthy();
+    expect(location(res).searchParams.get("imagesKept")).toBeNull();
+  });
+
   it("publishes as a normal now-dated post when the ledger read flakes", async () => {
     ledger.selectImportItemByDraft.mockRejectedValue(new Error("d1 down"));
     const res = await publish(fields);
@@ -696,6 +738,28 @@ describe("POST /api/publish — intent=document, a post that arrived by import",
     expect(String(documentRecord().publishedAt)).not.toBe(
       ORIGINAL.toISOString(),
     );
+  });
+
+  /**
+   * The rule that makes a backfill survivable: nothing announces.
+   *
+   * A writer bringing twenty old threads (or twenty old newsletter posts)
+   * across publishes them one after another, and if publishing announced, each
+   * one would land in their followers' timelines — twenty notifications for
+   * work from 2024. What keeps that from happening is the IMPORT SKIP: a
+   * publish carrying import provenance never announces, whatever the request
+   * asked for and whatever the writer's account setting says. Stated that way
+   * on purpose — "announcing is a separate intent" was the old reason and stops
+   * being true the moment publishing announces by default, which would leave
+   * this test passing for a reason that no longer holds.
+   */
+  it("never announces — a backfill must not reach the writer's followers", async () => {
+    await publish(fields);
+    expect(
+      callOf("com.atproto.repo.createRecord", "app.bsky.feed.post"),
+    ).toBeUndefined();
+    // And the document record carries no announcement reference of its own.
+    expect(documentRecord().bskyPostRef).toBeUndefined();
   });
 
   it("ignores an original date in the future rather than publishing ahead of now", async () => {

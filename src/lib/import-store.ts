@@ -13,6 +13,13 @@ import { drafts, importFetches, importItems } from "~/db/schema";
 
 type DrizzleD1 = ReturnType<typeof drizzle>;
 
+/**
+ * Where a ledger row came from — the `source_kind` / `kind` column values,
+ * named once so no call site spells a magic string. See ~/db/schema for what
+ * each one means to the reader page and to the rate limiter.
+ */
+export type ImportSourceKind = "feed" | "thread";
+
 /** Ledger rows for a set of item hashes — the picker's "already imported"
  * flags. `guidHashes` is capped upstream (items per run ≤ 20). */
 export function selectImportItems(
@@ -56,8 +63,11 @@ export function selectImportItemByDraft(
 }
 
 /**
- * Is this published record a mirror? A row with the rkey, still un-adopted.
- * The reader page turns a hit into noindex + the provenance line.
+ * Did this published record come in through an import? A row with the rkey,
+ * still un-adopted. The reader page turns a hit into a provenance line, and —
+ * for `feed` rows only — noindex instead of a canonical tag. `sourceKind` is
+ * what decides which, so it travels with the lookup (see the field's own
+ * comment in ~/db/schema).
  */
 export function selectMirror(
   db: DrizzleD1,
@@ -67,6 +77,7 @@ export function selectMirror(
   return db
     .select({
       sourceUrl: importItems.sourceUrl,
+      sourceKind: importItems.sourceKind,
     })
     .from(importItems)
     .where(
@@ -87,6 +98,7 @@ export function insertImportItem(
     did: string;
     guidHash: string;
     sourceUrl: string | null;
+    sourceKind: ImportSourceKind;
     originalAt: Date | null;
     draftId: string;
   },
@@ -106,6 +118,7 @@ export function reviveImportItem(
   fields: {
     draftId: string;
     sourceUrl: string | null;
+    sourceKind: ImportSourceKind;
     originalAt: Date | null;
   },
 ) {
@@ -196,24 +209,38 @@ export function selectLiveDraftIds(
     .where(and(eq(drafts.did, did), inArray(drafts.id, draftIds)));
 }
 
-/** Feed-fetch runs this writer has spent since `since` (the rate window). */
+/**
+ * Fetch runs of ONE kind this writer has spent since `since` (the rate
+ * window). Kind-scoped so the two imports hold separate budgets off one table
+ * — a thread import must not be able to exhaust the feed importer's six
+ * attempts an hour, or vice versa (see `kind` in ~/db/schema).
+ */
 export function countRecentImportFetches(
   db: DrizzleD1,
   did: string,
   since: Date,
+  kind: ImportSourceKind = "feed",
 ) {
   return db
     .select({ n: count() })
     .from(importFetches)
     .where(
-      and(eq(importFetches.did, did), gte(importFetches.createdAt, since)),
+      and(
+        eq(importFetches.did, did),
+        eq(importFetches.kind, kind),
+        gte(importFetches.createdAt, since),
+      ),
     );
 }
 
-/** Records a feed-fetch run (counted before the fetch happens — a failed
- * fetch still spent the attempt). */
-export function insertImportFetch(db: DrizzleD1, did: string) {
-  return db.insert(importFetches).values({ did });
+/** Records a fetch run (counted before the fetch happens — a failed fetch
+ * still spent the attempt). */
+export function insertImportFetch(
+  db: DrizzleD1,
+  did: string,
+  kind: ImportSourceKind = "feed",
+) {
+  return db.insert(importFetches).values({ did, kind });
 }
 
 /** Inline prune: rows older than the window are dead weight for every

@@ -446,3 +446,141 @@ describe("/api/import/draft — intake", () => {
     expect(inserted.originalAt.getTime()).toBeLessThanOrEqual(Date.now());
   });
 });
+
+/**
+ * One intake, two importers. `source.kind` is the only thing that differs, and
+ * it is the field the reader page's canonical decision hangs off — so it has to
+ * be recorded from the request and defaulted conservatively when absent.
+ */
+describe("/api/import/draft — which import a row came from", () => {
+  const THREAD_PAYLOAD = {
+    title: "On leaving",
+    content: [{ type: "paragraph", content: [] }],
+    source: {
+      guid: `at://${DID}/app.bsky.feed.post/3aa1`,
+      kind: "thread",
+      link: `https://bsky.app/profile/${DID}/post/3aa1`,
+      publishedAt: "2026-02-04T10:00:00.000Z",
+    },
+  };
+
+  it("records a thread import as a thread, keyed by the root URI", async () => {
+    const res = await callDraft(THREAD_PAYLOAD);
+    expect(res.status).toBe(201);
+    const inserted = store.insertImportItem.mock.calls[0][1];
+    expect(inserted.sourceKind).toBe("thread");
+    expect(inserted.guidHash).toBe(
+      await hashOf(`at://${DID}/app.bsky.feed.post/3aa1`),
+    );
+    expect(inserted.sourceUrl).toBe(
+      `https://bsky.app/profile/${DID}/post/3aa1`,
+    );
+    // Backdated to the thread's own root date, for publish to pick up.
+    expect(inserted.originalAt.toISOString()).toBe("2026-02-04T10:00:00.000Z");
+  });
+
+  it("defaults to feed when a client sends no kind (a tab open across a deploy)", async () => {
+    await callDraft(DRAFT_PAYLOAD);
+    expect(store.insertImportItem.mock.calls[0][1].sourceKind).toBe("feed");
+  });
+
+  it("refuses a kind it doesn't recognize rather than storing it", async () => {
+    const res = await callDraft({
+      ...THREAD_PAYLOAD,
+      source: { ...THREAD_PAYLOAD.source, kind: "whatever" },
+    });
+    expect(res.status).toBe(400);
+    expect(store.insertImportItem).not.toHaveBeenCalled();
+  });
+
+  /**
+   * `source.kind` is a CLAIM, and the server checks it against the guid.
+   *
+   * It decides what a published page says about where the words came from —
+   * "First published as a thread on Bluesky" versus a mirror's noindex and a
+   * link to somebody else's publication. That sentence is permanent, public, and
+   * about provenance, which makes a client-supplied enum the wrong shape: any
+   * session could mint a thread-labelled origin for arbitrary text, or launder a
+   * real thread as a generic feed import.
+   *
+   * A thread is exactly one thing: an app.bsky.feed.post in the SESSION'S OWN
+   * repo. The repo half is the one that matters — without it a writer could
+   * claim a stranger's thread as self-imported, which is the provenance line
+   * asserting a relationship that does not exist.
+   */
+  const OTHER_DID = "did:plc:fakeforeign22222writer22";
+
+  it("refuses a thread claim on ANOTHER repo's post", async () => {
+    const res = await callDraft({
+      ...THREAD_PAYLOAD,
+      source: {
+        ...THREAD_PAYLOAD.source,
+        guid: `at://${OTHER_DID}/app.bsky.feed.post/3aa1`,
+      },
+    });
+    expect(res.status).toBe(400);
+    expect(store.insertImportItem).not.toHaveBeenCalled();
+  });
+
+  it("refuses a thread claim on an ordinary https link", async () => {
+    const res = await callDraft({
+      ...THREAD_PAYLOAD,
+      source: { ...THREAD_PAYLOAD.source, guid: "https://w.example/p/one" },
+    });
+    expect(res.status).toBe(400);
+    expect(store.insertImportItem).not.toHaveBeenCalled();
+  });
+
+  it("refuses a thread claim on an at:// URI in another collection", async () => {
+    // A record of the writer's own, but not a Bluesky post — a document of
+    // theirs is not a thread and must not be labelled as one.
+    const res = await callDraft({
+      ...THREAD_PAYLOAD,
+      source: {
+        ...THREAD_PAYLOAD.source,
+        guid: `at://${DID}/site.standard.document/3aa1`,
+      },
+    });
+    expect(res.status).toBe(400);
+    expect(store.insertImportItem).not.toHaveBeenCalled();
+  });
+
+  it("refuses a FEED claim on the writer's own post, rather than coercing it", async () => {
+    // The other direction: refused, not silently relabelled. Rewriting the
+    // caller's claim would file a provenance they never agreed to under a
+    // request they believe succeeded.
+    const res = await callDraft({
+      ...THREAD_PAYLOAD,
+      source: { ...THREAD_PAYLOAD.source, kind: "feed" },
+    });
+    expect(res.status).toBe(400);
+    expect(store.insertImportItem).not.toHaveBeenCalled();
+  });
+
+  it("accepts a genuine self at:// URI", async () => {
+    const res = await callDraft(THREAD_PAYLOAD);
+    expect(res.status).toBe(201);
+    expect(store.insertImportItem.mock.calls[0][1].sourceKind).toBe("thread");
+  });
+
+  it("carries the kind through a revive too", async () => {
+    store.selectImportItem.mockResolvedValue([
+      { publishedRkey: null, draftId: "11111111-2222-3333-4444-555555555555" },
+    ]);
+    store.selectLiveDraftIds.mockResolvedValue([]); // discarded
+    await callDraft(THREAD_PAYLOAD);
+    expect(store.reviveImportItem.mock.calls[0][3].sourceKind).toBe("thread");
+  });
+
+  it("dedupes a thread by its root URI — the second import is refused", async () => {
+    store.selectImportItem.mockResolvedValue([
+      { publishedRkey: "3lzabc", draftId: null },
+    ]);
+    const res = await callDraft(THREAD_PAYLOAD);
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { error: string }).error).toBe(
+      "already_imported",
+    );
+    expect(fakeDb.batch).not.toHaveBeenCalled();
+  });
+});

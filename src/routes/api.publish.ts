@@ -631,6 +631,7 @@ async function publishDocument({
   // trusted. Best-effort per image: a miss keeps the original URL.
   let publishBody = body;
   let rehostedBlobs: unknown[] = [];
+  let imagesKept = 0;
   if (importRow) {
     const rehosted = await rehostBodyImages({
       body,
@@ -654,6 +655,11 @@ async function publishDocument({
     if (rehosted) {
       publishBody = rehosted.body;
       rehostedBlobs = rehosted.blobs;
+      // Images that stayed on the source CDN — past the cap, too big, refused,
+      // or the wrong type. Not an error, and the post is fine, but the writer
+      // imported precisely to stop depending on that server. Saying nothing
+      // would let them believe the archive is theirs when part of it isn't.
+      imagesKept = rehosted.skipped;
     }
   }
 
@@ -728,11 +734,18 @@ async function publishDocument({
   // link, and the explicit opt-in "Announce on Bluesky" action. The new page
   // and the archive index are warmed behind that redirect, so the link the
   // writer is about to share is already rendered at the edge.
-  return warmingReaderPages(backToDashboard({ published: rkey }), {
-    origin,
-    ident,
-    rkey,
-  });
+  return warmingReaderPages(
+    backToDashboard(
+      imagesKept > 0
+        ? { published: rkey, imagesKept: String(imagesKept) }
+        : { published: rkey },
+    ),
+    {
+      origin,
+      ident,
+      rkey,
+    },
+  );
 }
 
 /**
