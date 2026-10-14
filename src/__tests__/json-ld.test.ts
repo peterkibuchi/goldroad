@@ -24,7 +24,7 @@ describe("buildArticleJsonLd", () => {
       publisher: { "@type": "Organization", name: "The Long Way" },
       url: "https://trygoldroad.com/@writer.example/3abc2345678df",
     });
-    // Never edited: last modified when it was published.
+    // The record's own updatedAt, even when it equals the publish date.
     expect(jsonLd.dateModified).toBe("2026-01-01T00:00:00.000Z");
     expect(jsonLd.image).toBeUndefined();
   });
@@ -52,6 +52,7 @@ describe("buildArticleJsonLd", () => {
       publisherUrl: "https://trygoldroad.com/@writer.example",
       publisherLogoUrl: "https://trygoldroad.com/img/did%3Aplc%3Ax/bafkreiicon",
       url: "https://trygoldroad.com/@writer.example/3abc2345678df",
+      mainEntityOfPage: "https://trygoldroad.com/@writer.example/3abc2345678df",
     });
     expect(jsonLd).toMatchObject({
       description: "The dek.",
@@ -72,6 +73,20 @@ describe("buildArticleJsonLd", () => {
       },
       mainEntityOfPage: "https://trygoldroad.com/@writer.example/3abc2345678df",
     });
+  });
+
+  it("claims no edit date the record doesn't carry, and takes only strings", () => {
+    const jsonLd = buildArticleJsonLd({
+      headline: "Untrusted fields",
+      // A record from another app, typed loosely on the wire.
+      description: { not: "a string" } as unknown as string,
+      publishedAt: "2026-01-01T00:00:00.000Z",
+      authorName: "writer.example",
+      authorUrl: "https://trygoldroad.com/@writer.example",
+      publisherName: "writer.example",
+    });
+    expect(jsonLd.dateModified).toBeUndefined();
+    expect(jsonLd.description).toBeUndefined();
   });
 
   it("falls back the publisher to the author's handle when no publication name is known", () => {

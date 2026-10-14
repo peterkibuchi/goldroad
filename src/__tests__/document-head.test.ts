@@ -227,14 +227,58 @@ describe("documentHead — JSON-LD Article script", () => {
       },
     });
     expect(jsonLd.description).toBe("An excerpt.");
-    expect(jsonLd.dateModified).toBe("2026-01-01T00:00:00.000Z");
+    // The record carries no updatedAt, so no edit date is claimed.
+    expect(jsonLd.dateModified).toBeUndefined();
     expect(jsonLd.mainEntityOfPage).toBe(loaderData.canonicalUrl);
   });
 
-  it("falls back the image to the default card, as og:image does", () => {
-    const { scripts } = documentHead(loaderData);
+  it("names our page as the writer's home when the record's url won't do", () => {
+    for (const publicationUrl of [
+      "https://",
+      "https://writer.example/?utm=1",
+      "https://writer.example/#top",
+      "https://a b.example",
+      "javascript:alert(1)",
+      "http://writer.example",
+    ]) {
+      const { scripts } = documentHead({ ...loaderData, publicationUrl });
+      const jsonLd = JSON.parse(scripts?.[0]?.children ?? "{}");
+      expect(jsonLd.author.url, publicationUrl).toBe(
+        "https://trygoldroad.com/@writer.example",
+      );
+    }
+  });
+
+  it("takes a loose document's own https site as the writer's home", () => {
+    const { scripts } = documentHead({
+      ...loaderData,
+      doc: { ...loaderData.doc, site: "https://writer.example/" },
+    });
     const jsonLd = JSON.parse(scripts?.[0]?.children ?? "{}");
-    expect(jsonLd.image).toBe("https://trygoldroad.com/og.png");
+    expect(jsonLd.author.url).toBe("https://writer.example");
+  });
+
+  it("claims no image without a cover, and describes the default card instead", () => {
+    const { scripts, meta } = documentHead(loaderData);
+    const jsonLd = JSON.parse(scripts?.[0]?.children ?? "{}");
+    // A Goldroad card is not this writer's picture.
+    expect(jsonLd.image).toBeUndefined();
+    expect(meta).toContainEqual({
+      property: "og:image:width",
+      content: "1200",
+    });
+    expect(
+      meta?.some((m) => "property" in m && m.property === "og:image:alt"),
+    ).toBe(true);
+  });
+
+  it("does not call a mirror the article's main page", () => {
+    const { scripts } = documentHead({
+      ...loaderData,
+      mirror: { sourceUrl: "https://writer.substack.com/p/hello" },
+    });
+    const jsonLd = JSON.parse(scripts?.[0]?.children ?? "{}");
+    expect(jsonLd.mainEntityOfPage).toBeUndefined();
   });
 
   it("includes the same absolute cover-image URL used for og:image", () => {
