@@ -39,6 +39,7 @@ import {
   isWorthShowing,
 } from "~/lib/engagement";
 import { buildArticleJsonLd, jsonLdScriptContent } from "~/lib/json-ld";
+import { markdownToHtml, renderBodies } from "~/lib/markdown-html";
 import { checkMirror, type MirrorInfo } from "~/lib/mirror";
 import { checkHidden, recordAtUri } from "~/lib/moderation";
 import { CANONICAL_ORIGIN } from "~/lib/origin";
@@ -90,8 +91,8 @@ const budgetedFetch: typeof fetch = (input, init) =>
  * the platform disappears. Shared by /p/$handle/$rkey (v0 URL, kept alive —
  * published records point at it) and /@$handle/$rkey (canonical composed URL).
  *
- * Content comes straight from the writer's PDS: markdown/plaintext rendered
- * via <Prose> (react-markdown, raw HTML inert) — never dangerouslySetInnerHTML.
+ * Content comes straight from the writer's PDS: the loader renders the body
+ * once to sanitized HTML (~/lib/markdown-html), cached on the server.
  */
 export async function loadDocument(identParam: string, rkey: string) {
   let ident: string;
@@ -205,13 +206,19 @@ export async function loadDocument(identParam: string, rkey: string) {
       fetcher: budgetedFetch,
     }).catch(() => null);
 
-    const [pub, relatedPage, engagement, conversation, mirror] =
+    // Rendered here, once, and shipped as HTML so hydration never re-parses
+    // it. Started last: without a cache it renders synchronously.
+    const body = documentBodyMarkdown(doc);
+    const bodyHtmlPromise = renderBodies([body]).then(([html]) => html);
+
+    const [pub, relatedPage, engagement, conversation, mirror, bodyHtml] =
       await Promise.all([
         pubPromise,
         relatedPromise,
         engagementPromise,
         conversationPromise,
         mirrorPromise,
+        bodyHtmlPromise,
       ]);
 
     let publicationUrl: string | undefined;
@@ -246,7 +253,11 @@ export async function loadDocument(identParam: string, rkey: string) {
 
     const coverCid = coverImageCid(doc.coverImage);
     return {
-      doc,
+      // The body travels as `bodyHtml`; its markdown and plaintext would only
+      // add two more copies to the hydration payload.
+      doc: { ...doc, content: undefined, textContent: undefined },
+      bodyHtml,
+      readingMinutes: documentReadingMinutes(body),
       ident,
       // The author's DID and their publication's own URL: between them they say
       // whose address an email capture would be held for, and whether this
@@ -358,9 +369,8 @@ export function documentHead(
     ],
     // schema.org Article — headline/dates/author/publisher for search and
     // social consumers that read structured data instead of (or alongside)
-    // OpenGraph tags. See ~/lib/json-ld for the escaping rationale: this is
-    // the one narrow, justified exception to "no dangerouslySetInnerHTML"
-    // in this codebase, and it carries zero literal `<` after escaping.
+    // OpenGraph tags. See ~/lib/json-ld for the escaping rationale: it
+    // carries zero literal `<` after escaping.
     // Flat script props, NOT { tag, attrs, children }. This router types head
     // scripts as plain <script> props, so the nested shape spread `tag` and
     // `attrs` onto the element as literal attributes and dropped the real ones:
@@ -536,6 +546,8 @@ function EngagementRow({ engagement }: { engagement: DocumentEngagement }) {
 
 export function DocumentArticle({
   doc,
+  bodyHtml,
+  readingMinutes,
   ident,
   did,
   publicationName,
@@ -571,15 +583,21 @@ export function DocumentArticle({
   relatedPosts?: RelatedPost[];
   engagement?: DocumentEngagement | null;
   conversation?: PostConversation | null;
+  /** The body as rendered by the loader, with its reading time; derived from
+   * `doc` when absent. */
+  bodyHtml?: string;
+  readingMinutes?: number;
 }) {
-  // markpub markdown when the record carries it, else textContent, which on
-  // older records is often markdown-shaped and renders through <Prose> too.
-  const body = documentBodyMarkdown(doc);
+  const html = bodyHtml ?? markdownToHtml(documentBodyMarkdown(doc));
   const date = formatDate(doc.publishedAt);
   const updated = formatDate(doc.updatedAt);
   const publicationHref = `/@${encodeURIComponent(ident)}`;
   const mirrorHost = mirror ? provenanceHost(mirror.sourceUrl) : null;
-  const readingLabel = formatReadingTime(documentReadingMinutes(body));
+  const readingLabel = formatReadingTime(
+    readingMinutes !== undefined
+      ? readingMinutes
+      : documentReadingMinutes(documentBodyMarkdown(doc)),
+  );
   // The dek is ALWAYS shown when set — not just as a no-body fallback — as its
   // own line under the H1.
   const dek = doc.description?.trim() || null;
@@ -737,8 +755,8 @@ export function DocumentArticle({
         {engagement && hasVisibleEngagement(engagement.counts) && (
           <EngagementRow engagement={engagement} />
         )}
-        {body.trim() !== "" ? (
-          <Prose markdown={body} />
+        {html !== "" ? (
+          <Prose html={html} />
         ) : (
           <p className="font-display text-ink-soft text-sm">
             This document keeps its full text elsewhere

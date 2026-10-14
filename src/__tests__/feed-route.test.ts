@@ -247,6 +247,104 @@ describe("/@{$handle}/rss.xml — happy path", () => {
     );
   });
 
+  it("carries the full text of a long post, not just short ones", async () => {
+    const body = `Opening line.\n\n${"A long paragraph of an essay. ".repeat(300)}\n\nClosing line.`;
+    expect(body.length).toBeGreaterThan(8_000);
+    mockFetch({
+      documents: [
+        {
+          uri: `at://${DID}/site.standard.document/3ddd2345678dd`,
+          cid: "bafydoc4",
+          value: {
+            $type: "site.standard.document",
+            title: "A long essay",
+            content: {
+              $type: "at.markpub.markdown",
+              text: { markdown: body },
+            },
+            publishedAt: "2026-07-23T09:00:00Z",
+          },
+        },
+      ],
+    });
+    const doc = parseXml(await (await call("writer.example")).text());
+    const encoded = doc.getElementsByTagNameNS(
+      "http://purl.org/rss/1.0/modules/content/",
+      "encoded",
+    )[0]?.textContent;
+    expect(encoded).toContain("Opening line.");
+    expect(encoded).toContain("Closing line.");
+  });
+
+  const essays = (count: number, chars: number) =>
+    Array.from({ length: count }, (_, i) => ({
+      uri: `at://${DID}/site.standard.document/3eee2345678${String(i).padStart(2, "a")}`,
+      cid: `bafyessay${i}`,
+      value: {
+        $type: "site.standard.document",
+        title: `Essay ${i}`,
+        description: `Excerpt ${i}`,
+        textContent: `Essay ${i}. ${"Word ".repeat(chars / 5)}`,
+        publishedAt: new Date(Date.UTC(2026, 6, 20 - i)).toISOString(),
+      },
+    }));
+  const encodedOf = (xml: string) =>
+    Array.from(
+      parseXml(xml).querySelectorAll("item"),
+      (item) =>
+        item.getElementsByTagNameNS(
+          "http://purl.org/rss/1.0/modules/content/",
+          "encoded",
+        )[0]?.textContent ?? null,
+    );
+
+  it("renders cold misses newest-first under a budget, leaving the rest to excerpts", async () => {
+    mockFetch({ documents: essays(4, 12_000) });
+    const encoded = encodedOf(await (await call("writer.example")).text());
+    expect(encoded[0]).toContain("Essay 0.");
+    expect(encoded.slice(1)).toEqual([null, null, null]);
+  });
+
+  it("serves cached renders, and still bounds the feed's total full text", async () => {
+    const store = new Map<string, string>();
+    vi.stubGlobal("caches", {
+      default: {
+        match: async (key: string) =>
+          store.has(key) ? new Response(store.get(key)) : undefined,
+        put: async (key: string, response: Response) => {
+          store.set(key, await response.text());
+        },
+      },
+    });
+    const documents = essays(20, 12_000);
+    // Warm the cache the way earlier requests would have, one post each.
+    for (const doc of documents) {
+      mockFetch({ documents: [doc] });
+      await call("writer.example");
+    }
+    mockFetch({ documents });
+    const encoded = encodedOf(await (await call("writer.example")).text());
+    const full = encoded.filter((html) => html !== null);
+    // Every post is cached, so the render budget isn't what stops them: the
+    // total full text is, at roughly 150,000 characters.
+    expect(full.length).toBeGreaterThan(1);
+    expect(full.length).toBeLessThan(20);
+    expect(full.join("").length).toBeLessThanOrEqual(150_000);
+    expect(encoded[0]).toContain("Essay 0.");
+  });
+
+  it("asks the PDS for one feed page of documents", async () => {
+    const fetchMock = mockFetch();
+    await call("writer.example");
+    const list = fetchMock.mock.calls
+      .map(([input]) => new URL(String(input)))
+      .find(
+        (url) =>
+          url.searchParams.get("collection") === "site.standard.document",
+      );
+    expect(list?.searchParams.get("limit")).toBe("20");
+  });
+
   it("serves a valid empty feed titled by ident when nothing is published", async () => {
     mockFetch({ publications: [], documents: [] });
     const res = await call("writer.example");

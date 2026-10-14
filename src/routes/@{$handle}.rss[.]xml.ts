@@ -21,7 +21,7 @@ import {
   rfc822Date,
   rssFeedXml,
 } from "~/lib/feed";
-import { markdownBudget } from "~/lib/markdown-html";
+import { renderBodies, renderBudget } from "~/lib/markdown-html";
 import { hiddenSubjects, recordAtUri } from "~/lib/moderation";
 import { CANONICAL_ORIGIN } from "~/lib/origin";
 import { composeDocumentUrl } from "~/lib/publish";
@@ -58,6 +58,15 @@ const NOT_FOUND = () =>
     headers: { "cache-control": "no-store" },
   });
 
+/** Items per feed. Each can cost a render-cache lookup and a store, and those
+ * share the free plan's 50-subrequest budget with the PDS and directory reads
+ * (at most 2 × 20 + 6 on a cold request). */
+const FEED_ITEMS = 20;
+
+/** Characters of HTML one feed carries in `content:encoded`, about 2 to 4 ms
+ * of escaping. Under feed.ts's per-item cap, so no post is ever cut short. */
+const FEED_CONTENT_BUDGET_CHARS = 150_000;
+
 export const Route = createFileRoute("/@{$handle}/rss.xml")({
   server: {
     handlers: {
@@ -86,7 +95,7 @@ export const Route = createFileRoute("/@{$handle}/rss.xml")({
               pds,
               did,
               "site.standard.document",
-              {},
+              { limit: FEED_ITEMS },
             ).catch(() => ({ records: [], cursor: null })),
           ]);
           const publication = pubs[0]?.value ?? null;
@@ -133,63 +142,57 @@ export const Route = createFileRoute("/@{$handle}/rss.xml")({
             : new Set<string>();
           if (hidden.has(did)) return NOT_FOUND();
 
-          // One budget for the whole render, not per item — fifty items that
-          // each pass a per-item cap still terminate the Worker.
-          const budget = markdownBudget();
-          const items: FeedItem[] = entries
+          const visible = entries
             .filter((e) => !hidden.has(e.atUri))
             .sort(
               (a, b) =>
                 Date.parse(b.value.publishedAt ?? "") -
                   Date.parse(a.value.publishedAt ?? "") ||
                 (a.rkey < b.rkey ? 1 : -1),
-            )
-            .map((e) => {
-              const doc = e.value;
-              // The same body the page renders (see documentBodyMarkdown).
-              const body = documentBodyMarkdown(doc);
-              // Canonical composed URL (publication.url + document.path —
-              // page parity); when composition fails (foreign publication
-              // ref, missing path) fall back to our own reading surface,
-              // which renders any author's document.
-              const link =
-                composeDocumentUrl({
-                  site: doc.site,
-                  path: doc.path,
-                  publicationUrl:
-                    typeof doc.site === "string"
-                      ? pubUrlByAtUri.get(doc.site)
-                      : undefined,
-                }) ??
-                `${CANONICAL_ORIGIN}/@${encodeURIComponent(ident)}/${encodeURIComponent(e.rkey)}`;
-              return {
-                title: doc.title ?? "Untitled",
-                link,
-                guid: e.atUri,
-                pubDate: rfc822Date(doc.publishedAt),
-                description:
-                  typeof doc.description === "string" &&
-                  doc.description.trim() !== ""
-                    ? doc.description
-                    : body
-                      ? plainTextExcerpt(body)
-                      : null,
-                // The full post, rendered the same way the page renders it.
-                // The text is already here — the record carries it — so an
-                // excerpt-only feed was withholding something it had, and a
-                // reader in a feed reader got less of the piece than a reader
-                // on the page.
-                //
-                // Bounded, though, and that bound is load-bearing rather than
-                // defensive: this parse is the most expensive thing the Worker
-                // does, a 50-record page of it costs ~3 s of CPU against a
-                // 10 ms budget, and the path is unauthenticated. The budget is
-                // spent newest-first (the sort above), so the items a feed
-                // reader actually shows carry full text and the tail falls back
-                // to `description` — the excerpt built two lines up.
-                content: budget.render(body),
-              };
-            });
+            );
+          // The same bodies the page renders, through the same cache. Misses
+          // render newest-first under one budget, so on a cold cache the
+          // items a reader sees first are the ones with full text.
+          const bodies = visible.map((e) => documentBodyMarkdown(e.value));
+          const html = await renderBodies(bodies, renderBudget());
+          // Escaping the HTML into XML costs CPU even on a cache hit, so the
+          // feed's total full text is bounded too; past it, the excerpt.
+          let contentLeft = FEED_CONTENT_BUDGET_CHARS;
+          const items: FeedItem[] = visible.map((e, i) => {
+            const doc = e.value;
+            const body = bodies[i];
+            const fits = html[i].length <= contentLeft;
+            if (fits) contentLeft -= html[i].length;
+            // Canonical composed URL (publication.url + document.path —
+            // page parity); when composition fails (foreign publication
+            // ref, missing path) fall back to our own reading surface,
+            // which renders any author's document.
+            const link =
+              composeDocumentUrl({
+                site: doc.site,
+                path: doc.path,
+                publicationUrl:
+                  typeof doc.site === "string"
+                    ? pubUrlByAtUri.get(doc.site)
+                    : undefined,
+              }) ??
+              `${CANONICAL_ORIGIN}/@${encodeURIComponent(ident)}/${encodeURIComponent(e.rkey)}`;
+            return {
+              title: doc.title ?? "Untitled",
+              link,
+              guid: e.atUri,
+              pubDate: rfc822Date(doc.publishedAt),
+              description:
+                typeof doc.description === "string" &&
+                doc.description.trim() !== ""
+                  ? doc.description
+                  : body
+                    ? plainTextExcerpt(body)
+                    : null,
+              // "" (over a budget) leaves only `description`.
+              content: fits ? html[i] : "",
+            };
+          });
 
           // Channel URLs are minted from the canonical origin, never the
           // request origin — permanent references must not depend on

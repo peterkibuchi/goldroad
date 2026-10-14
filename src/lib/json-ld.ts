@@ -55,10 +55,10 @@ export function buildArticleJsonLd(input: {
  * `<` back to `<` exactly like a literal one, so nothing is lost.)
  *
  * This is the same pattern TanStack Router's own `<Script>` component uses
- * to render `application/ld+json` data scripts — the one narrow, justified
- * exception to this codebase's "no dangerouslySetInnerHTML" rule, which
- * exists to keep arbitrary third-party HTML/markdown inert. There is no
- * markup here at all after this escape: a data blob, not rendered content.
+ * to render `application/ld+json` data scripts. dangerouslySetInnerHTML is
+ * kept to output that is safe by construction (this, and the reader body from
+ * ~/lib/markdown-html). There is no markup here at all after this escape: a
+ * data blob, not rendered content.
  */
 export function jsonLdScriptContent(data: unknown): string {
   return JSON.stringify(data).replace(/</g, "\\u003c");

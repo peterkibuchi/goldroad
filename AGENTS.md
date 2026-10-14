@@ -31,9 +31,10 @@ Package manager: **pnpm**. Path alias: `~/*` → `src/*` (see tsconfig).
   single `/api/publish` handler** (refresh-token race mitigation).
 - **Editor:** BlockNote (core MPL-2.0; XL packages usable under GPL-3.0 because this
   repo is AGPL). Persistence: blocks → lossy markdown → the record's `content`
-  (`at.markpub.markdown`), plus a plaintext `textContent`; the reader renders the
-  markdown via react-markdown (no `rehype-raw` — raw HTML stays inert). Never edit a
-  document carrying a foreign content union (refused as `not_editable`).
+  (`at.markpub.markdown`), plus a plaintext `textContent`; reading pages and RSS
+  render the markdown once with markdown-it (`~/lib/markdown-html`: raw HTML
+  escaped, URLs allowlisted), cached by record CID. Never edit a document carrying
+  a foreign content union (refused as `not_editable`).
 - **Analytics:** PostHog, cookieless (memory persistence). Single project across
   environments, disambiguated by the `app_env` property. Key via t3-env
   (`VITE_PUBLIC_POSTHOG_KEY`, optional — absent means analytics is off).

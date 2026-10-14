@@ -1,7 +1,13 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { Prose } from "#/components/prose";
+import { Prose as ProseHtml } from "#/components/prose";
+import { markdownToHtml } from "#/lib/markdown-html";
+
+/** The page's pipeline: the loader renders, Prose places the HTML. */
+const Prose = ({ markdown }: { markdown: string }) => (
+  <ProseHtml html={markdownToHtml(markdown)} />
+);
 
 afterEach(cleanup);
 

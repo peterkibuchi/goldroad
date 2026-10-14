@@ -27,12 +27,12 @@ const TURNSTILE_ORIGIN = "https://challenges.cloudflare.com";
  *
  * - script-src 'unsafe-inline': TanStack Start emits inline hydration/state
  *   <script> tags and BlockNote injects styles at runtime; there is no nonce
- *   plumbing. Reader markdown already renders with raw HTML inert (react-markdown,
- *   no rehype-raw), so CSP is defence-in-depth + clickjacking +
+ *   plumbing. Reader markdown renders with raw HTML escaped and URLs
+ *   allowlisted (~/lib/markdown-html), so CSP is defence-in-depth + clickjacking +
  *   transport here, NOT the primary XSS control. No 'unsafe-eval' — nothing in
  *   the bundle needs it (React 19 + Compiler, TanStack, BlockNote, PostHog-core).
  * - img-src allows https: + data: + blob: — writers' markdown can embed remote
- *   images (react-markdown → <img>), the cover picker previews via blob:/data:,
+ *   images (markdown → <img>), the cover picker previews via blob:/data:,
  *   and reader covers come through same-origin /img.
  * - PostHog hosts (optional analytics) are allowed in script-/connect-src; the
  *   directives are harmless when no key is set. `posthogHost` overrides the
