@@ -82,7 +82,7 @@ const MAX_DISPLAY_NAME_CHARS = 640;
 
 /** Edge-cache TTL for one post's conversation. Matches engagement's window:
  * replies arrive over hours, and this decouples the AppView's cost from how
- * often the page itself re-renders (~/lib/read-cache's own TTL is 60 s). */
+ * often the page itself re-renders (~/lib/read-cache, also 300 s). */
 export const COMMENTS_CACHE_TTL_SECONDS = 300;
 
 /** The `$type` a threadViewPost node carries in a union position. */

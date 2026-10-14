@@ -21,14 +21,14 @@ corresponding source of the exact version you run.
 
 ## One-click deploy
 
-> Deploy to Cloudflare button — placeholder until the public repository exists:
->
-> `[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/<owner>/goldroad)`
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/peterkibuchi/goldroad)
 
 The button clones the repo into your Cloudflare account, provisions a D1 database
 from `wrangler.jsonc`, rewrites the `database_id`, and prompts you for the secrets
-below. You still have to set `VITE_PUBLIC_ORIGIN` and generate your OAuth key (below)
-before OAuth works.
+below. It doesn't apply the database migrations, and `VITE_PUBLIC_ORIGIN` is read at
+build time. So after it finishes, run `pnpm db:migrate:selfhost` from a clone, set
+`VITE_PUBLIC_ORIGIN` as a build variable, generate your OAuth key (below), and
+redeploy. Sign-in fails until all of that is done.
 
 ## Manual deploy
 
@@ -79,6 +79,9 @@ before OAuth works.
    | `WEBHOOK_URL` | optional | Alert webhook for the hourly cron: self-check failures, and new abuse reports awaiting triage. Absent = silent no-op: reports stay queued and unnotified, and once it is set the backlog goes out oldest-first at up to 50 per hourly tick. |
    | `POSTHOG_QUERY_API_KEY` | optional | PostHog personal API key with Query Read scope, for the writer-stats endpoint. |
    | `POSTHOG_PROJECT_ID` | optional | Numeric PostHog project id the pageviews live in. Both PostHog secrets are needed together — with either missing, `/api/stats` answers `{ enabled: false }` and never calls upstream. |
+   | `TAKEDOWN_PURGE_TOKEN` | optional | Bearer token for `/api/cache-purge`, which evicts a taken-down page from the read cache. On its own it evicts in the data center that answers; the others keep serving their copy for up to 300 seconds, and the response says so. Unset, the endpoint answers 404. Generate with `openssl rand -hex 32`. |
+   | `CF_PURGE_ZONE_ID` | optional | The id of the Cloudflare zone serving your origin. With `CF_PURGE_API_TOKEN`, `/api/cache-purge` also asks Cloudflare's purge API to drop the pages zone-wide; a whole-author takedown purges the entire zone. Needs your origin on a Cloudflare zone (not a `workers.dev` address) and `TAKEDOWN_PURGE_TOKEN` set. |
+   | `CF_PURGE_API_TOKEN` | optional | An API token scoped to that zone with cache-purge permission. With only one of the two `CF_PURGE_*` secrets set, purges stay local. |
 
    Set each as a Worker secret, e.g.:
 

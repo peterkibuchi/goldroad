@@ -112,7 +112,7 @@ describe("GET /api/subscription", () => {
   });
 
   it("is uncacheable — this is one reader's relationship", async () => {
-    // The page it appears on is edge-cached for 60s regardless of cookies;
+    // The page it appears on is edge-cached for 300 s regardless of cookies;
     // this answer must never be stored anywhere on the way back.
     expect((await ask()).headers.get("cache-control")).toBe(
       "private, no-store",

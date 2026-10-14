@@ -45,10 +45,10 @@ export type EngagementCounts = {
   quoteCount?: number;
 };
 
-/** Edge-cache TTL for one post's engagement counts. Longer than the reading
- * surfaces' own 60s page cache (~/lib/read-cache): this decouples the
- * AppView call's own cost/rate limit from how often the page itself gets a
- * fresh render — the same reasoning ~/lib/stats uses its own longer TTL for. */
+/** Edge-cache TTL for one post's engagement counts. The same 300 s as the
+ * reading surfaces' page cache (~/lib/read-cache), but cached separately, so
+ * the AppView call's cost and rate limit don't follow how often the page itself
+ * gets a fresh render. */
 export const ENGAGEMENT_CACHE_TTL_SECONDS = 300;
 
 /** bsky.app profile/post URL — DIDs and handles go in RAW: bsky.app's router

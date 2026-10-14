@@ -37,9 +37,7 @@ What this means in practice:
 3. **Run the gate** — it must pass, and CI enforces the same:
 
    ```sh
-   pnpm check       # Biome lint + format
-   pnpm typecheck   # tsc --noEmit
-   pnpm test        # Vitest
+   pnpm gate        # Biome (warnings fatal), tsc --noEmit, Vitest
    pnpm build       # Workers bundle
    ```
 

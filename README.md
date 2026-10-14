@@ -91,7 +91,7 @@ to run your own instance.
 pnpm install
 cp .env.example .env && cp .dev.vars.example .dev.vars   # fill per the comments
 pnpm dev    # browse at http://127.0.0.1:3000 (not localhost — OAuth loopback rules)
-pnpm check && pnpm typecheck && pnpm test                # the gate; keep it green
+pnpm gate                                                # the gate; keep it green
 ```
 
 ## Licensing

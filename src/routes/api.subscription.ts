@@ -2,7 +2,7 @@
  * Is the reader looking at this page subscribed to this publication?
  *
  * WHY THIS IS AN ENDPOINT AND NOT PART OF THE READER LOADER. The reading
- * surfaces are edge-cached for 60 s and the cache key ignores cookies on
+ * surfaces are edge-cached for 300 s and the cache key ignores cookies on
  * purpose — keying anonymity to the cookie would let an attacker dodge the
  * cache and force full-cost renders (see ~/lib/read-cache). So a subscribe
  * state answered inside `/@handle`'s HTML would be one reader's relationship,
