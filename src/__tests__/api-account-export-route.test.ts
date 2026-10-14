@@ -188,7 +188,7 @@ describe("response shape", () => {
   it("includes the sitemap's listing of the writer's publication", async () => {
     store.selectHostedPublicationForExport.mockResolvedValue([
       {
-        url: "https://trygoldroad.com/@writer.example",
+        ident: "writer.example",
         updatedAt: new Date("2026-10-01T09:00:00.000Z"),
       },
     ]);
@@ -199,7 +199,7 @@ describe("response shape", () => {
     );
     const body = (await res.json()) as { sitemapListing: unknown };
     expect(body.sitemapListing).toEqual({
-      url: "https://trygoldroad.com/@writer.example",
+      page: "http://127.0.0.1:3000/@writer.example",
       lastPublishedAt: "2026-10-01T09:00:00.000Z",
     });
   });

@@ -136,7 +136,7 @@ export function selectFollowerSnapshotsForExport(db: DrizzleD1, did: string) {
 export function selectHostedPublicationForExport(db: DrizzleD1, did: string) {
   return db
     .select({
-      url: hostedPublications.url,
+      ident: hostedPublications.ident,
       updatedAt: hostedPublications.updatedAt,
     })
     .from(hostedPublications)

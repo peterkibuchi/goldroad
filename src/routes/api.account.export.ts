@@ -189,7 +189,7 @@ export const Route = createFileRoute("/api/account/export")({
           sitemapListing:
             hostedRows[0] != null
               ? {
-                  url: hostedRows[0].url,
+                  page: `${origin}/@${encodeURIComponent(hostedRows[0].ident)}`,
                   lastPublishedAt: hostedRows[0].updatedAt.toISOString(),
                 }
               : null,
