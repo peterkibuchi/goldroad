@@ -535,7 +535,7 @@ async function publishDocument({
     } catch {
       return backToWrite("not_found");
     }
-    // Foreign union only — our own is editable (see ~/lib/document-content).
+    // Only content we can't round-trip is refused (see ~/lib/document-content).
     if (hasForeignContent(existing.value)) return backToWrite("not_editable");
     let record: ReturnType<typeof updateDocumentRecord>;
     try {

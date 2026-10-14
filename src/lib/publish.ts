@@ -470,8 +470,9 @@ export function documentRecordByteLength(input: {
  * Refuses documents carrying a FOREIGN content union (e.g. Leaflet's
  * pub.leaflet.content): we would update the plaintext while readers keep
  * rendering the stale rich content — silent corruption. Those documents are
- * editable in the app that owns their content format. Inline markpub
- * markdown, whoever wrote it, is ours to edit.
+ * editable in the app that owns their content format. markpub markdown,
+ * whoever wrote it, is ours to edit unless an edit would drop part of it
+ * (see hasForeignContent).
  */
 export function updateDocumentRecord(
   existing: StandardDocument,

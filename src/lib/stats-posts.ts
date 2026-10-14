@@ -30,8 +30,8 @@ export type StatsPostRow = {
   date: string | null;
   /** Approximate minutes, or null when the document's text lives elsewhere. */
   readingMinutes: number | null;
-  /** Rich-content-union documents (written in another app) can't be edited
-   * here; the table marks them the way the posts list does. */
+  /** Documents whose content we can't round-trip (see hasForeignContent)
+   * can't be edited here; the table marks them the way the posts list does. */
   editable: boolean;
   /** The announcement on Bluesky, from the record's own write-back. */
   announced: { did: string; postRkey: string; uri: string } | null;

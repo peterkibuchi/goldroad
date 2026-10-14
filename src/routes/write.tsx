@@ -82,7 +82,7 @@ const ERROR_MESSAGES: Record<string, string> = {
     "This post is too large to store as a single record. Data servers cap a record at about 140,000 bytes, and bytes aren't characters: accents, emoji and non-Latin scripts cost several each, and the post is kept twice over — once formatted, once as plain text — so other apps on the network can read it. Nothing here is lost: trim it down, or split it into two posts.",
   not_found: "That post couldn't be loaded, so you're starting a new one.",
   not_editable:
-    "That post was written in another app with a rich content format Goldroad can't edit yet — edit it where it was written.",
+    "That post was written in another app, in a form Goldroad can't edit without losing part of it. Edit it where it was written.",
   cover_type: "Covers can be a JPEG, PNG, WebP, AVIF, or GIF image.",
   cover_too_large:
     "That cover is too large even after shrinking — pick an image under 1 MB.",
@@ -248,9 +248,8 @@ const getWriteContext = createServerFn({ method: "GET" })
           "site.standard.document",
           data.edit,
         );
-        // FOREIGN content unions (e.g. Leaflet's) are the source of truth in
-        // their app — editing only textContent would silently fork the post.
-        // Our own union is not foreign: those posts open with full fidelity.
+        // Content we can't round-trip (e.g. Leaflet's union) is the source of
+        // truth in its app; editing only textContent would fork the post.
         if (hasForeignContent(doc)) draftError = "not_editable";
         else {
           const coverCid = coverImageCid(doc.coverImage);

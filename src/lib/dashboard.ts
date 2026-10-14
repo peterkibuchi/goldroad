@@ -37,8 +37,8 @@ export type DashboardRow = {
    * Documents carrying a FOREIGN content union (e.g. Leaflet's
    * pub.leaflet.content) are not editable here (editing only textContent would
    * silently fork what readers render). They still get Delete and Announce:
-   * both act on the record as a whole, in the writer's own repo. Our own
-   * union does not make a post read-only — see ~/lib/document-content.
+   * both act on the record as a whole, in the writer's own repo. markpub
+   * markdown stays editable — see hasForeignContent in ~/lib/document-content.
    */
   editable: boolean;
   /**
