@@ -25,6 +25,7 @@ import {
   buildContentSecurityPolicy,
   withSecurityHeaders,
 } from "~/lib/security-headers";
+import { waitUntil } from "cloudflare:workers";
 
 // CSP only in production: Vite dev needs 'unsafe-eval' + ws: for HMR, so a
 // strict policy would white-screen `pnpm dev`. Verify the prod CSP against the
@@ -41,8 +42,10 @@ const entry = createServerEntry({
     if (redirect) return redirect;
     // Reading surfaces are served through the edge cache; everything
     // else (and any non-reading path) falls straight through.
-    const response = await serveWithReadCache(request, () =>
-      handler.fetch(request, opts),
+    const response = await serveWithReadCache(
+      request,
+      () => handler.fetch(request, opts),
+      waitUntil,
     );
     // Security-header baseline on HTML documents. Applied after the
     // cache so policy changes take effect on already-cached pages immediately.

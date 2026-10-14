@@ -53,12 +53,18 @@ function makeGate() {
 const DID = "did:plc:ukp7pzzht32uigg6bg4vxr5t";
 const RKEY = "3lyk73wxnok2f";
 const PDS = "https://pds.example";
+const PUB_RKEY = "3lyk73wxpub22";
+const REPLIES = { replies: [], threadUrl: "https://bsky.app/x", hasMore: true };
 
 const gates = vi.hoisted(() => ({
   /** Opened when resolveDidToPds is entered. */
   pdsEntered: undefined as ReturnType<typeof makeGate> | undefined,
   /** Opened when listRecordsPage (the "More from…" read) is entered. */
   relatedEntered: undefined as ReturnType<typeof makeGate> | undefined,
+  /** Opened when listRecords (the publication listing) is entered. */
+  pubsEntered: undefined as ReturnType<typeof makeGate> | undefined,
+  /** Released by the test; the reply fetch waits on it. */
+  repliesReleased: undefined as ReturnType<typeof makeGate> | undefined,
   /** What the takedown check should answer once its gate settles. */
   hiddenWhenOpened: false,
   /** Make the DID-document resolution fail. */
@@ -76,19 +82,43 @@ vi.mock("~/lib/atproto", async (importOriginal) => {
         throw new actual.NotFoundError("directory unreachable");
       return PDS;
     }),
-    // The document read waits for the related-posts read to be entered, so a
-    // loader that still queues them reports "sequential" in the title.
-    getRecordEntry: vi.fn(async () => {
-      const observed = (await gates.relatedEntered?.wait()) ?? "opened";
+    // The document read waits for the related-posts read AND the publication
+    // listing to be entered, so a loader that still queues either reports
+    // "sequential" in the title. A direct publication read (the fallback when
+    // the listing misses) answers with a name the listing never carries.
+    getRecordEntry: vi.fn(async (_pds: string, _did: string, collection) => {
+      if (collection === "site.standard.publication")
+        return { uri: "", value: { name: "read directly" } };
+      const related = (await gates.relatedEntered?.wait()) ?? "opened";
+      const pubs = (await gates.pubsEntered?.wait()) ?? "opened";
+      const concurrent = related === "opened" && pubs === "opened";
       return {
         uri: `at://${DID}/site.standard.document/${RKEY}`,
         cid: "bafyfake",
-        value: { title: observed === "opened" ? "concurrent" : "sequential" },
+        value: {
+          title: concurrent ? "concurrent" : "sequential",
+          site: `at://${DID}/site.standard.publication/${PUB_RKEY}`,
+        },
       };
     }),
     listRecordsPage: vi.fn(async () => {
       gates.relatedEntered?.open();
       return { records: [], cursor: null };
+    }),
+    listRecords: vi.fn(async () => {
+      gates.pubsEntered?.open();
+      return [
+        {
+          uri: `at://${DID}/site.standard.publication/3otherpub2222`,
+          cid: "bafyother",
+          value: { name: "Another publication" },
+        },
+        {
+          uri: `at://${DID}/site.standard.publication/${PUB_RKEY}`,
+          cid: "bafypub",
+          value: { name: "From the listing" },
+        },
+      ];
     }),
   };
 });
@@ -113,14 +143,25 @@ vi.mock("~/lib/engagement", async (importOriginal) => ({
 }));
 vi.mock("~/lib/comments", async (importOriginal) => ({
   ...(await importOriginal<typeof import("~/lib/comments")>()),
-  getPostConversation: vi.fn(async () => null),
+  // Held until the test releases it: a loader that awaits the replies can't
+  // return before then, and reports that instead of hanging.
+  getPostConversation: vi.fn(async () => {
+    await gates.repliesReleased?.wait();
+    return REPLIES;
+  }),
 }));
 
+import { getRecordEntry } from "~/lib/atproto";
 import { loadDocument } from "../components/document-article";
 
 function reset() {
   gates.pdsEntered = makeGate();
   gates.relatedEntered = makeGate();
+  gates.pubsEntered = makeGate();
+  // Released at once unless a test holds it.
+  gates.repliesReleased = makeGate();
+  gates.repliesReleased.open();
+  vi.mocked(getRecordEntry).mockClear();
   gates.hiddenWhenOpened = false;
   gates.pdsRejects = false;
 }
@@ -155,6 +196,37 @@ describe("reading-surface loader concurrency", () => {
       data.doc.title,
       "the related-posts read still waits for the document read to finish",
     ).toBe("concurrent");
+  });
+
+  it("lists the publications while the document is being read", async () => {
+    reset();
+    const data = await loadDocument("writer.example", RKEY);
+    // Which publication the document belongs to is only known once it
+    // arrives; reading that record afterwards was one more PDS round trip in
+    // front of the first byte. The listing that ran alongside already has it.
+    expect(
+      data.doc.title,
+      "the publication read still waits for the document read to finish",
+    ).toBe("concurrent");
+    expect(data.publicationName).toBe("From the listing");
+    expect(getRecordEntry).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns the article without waiting for the replies", async () => {
+    reset();
+    gates.repliesReleased = makeGate();
+    const outcome = await Promise.race([
+      loadDocument("writer.example", RKEY).then((data) => ({ data })),
+      new Promise<"waited">((resolve) => setTimeout(resolve, 1_000, "waited")),
+    ]);
+    // Replies render far below the fold; the page streams them in after the
+    // article rather than holding the first byte for an AppView round trip.
+    expect(outcome, "the loader still waits for the replies").not.toBe(
+      "waited",
+    );
+    if (outcome === "waited") return;
+    gates.repliesReleased.open();
+    await expect(outcome.data.conversation).resolves.toEqual(REPLIES);
   });
 
   it("still shows the takedown notice when the DID document is unreachable", async () => {
