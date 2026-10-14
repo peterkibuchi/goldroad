@@ -3,6 +3,7 @@
  * Rendering one publication needs only: handle → DID → PDS → getRecord.
  */
 import { readBodyCapped } from "~/lib/blob";
+import { defaultCache } from "~/lib/workers-cache";
 
 const HANDLE_RE =
   /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
@@ -106,7 +107,60 @@ function parseJson<T>(bytes: Uint8Array): T | null {
   }
 }
 
+/**
+ * How long a reader route reuses a resolved identity from the edge cache. On a
+ * cold reading page, handle → DID → PDS is two round trips, one after the
+ * other, before the first byte of the writer's own repo can be asked for. An
+ * hour is the usual atproto resolver default: a handle change or a PDS move
+ * shows up within it, and until then the old answer still names the same
+ * writer, so the takedown check (keyed on the DID) is unaffected.
+ */
+export const IDENTITY_CACHE_TTL_SECONDS = 3600;
+
+/**
+ * `resolve()` through the Workers Cache, under a synthetic internal URL. Only
+ * successes are stored, and a stored value is re-checked with `accept` on the
+ * way out, so a corrupt entry costs a fresh resolution rather than a bad
+ * fetch. Without a cache (unit tests) this is just `resolve()`.
+ *
+ * Budget: a reading page resolves at most one handle and one DID, so this adds
+ * four Cache API calls on a cold page (two lookups, two stores) and saves two
+ * fetches on every warm one. A fully cold post page comes to about 20 of the
+ * 50 subrequests, counting every cache call and D1 query.
+ */
+async function cachedIdentity(
+  key: string,
+  accept: (value: string) => boolean,
+  resolve: () => Promise<string>,
+): Promise<string> {
+  const cache = defaultCache();
+  const url = `https://goldroad-identity.internal/v1/${key}`;
+  const hit = await cache?.match(url).catch(() => undefined);
+  const cached = await hit?.text().catch(() => null);
+  if (cached && accept(cached)) return cached;
+  const value = await resolve();
+  await cache
+    ?.put(
+      url,
+      new Response(value, {
+        headers: {
+          "cache-control": `public, s-maxage=${IDENTITY_CACHE_TTL_SECONDS}`,
+        },
+      }),
+    )
+    .catch(() => {});
+  return value;
+}
+
+/** Handle → DID via the AppView, cached for IDENTITY_CACHE_TTL_SECONDS. */
 export async function resolveHandleToDid(handle: string): Promise<Did> {
+  const key = `handle/${encodeURIComponent(handle.toLowerCase())}`;
+  return (await cachedIdentity(key, isDid, () =>
+    resolveHandleUncached(handle),
+  )) as Did;
+}
+
+async function resolveHandleUncached(handle: string): Promise<Did> {
   const res = await fetch(
     `https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle=${encodeURIComponent(handle)}`,
     { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) },
@@ -191,11 +245,18 @@ export async function resolveDidIdentity(did: string): Promise<DidIdentity> {
   };
 }
 
-/** Resolve a DID to its PDS service endpoint via the DID document. Throws
- * (unlike resolveDidIdentity) — a reader route needs a NotFoundError to
- * distinguish "no such repo" from a directory that was merely unreachable. */
+/** Resolve a DID to its PDS service endpoint via the DID document, cached for
+ * IDENTITY_CACHE_TTL_SECONDS. Throws (unlike resolveDidIdentity) — a reader
+ * route needs a NotFoundError to distinguish "no such repo" from a directory
+ * that was merely unreachable. Signed-in surfaces use resolveDidIdentity, which
+ * stays uncached: a writer who just moved PDS must not publish to the old one. */
 export async function resolveDidToPds(did: string): Promise<string> {
-  return pdsFromDocument(await fetchDidDocument(did), did);
+  return cachedIdentity(
+    `pds/${encodeURIComponent(did)}`,
+    // The SSRF guard again: a cached endpoint is trusted no more than a fresh one.
+    (pds) => orNull(() => assertPublicHttpsUrl(pds).origin) === pds,
+    async () => pdsFromDocument(await fetchDidDocument(did), did),
+  );
 }
 
 /** Resolve a DID to its declared handle (`alsoKnownAs` at:// entry). UNVERIFIED
