@@ -77,21 +77,23 @@ export const editorSchema = BlockNoteSchema.create({
 
 export type EditorWithEmbeds = typeof editorSchema.BlockNoteEditor;
 
-/** A single link with nothing else, as pasted or as parsed from a line. */
+/**
+ * The URL a line holds, if the line is nothing else: one unstyled run of
+ * text, which is what a bare link alone on its line parses to. The same rule
+ * the renderer applies, so the editor never shows a player the page won't. A
+ * URL in code or bold, or a link the writer wrote out, is formatting they
+ * chose, and stays as it is.
+ */
 function soleUrl(content: unknown): string | null {
   if (!Array.isArray(content) || content.length !== 1) return null;
   const [only] = content as {
     type?: string;
     text?: string;
-    href?: string;
-    content?: { type?: string; text?: string }[];
+    styles?: Record<string, unknown>;
   }[];
-  if (only.type === "text") return only.text?.trim() || null;
-  if (only.type === "link" && only.content?.length === 1) {
-    const text = only.content[0].text?.trim();
-    return text && text === only.href ? text : null;
-  }
-  return null;
+  if (only.type !== "text" || Object.keys(only.styles ?? {}).length > 0)
+    return null;
+  return only.text?.trim() || null;
 }
 
 /**

@@ -65,6 +65,9 @@ describe("the embed block", () => {
       `Watch ${URL_}`,
       "https://example.com/page",
       `[watch](${URL_})`,
+      // Formatting the writer chose; the page doesn't play these either.
+      `\`${URL_}\``,
+      `**${URL_}**`,
     ]) {
       const blocks = withEmbedBlocks(instance.tryParseMarkdownToBlocks(md));
       expect(blocks.map((b) => b.type)).toEqual(["paragraph"]);

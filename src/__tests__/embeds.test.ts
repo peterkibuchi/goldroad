@@ -80,6 +80,8 @@ describe("parseEmbed — what qualifies", () => {
     "https://www.youtube.com/watch?v=short", // not an id
     `https://www.youtube.com/watch?v=${YT}"><script>`,
     "https://www.youtube.com/@channel",
+    "https://www.youtube.com/embed/videoseries?list=PL123", // a playlist
+    "https://www.youtube.com/embed/live_stream?channel=UC1", // a channel's live slot
     `https://youtu.be/${YT}/extra`,
     "https://vimeo.com/channels/staffpicks",
     "https://vimeo.com/76979871/NOT-A-HASH",
@@ -136,7 +138,7 @@ describe("what a played embed loads", () => {
   it("needs a DID for a Bluesky post, and builds none from a handle", () => {
     expect(playerUrl(samples[3])).toBeNull();
     expect(playerUrl(samples[3], DID)).toBe(
-      `${PLAYER_ORIGINS.bluesky}/embed/${DID}/app.bsky.feed.post/3l6oveex3ii2l?id=post`,
+      `${PLAYER_ORIGINS.bluesky}/embed/${DID}/app.bsky.feed.post/3l6oveex3ii2l?id=post&colorMode=system`,
     );
   });
 

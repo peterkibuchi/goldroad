@@ -197,7 +197,7 @@ const BOXED =
 const PLAY =
   "flex items-center justify-center rounded-full bg-ink text-paper transition-transform group-hover:scale-105 motion-reduce:transition-none";
 const EMBED_CLASSES = {
-  figure: "gr-embed mt-6",
+  figure: "gr-embed mt-6 first:mt-0",
   preview: "gr-embed-preview group relative flex w-full text-ink no-underline",
   video: `${BOXED} aspect-video`,
   card: `${BOXED} items-center gap-4 p-4`,

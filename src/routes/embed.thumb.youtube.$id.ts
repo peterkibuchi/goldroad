@@ -26,6 +26,14 @@ const NOT_FOUND = () =>
     headers: { "cache-control": "no-store" },
   });
 
+/** A video with no thumbnail (removed, private) stays that way a while, so
+ * the miss is kept too: an hour, rather than one upstream fetch per reader. */
+const MISSING = () =>
+  new Response("Not found", {
+    status: 404,
+    headers: { "cache-control": "public, max-age=3600" },
+  });
+
 export const Route = createFileRoute("/embed/thumb/youtube/$id")({
   server: {
     handlers: {
@@ -41,13 +49,18 @@ export const Route = createFileRoute("/embed/thumb/youtube/$id")({
           `https://i.ytimg.com/vi/${params.id}/hqdefault.jpg`,
           { redirect: "manual", signal: AbortSignal.timeout(5_000) },
         ).catch(() => null);
+        // No answer at all may be a blip, and isn't kept. An answer that
+        // isn't a thumbnail is, briefly.
+        if (!upstream) return NOT_FOUND();
         if (
-          !upstream?.ok ||
+          !upstream.ok ||
           upstream.headers.get("content-type")?.split(";")[0].trim() !==
             "image/jpeg"
         ) {
-          await upstream?.body?.cancel().catch(() => {});
-          return NOT_FOUND();
+          await upstream.body?.cancel().catch(() => {});
+          const missing = MISSING();
+          await cache?.put(cacheKey, missing.clone()).catch(() => {});
+          return missing;
         }
         const bytes = await readBodyCapped(upstream, MAX_THUMB_BYTES);
         if (!bytes) return NOT_FOUND();

@@ -110,7 +110,8 @@ export function withSecurityHeaders(
   h.set("strict-transport-security", "max-age=31536000; includeSubDomains");
   h.set("x-frame-options", frameableBySelf ? "SAMEORIGIN" : "DENY");
   h.set("x-content-type-options", "nosniff");
-  h.set("referrer-policy", "strict-origin-when-cross-origin");
+  if (!(own && h.has("referrer-policy")))
+    h.set("referrer-policy", "strict-origin-when-cross-origin");
   h.set("cross-origin-opener-policy", "same-origin");
   if (csp && !own) h.set("content-security-policy", csp);
   if (buildSha) h.set("x-goldroad-version", buildSha);
