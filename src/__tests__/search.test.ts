@@ -123,18 +123,30 @@ describe("the index", () => {
     expect((await find("shared")).map((h) => h.rkey)).toEqual(["3my"]);
   });
 
-  it("leaves out another app's content, and drops a post edited into it", async () => {
+  it("finds another app's post by its title, but not by a body it can't read", async () => {
     const foreign = {
       title: "Made elsewhere",
+      description: "a summary",
       content: { $type: "pub.leaflet.content", pages: [] },
       textContent: "leaflet words",
     };
     await indexDocument(db, ME, "3ma", foreign);
+    expect(await find("elsewhere")).toHaveLength(1);
+    expect(await find("summary")).toHaveLength(1);
     expect(await find("leaflet")).toEqual([]);
 
+    // A post edited into another format keeps its title, loses its body.
     await indexDocument(db, ME, "3mb", post("Ours", "kept words"));
     await indexDocument(db, ME, "3mb", { ...foreign, title: "Ours" });
     expect(await find("kept")).toEqual([]);
+    expect(await find("ours")).toHaveLength(1);
+  });
+
+  it("never lets a query word reach the writer token", async () => {
+    await indexDocument(db, ME, "3ma", post("Title", "words"));
+    // Every owner token starts with "o" and hex; a word shaped like one must
+    // not match every post this writer has.
+    expect(await find("o646964")).toEqual([]);
   });
 
   it("reads plaintext out of a record that keeps markdown", async () => {
@@ -250,11 +262,51 @@ describe("backfill", () => {
       ],
       cursor: null,
     }));
-    expect(step).toEqual({ done: true, indexed: 1 });
+    // The other app's post comes in by title; the untitled and the malformed don't.
+    expect(step).toEqual({ done: true, indexed: 2 });
+  });
+});
+
+describe("backfill — racing the writer", () => {
+  it("never overwrites a post that was edited after its page was read", async () => {
+    await indexDocument(db, ME, "3ma", post("Edited", "newer words"));
+    await backfillStep(db, ME, async () => ({
+      records: [
+        {
+          uri: `at://${ME}/site.standard.document/3ma`,
+          value: post("Original", "older words"),
+        },
+      ],
+      cursor: null,
+    }));
+    expect(await find("newer")).toHaveLength(1);
+    expect(await find("older")).toEqual([]);
+  });
+
+  it("can't be marked unfinished by a slower tab", async () => {
+    await backfillStep(db, ME, async () => {
+      // Another tab finishes the walk while this one is still reading a page.
+      await backfillStep(db, ME, async () => ({ records: [], cursor: null }));
+      return { records: [], cursor: "c1" };
+    });
+    expect(await isSearchReady(db, ME)).toBe(true);
   });
 });
 
 describe("runPublicationSearch", () => {
+  it("answers nothing for a writer who has been taken down", async () => {
+    markComplete();
+    await indexDocument(db, ME, "3ma", post("Fine", "common word"));
+    d1.sqlite
+      .prepare("insert into hidden_content (subject, created_at) values (?, 1)")
+      .run(ME);
+    expect(await runPublicationSearch(db, ME, "common")).toEqual({
+      ready: true,
+      hits: [],
+      more: false,
+    });
+  });
+
   it("leaves out a post that has been taken down", async () => {
     markComplete();
     await indexDocument(db, ME, "3ma", post("Fine", "common word"));
