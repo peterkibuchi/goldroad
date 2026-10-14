@@ -6,6 +6,7 @@ import {
   formatDate,
   isHiddenNotFound,
   ReportLink,
+  resolveIdent,
 } from "~/components/document-article";
 import { SearchIcon } from "~/components/icons";
 import { Notice } from "~/components/notice";
@@ -24,7 +25,6 @@ import {
   NotFoundError,
   ResponseTooLargeError,
   resolveDidToPds,
-  resolveHandleToDid,
   rkeyFromUri,
   type StandardDocument,
   type StandardPublication,
@@ -55,7 +55,7 @@ export const Route = createFileRoute("/@{$handle}/")({
     const ident = decodeURIComponent(params.handle);
     if (!isHandle(ident) && !isDid(ident)) throw notFound();
     try {
-      const did = isDid(ident) ? ident : await resolveHandleToDid(ident);
+      const did = isDid(ident) ? ident : await resolveIdent(ident, "");
       // The takedown check (D1) and the DID-document fetch (plc.directory) both
       // need only the DID and neither needs the other, so they wait together
       // instead of in sequence. The check is still resolved before any PDS read

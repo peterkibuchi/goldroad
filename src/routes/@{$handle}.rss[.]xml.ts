@@ -21,6 +21,7 @@ import {
   rfc822Date,
   rssFeedXml,
 } from "~/lib/feed";
+import { formerHandleRedirect, formerHandleTarget } from "~/lib/handle-history";
 import { renderBodies, renderBudget } from "~/lib/markdown-html";
 import { hiddenSubjects, recordAtUri } from "~/lib/moderation";
 import { CANONICAL_ORIGIN } from "~/lib/origin";
@@ -86,8 +87,26 @@ export const Route = createFileRoute("/@{$handle}/rss.xml")({
           return NOT_FOUND();
         }
         if (!isHandle(ident) && !isDid(ident)) return NOT_FOUND();
+        let did: string;
         try {
-          const did = isDid(ident) ? ident : await resolveHandleToDid(ident);
+          did = isDid(ident) ? ident : await resolveHandleToDid(ident);
+        } catch (err) {
+          if (!(err instanceof NotFoundError)) throw err;
+          // Perhaps a feed URL from before the writer changed handle.
+          const target = env.DB
+            ? await formerHandleTarget(drizzle(env.DB), ident).catch(() => null)
+            : null;
+          if (!target) return NOT_FOUND();
+          const { href, statusCode, headers } = formerHandleRedirect(
+            target,
+            "/rss.xml",
+          );
+          return new Response(null, {
+            status: statusCode,
+            headers: { ...headers, location: href },
+          });
+        }
+        try {
           const pds = await resolveDidToPds(did);
           const [pubs, docsPage] = await Promise.all([
             // Oldest publication = the author's original one (page parity).

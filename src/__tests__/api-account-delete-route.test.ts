@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const store = vi.hoisted(() => ({
   deleteDraftsForDid: vi.fn(),
   deleteFollowerSnapshotsForDid: vi.fn(),
+  deleteHandleHistoryForDid: vi.fn(),
   deleteImportItemsForDid: vi.fn(),
   deleteImportFetchesForDid: vi.fn(),
   deleteOAuthSessionForDid: vi.fn(),
@@ -126,6 +127,14 @@ describe("deletion", () => {
     // them and no one able to reach them.
     await call();
     expect(store.deleteReaderEmailsForDid).toHaveBeenCalledWith(
+      expect.anything(),
+      DID,
+    );
+  });
+
+  it("forgets the handles recorded for the account", async () => {
+    await call();
+    expect(store.deleteHandleHistoryForDid).toHaveBeenCalledWith(
       expect.anything(),
       DID,
     );
