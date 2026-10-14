@@ -212,6 +212,7 @@ describe("withoutOutcomeParams", () => {
       withoutOutcomeParams({
         published: RKEY,
         imagesKept: 3,
+        imagesDropped: 2,
         announced: RKEY,
         scheduled: true,
         tab: "drafts",
@@ -244,5 +245,22 @@ describe("dashboard search — the images-kept count", () => {
   it("drops a count that isn't a positive integer", () => {
     for (const imagesKept of ["0", "-1", "2.5", "lots"])
       expect(validate()({ imagesKept }).imagesKept).toBeUndefined();
+  });
+});
+
+describe("dashboard search — the images-dropped count", () => {
+  type Validate = (search: Record<string, unknown>) => {
+    imagesDropped?: number;
+  };
+  const validate = () =>
+    (Route.options as unknown as { validateSearch: Validate }).validateSearch;
+
+  it("keeps how many images a publish went out without", () => {
+    expect(validate()({ imagesDropped: "3" }).imagesDropped).toBe(3);
+  });
+
+  it("drops a count that isn't a positive integer", () => {
+    for (const imagesDropped of ["0", "-1", "2.5", "lots"])
+      expect(validate()({ imagesDropped }).imagesDropped).toBeUndefined();
   });
 });

@@ -168,7 +168,7 @@ export function toRecordInput(record: DocumentRecord): Record<string, unknown> {
  * writer's own repo, it may be percent-encoded (blobImagePath encodes it), and
  * the CID alone is what a blob reference is keyed on.
  */
-function inlineImageCidsInBody(body: string): Set<string> {
+export function inlineImageCidsInBody(body: string): Set<string> {
   const cids = new Set<string>();
   for (const match of body.matchAll(
     /\/img\/[^/\s)"'<>]+\/([a-zA-Z0-9]{24,256})/g,
@@ -205,9 +205,25 @@ export function inlineImagesForBody(
     const cid = candidate.ref.$link;
     if (!used.has(cid) || seen.has(cid)) continue;
     seen.add(cid);
-    out.push(candidate);
+    // Rebuilt rather than passed through: candidates are client JSON, and
+    // nothing but the blob's own four fields belongs in the record.
+    out.push({
+      $type: "blob",
+      ref: { $link: cid },
+      mimeType: candidate.mimeType,
+      size: candidate.size,
+    });
   }
   return out;
+}
+
+/** The body with every image served from blob `cid` removed, for a publish
+ * that goes ahead without a picture the repo no longer holds. */
+export function withoutInlineImage(body: string, cid: string): string {
+  return body.replace(
+    /!\[(?:\\.|[^[\]\\])*\]\(\s*\/img\/[^/\s)"'<>]+\/([a-zA-Z0-9]{24,256})[^()]*\)/g,
+    (whole, found: string) => (found === cid ? "" : whole),
+  );
 }
 
 /** The first body image a record can reference, in body order: an imported

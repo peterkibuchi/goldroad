@@ -552,7 +552,8 @@ type EmbedResult = {
  * references a blob the PDS keeps it, even after the thread is deleted. Up to
  * `borrowable` of them; any image past that, or whose ref we can't use, falls
  * back to `![alt](fullsize-cdn-url)`, which publish-time `rehostBodyImages`
- * (~/lib/import) copies within its budget. Either way the alt is the writer's
+ * (~/lib/import) copies while the budget and the record's slots allow.
+ * Either way the alt is the writer's
  * own description of their picture, and it comes across.
  *
  * A QUOTE of another post becomes a LINK, never inlined content. Someone
@@ -745,8 +746,9 @@ export function assembleThread(
   let droppedVideo = false;
   for (const post of spine) {
     blocks.push(...postTextMarkdown(post));
-    // A document references at most MAX_INLINE_IMAGES blobs; past that, the
-    // rest go the copy route rather than be left unreferenced.
+    // A document references at most MAX_INLINE_IMAGES blobs, so past that the
+    // rest keep their CDN URL. Publishing has no slot left to copy them into,
+    // so they stay on Bluesky's CDN and the writer is told how many.
     const embed = embedMarkdown(post, MAX_INLINE_IMAGES - images.length);
     blocks.push(...embed.blocks);
     images.push(...embed.blobs);
