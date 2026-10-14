@@ -32,6 +32,7 @@ import { isDid, parseAtUri } from "~/lib/atproto";
 import { readBodyCapped } from "~/lib/blob";
 import { countDrafts, insertDraft } from "~/lib/drafts";
 import { MAX_DRAFT_BODY_BYTES, MAX_DRAFTS_PER_USER } from "~/lib/drafts-schema";
+import { bskyPostUrl } from "~/lib/engagement";
 import {
   clampOriginalDate,
   guidHash,
@@ -130,12 +131,12 @@ export const Route = createFileRoute("/api/import/draft")({
           return privateJson({ ok: false, error: "invalid" }, 400);
         const { title, content, source } = parsed.data;
 
-        // The claim has to match the evidence. Refused rather than coerced: a
-        // client sending the wrong kind is either stale in a way we cannot see
-        // or lying, and silently rewriting the label would file a provenance the
-        // caller never agreed to under a request they believe succeeded.
+        // The kind comes from the evidence, not the claim. A "thread" claim
+        // the guid doesn't back is refused. A "feed" item whose guid is the
+        // writer's own post (their Bluesky RSS feed) IS a self-import, and
+        // is filed as one.
         const kind = derivedKind(source.guid, did);
-        if (source.kind !== kind)
+        if (source.kind === "thread" && kind !== "thread")
           return privateJson({ ok: false, error: "invalid" }, 400);
 
         // Re-serialize for storage (stored strings are always our own
@@ -150,9 +151,14 @@ export const Route = createFileRoute("/api/import/draft")({
         // Provenance link: only a public https URL is stored (it renders as
         // an href on reader pages). z.url() above already rejects javascript:
         // and friends; http links from old feeds are dropped, not upgraded.
-        const sourceUrl = source.link?.startsWith("https://")
-          ? source.link
-          : null;
+        // A self-import's link is built from the guid, so the "thread on
+        // Bluesky" line can only ever point at the writer's own post.
+        const ownPost = kind === "thread" ? parseAtUri(source.guid) : null;
+        const sourceUrl = ownPost
+          ? bskyPostUrl(did, ownPost.rkey)
+          : source.link?.startsWith("https://")
+            ? source.link
+            : null;
         const originalAt = clampOriginalDate(
           source.publishedAt ? new Date(source.publishedAt) : null,
         );

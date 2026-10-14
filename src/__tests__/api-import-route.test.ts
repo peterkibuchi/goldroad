@@ -545,16 +545,25 @@ describe("/api/import/draft — which import a row came from", () => {
     expect(store.insertImportItem).not.toHaveBeenCalled();
   });
 
-  it("refuses a FEED claim on the writer's own post, rather than coercing it", async () => {
-    // The other direction: refused, not silently relabelled. Rewriting the
-    // caller's claim would file a provenance they never agreed to under a
-    // request they believe succeeded.
+  it("files a FEED item that is the writer's own post as a self-import", async () => {
+    // The writer's Bluesky RSS feed: its guids are their own post URIs, and
+    // /import sends them as feed items. The evidence decides the kind.
     const res = await callDraft({
       ...THREAD_PAYLOAD,
       source: { ...THREAD_PAYLOAD.source, kind: "feed" },
     });
-    expect(res.status).toBe(400);
-    expect(store.insertImportItem).not.toHaveBeenCalled();
+    expect(res.status).toBe(201);
+    expect(store.insertImportItem.mock.calls[0][1].sourceKind).toBe("thread");
+  });
+
+  it("builds a self-import's link from the guid, never from the client", async () => {
+    await callDraft({
+      ...THREAD_PAYLOAD,
+      source: { ...THREAD_PAYLOAD.source, link: "https://evil.example/" },
+    });
+    expect(store.insertImportItem.mock.calls[0][1].sourceUrl).toBe(
+      `https://bsky.app/profile/${DID}/post/3aa1`,
+    );
   });
 
   it("accepts a genuine self at:// URI", async () => {

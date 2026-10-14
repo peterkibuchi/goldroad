@@ -28,6 +28,8 @@ import {
 const capture = vi.hoisted(() => vi.fn());
 vi.mock("../lib/posthog", () => ({ capture }));
 
+import { Route } from "../routes/dashboard";
+
 const IDENT = "writer.example";
 const RKEY = "3aaa2aaa2aaa2";
 const OTHER_RKEY = "3bbb2bbb2bbb2";
@@ -227,5 +229,20 @@ describe("withoutOutcomeParams", () => {
 
   it("is a no-op on a URL that carries none of them", () => {
     expect(withoutOutcomeParams({ tab: "drafts" })).toEqual({ tab: "drafts" });
+  });
+});
+
+describe("dashboard search — the images-kept count", () => {
+  type Validate = (search: Record<string, unknown>) => { imagesKept?: number };
+  const validate = () =>
+    (Route.options as unknown as { validateSearch: Validate }).validateSearch;
+
+  it("keeps a count past the copy cap: those images all stayed behind", () => {
+    expect(validate()({ imagesKept: "25" }).imagesKept).toBe(25);
+  });
+
+  it("drops a count that isn't a positive integer", () => {
+    for (const imagesKept of ["0", "-1", "2.5", "lots"])
+      expect(validate()({ imagesKept }).imagesKept).toBeUndefined();
   });
 });

@@ -337,8 +337,8 @@ export async function publishStoredDraft(input: {
   }
 
   // Import ledger write-back: an imported draft's row records the rkey it
-  // published under, which is what makes the reader page treat it as a mirror
-  // and what keeps a re-import refusing it as a duplicate.
+  // published under, which is what gives the reader page its provenance
+  // treatment (~/lib/mirror) and keeps a re-import refusing it as a duplicate.
   await setPublishedRkey(db, did, draft.id, rkey).catch((err) => {
     console.warn("import ledger write-back failed", err);
   });

@@ -719,7 +719,8 @@ async function publishDocument({
   }
 
   // Import ledger write-back: record the rkey this item published under —
-  // that row is what makes the reader page a "mirror" (noindex + provenance)
+  // that row is what gives the reader page its provenance treatment (a feed
+  // mirror's noindex, or a thread's "first published" line; ~/lib/mirror)
   // and what keeps re-imports refusing the item as a duplicate. Best-effort:
   // the record is already live; a flaked write-back costs the mirror
   // treatment, never the publish.
