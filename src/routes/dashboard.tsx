@@ -94,6 +94,7 @@ import { capture } from "~/lib/posthog";
 import { isOwnPublicationUrl, TID_RE } from "~/lib/publish";
 import { formatReadingTime } from "~/lib/reading-time";
 import { selectWriterSchedule } from "~/lib/scheduled-posts";
+import { runSearchBackfill } from "~/lib/search-backfill";
 import { useWriterStats } from "~/lib/use-writer-stats";
 import { cn } from "~/lib/utils";
 import { env } from "cloudflare:workers";
@@ -1568,6 +1569,12 @@ function DashboardPage() {
     void navigate({ replace: true, search: withoutOutcomeParams });
   }, [navigate]);
   const outcome = useOutcomeParams(search, ident, stripOutcomeParams);
+  // Puts the writer's existing posts into search, once (~/lib/search). Quiet
+  // on purpose: nothing here is the writer's to do, and a stop just resumes
+  // on the next visit.
+  useEffect(() => {
+    void runSearchBackfill();
+  }, []);
 
   return (
     <AppShell header={{ variant: "signed-in", ident, active: "posts" }}>

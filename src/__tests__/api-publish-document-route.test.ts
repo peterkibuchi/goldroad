@@ -65,6 +65,15 @@ const ledger = vi.hoisted(() => ({
 }));
 vi.mock("~/lib/import-store", () => ledger);
 
+const searchIndex = vi.hoisted(() => ({
+  indexDocument: vi.fn(),
+  unindexDocument: vi.fn(),
+}));
+vi.mock("~/lib/search", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/search")>()),
+  ...searchIndex,
+}));
+
 /** The XRPC calls the handler makes, in order — nsid plus what it sent. */
 type Posted = {
   nsid: string;
@@ -208,6 +217,8 @@ beforeEach(() => {
   for (const fn of Object.values(drafts)) fn.mockReset();
   for (const fn of Object.values(schedules)) fn.mockReset();
   for (const fn of Object.values(ledger)) fn.mockReset();
+  for (const fn of Object.values(searchIndex)) fn.mockReset();
+  searchIndex.indexDocument.mockResolvedValue(undefined);
   atproto.resolveDidIdentity.mockResolvedValue({
     handle: "writer.example",
     pds: "https://pds.example.com",
@@ -437,6 +448,42 @@ describe("POST /api/publish — intent=document, body images", () => {
   });
 });
 
+describe("POST /api/publish — intent=document, search", () => {
+  it("indexes the new post under the key it was published at", async () => {
+    await publish({ body: "Searchable words." });
+    const rkey = callOf(
+      "com.atproto.repo.createRecord",
+      "site.standard.document",
+    )?.options.input.rkey;
+    expect(searchIndex.indexDocument).toHaveBeenCalledWith(
+      expect.anything(),
+      DID,
+      rkey,
+      expect.objectContaining({ textContent: "Searchable words." }),
+    );
+  });
+
+  it("indexes nothing when the record never landed", async () => {
+    replies.set("com.atproto.repo.createRecord", {
+      ok: false,
+      status: 502,
+      data: { error: "UpstreamFailure" },
+    });
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    await publish();
+    quiet.mockRestore();
+    expect(searchIndex.indexDocument).not.toHaveBeenCalled();
+  });
+
+  it("still publishes when the index write fails", async () => {
+    searchIndex.indexDocument.mockRejectedValue(new Error("d1 down"));
+    const quiet = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const res = await publish();
+    quiet.mockRestore();
+    expect(location(res).searchParams.get("published")).toBeTruthy();
+  });
+});
+
 describe("POST /api/publish — intent=document, editing a published post", () => {
   const EDIT_RKEY = "3lyk7wxnok2fb";
 
@@ -461,6 +508,16 @@ describe("POST /api/publish — intent=document, editing a published post", () =
   it("never announces an edit, whatever the form says", async () => {
     await edit({ announce: "1" });
     expect(announcing.announceDocument).not.toHaveBeenCalled();
+  });
+
+  it("re-indexes the edited words", async () => {
+    await edit({ body: "Newer words." });
+    expect(searchIndex.indexDocument).toHaveBeenCalledWith(
+      expect.anything(),
+      DID,
+      EDIT_RKEY,
+      expect.objectContaining({ textContent: "Newer words." }),
+    );
   });
 
   it("updates the existing record in place instead of publishing a second one", async () => {
