@@ -31,6 +31,9 @@ vi.mock("~/lib/search", async (importOriginal) => ({
 const schedules = vi.hoisted(() => ({ deleteSchedulesForDraft: vi.fn() }));
 vi.mock("~/lib/scheduled-posts", () => schedules);
 
+const hosted = vi.hoisted(() => ({ recordHostedPublication: vi.fn() }));
+vi.mock("~/lib/hosted-publications", () => hosted);
+
 import {
   findOwnPublication,
   publishStoredDraft,
@@ -39,6 +42,8 @@ import {
 
 const DID = "did:plc:fake2222222222writer2222" as const;
 const PUB_URI = `at://${DID}/site.standard.publication/3lyk73wxnok2f`;
+/** Never queried: the D1 calls this module makes are mocked above. */
+const DB = {} as Parameters<typeof resolvePublicationSite>[0]["db"];
 
 type Posted = { nsid: string; input: Record<string, unknown> };
 
@@ -129,6 +134,8 @@ beforeEach(() => {
   ledger.setPublishedRkey.mockResolvedValue([]);
   schedules.deleteSchedulesForDraft.mockReset();
   schedules.deleteSchedulesForDraft.mockResolvedValue([]);
+  hosted.recordHostedPublication.mockReset();
+  hosted.recordHostedPublication.mockReturnValue(Promise.resolve());
 });
 
 describe("resolvePublicationSite", () => {
@@ -136,6 +143,7 @@ describe("resolvePublicationSite", () => {
     const { rpc, posted } = fakeRpc();
     const site = await resolvePublicationSite({
       rpc,
+      db: DB,
       did: DID,
       ident: "writer.example",
       pds: "https://pds.example.com",
@@ -151,6 +159,7 @@ describe("resolvePublicationSite", () => {
     const { rpc, posted } = fakeRpc();
     const site = await resolvePublicationSite({
       rpc,
+      db: DB,
       did: DID,
       ident: "writer.example",
       pds: "https://pds.example.com",
@@ -175,6 +184,7 @@ describe("resolvePublicationSite", () => {
     const { rpc } = fakeRpc();
     const site = await resolvePublicationSite({
       rpc,
+      db: DB,
       did: DID,
       ident: "writer.example",
       pds: "https://pds.example.com",
@@ -189,6 +199,7 @@ describe("resolvePublicationSite", () => {
     const { rpc, posted } = fakeRpc();
     const site = await resolvePublicationSite({
       rpc,
+      db: DB,
       did: DID,
       ident: "writer.example",
       pds: null,
@@ -208,6 +219,7 @@ describe("resolvePublicationSite", () => {
     const { rpc, posted } = fakeRpc();
     const site = await resolvePublicationSite({
       rpc,
+      db: DB,
       did: DID,
       ident: "writer.example",
       pds: "https://pds.example.com",
@@ -217,6 +229,52 @@ describe("resolvePublicationSite", () => {
     expect(posted).toHaveLength(0);
     // A loose document — the same honest fallback as having no PDS to ask.
     expect(site).toBe("https://trygoldroad.com/@writer.example");
+  });
+});
+
+describe("resolvePublicationSite — the sitemap's list of hosted publications", () => {
+  const resolve = (pds: string | null = "https://pds.example.com") =>
+    resolvePublicationSite({
+      rpc: fakeRpc().rpc,
+      db: DB,
+      did: DID,
+      ident: "writer.example",
+      pds,
+      origin: "https://trygoldroad.com",
+      origins: ["https://trygoldroad.com"],
+    });
+
+  it("notes the writer's own publication at its recorded url", async () => {
+    await resolve();
+    expect(hosted.recordHostedPublication).toHaveBeenCalledWith(
+      DB,
+      DID,
+      "https://trygoldroad.com/@writer.example",
+    );
+  });
+
+  it("notes a publication created on a first publish", async () => {
+    atproto.listRecords.mockResolvedValue([]);
+    await resolve();
+    expect(hosted.recordHostedPublication).toHaveBeenCalledWith(
+      DB,
+      DID,
+      "https://trygoldroad.com/@writer.example",
+    );
+  });
+
+  it("notes nothing when no publication record of ours exists", async () => {
+    await resolve(null);
+    atproto.listRecords.mockRejectedValue(new Error("502 Bad Gateway"));
+    await resolve();
+    expect(hosted.recordHostedPublication).not.toHaveBeenCalled();
+  });
+
+  it("publishes anyway when the note fails", async () => {
+    hosted.recordHostedPublication.mockReturnValue(
+      Promise.reject(new Error("D1 unavailable")),
+    );
+    await expect(resolve()).resolves.toBe(PUB_URI);
   });
 });
 

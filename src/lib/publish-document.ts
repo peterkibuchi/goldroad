@@ -19,6 +19,7 @@ import type { drizzle } from "drizzle-orm/d1";
 
 import { type Did, listRecords, type StandardPublication } from "~/lib/atproto";
 import { deleteDraft } from "~/lib/drafts";
+import { recordHostedPublication } from "~/lib/hosted-publications";
 import { setPublishedRkey } from "~/lib/import-store";
 import {
   buildDocumentRecord,
@@ -82,18 +83,29 @@ export async function findOwnPublication(
  */
 export async function resolvePublicationSite(input: {
   rpc: Client;
+  db: DrizzleD1;
   did: Did;
   ident: string;
   pds: string | null;
   origin: string;
   origins: readonly string[];
 }): Promise<string> {
-  const { rpc, did, ident, pds, origin, origins } = input;
+  const { rpc, db, did, ident, pds, origin, origins } = input;
+  // The sitemap's list of the publications hosted here (~/lib/hosted-
+  // publications). Only for a publication record that is ours: found, or
+  // created just now.
+  const noteHosted = (url: string) =>
+    recordHostedPublication(db, did, url).catch((err: unknown) => {
+      console.warn("hosted-publication note failed", err);
+    });
   const publicationUrl = `${origin}/@${ident}`;
   if (!pds) return publicationUrl;
 
   const { ok, own } = await findOwnPublication(pds, did, origins);
-  if (own) return own.uri;
+  if (own) {
+    if (typeof own.value.url === "string") await noteHosted(own.value.url);
+    return own.uri;
+  }
   // Couldn't ask — so we don't know they have none, and creating one on that
   // guess is how a writer ends up with two. A loose document is the honest
   // outcome here, and it is the same one this function already falls back to.
@@ -110,7 +122,10 @@ export async function resolvePublicationSite(input: {
       },
     })
     .catch(() => null);
-  if (created?.ok) return `at://${did}/site.standard.publication/${pubRkey}`;
+  if (created?.ok) {
+    await noteHosted(publicationUrl);
+    return `at://${did}/site.standard.publication/${pubRkey}`;
+  }
   if (created) console.warn("publication auto-create failed", created.data);
   return publicationUrl;
 }
@@ -347,6 +362,7 @@ export async function publishStoredDraft(input: {
   const rkey = input.rkey ?? generateTid();
   const site = await resolvePublicationSite({
     rpc,
+    db,
     did,
     ident,
     pds,

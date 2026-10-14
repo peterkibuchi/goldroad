@@ -667,6 +667,7 @@ async function publishDocument({
     (originalAt ? generateTid(originalAt.getTime()) : generateTid());
   const site = await resolvePublicationSite({
     rpc,
+    db: drizzle(env.DB),
     did,
     ident,
     pds,

@@ -12,6 +12,7 @@ const store = vi.hoisted(() => ({
   deleteDraftsForDid: vi.fn(),
   deleteFollowerSnapshotsForDid: vi.fn(),
   deleteHandleHistoryForDid: vi.fn(),
+  deleteHostedPublicationForDid: vi.fn(),
   deleteImportItemsForDid: vi.fn(),
   deleteImportFetchesForDid: vi.fn(),
   deleteOAuthSessionForDid: vi.fn(),
@@ -111,6 +112,11 @@ describe("deletion", () => {
       DID,
     );
     expect(store.deleteImportFetchesForDid).toHaveBeenCalledWith(
+      expect.anything(),
+      DID,
+    );
+    // The sitemap's listing is keyed by the DID too.
+    expect(store.deleteHostedPublicationForDid).toHaveBeenCalledWith(
       expect.anything(),
       DID,
     );

@@ -42,6 +42,7 @@ import {
   selectDraftsForExport,
   selectFollowerSnapshotsForExport,
   selectHandleHistoryForExport,
+  selectHostedPublicationForExport,
   selectImportItemsForExport,
   selectScheduledPostsForExport,
 } from "~/lib/rights-store";
@@ -81,6 +82,7 @@ export const Route = createFileRoute("/api/account/export")({
           ledgerRows,
           followerRows,
           scheduleRows,
+          hostedRows,
           readerEmailRows,
           handleRows,
           { handle, pds },
@@ -89,6 +91,7 @@ export const Route = createFileRoute("/api/account/export")({
           selectImportItemsForExport(db, did),
           selectFollowerSnapshotsForExport(db, did),
           selectScheduledPostsForExport(db, did),
+          selectHostedPublicationForExport(db, did),
           // Counted, never listed — see ~/lib/rights-store for why an export
           // of your data is not a place to hand you other people's addresses.
           countReaderEmailsForDid(db, did),
@@ -136,9 +139,10 @@ export const Route = createFileRoute("/api/account/export")({
           account: { did, handle: handle ?? null },
           manifest:
             "Goldroad stores remarkably little for your account: your drafts, " +
-            "import history, scheduled posts, daily follower counts and the " +
+            "import history, scheduled posts, daily follower counts, the " +
             "handles you've published under (so links made under an old handle " +
-            "still reach you) below, plus a record of your sign-in session. " +
+            "still reach you) and the address of your publication as our " +
+            "sitemap lists it, below, plus a record of your sign-in session. " +
             "One more thing is keyed to " +
             "your DID and is deliberately NOT reproduced here: the email " +
             "addresses readers have left with your publication (see " +
@@ -192,6 +196,13 @@ export const Route = createFileRoute("/api/account/export")({
             handle: row.handle,
             recordedAt: row.seenAt.toISOString(),
           })),
+          sitemapListing:
+            hostedRows[0] != null
+              ? {
+                  url: hostedRows[0].url,
+                  lastPublishedAt: hostedRows[0].updatedAt.toISOString(),
+                }
+              : null,
           followerHistory: followerRows.map((row) => ({
             day: row.day,
             followers: row.followers,
