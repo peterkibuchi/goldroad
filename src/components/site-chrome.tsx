@@ -59,8 +59,9 @@ import { cn } from "~/lib/utils";
 type WriterNavItem = "home" | "posts" | "stats" | "settings";
 
 type MarketingHeaderProps =
-  /** Marketing surfaces — wordmark home, waitlist-era status, sign-in path. */
-  | { variant: "marketing" }
+  /** Marketing surfaces — wordmark home, the Substack page, sign-in path.
+   * `current` marks the page the visitor is on, so its link says so. */
+  | { variant: "marketing"; current?: "/leaving-substack" }
   /** Signed-out product surfaces (sign-in page, 404, errors). */
   | { variant: "signed-out" };
 
@@ -111,20 +112,25 @@ export function SiteHeader(props: MarketingHeaderProps) {
       <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-x-6 px-6 py-2 md:px-16">
         <Wordmark href="/" />
         {props.variant === "marketing" && (
-          // The way in. This was deliberately absent while the product opened
-          // to its first writers by invitation, on the reasoning that a door
-          // nobody could walk through was worse than no door. That reasoning
-          // expires the moment people are actually invited: writers arriving
-          // from a DM, and anyone who followed a link here to look the project
-          // over, both need somewhere to go.
-          //
-          // A quiet link, not a button. The page's one accent belongs to the
-          // founding-writers form — someone who already has an account does not
-          // need to be sold, they need to find the door.
-          <div className="ml-auto flex items-center gap-5">
-            <AppearanceToggle />
-            <MarketingSignIn />
-          </div>
+          <>
+            {/* Below 640px the row can't hold four items, so this one drops to
+                its own deck under the wordmark instead of crowding the door. */}
+            <a
+              aria-current={
+                props.current === "/leaving-substack" ? "page" : undefined
+              }
+              className="order-last inline-flex min-h-11 w-full items-center border-rule border-t font-display font-semibold text-ink-soft text-sm underline underline-offset-4 transition-colors hover:text-ink aria-[current=page]:text-ink aria-[current=page]:no-underline sm:order-none sm:ml-auto sm:w-auto sm:border-t-0"
+              href="/leaving-substack"
+            >
+              Leaving Substack?
+            </a>
+            {/* Quiet links, not buttons: the page's accent belongs to its own
+                primary action, and a returning writer only needs the door. */}
+            <div className="ml-auto flex items-center gap-5 sm:ml-0">
+              <AppearanceToggle />
+              <MarketingSignIn />
+            </div>
+          </>
         )}
       </div>
     </header>
