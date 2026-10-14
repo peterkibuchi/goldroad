@@ -5,12 +5,12 @@ import { describe, expect, it } from "vitest";
 import {
   cancelSchedule,
   claimDuePost,
+  d1ScheduledPostStore,
+  deletePublishedSchedule,
   deleteSchedulesForDraft,
   deleteUnclaimedSchedulesForDraft,
   MAX_PUBLISHES_PER_TICK,
   markFailed,
-  markPublished,
-  prunePublished,
   releaseForRetry,
   releaseStaleClaims,
   selectDuePosts,
@@ -19,6 +19,7 @@ import {
   selectWriterSchedule,
   upsertSchedule,
 } from "../lib/scheduled-posts";
+import { sqliteD1 } from "./support/sqlite-d1";
 
 /**
  * The SQL, pinned via .toSQL() without a live D1 — the same way the rest of
@@ -52,7 +53,12 @@ function expectDidBound(sql: string, params: unknown[]) {
 
 describe("claimDuePost — the atomic step", () => {
   it("only matches a row that is still pending AND still unclaimed", () => {
-    const { sql, params } = claimDuePost(db, ROW_ID, NOW).toSQL();
+    const { sql, params } = claimDuePost(
+      db,
+      ROW_ID,
+      NOW,
+      "3lyk73wxnok2f",
+    ).toSQL();
     const lower = sql.toLowerCase();
     expect(lower).toContain('update "scheduled_posts"');
     expect(lower).toContain("where");
@@ -68,13 +74,27 @@ describe("claimDuePost — the atomic step", () => {
     // An attempt that dies without reporting must still have been spent —
     // otherwise a crash-loop retries forever. Incrementing anywhere but here
     // leaves a window where it isn't counted.
-    const { sql } = claimDuePost(db, ROW_ID, NOW).toSQL();
+    const { sql } = claimDuePost(db, ROW_ID, NOW, "3lyk73wxnok2f").toSQL();
     expect(sql).toContain('"attempts" = "scheduled_posts"."attempts" + 1');
     expect(sql).toContain('"claimed_at" = ?');
   });
 
+  it("reserves the record key once, and hands an earlier reservation back", () => {
+    const { sql, params } = claimDuePost(
+      db,
+      ROW_ID,
+      NOW,
+      "3lyk73wxnok2f",
+    ).toSQL();
+    expect(sql).toContain(
+      '"published_rkey" = coalesce("scheduled_posts"."published_rkey", ?)',
+    );
+    expect(params).toContain("3lyk73wxnok2f");
+    expect(sql).toMatch(/returning .*"published_rkey"/i);
+  });
+
   it("returns the row it won — the caller's only proof it won", () => {
-    const { sql } = claimDuePost(db, ROW_ID, NOW).toSQL();
+    const { sql } = claimDuePost(db, ROW_ID, NOW, "3lyk73wxnok2f").toSQL();
     expect(sql.toLowerCase()).toContain("returning");
     expect(sql).toContain('"attempts"');
   });
@@ -184,7 +204,7 @@ describe("the writer-facing queries are bound to the writer", () => {
   it("upsertSchedule writes the writer's DID and reschedules in one statement", () => {
     const { sql, params } = upsertSchedule(
       db,
-      { id: ROW_ID, did: DID, draftId: DRAFT_ID, dueAt: NOW },
+      { id: ROW_ID, did: DID, draftId: DRAFT_ID, dueAt: NOW, announce: true },
       NOW,
     ).toSQL();
     const lower = sql.toLowerCase();
@@ -194,9 +214,10 @@ describe("the writer-facing queries are bound to the writer", () => {
     expect(params).toContain(DRAFT_ID);
     // The conflict target is the PARTIAL index — target columns AND the
     // index's own WHERE, so a finished row for the same draft cannot block a
-    // fresh schedule (SQLite matches a partial index only when both agree).
+    // fresh schedule (SQLite matches a partial index only when both agree,
+    // and a bound parameter never agrees with the index's literal).
     expect(sql).toContain(
-      'on conflict ("scheduled_posts"."did", "scheduled_posts"."draft_id") where "scheduled_posts"."status" = ?',
+      `on conflict ("scheduled_posts"."did", "scheduled_posts"."draft_id") where "scheduled_posts"."status" = 'pending'`,
     );
     // A new time gets a full budget of attempts, not the spent one, and no
     // inherited lease or stale error message.
@@ -208,19 +229,11 @@ describe("the writer-facing queries are bound to the writer", () => {
 });
 
 describe("the terminal writes", () => {
-  it("markPublished clears the lease and records the rkey", () => {
-    const { sql, params } = markPublished(
-      db,
-      ROW_ID,
-      "3lyk73wxnok2f",
-      NOW,
-    ).toSQL();
-    expect(params).toContain("published");
-    expect(params).toContain("3lyk73wxnok2f");
-    // The lease is handed back as a bound null, not left set: a terminal row
-    // holding a claim would be swept by the stale-claim release forever.
-    expect(sql).toContain('"claimed_at" = ?');
-    expect(params).toContain(null);
+  it("deletePublishedSchedule removes exactly the published row", () => {
+    const { sql, params } = deletePublishedSchedule(db, ROW_ID).toSQL();
+    expect(sql.toLowerCase()).toContain('delete from "scheduled_posts"');
+    expect(sql).toContain('"id" = ?');
+    expect(params).toEqual([ROW_ID]);
   });
 
   it("markFailed stores the writer-readable reason and clears the lease", () => {
@@ -254,12 +267,163 @@ describe("the terminal writes", () => {
     expect(params).toContain(before.getTime());
     expect(params).toContain("pending");
   });
+});
 
-  it("prunePublished only ever deletes finished rows", () => {
-    const before = new Date(NOW.getTime() - 1000);
-    const { sql, params } = prunePublished(db, before).toSQL();
-    expect(sql.toLowerCase()).toContain('delete from "scheduled_posts"');
-    expect(params).toContain("published");
-    expect(sql).toContain('"updated_at" < ?');
+/** The same store, against real SQLite with every migration applied: what a
+ * retry actually gets back, rather than the shape of the statement. */
+describe("d1ScheduledPostStore against SQLite — a retry can't publish twice", () => {
+  async function storeWithRow(dueAt = NOW) {
+    const d1 = sqliteD1();
+    const realDb = drizzle(d1);
+    await upsertSchedule(realDb, {
+      id: ROW_ID,
+      did: DID,
+      draftId: DRAFT_ID,
+      dueAt,
+      announce: false,
+    });
+    return { d1, realDb, store: d1ScheduledPostStore(realDb) };
+  }
+
+  it("gives a retried row the key its first claim reserved", async () => {
+    const { realDb, store } = await storeWithRow();
+    const first = await store.claim(ROW_ID, NOW, "3lyk73wxnokaa");
+    expect(first).toEqual({ attempts: 1, rkey: "3lyk73wxnokaa" });
+
+    await releaseForRetry(realDb, ROW_ID, "try again", NOW);
+    const second = await store.claim(ROW_ID, NOW, "3lyk73wxnokbb");
+    expect(second).toEqual({ attempts: 2, rkey: "3lyk73wxnokaa" });
+  });
+
+  it("gives a row whose claim went stale the same key", async () => {
+    const { realDb, store } = await storeWithRow();
+    await store.claim(ROW_ID, NOW, "3lyk73wxnokaa");
+    // The tick died mid-publish; the release hands the lease back.
+    await releaseStaleClaims(realDb, new Date(NOW.getTime() + 1), NOW);
+    expect(await store.claim(ROW_ID, NOW, "3lyk73wxnokbb")).toMatchObject({
+      rkey: "3lyk73wxnokaa",
+    });
+  });
+
+  it("keeps the reserved key when the writer reschedules", async () => {
+    const { realDb, store } = await storeWithRow();
+    await store.claim(ROW_ID, NOW, "3lyk73wxnokaa");
+    await releaseForRetry(realDb, ROW_ID, "try again", NOW);
+    // An earlier attempt may have landed under that key.
+    await upsertSchedule(realDb, {
+      id: "ignored",
+      did: DID,
+      draftId: DRAFT_ID,
+      dueAt: new Date(NOW.getTime() + 60_000),
+      announce: false,
+    });
+    expect(await store.claim(ROW_ID, NOW, "3lyk73wxnokbb")).toMatchObject({
+      rkey: "3lyk73wxnokaa",
+    });
+  });
+
+  it("lets only one of two racing claims win", async () => {
+    const { store } = await storeWithRow();
+    expect(await store.claim(ROW_ID, NOW, "3lyk73wxnokaa")).not.toBeNull();
+    expect(await store.claim(ROW_ID, NOW, "3lyk73wxnokbb")).toBeNull();
+  });
+
+  it("deletes the row once its post is published", async () => {
+    const { d1, store } = await storeWithRow();
+    await store.claim(ROW_ID, NOW, "3lyk73wxnokaa");
+    await store.published(ROW_ID);
+    expect(
+      d1.sqlite.prepare("select count(*) as n from scheduled_posts").get(),
+    ).toEqual({ n: 0 });
+  });
+});
+
+/** Against real SQLite with every migration applied: the partial unique
+ * index only accepts an upsert whose conflict target matches it exactly,
+ * which no `.toSQL()` assertion can see. */
+describe("upsertSchedule against SQLite", () => {
+  it("schedules a draft, then moves the same row when it's rescheduled", async () => {
+    const d1 = sqliteD1();
+    const realDb = drizzle(d1);
+    const later = new Date(NOW.getTime() + 60 * 60 * 1000);
+
+    expect(
+      await upsertSchedule(realDb, {
+        id: ROW_ID,
+        did: DID,
+        draftId: DRAFT_ID,
+        dueAt: NOW,
+        announce: false,
+      }),
+    ).toEqual([{ id: ROW_ID, dueAt: NOW }]);
+    // A second schedule of the same draft moves the pending row, not a new one.
+    expect(
+      await upsertSchedule(realDb, {
+        id: "another-id",
+        did: DID,
+        draftId: DRAFT_ID,
+        dueAt: later,
+        announce: false,
+      }),
+    ).toEqual([{ id: ROW_ID, dueAt: later }]);
+    expect(
+      d1.sqlite.prepare("select count(*) as n from scheduled_posts").get(),
+    ).toEqual({ n: 1 });
+  });
+
+  it("lets a draft whose schedule failed be scheduled again", async () => {
+    const d1 = sqliteD1();
+    const realDb = drizzle(d1);
+    await upsertSchedule(realDb, {
+      id: ROW_ID,
+      did: DID,
+      draftId: DRAFT_ID,
+      dueAt: NOW,
+      announce: false,
+    });
+    await markFailed(realDb, ROW_ID, "refused", NOW);
+    // The index is partial for this: a finished row mustn't block a new one.
+    expect(
+      await upsertSchedule(realDb, {
+        id: "fresh-id",
+        did: DID,
+        draftId: DRAFT_ID,
+        dueAt: NOW,
+        announce: false,
+      }),
+    ).toEqual([{ id: "fresh-id", dueAt: NOW }]);
+    expect(
+      d1.sqlite
+        .prepare("select id, status from scheduled_posts order by id")
+        .all(),
+    ).toEqual([
+      { id: ROW_ID, status: "failed" },
+      { id: "fresh-id", status: "pending" },
+    ]);
+  });
+});
+
+describe("the announce choice against SQLite", () => {
+  it("is stored with the schedule, read by the cron, and moved by a reschedule", async () => {
+    const realDb = drizzle(sqliteD1());
+    await upsertSchedule(realDb, {
+      id: ROW_ID,
+      did: DID,
+      draftId: DRAFT_ID,
+      dueAt: NOW,
+      announce: true,
+    });
+    expect(await selectDuePosts(realDb, NOW)).toEqual([
+      { id: ROW_ID, did: DID, draftId: DRAFT_ID, announce: true },
+    ]);
+    // Rescheduling with the box unticked changes the choice.
+    await upsertSchedule(realDb, {
+      id: "ignored",
+      did: DID,
+      draftId: DRAFT_ID,
+      dueAt: NOW,
+      announce: false,
+    });
+    expect((await selectDuePosts(realDb, NOW))[0]?.announce).toBe(false);
   });
 });

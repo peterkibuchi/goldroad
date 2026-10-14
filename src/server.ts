@@ -16,11 +16,7 @@ import handler, { createServerEntry } from "@tanstack/react-start/server-entry";
 
 import { withExceptionCapture } from "~/lib/error-tracking";
 import { canonicalRedirect } from "~/lib/origin";
-import {
-  serveWithReadCache,
-  takeWarmTargets,
-  warmReadSurfaces,
-} from "~/lib/read-cache";
+import { serveWithReadCache } from "~/lib/read-cache";
 import { runScheduled } from "~/lib/scheduled";
 import {
   buildContentSecurityPolicy,
@@ -68,26 +64,12 @@ export default {
     _env: Env,
     ctx: ExecutionContext,
   ): Promise<Response> {
-    const response = await handleFetch(request, ctx);
-    // Warm-on-publish, scheduled HERE because this is the only scope that holds
-    // the ExecutionContext: a TanStack route handler never receives one, and a
-    // promise not handed to waitUntil is cancelled as soon as we return. The
-    // publish handler names the URLs it just invalidated via an internal
-    // response header; takeWarmTargets strips it before anything is sent.
-    const { response: outgoing, urls } = takeWarmTargets(response);
-    if (urls.length > 0) {
-      ctx.waitUntil(
-        warmReadSurfaces(urls, { origin: new URL(request.url).origin }),
-      );
-    }
-    return outgoing;
+    return handleFetch(request, ctx);
   },
   scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
-    // The context goes down with it, not just around it: a scheduled publish
-    // has to warm the pages it changed, and — unlike the fetch path above,
-    // which carries its URLs out on a response header — the cron has no
-    // response to hang one on. Without this a post that went out at 09:00 sat
-    // behind a stale archive page and RSS feed for the whole cache TTL.
-    ctx.waitUntil(runScheduled(env, (promise) => ctx.waitUntil(promise)));
+    // The self-check calls our own handler in-process: a fetch of our own
+    // hostname from inside the Worker is routed to the zone's origin, past
+    // the Worker, so it would test something else.
+    ctx.waitUntil(runScheduled(env, (request) => handleFetch(request, ctx)));
   },
 };

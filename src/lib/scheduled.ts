@@ -2,7 +2,7 @@
  * Workers Cron body (free tier: up to 5 triggers/account). SIX jobs, run
  * hourly from ONE trigger:
  *
- * 1. Publish scheduled posts that are due (~/lib/scheduled-posts), warming the
+ * 1. Publish scheduled posts that are due (~/lib/scheduled-posts), purging the
  *    reading surfaces each one changes (~/lib/scheduled-publish). It runs
  *    FIRST, and that ordering is deliberate: it is the only job here a reader
  *    will ever notice, since a tick that runs out of budget before reaching it
@@ -11,14 +11,9 @@
  *    idempotent per day) or reported by CI. The pass is bounded — a handful of
  *    posts per tick — and says in its log line when it left a queue behind.
  *
- *    THE COST OF GOING FIRST, stated plainly: the tick's subrequest budget is
- *    shared, so a full five publishes spend roughly half of it before anything
- *    below starts, and an exhausted budget now lands on those jobs — including
- *    the self-check that feeds the alert webhook. That trade is deliberate (a
- *    missed self-check is one missed hour of a backstop whose primary is the
- *    external uptime monitor; a missed publish is a writer's post going out
- *    late), but it is a trade, and the per-tick cap is the dial to turn if the
- *    budget ever actually bites.
+ *    The tick's 50 subrequests are shared: three publishes spend up to 42, the
+ *    follower sample 2, the alerts one each, and the self-check none (it runs
+ *    in-process), so the jobs behind the publishes keep room.
  * 2. Purge expired oauth_kv rows. `D1Store.get` only deletes an
  *    expired row when that exact key is read again, so abandoned authorize
  *    `state:` rows — every login started but never completed — accumulate
@@ -28,7 +23,7 @@
  *    past their retention window (~/lib/follower-snapshots). Hourly rather than
  *    daily on purpose: the pass is idempotent per day, so running it 24 times
  *    self-heals a missed midnight run, a platform blip, or a writer who first
- *    signs in at 14:00.
+ *    signs in at 14:00. Batched, so a full run is two AppView calls.
  * 4. A backup-freshness check (~/lib/backup). The nightly off-platform export
  *    runs in CI, not here — D1's export is an account-scoped REST operation, not
  *    something the `DB` binding can do. What this adds is the part CI cannot
@@ -42,7 +37,8 @@
  *    runs ahead of the self-check because a takedown request going unread is a
  *    legal exposure, while a missed self-check hour is a backstop whose primary
  *    is the external uptime monitor.
- * 6. A self-check of core invariants. Logs are on but nobody is alerted by
+ * 6. A self-check of core invariants, through our own handler in-process
+ *    (`selfCheck`). Logs are on but nobody is alerted by
  *    default; this POSTs failures to WEBHOOK_URL if that secret is set, and is
  *    a silent no-op otherwise. External uptime monitoring remains the primary
  *    alerting path — this is a cheap always-on backstop.
@@ -59,12 +55,13 @@ import {
   type SnapshotPassResult,
 } from "~/lib/follower-snapshots";
 import { CANONICAL_ORIGIN } from "~/lib/origin";
+import { generateTid } from "~/lib/publish";
 import { d1ReportStore, runReportAlertPass } from "~/lib/reports";
 import {
   d1ScheduledPostStore,
   runScheduledPublishPass,
 } from "~/lib/scheduled-posts";
-import { cronPublisher, type WaitUntil } from "~/lib/scheduled-publish";
+import { cronPublisher } from "~/lib/scheduled-publish";
 
 type DrizzleD1 = ReturnType<typeof drizzle>;
 
@@ -80,23 +77,26 @@ export function purgeExpiredOauthKv(db: DrizzleD1, now: number) {
   return db.delete(oauthKv).where(expiredOauthKvCondition(now));
 }
 
-/** Core-invariant self-check against the live origin. Returns a list
- * of human-readable failure strings (empty = healthy). `origin` is injectable
- * for tests. */
-export async function selfCheck(
-  origin: string = CANONICAL_ORIGIN,
-): Promise<string[]> {
+/** Our own fetch handler, called in-process (see src/server.ts). */
+export type FetchOwn = (request: Request) => Promise<Response>;
+
+/**
+ * Core-invariant self-check, run through our own handler in-process. Returns
+ * human-readable failure strings (empty = healthy).
+ *
+ * It asks the OAuth client-metadata route for its client_id, which fails when
+ * the OAuth key or secrets are missing or broken (the route answers 500) or
+ * the metadata stops naming the canonical origin. Being in-process, it can't
+ * see DNS, routing or WAF trouble; the external uptime monitor watches that,
+ * and the homepage. It doesn't render a page: that would spend the tick's CPU
+ * budget just before the alert that reports on it.
+ */
+export async function selfCheck(fetchOwn: FetchOwn): Promise<string[]> {
   const failures: string[] = [];
   try {
-    const res = await fetch(`${origin}/`);
-    if (!res.ok) failures.push(`GET / -> ${res.status}`);
-    else if (!(await res.text()).includes("Goldroad"))
-      failures.push("GET / is missing the wordmark");
-  } catch (err) {
-    failures.push(`GET / threw: ${String(err)}`);
-  }
-  try {
-    const res = await fetch(`${origin}/oauth/client-metadata.json`);
+    const res = await fetchOwn(
+      new Request(`${CANONICAL_ORIGIN}/oauth/client-metadata.json`),
+    );
     const json = (await res.json().catch(() => null)) as {
       client_id?: string;
     } | null;
@@ -228,7 +228,7 @@ function snapshotFailures(result: SnapshotPassResult): string[] {
  * and each job is independent — a failure in one still leaves the others run. */
 export async function runScheduled(
   env: CronEnv,
-  waitUntil?: WaitUntil,
+  fetchOwn: FetchOwn,
 ): Promise<void> {
   const db = drizzle(env.DB);
   // Scheduled posts first — the one job whose lateness a reader can see. The
@@ -238,12 +238,10 @@ export async function runScheduled(
   // below. A revoked grant is the writer's to fix, not something the operator
   // should be alerted about; systemic trouble shows up as a run of them in
   // this log line.
-  // `waitUntil` is passed through so a publish can warm the reading surfaces it
-  // just changed without holding up the next due post — the entry's context is
-  // the only place it exists (src/server.ts).
   const scheduled = await runScheduledPublishPass({
     store: d1ScheduledPostStore(db),
-    publish: cronPublisher(db, waitUntil),
+    publish: cronPublisher(db),
+    mintRkey: generateTid,
   });
   console.log("scheduled publish pass", scheduled);
   try {
@@ -255,13 +253,8 @@ export async function runScheduled(
   // below: a takedown request is a queue item to work through, not an invariant
   // that broke, and it must not be suppressed by the "only alert if something
   // is wrong" rule the self-check applies. Its FAILURES do join that list.
-  //
-  // Placed ahead of the follower sampling deliberately. That pass issues up to
-  // fifty outbound fetches, and a Worker invocation gets fifty subrequests in
-  // total on the free plan — so leaving this behind it means the one job ranked
-  // as legal exposure is the one starved first, on exactly the busy ticks where
-  // reports are most likely. Sampling is a day's data point and self-heals next
-  // hour; an unheard takedown does not.
+  // It runs ahead of the follower sampling: an unheard takedown is legal
+  // exposure, and a missed sample self-heals next hour.
   //
   // Guarded like the purge above: the pass is written never to throw, and the
   // belt-and-braces catch keeps a surprise inside it from costing the rest.
@@ -277,20 +270,18 @@ export async function runScheduled(
     reported = { failures: ["abuse-report alert pass threw"] };
   }
   // Follower counts are point-in-time only upstream, so a day that isn't
-  // sampled can never be recovered — this runs before the self-check, which
-  // makes network calls to our own origin, so a slow site can't crowd it out.
+  // sampled can never be recovered.
   const snapshots = await runFollowerSnapshotPass({
     store: d1SnapshotStore(db),
   });
   console.log("follower snapshot pass", snapshots);
-  // One indexed row read — ahead of the self-check's network calls, so a slow
-  // site can't crowd out the cheapest job in the pass.
+  // One indexed row read.
   const backup = await runBackupCheck({ store: d1BackupStore(db) });
   console.log("backup check", backup);
   // A stale backup is a real invariant failure, so it rides the self-check's
   // alert path rather than getting a second, parallel one.
   const failures = [
-    ...(await selfCheck()),
+    ...(await selfCheck(fetchOwn)),
     ...backup.failures,
     ...snapshotFailures(snapshots),
     ...reported.failures,

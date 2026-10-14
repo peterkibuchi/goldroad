@@ -3,7 +3,7 @@
  * series math that reads it back honestly.
  *
  * WHY SAMPLE AT ALL. Bluesky's AppView reports a follower count as a
- * point-in-time number — `app.bsky.actor.getProfile` answers "how many
+ * point-in-time number — `app.bsky.actor.getProfiles` answers "how many
  * followers right now" and there is no history endpoint anywhere in the API.
  * Follower history therefore cannot be backfilled: any day nobody took a
  * reading is a permanent hole. So the sampling runs from the day it ships,
@@ -35,13 +35,14 @@ export const SNAPSHOT_RETENTION_DAYS = 400;
  * where the unique day key makes the retry free. */
 export const MAX_SAMPLES_PER_RUN = 50;
 
+/** The most actors `app.bsky.actor.getProfiles` takes in one call. Batching is
+ * what keeps a full run at two of the cron's 50 subrequests, leaving the rest
+ * for publishing, the self-check and the alerts. */
+export const PROFILES_PER_REQUEST = 25;
+
 /** A writer keeps being sampled while they have a session OR a sample this
  * recent — so signing out for a week doesn't amputate their chart. */
 export const RECENT_WRITER_DAYS = 30;
-
-/** Parallel AppView reads. The pass is I/O-bound; this bounds wall-clock time
- * without turning a public good into a thundering herd. */
-export const SAMPLE_CONCURRENCY = 5;
 
 /** Session rows in oauth_kv are keyed `sess:<did>` (see ~/lib/oauth's D1Store). */
 const SESSION_KEY_PREFIX = "sess:";
@@ -52,9 +53,10 @@ const APPVIEW_ORIGIN = "https://public.api.bsky.app";
 
 const PROFILE_TIMEOUT_MS = 5_000;
 
-/** A profile response is a few hundred bytes; anything near this is hostile
- * or broken, and we'd rather drop it than decode it. */
-const MAX_PROFILE_BYTES = 65_536;
+/** A profile is a few hundred bytes to a few KB (the bio is the variable
+ * part), so 25 of them fit well inside this; anything near it is hostile or
+ * broken, and we'd rather drop it than decode it. */
+const MAX_PROFILES_BYTES = 1_048_576;
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MS_PER_DAY = 86_400_000;
@@ -260,7 +262,7 @@ export function chooseSampleBatch(input: {
 export type ProfileCounts = { followers: number; posts: number | null };
 
 /**
- * The counts inside a getProfile response, or null when there isn't a usable
+ * The counts inside one getProfiles profile, or null when there isn't a usable
  * follower number in it.
  *
  * Third-party network data, so every field is checked and nothing is
@@ -282,46 +284,42 @@ export function readProfileCounts(body: unknown): ProfileCounts | null {
 }
 
 /**
- * One writer's public follower count from the public AppView. Unauthenticated
- * (the number is public), bounded by a timeout and a body cap, and never
- * throws: a failure returns null so a single unreachable DID can't take the
- * whole pass down with it.
+ * Public follower counts for up to PROFILES_PER_REQUEST writers, in one call to
+ * the public AppView. Unauthenticated (the numbers are public), bounded by a
+ * timeout and a body cap, and never throws. A writer missing from the result
+ * (a failed call, a deleted account, a profile without a usable count) is
+ * simply absent, so one bad DID can't cost the others their reading.
  */
-export async function fetchProfileCounts(
-  did: string,
+export async function fetchProfilesCounts(
+  dids: readonly string[],
   fetcher: typeof fetch = fetch,
-): Promise<ProfileCounts | null> {
-  const url = `${APPVIEW_ORIGIN}/xrpc/app.bsky.actor.getProfile?actor=${encodeURIComponent(did)}`;
+): Promise<Map<string, ProfileCounts>> {
+  const counts = new Map<string, ProfileCounts>();
+  if (dids.length === 0) return counts;
+  const query = new URLSearchParams(dids.map((did) => ["actors", did]));
+  const url = `${APPVIEW_ORIGIN}/xrpc/app.bsky.actor.getProfiles?${query}`;
   try {
     const res = await fetcher(url, {
       signal: AbortSignal.timeout(PROFILE_TIMEOUT_MS),
     });
-    if (!res.ok) return null;
-    const bytes = await readBodyCapped(res, MAX_PROFILE_BYTES);
-    if (!bytes) return null;
-    return readProfileCounts(JSON.parse(new TextDecoder().decode(bytes)));
-  } catch {
-    return null;
-  }
-}
-
-/** Run `task` over `items`, at most `limit` at a time. */
-async function mapWithConcurrency<T>(
-  items: readonly T[],
-  limit: number,
-  task: (item: T) => Promise<void>,
-): Promise<void> {
-  let next = 0;
-  const worker = async () => {
-    for (;;) {
-      const index = next++;
-      if (index >= items.length) return;
-      await task(items[index]);
+    if (!res.ok) return counts;
+    const bytes = await readBodyCapped(res, MAX_PROFILES_BYTES);
+    if (!bytes) return counts;
+    const body = JSON.parse(new TextDecoder().decode(bytes)) as {
+      profiles?: unknown;
+    };
+    if (!Array.isArray(body.profiles)) return counts;
+    const wanted = new Set(dids);
+    for (const profile of body.profiles) {
+      const did = (profile as { did?: unknown } | null)?.did;
+      if (typeof did !== "string" || !wanted.has(did)) continue;
+      const read = readProfileCounts(profile);
+      if (read) counts.set(did, read);
     }
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(Math.max(limit, 1), items.length) }, worker),
-  );
+  } catch {
+    // A failed call is a missed hour for this batch; the next run retries.
+  }
+  return counts;
 }
 
 export type SnapshotPassResult = {
@@ -338,7 +336,7 @@ export type SnapshotPassResult = {
 /**
  * The daily sampling pass, run from the hourly cron.
  *
- * Bounded on purpose: a capped batch, a fixed concurrency, a per-request
+ * Bounded on purpose: a capped batch, PROFILES_PER_REQUEST writers per call, a per-request
  * timeout. It is I/O-bound — the work is waiting on the AppView, which doesn't
  * count against the worker's CPU budget.
  *
@@ -376,26 +374,30 @@ export async function runFollowerSnapshotPass(opts: {
     });
     result.attempted = batch.length;
 
-    await mapWithConcurrency(batch, SAMPLE_CONCURRENCY, async (did) => {
-      const counts = await fetchProfileCounts(did, fetcher);
-      if (!counts) {
-        result.failed++;
-        console.warn("no usable follower count", did);
-        return;
+    for (let i = 0; i < batch.length; i += PROFILES_PER_REQUEST) {
+      const chunk = batch.slice(i, i + PROFILES_PER_REQUEST);
+      const counts = await fetchProfilesCounts(chunk, fetcher);
+      for (const did of chunk) {
+        const reading = counts.get(did);
+        if (!reading) {
+          result.failed++;
+          console.warn("no usable follower count", did);
+          continue;
+        }
+        try {
+          await store.insert({
+            did,
+            day,
+            followers: reading.followers,
+            posts: reading.posts,
+          });
+          result.sampled++;
+        } catch (err) {
+          result.failed++;
+          console.warn("follower snapshot insert failed", did, err);
+        }
       }
-      try {
-        await store.insert({
-          did,
-          day,
-          followers: counts.followers,
-          posts: counts.posts,
-        });
-        result.sampled++;
-      } catch (err) {
-        result.failed++;
-        console.warn("follower snapshot insert failed", did, err);
-      }
-    });
+    }
   } catch (err) {
     console.error("follower snapshot sampling failed", err);
   }

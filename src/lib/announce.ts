@@ -1,6 +1,7 @@
 /**
  * "Announce on Bluesky" record shaping — an app.bsky.feed.post in the
- * writer's own repo. Never called without an explicit user action.
+ * writer's own repo. Sent by ~/lib/announce-document, at the writer's request
+ * (the dashboard button, or the publish form's box).
  *
  * Two mechanisms ride in one post, both re-verified 2026-08-17:
  *

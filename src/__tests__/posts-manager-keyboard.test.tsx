@@ -56,6 +56,7 @@ const SCHEDULED: ScheduledPostRow[] = [
     status: "pending",
     attempts: 0,
     lastError: null,
+    announce: false,
     title: "The long way round",
     description: null,
   },

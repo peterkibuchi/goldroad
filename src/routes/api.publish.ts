@@ -5,17 +5,18 @@ import type { OAuthSession } from "@atcute/oauth-node-client";
 import { createFileRoute } from "@tanstack/react-router";
 import { drizzle } from "drizzle-orm/d1";
 
-import { type AssociatedRef, buildAnnouncePost } from "~/lib/announce";
+import {
+  type AnnounceOutcome,
+  announceDocument,
+} from "~/lib/announce-document";
 import {
   getRecordEntry,
   isDid,
   listRecordPages,
-  parseAtUri,
   RKEY_RE,
   resolveDidIdentity,
   rkeyFromUri,
   type StandardDocument,
-  type StandardPublication,
 } from "~/lib/atproto";
 import {
   blobImagePath,
@@ -49,7 +50,6 @@ import {
   buildDocumentRecord,
   buildPublicationRecord,
   type CoverImageBlob,
-  composeDocumentUrl,
   generateTid,
   type IconBlob,
   isOverRecordByteLimit,
@@ -68,8 +68,12 @@ import {
   findOwnPublication,
   publishStoredDraft,
   resolvePublicationSite,
+  writeDocument,
 } from "~/lib/publish-document";
-import { readSurfaceWarmUrls, withWarmTargets } from "~/lib/read-cache";
+import {
+  purgeLocalReadCache,
+  readSurfaceUrlsForSubject,
+} from "~/lib/read-cache";
 import { dueAtProblem, localToUtcMs } from "~/lib/schedule-time";
 import {
   cancelSchedule,
@@ -128,33 +132,28 @@ function backToDashboard(query: Record<string, string>): Response {
 }
 
 /**
- * Names the reading surfaces a write just changed, so the Worker entry can
- * re-render them on `waitUntil` (~/lib/read-cache → src/server.ts). Attach it to
- * the SUCCESS response of any write that changes what a reader sees.
+ * Drops the reading surfaces a write just changed from this colo's read cache,
+ * then returns the response. Without it an edit, a delete or an announce leaves
+ * the old page served for READ_CACHE_TTL_SECONDS, starting with the writer, who
+ * is redirected straight at it. Other colos expire on the TTL as before.
  *
- * Two reasons, and the second one is not optional:
- *
- * - A writer shares their link within seconds of publishing, and the first thing
- *   to fetch it is a link-preview scraper — Bluesky's card service included. A
- *   cold reading surface is a multi-hop PDS crawl; scrapers give up, and the post
- *   renders as a bare text card, which is the distribution story failing at the
- *   one moment it matters. Warming costs one background subrequest and moves
- *   that fetch onto a cached page.
- * - The read cache holds pages for READ_CACHE_TTL_SECONDS. An edit, a delete or
- *   an announce would otherwise leave the OLD page being served for that long —
- *   starting with the writer, who is redirected straight at it. The warm path
- *   deletes the key before it re-fetches, which is what makes it a refresh
- *   rather than a no-op cache HIT.
- *
- * Which URLs those are is `readSurfaceWarmUrls` (~/lib/read-cache), shared
- * with the cron publisher — which reaches the same warm by a different road,
- * having no response to hang a header on.
+ * There is deliberately no re-render. A fetch of our own hostname from inside
+ * the Worker is routed to the zone's origin, past the Worker, and rendering
+ * in-process would spend this request's CPU budget on a page nobody asked for.
  */
-function warmingReaderPages(
+async function purgingReaderPages(
   response: Response,
-  opts: { origin: string; ident: string; rkey?: string },
-): Response {
-  return withWarmTargets(response, readSurfaceWarmUrls(opts));
+  opts: { origin: string; did: string; ident: string; rkey?: string },
+): Promise<Response> {
+  const subject = opts.rkey
+    ? `at://${opts.did}/site.standard.document/${opts.rkey}`
+    : opts.did;
+  // Every spelling the page can be cached under (handle, DID, encoded DID,
+  // trailing slash, the /p/ form), the same list a takedown purges.
+  await purgeLocalReadCache(
+    readSurfaceUrlsForSubject(opts.origin, subject, opts.ident),
+  );
+  return response;
 }
 
 /**
@@ -315,7 +314,7 @@ export const Route = createFileRoute("/api/publish")({
           case "delete":
             return deleteDocument(ctx);
           case "announce":
-            return announceDocument(ctx);
+            return announceFromDashboard(ctx);
           case "migrate":
             return migratePublication(ctx);
           case "uploadImage":
@@ -383,6 +382,8 @@ async function scheduleDraft(form: FormData, did: string): Promise<Response> {
       did,
       draftId,
       dueAt: new Date(dueAt),
+      // Captured now: the writer isn't there when it goes out.
+      announce: form.get("announce") === "1",
     });
   } catch (err) {
     console.error("schedule write failed", err);
@@ -585,11 +586,11 @@ async function publishDocument({
       });
     }
     // The writer is being sent straight at the page they just edited, which the
-    // read cache is still holding in its pre-edit form — warm it or they see
+    // read cache is still holding in its pre-edit form — purge it or they see
     // their old words.
-    return warmingReaderPages(
+    return purgingReaderPages(
       redirectTo(`/@${encodeURIComponent(ident)}/${editRkey}`),
-      { origin, ident, rkey: editRkey },
+      { origin, did, ident, rkey: editRkey },
     );
   }
 
@@ -611,7 +612,19 @@ async function publishDocument({
   // publish — name defaults to the handle; editable later in /settings). The
   // same resolution the scheduled and publish-now paths use, so all three
   // attach documents identically (~/lib/publish-document).
-  const rkey = originalAt ? generateTid(originalAt.getTime()) : generateTid();
+  // A scheduled attempt may already have reserved a key and, unknown to us,
+  // written the post there; publishing under it can't make a second copy.
+  const [schedule] = isDraftId(draftId)
+    ? await selectScheduleForDraft(drizzle(env.DB), did, draftId).catch(
+        () => [],
+      )
+    : [];
+  // A tick is publishing it right now; a second writer would race it.
+  if (schedule?.claimedAt) return reject("schedule_in_flight");
+  const reservedRkey = schedule?.publishedRkey ?? null;
+  const rkey =
+    reservedRkey ??
+    (originalAt ? generateTid(originalAt.getTime()) : generateTid());
   const site = await resolvePublicationSite({
     rpc,
     did,
@@ -681,18 +694,16 @@ async function publishDocument({
   // top of a body that only just fit.
   if (isOverRecordByteLimit(record)) return reject("too_large");
 
-  const res = await rpc.post("com.atproto.repo.createRecord", {
-    input: {
-      repo: did,
-      collection: "site.standard.document",
-      rkey,
-      record: toRecordInput(record),
-    },
-  });
-  // @atcute/client does not throw on XRPC errors — check ok explicitly.
-  if (!res.ok) {
-    console.error("createRecord failed", res.status, res.data);
-    return reject(`publish_failed:${res.data.error}`);
+  const written = await writeDocument(
+    rpc,
+    did,
+    rkey,
+    toRecordInput(record),
+    reservedRkey !== null,
+  );
+  if (!written.ok) {
+    console.error("document write failed", written);
+    return reject(`publish_failed:${written.error}`);
   }
 
   // Import ledger write-back: record the rkey this item published under —
@@ -724,12 +735,15 @@ async function publishDocument({
     ]);
   }
 
-  // Success lands on the dashboard: the new post on top, a "view it live"
-  // link, and the explicit opt-in "Announce on Bluesky" action. The new page
-  // and the archive index are warmed behind that redirect, so the link the
-  // writer is about to share is already rendered at the edge.
-  return warmingReaderPages(backToDashboard({ published: rkey }), {
+  const announced =
+    form.get("announce") === "1"
+      ? await announceNewPost({ rpc, did, ident, pds, origin }, rkey)
+      : null;
+  // Success lands on the dashboard: the new post on top and a "view it live"
+  // link. The archive index and feed are purged, so they list the new post.
+  return purgingReaderPages(backToDashboard(afterPublish(rkey, announced)), {
     origin,
+    did,
     ident,
     rkey,
   });
@@ -983,14 +997,19 @@ async function publishNow({
     origin,
     origins,
     draft,
+    // A failed tick's write may have landed; its reserved key finds it.
+    rkey: released?.publishedRkey ?? undefined,
   });
   if (!outcome.ok)
     return backToDashboard({ error: outcome.code, tab: "scheduled" });
-  return warmingReaderPages(backToDashboard({ published: outcome.rkey }), {
-    origin,
-    ident,
-    rkey: outcome.rkey,
-  });
+  // The schedule's own choice, made when it was scheduled.
+  const announced = released?.announce
+    ? await announceNewPost({ rpc, did, ident, pds, origin }, outcome.rkey)
+    : null;
+  return purgingReaderPages(
+    backToDashboard(afterPublish(outcome.rkey, announced)),
+    { origin, did, ident, rkey: outcome.rkey },
+  );
 }
 
 /**
@@ -1024,23 +1043,59 @@ async function deleteDocument({ rpc, form, did, ident, origin }: WriteContext) {
     console.warn("import ledger cleanup after delete failed", err);
   });
   // A deleted post must stop being readable NOW, not when its cache entry ages
-  // out. The warm pass drops the key first, and the re-fetch then 404s — which
-  // is never stored — so the page is simply gone.
-  return warmingReaderPages(backToDashboard({ deleted: "1" }), {
+  // out, at least in this colo. A 404 is never stored, so the next read
+  // finds it gone.
+  return purgingReaderPages(backToDashboard({ deleted: "1" }), {
     origin,
+    did,
     ident,
     rkey,
   });
 }
 
+/** Announces a post just published, when the writer asked for it. Never a
+ * second time: `onlyOnce` refuses a post that already carries an announce.
+ * Never throws: the post is already live, and a 500 here would hide that. */
+async function announceNewPost(
+  ctx: Pick<WriteContext, "rpc" | "did" | "ident" | "pds" | "origin">,
+  rkey: string,
+): Promise<AnnounceOutcome> {
+  if (!ctx.pds) return { ok: false, code: "announce_failed:pds_unresolved" };
+  try {
+    const outcome = await announceDocument({
+      ...ctx,
+      pds: ctx.pds,
+      rkey,
+      onlyOnce: true,
+    });
+    // Beside "Published", "that post isn't in your repo" would mislead.
+    if (!outcome.ok && outcome.code === "not_found")
+      return { ok: false, code: "announce_failed:unreadable" };
+    return outcome;
+  } catch (err) {
+    console.error("announce after publish threw", err);
+    return { ok: false, code: "announce_failed:unreachable" };
+  }
+}
+
+/** The dashboard query after a publish: the post, and the announce's outcome
+ * when one was asked for. A failed announce doesn't undo the publish. */
+function afterPublish(
+  rkey: string,
+  announced: AnnounceOutcome | null,
+): Record<string, string> {
+  if (!announced) return { published: rkey };
+  if (!announced.ok) return { published: rkey, error: announced.code };
+  return announced.postRkey
+    ? { published: rkey, announced: announced.postRkey }
+    : { published: rkey };
+}
+
 /**
- * "Announce on Bluesky": creates an app.bsky.feed.post in the writer's repo —
- * title + canonical URL with a link facet, plus an app.bsky.embed.external
- * carrying associatedRefs strongRefs to the standard.site records (what makes
- * Bluesky render the enriched reader card — see ~/lib/announce). Explicit
- * user action only; nothing here is called from a publish flow automatically.
+ * "Announce on Bluesky" from the dashboard: an explicit, confirmed action, so
+ * re-announcing an announced post is allowed (see ~/lib/announce-document).
  */
-async function announceDocument({
+async function announceFromDashboard({
   rpc,
   form,
   did,
@@ -1051,119 +1106,21 @@ async function announceDocument({
   const rkey = String(form.get("rkey") ?? "");
   if (!RKEY_RE.test(rkey)) return backToDashboard({ error: "missing_rkey" });
   if (!pds) return backToDashboard({ error: "announce_failed:pds_unresolved" });
-
-  let doc: Awaited<ReturnType<typeof getRecordEntry<StandardDocument>>>;
-  try {
-    doc = await getRecordEntry<StandardDocument>(
-      pds,
-      did,
-      "site.standard.document",
-      rkey,
-    );
-  } catch {
-    return backToDashboard({ error: "not_found" });
-  }
-
-  // Resolve the document's publication when `site` is an at:// URI — it gives
-  // both the canonical-URL base and the publication strongRef. Only same-repo
-  // publications (all records Goldroad writes, and Leaflet's) are followed;
-  // a cross-repo ref would mean fetching a different identity's PDS.
-  let publicationUrl: string | undefined;
-  let publicationRef: AssociatedRef | undefined;
-  const siteRef =
-    typeof doc.value.site === "string" ? parseAtUri(doc.value.site) : null;
-  if (
-    siteRef &&
-    siteRef.did === did &&
-    siteRef.collection === "site.standard.publication"
-  ) {
-    const pub = await getRecordEntry<StandardPublication>(
-      pds,
-      siteRef.did,
-      siteRef.collection,
-      siteRef.rkey,
-    ).catch(() => null);
-    if (pub) {
-      if (typeof pub.value.url === "string") publicationUrl = pub.value.url;
-      if (pub.cid && pub.uri) publicationRef = { uri: pub.uri, cid: pub.cid };
-    }
-  }
-
-  // Canonical composed URL; Goldroad's reader serves any repo document at
-  // /@<ident>/<rkey>, so that is the honest fallback when composition fails.
-  const url =
-    composeDocumentUrl({
-      site: doc.value.site,
-      path: doc.value.path,
-      publicationUrl,
-    }) ?? `${origin}/@${encodeURIComponent(ident)}/${rkey}`;
-
-  const associatedRefs: AssociatedRef[] = [];
-  if (doc.cid && doc.uri) associatedRefs.push({ uri: doc.uri, cid: doc.cid });
-  if (publicationRef) associatedRefs.push(publicationRef);
-
-  const post = buildAnnouncePost({
-    title: typeof doc.value.title === "string" ? doc.value.title : "",
-    url,
-    description:
-      typeof doc.value.description === "string"
-        ? doc.value.description
-        : undefined,
-    associatedRefs,
-    // Reuse the document's cover blob as the card thumb (same repo — the
-    // post's reference keeps it persistence-legal). Skipped when over the
-    // thumb lexicon's 1MB cap: the PDS would reject the whole announce.
-    thumb: thumbFromCover(doc.value.coverImage) ?? undefined,
+  const outcome = await announceDocument({
+    rpc,
+    did,
+    ident,
+    pds,
+    origin,
+    rkey,
   });
-
-  const res = await rpc.post("com.atproto.repo.createRecord", {
-    input: { repo: did, collection: "app.bsky.feed.post", record: post },
-  });
-  if (!res.ok) {
-    if (isInsufficientScope(res))
-      return backToDashboard({ error: "announce_scope" });
-    console.error("announce createRecord failed", res.status, res.data);
-    return backToDashboard({ error: `announce_failed:${res.data.error}` });
-  }
-
-  // Honest announce status (auto-announce is deferred): write the created post's
-  // strongRef into the document's lexicon-native `bskyPostRef` slot, so the
-  // dashboard can show "Announced" and the state travels with the record
-  // (readable by any app, not just ours). This is NOT an edit of the
-  // document's content — every field including a foreign `content` union is
-  // preserved — so the not_editable rule doesn't apply.
-  // swapRecord pins the version we read: a concurrent edit wins, we never
-  // clobber. Requires doc.cid — without it swapRecord would be undefined and
-  // the put unconditional, the one way this could stomp a concurrent edit.
-  // Best-effort — the announce itself already succeeded, so a failed
-  // write-back only costs status honesty; the writer can announce again.
-  if (res.data.uri && res.data.cid && doc.cid) {
-    const writeBack = await rpc
-      .post("com.atproto.repo.putRecord", {
-        input: {
-          repo: did,
-          collection: "site.standard.document",
-          rkey,
-          record: {
-            ...doc.value,
-            $type: "site.standard.document",
-            bskyPostRef: { uri: res.data.uri, cid: res.data.cid },
-          },
-          swapRecord: doc.cid,
-        },
-      })
-      .catch(() => null);
-    if (!writeBack?.ok)
-      console.warn("bskyPostRef write-back failed", writeBack?.data);
-  }
-
-  const postRkey = rkeyFromUri(res.data.uri);
+  if (!outcome.ok) return backToDashboard({ error: outcome.code });
   // The document now carries a bskyPostRef, which is what unlocks the counts and
-  // the reply thread on the reading surface — and this is the moment the link is
-  // about to be seen by strangers. Re-render it so the first scrape lands warm.
-  return warmingReaderPages(
-    backToDashboard(postRkey ? { announced: postRkey } : {}),
-    { origin, ident, rkey },
+  // the reply thread on the reading surface, so the cached page without them
+  // is purged.
+  return purgingReaderPages(
+    backToDashboard(outcome.postRkey ? { announced: outcome.postRkey } : {}),
+    { origin, did, ident, rkey },
   );
 }
 

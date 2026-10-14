@@ -37,6 +37,7 @@ const publishing = vi.hoisted(() => ({
   publishStoredDraft: vi.fn(),
   resolvePublicationSite: vi.fn(),
   findOwnPublication: vi.fn(),
+  writeDocument: vi.fn(),
 }));
 vi.mock("~/lib/publish-document", () => publishing);
 
@@ -48,6 +49,9 @@ vi.mock("~/lib/atproto", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/atproto")>()),
   ...atproto,
 }));
+
+const announcing = vi.hoisted(() => ({ announceDocument: vi.fn() }));
+vi.mock("~/lib/announce-document", () => announcing);
 
 const restore = vi.hoisted(() => vi.fn(async () => ({})));
 vi.mock("~/lib/oauth", () => ({
@@ -141,6 +145,9 @@ beforeEach(() => {
     { id: ROW_ID, status: "failed" },
   ]);
   schedules.selectScheduleForDraft.mockResolvedValue([]);
+  publishing.writeDocument.mockResolvedValue({ ok: true });
+  announcing.announceDocument.mockReset();
+  announcing.announceDocument.mockResolvedValue({ ok: true, postRkey: "p1" });
   publishing.publishStoredDraft.mockResolvedValue({
     ok: true,
     rkey: "3lyk73wxnok2f",
@@ -181,6 +188,18 @@ describe("intent=schedule", () => {
     expect(row.draftId).toBe(DRAFT_ID);
     expect(row.id).toMatch(/^[0-9a-f-]{36}$/);
     expect(res.status).toBe(303);
+  });
+
+  it("captures Also announce on Bluesky now, since nobody is there when it goes out", async () => {
+    await call({ ...fields, announce: "1" });
+    expect(schedules.upsertSchedule.mock.calls[0][1]).toMatchObject({
+      announce: true,
+    });
+    schedules.upsertSchedule.mockClear();
+    await call(fields);
+    expect(schedules.upsertSchedule.mock.calls[0][1]).toMatchObject({
+      announce: false,
+    });
   });
 
   it("converts the other sign correctly too", async () => {
@@ -343,6 +362,35 @@ describe("intent=publish-now", () => {
       DID,
       DRAFT_ID,
     );
+  });
+
+  it("publishes under the key a failed tick reserved, so its write can't be repeated", async () => {
+    schedules.deleteUnclaimedSchedulesForDraft.mockResolvedValue([
+      { id: ROW_ID, status: "pending", publishedRkey: "3lyk73wxnokrs" },
+    ]);
+    await call(fields);
+    const input = publishing.publishStoredDraft.mock.calls[0][0] as {
+      rkey?: string;
+    };
+    expect(input.rkey).toBe("3lyk73wxnokrs");
+  });
+
+  it("announces it when the schedule asked to, and not otherwise", async () => {
+    schedules.deleteUnclaimedSchedulesForDraft.mockResolvedValue([
+      { id: ROW_ID, status: "pending", publishedRkey: null, announce: true },
+    ]);
+    const res = await call(fields);
+    expect(announcing.announceDocument).toHaveBeenCalledWith(
+      expect.objectContaining({ rkey: "3lyk73wxnok2f", onlyOnce: true }),
+    );
+    expect(location(res).searchParams.get("announced")).toBe("p1");
+
+    announcing.announceDocument.mockClear();
+    schedules.deleteUnclaimedSchedulesForDraft.mockResolvedValue([
+      { id: ROW_ID, status: "pending", publishedRkey: null, announce: false },
+    ]);
+    await call(fields);
+    expect(announcing.announceDocument).not.toHaveBeenCalled();
   });
 
   it("publishes through the same core the cron uses, and reports the rkey", async () => {
