@@ -9,6 +9,16 @@ import {
   rssFeedXml,
   stripMarkdown,
 } from "../lib/feed";
+import { expectLinear, LINEAR_TEST_TIMEOUT_MS } from "./linear-time";
+
+/** Unmatched-bracket and backtick floods: [repeated unit, repeats in the
+ * smaller input]. The larger input is 4x, 100k characters. */
+const HOSTILE_FLOODS: Array<[string, number]> = [
+  ["[", 25_000],
+  ["[a](b", 5_000],
+  ["![", 12_500],
+  ["`", 25_000],
+];
 
 /** Real XML parser (jsdom's, saxes-backed) — feed assertions parse the
  * document back instead of trusting string containment alone. */
@@ -72,21 +82,18 @@ describe("stripMarkdown — the shared hardened strip", () => {
     expect(stripMarkdown("a".repeat(100), 10)).toBe("a".repeat(10));
   });
 
-  it("stays linear on hostile floods even at a wide validated window", () => {
+  it("stays linear on hostile floods even at a wide validated window", {
+    timeout: LINEAR_TEST_TIMEOUT_MS,
+  }, () => {
     // ~/lib/publish's excerpt() passes MAX_BODY_LENGTH (100k) as its window,
     // so the default 2 KB slice does not protect that call site — the
     // fail-fast bracket classes must keep hostile input cheap on their own.
-    const hostiles = [
-      "[".repeat(100_000),
-      "[a](b".repeat(20_000),
-      "![".repeat(50_000),
-      "`".repeat(100_000),
-    ];
-    for (const hostile of hostiles) {
-      const start = performance.now();
-      stripMarkdown(hostile, 100_000);
-      // Generous CI headroom — a quadratic regression costs seconds, not ms.
-      expect(performance.now() - start).toBeLessThan(250);
+    for (const [unit, n] of HOSTILE_FLOODS) {
+      expectLinear(
+        (text) => stripMarkdown(text, 100_000),
+        (k) => unit.repeat(k),
+        n,
+      );
     }
   });
 });
@@ -129,22 +136,17 @@ describe("plainTextExcerpt", () => {
     expect(out).toMatch(/word…$/);
   });
 
-  it("stays cheap and bounded on hostile degenerate markdown (no quadratic scan)", () => {
+  it("stays cheap and bounded on hostile degenerate markdown (no quadratic scan)", {
+    timeout: LINEAR_TEST_TIMEOUT_MS,
+  }, () => {
     // Unmatched-bracket floods made the original link/image patterns
     // quadratic (seconds of CPU on a ~10 ms budget). The scan window +
     // fail-fast bracket classes must keep this trivial.
-    const hostiles = [
-      "[".repeat(100_000),
-      "[a](b".repeat(20_000),
-      "![".repeat(50_000),
-      "`".repeat(100_000),
-    ];
-    for (const hostile of hostiles) {
-      const start = performance.now();
-      const out = plainTextExcerpt(hostile);
-      // Generous CI headroom — a quadratic regression costs seconds, not ms.
-      expect(performance.now() - start).toBeLessThan(250);
-      expect(out.length).toBeLessThanOrEqual(301);
+    for (const [unit, n] of HOSTILE_FLOODS) {
+      expectLinear(plainTextExcerpt, (k) => unit.repeat(k), n);
+      expect(plainTextExcerpt(unit.repeat(4 * n)).length).toBeLessThanOrEqual(
+        301,
+      );
     }
   });
 });
