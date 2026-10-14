@@ -234,7 +234,7 @@ describe("updateDocumentRecord", () => {
     });
     expect(record.title).toBe("New title");
     // The markdown lives in the content union; textContent is its projection.
-    expect(record.content?.markdown).toBe("New **body**");
+    expect(record.content?.text.markdown).toBe("New **body**");
     expect(record.textContent).toBe("New body");
     expect(record.description).toBe("New body");
     expect(record.publishedAt).toBe("2026-07-01T00:00:00.000Z");

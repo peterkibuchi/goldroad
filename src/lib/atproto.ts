@@ -415,13 +415,13 @@ export type StandardDocument = {
   updatedAt?: string;
   tags?: string[];
   /** Plaintext representation of the document's contents — per the lexicon,
-   * free of markdown. True of what we now write; records published before the
-   * content union (ours and other apps') hold markdown here instead, which is
-   * why the body is read through documentBodyMarkdown and not from here. */
+   * free of markdown. True of what we write; older records (ours and other
+   * apps') hold markdown here instead, which is why the body is read through
+   * documentBodyMarkdown and not from here. */
   textContent?: string;
-  /** Open content union: ours (pub.goldroad.content.markdown) is the body's
-   * source of truth, a foreign one (e.g. pub.leaflet.content) makes the
-   * document read-only for us. See ~/lib/document-content. */
+  /** Open content union: `at.markpub.markdown` is the body's source of truth,
+   * any other format (e.g. pub.leaflet.content) makes the document read-only
+   * for us. See ~/lib/document-content. */
   content?: unknown;
   /** strongRef to the Bluesky post announcing this document (lexicon: "Strong
    * reference to a Bluesky post") — our announce write-back target. Untrusted. */

@@ -5,7 +5,6 @@ import { describe, expect, it } from "vitest";
 import {
   documentBodyMarkdown,
   hasForeignContent,
-  isMarkdownContent,
   MARKDOWN_CONTENT_TYPE,
   markdownContent,
 } from "../lib/document-content";
@@ -16,7 +15,6 @@ import {
   updateDocumentRecord,
   writerDek,
 } from "../lib/publish";
-import { readFileSync } from "node:fs";
 
 const input = {
   title: "Hello Atmosphere",
@@ -25,71 +23,22 @@ const input = {
   path: "/3abc2345678df",
 };
 
-/**
- * The schema on disk. Read as a file rather than imported so the assertions
- * below are about the published artifact — the thing other implementers fetch
- * — and not about a bundler's view of it.
- */
-const schema = JSON.parse(
-  readFileSync(
-    new URL(
-      "../../lexicons/pub/goldroad/content/markdown.json",
-      import.meta.url,
-    ),
-    "utf8",
-  ),
-);
-
-describe("the pub.goldroad.content.markdown schema (PERMANENT public API)", () => {
-  it("declares the NSID the code writes — the two can never drift", () => {
-    expect(schema.id).toBe(MARKDOWN_CONTENT_TYPE);
-    expect(schema.id).toBe("pub.goldroad.content.markdown");
-    expect(schema.lexicon).toBe(1);
-  });
-
-  it("is an object def with `markdown` required, and nothing speculative beside it", () => {
-    expect(schema.defs.main.type).toBe("object");
-    expect(schema.defs.main.required).toEqual(["markdown"]);
-    // Every field name here is unrenameable. A new field is a deliberate,
-    // additive act; this assertion is what makes an accidental one visible.
-    expect(Object.keys(schema.defs.main.properties)).toEqual(["markdown"]);
-    expect(schema.defs.main.properties.markdown.type).toBe("string");
-  });
-
-  it("bounds `markdown` no tighter than the publish path's own body cap", () => {
-    const { maxLength, maxGraphemes } = schema.defs.main.properties.markdown;
-    // The app validates body.length (UTF-16 code units) against MAX_BODY_LENGTH.
-    // A grapheme is never fewer than one code unit, so the grapheme ceiling is
-    // that same number; a code unit is never more than three UTF-8 bytes
-    // (surrogate pairs are two units for four bytes), so the byte ceiling is
-    // three times it. Both must be >= what we actually write, or the schema
-    // would forbid records the app happily produces.
-    expect(maxGraphemes).toBe(MAX_BODY_LENGTH);
-    expect(maxLength).toBe(MAX_BODY_LENGTH * 3);
-  });
-
-  it("has an NSID whose authority is a domain we can actually hold", () => {
-    // Authority = segments reversed minus the final name segment, so this is
-    // `content.goldroad.pub` with the name `markdown` — the same shape as
-    // app.bsky.feed.post resolving to feed.bsky.app. Asserted because getting
-    // it wrong is unfixable after the first write.
-    const segments = schema.id.split(".");
-    const authority = segments.slice(0, -1).reverse().join(".");
-    const name = segments.at(-1);
-    expect(authority).toBe("content.goldroad.pub");
-    expect(name).toBe("markdown");
-    // NSID name grammar: letters and digits only, no hyphens, no leading digit.
-    expect(name).toMatch(/^[a-zA-Z][a-zA-Z0-9]*$/);
+describe("the at.markpub.markdown wire shape", () => {
+  it("nests the markdown under `text`, per the markpub lexicons", () => {
+    // Literal, not via markdownContent(): this pins the shape other apps read.
+    expect(buildDocumentRecord(input).content).toEqual({
+      $type: "at.markpub.markdown",
+      text: { $type: "at.markpub.text", markdown: input.body },
+      flavor: "gfm",
+    });
+    expect(MARKDOWN_CONTENT_TYPE).toBe("at.markpub.markdown");
   });
 });
 
 describe("emission: the body is written as both formats", () => {
   it("puts the markdown in the content union and its projection in textContent", () => {
     const record = buildDocumentRecord(input);
-    expect(record.content).toEqual({
-      $type: "pub.goldroad.content.markdown",
-      markdown: input.body,
-    });
+    expect(record.content?.text.markdown).toBe(input.body);
     // textContent is what the lexicon says it is: no markdown syntax left —
     // and the link's destination survives in plain-text form rather than
     // being deleted along with its brackets.
@@ -107,12 +56,12 @@ describe("emission: the body is written as both formats", () => {
       title: input.title,
       body: "Rewritten with *emphasis*.",
     });
-    expect(edited.content?.markdown).toBe("Rewritten with *emphasis*.");
+    expect(edited.content?.text.markdown).toBe("Rewritten with *emphasis*.");
     expect(edited.textContent).toBe("Rewritten with emphasis.");
   });
 });
 
-describe("editability: ours is editable, foreign is not (step-zero fix)", () => {
+describe("editability: markpub is editable, foreign is not", () => {
   const existing = {
     $type: "site.standard.document",
     title: "Old title",
@@ -121,22 +70,27 @@ describe("editability: ours is editable, foreign is not (step-zero fix)", () => 
     publishedAt: "2026-07-01T00:00:00.000Z",
   };
 
-  it("edits a document carrying OUR union", () => {
-    // Written as a literal, not via markdownContent(), so this test states the
-    // wire shape it depends on rather than trusting a helper to agree with it.
-    const ours = {
+  it("edits a document carrying markpub markdown, whoever wrote it", () => {
+    // Another app's spelling: no `$type` on `text`, `flavor` in the wrong
+    // place, a renderer we don't use. Inline markdown is all editing needs.
+    const theirs = {
       ...existing,
       content: {
-        $type: "pub.goldroad.content.markdown",
-        markdown: "The **original** body.",
+        $type: "at.markpub.markdown",
+        text: {
+          markdown: "The **original** body.",
+          flavor: "commonmark",
+          renderingRules: "markdown-it",
+        },
       },
       textContent: "The original body.",
     };
-    const record = updateDocumentRecord(ours, {
+    expect(hasForeignContent(theirs)).toBe(false);
+    const record = updateDocumentRecord(theirs, {
       title: "New title",
       body: "The **edited** body.",
     });
-    expect(record.content?.markdown).toBe("The **edited** body.");
+    expect(record.content).toEqual(markdownContent("The **edited** body."));
     expect(record.textContent).toBe("The edited body.");
   });
 
@@ -149,16 +103,27 @@ describe("editability: ours is editable, foreign is not (step-zero fix)", () => 
     ).toThrow("foreign content");
   });
 
-  it("treats a malformed claim on our own type as foreign", () => {
-    // Our $type with no markdown string is not something we can render, so
-    // editing it would publish over a body we never actually read.
+  it("treats markpub it can't round-trip as foreign", () => {
+    // No inline markdown string is nothing we can render; a textBlob means
+    // the inline markdown is only a preview. Editing either would publish
+    // over a body we never read.
+    const blob = {
+      $type: "blob",
+      ref: { $link: "bafkreiexample" },
+      mimeType: "text/markdown",
+      size: 200_000,
+    };
     for (const content of [
       { $type: MARKDOWN_CONTENT_TYPE },
-      { $type: MARKDOWN_CONTENT_TYPE, markdown: 42 },
-      { $type: MARKDOWN_CONTENT_TYPE, markdown: null },
+      { $type: MARKDOWN_CONTENT_TYPE, markdown: "flat, not under text" },
+      { $type: MARKDOWN_CONTENT_TYPE, text: "a string" },
+      { $type: MARKDOWN_CONTENT_TYPE, text: { markdown: 42 } },
+      {
+        $type: MARKDOWN_CONTENT_TYPE,
+        text: { markdown: "Preview…", textBlob: blob },
+      },
     ]) {
       expect(hasForeignContent({ content })).toBe(true);
-      expect(isMarkdownContent(content)).toBe(false);
       expect(() =>
         updateDocumentRecord(
           { ...existing, content },
@@ -176,8 +141,8 @@ describe("editability: ours is editable, foreign is not (step-zero fix)", () => 
   });
 });
 
-describe("the compatibility triangle: three generations of record", () => {
-  it("post-mint records read from the union", () => {
+describe("documentBodyMarkdown: where the body is read from", () => {
+  it("markpub records read from the union", () => {
     expect(
       documentBodyMarkdown({
         content: markdownContent("From the **union**."),
@@ -186,10 +151,27 @@ describe("the compatibility triangle: three generations of record", () => {
     ).toBe("From the **union**.");
   });
 
-  it("pre-mint records read from textContent, which is markdown there", () => {
-    // The case that must not regress: every post published before this change
-    // stored markdown in textContent, and it still has to reach the markdown
-    // renderer verbatim. These records are not migrated in bulk.
+  it("reads another app's markpub record, and a textBlob one's preview", () => {
+    expect(
+      documentBodyMarkdown({
+        content: {
+          $type: "at.markpub.markdown",
+          text: { markdown: "# Theirs", flavor: "gfm" },
+        },
+        textContent: "Theirs",
+      }),
+    ).toBe("# Theirs");
+    expect(
+      documentBodyMarkdown({
+        content: {
+          $type: "at.markpub.markdown",
+          text: { markdown: "Preview…", textBlob: { $type: "blob" } },
+        },
+      }),
+    ).toBe("Preview…");
+  });
+
+  it("union-less records read from textContent, which is markdown there", () => {
     expect(
       documentBodyMarkdown({ textContent: "Old post with **bold**." }),
     ).toBe("Old post with **bold**.");

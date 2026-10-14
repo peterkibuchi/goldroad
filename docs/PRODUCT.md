@@ -64,6 +64,8 @@ not around it.
   `site.standard.document` records into the writer's own repository.
 - Publication and post pages that render **any** atproto author's `standard.site`
   records, not only ours. Edge-cached and cookie-independent.
+- Post bodies carry their markdown as `at.markpub.markdown`, the shared markdown type
+  other atproto apps read, beside the plaintext `textContent`.
 - Announce a post to Bluesky as a native rich card.
 - RSS per publication, plus a sitemap — every publication has a machine-readable twin.
 - Import an archive from Substack, Ghost, Medium, or WordPress, parsed in the browser and
