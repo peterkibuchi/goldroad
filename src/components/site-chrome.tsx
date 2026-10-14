@@ -112,25 +112,25 @@ export function SiteHeader(props: MarketingHeaderProps) {
       <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-x-6 px-6 py-2 md:px-16">
         <Wordmark href="/" />
         {props.variant === "marketing" && (
-          <>
-            {/* Below 640px the row can't hold four items, so this one drops to
-                its own deck under the wordmark instead of crowding the door. */}
+          // Below 640px one row can't hold all four, so the links drop to a
+          // deck under the wordmark, in the same order they're tabbed through.
+          // Quiet links, not buttons: the page's accent belongs to its own
+          // primary action, and a returning writer only needs the door.
+          <div className="flex w-full items-center gap-5 border-rule border-t sm:ml-auto sm:w-auto sm:border-t-0">
             <a
               aria-current={
                 props.current === "/leaving-substack" ? "page" : undefined
               }
-              className="order-last inline-flex min-h-11 w-full items-center border-rule border-t font-display font-semibold text-ink-soft text-sm underline underline-offset-4 transition-colors hover:text-ink aria-[current=page]:text-ink aria-[current=page]:no-underline sm:order-none sm:ml-auto sm:w-auto sm:border-t-0"
+              className="inline-flex min-h-11 items-center font-display font-semibold text-ink-soft text-sm underline underline-offset-4 transition-colors hover:text-ink aria-[current=page]:text-ink aria-[current=page]:no-underline"
               href="/leaving-substack"
             >
               Leaving Substack?
             </a>
-            {/* Quiet links, not buttons: the page's accent belongs to its own
-                primary action, and a returning writer only needs the door. */}
-            <div className="ml-auto flex items-center gap-5 sm:ml-0">
+            <div className="ml-auto flex items-center gap-5">
               <AppearanceToggle />
               <MarketingSignIn />
             </div>
-          </>
+          </div>
         )}
       </div>
     </header>
@@ -173,8 +173,8 @@ function MarketingSignIn() {
   }, []);
   return (
     <a
-      // A quiet link that is still a real target: this is the only way into
-      // the product from the homepage, and it was a 20px-tall run of text.
+      // A quiet link that is still a real target: on every marketing page but
+      // the homepage it is the only way in, and it was a 20px-tall run of text.
       className="inline-flex min-h-11 items-center font-display font-semibold text-ink-soft text-sm underline underline-offset-4 transition-colors hover:text-ink"
       href={signedIn ? "/home" : "/write?returnTo=%2Fhome"}
     >

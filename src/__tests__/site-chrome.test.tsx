@@ -43,6 +43,7 @@ describe("SiteHeader", () => {
     // Pre-launch: chrome offers no public route into the app.
     expect(screen.queryByRole("link", { name: /sign in/i })).toBeNull();
     expect(screen.queryByRole("link", { name: /write/i })).toBeNull();
+    expect(screen.queryByRole("link", { name: /substack/i })).toBeNull();
   });
 
   it("marketing: offers a way in", () => {
