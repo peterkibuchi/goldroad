@@ -40,7 +40,7 @@
  * on request is the honest remedy; if a verified-email link ever exists, this
  * is the note to come back to.
  */
-import { asc, desc, eq } from "drizzle-orm";
+import { asc, count, desc, eq } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/d1";
 
 import {
@@ -185,10 +185,15 @@ export function deleteHandleHistoryForDid(db: DrizzleD1, did: string) {
   return db.delete(handleHistory).where(eq(handleHistory.did, did));
 }
 
+/** Reader addresses per export. The list is unconfirmed (anyone can type an
+ * address into the form), so a padded list must not push the whole export
+ * past the CPU limit. Past the cap the export says so and gives the total. */
+export const MAX_READER_EMAILS_PER_EXPORT = 1000;
+
 /**
  * The addresses readers have left with this writer's publication, oldest
- * first, with the surface each was left on and when. Uncapped on purpose: a
- * truncated list is a list the writer can't trust.
+ * first (ids are assigned in insertion order), with the surface each was left
+ * on and when.
  */
 export function selectReaderEmailsForExport(db: DrizzleD1, did: string) {
   return db
@@ -199,7 +204,16 @@ export function selectReaderEmailsForExport(db: DrizzleD1, did: string) {
     })
     .from(readerEmails)
     .where(eq(readerEmails.writerDid, did))
-    .orderBy(asc(readerEmails.consentedAt), asc(readerEmails.id));
+    .orderBy(asc(readerEmails.id))
+    .limit(MAX_READER_EMAILS_PER_EXPORT);
+}
+
+/** How many addresses readers have left with this writer's publication. */
+export function countReaderEmailsForDid(db: DrizzleD1, did: string) {
+  return db
+    .select({ n: count() })
+    .from(readerEmails)
+    .where(eq(readerEmails.writerDid, did));
 }
 
 /**

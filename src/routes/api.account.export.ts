@@ -33,6 +33,8 @@ import { readLiveSessionDid } from "~/lib/live-session";
 import { canonicalOrigin, isCrossSite } from "~/lib/origin";
 import { privateJson } from "~/lib/private-json";
 import {
+  countReaderEmailsForDid,
+  MAX_READER_EMAILS_PER_EXPORT,
   selectDraftsForExport,
   selectFollowerSnapshotsForExport,
   selectHandleHistoryForExport,
@@ -79,6 +81,7 @@ export const Route = createFileRoute("/api/account/export")({
           scheduleRows,
           hostedRows,
           readerEmailRows,
+          [readerEmailCount],
           handleRows,
           { handle, pds },
         ] = await Promise.all([
@@ -88,6 +91,7 @@ export const Route = createFileRoute("/api/account/export")({
           selectScheduledPostsForExport(db, did),
           selectHostedPublicationForExport(db, did),
           selectReaderEmailsForExport(db, did),
+          countReaderEmailsForDid(db, did),
           selectHandleHistoryForExport(db, did),
           resolveDidIdentity(did),
         ]);
@@ -138,10 +142,11 @@ export const Route = createFileRoute("/api/account/export")({
             "sitemap lists it, below, plus a record of your sign-in session. " +
             "`readerList` is the email " +
             "addresses readers have left with your publication, each with where " +
-            "they left it and when. That list is yours to control: Goldroad " +
-            "holds it on your behalf, and the readers on it gave their address " +
-            "to your publication, so use it for that. It is deleted along with " +
-            "everything else if you delete your account. " +
+            "it was left and when. That list is yours to control, and Goldroad " +
+            "holds it on your behalf. Nobody confirms these addresses: anyone " +
+            "can type any address into the form, so confirm with a reader " +
+            "before you rely on one. The list is deleted along with everything " +
+            "else if you delete your account. " +
             "Nothing else we hold is keyed to your " +
             "DID. This file does NOT include an email address you may have given our " +
             "waitlist form or left on an abuse report: those rows are keyed by " +
@@ -201,12 +206,17 @@ export const Route = createFileRoute("/api/account/export")({
             posts: row.posts,
           })),
           readerList: {
-            count: readerEmailRows.length,
-            note: "`source` is where the reader left their address: a post page or your publication's page. `consentedAt` is when they asked to hear from you.",
+            count: readerEmailCount?.n ?? readerEmailRows.length,
+            // A padded list must not take the rest of the export down with it.
+            truncated:
+              (readerEmailCount?.n ?? 0) > MAX_READER_EMAILS_PER_EXPORT,
+            note: `Unconfirmed: anyone can type any address into the form. \`source\` is where the address was left (a post page or your publication's page) and \`consentedAt\` is when. Lists longer than ${MAX_READER_EMAILS_PER_EXPORT} are cut to the oldest ${MAX_READER_EMAILS_PER_EXPORT}; mail privacy@trygoldroad.com for the rest.`,
             readers: readerEmailRows.map((row) => ({
               email: row.email,
               source: row.source,
-              consentedAt: row.consentedAt.toISOString(),
+              consentedAt: Number.isNaN(row.consentedAt.getTime())
+                ? null
+                : row.consentedAt.toISOString(),
             })),
           },
           ownPosts: {
