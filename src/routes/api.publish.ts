@@ -83,6 +83,7 @@ import {
   selectScheduleForDraft,
   upsertSchedule,
 } from "~/lib/scheduled-posts";
+import { indexDocument, unindexDocument } from "~/lib/search";
 import { clearSessionCookies } from "~/lib/session";
 import {
   findSubscription,
@@ -589,6 +590,11 @@ async function publishDocument({
         console.warn("mirror adoption failed", err);
       });
     }
+    // Search finds the edited words straight away (~/lib/search).
+    // Best-effort for the same reason: the edit has landed.
+    await indexDocument(drizzle(env.DB), did, editRkey, record).catch((err) => {
+      console.warn("search index after edit failed", err);
+    });
     // The writer is being sent straight at the page they just edited, which the
     // read cache is still holding in its pre-edit form — purge it or they see
     // their old words.
@@ -707,6 +713,11 @@ async function publishDocument({
     console.error("document write failed", written);
     return reject(`publish_failed:${written.error}`);
   }
+  // Into search (~/lib/search). Best-effort: the post is live, and a flaked
+  // index write costs its findability until it is next edited.
+  await indexDocument(drizzle(env.DB), did, rkey, record).catch((err) => {
+    console.warn("search index after publish failed", err);
+  });
 
   // Import ledger write-back: record the rkey this item published under —
   // that row is what makes the reader page a "mirror" (noindex + provenance)
@@ -1038,6 +1049,10 @@ async function deleteDocument({ rpc, form, did, ident, origin }: WriteContext) {
   // rows match); best-effort, same policy as the other ledger write-backs.
   await clearPublishedImport(drizzle(env.DB), did, rkey).catch((err) => {
     console.warn("import ledger cleanup after delete failed", err);
+  });
+  // A deleted post stops turning up in search. Best-effort, same policy.
+  await unindexDocument(drizzle(env.DB), did, rkey).catch((err) => {
+    console.warn("search unindex after delete failed", err);
   });
   // A deleted post must stop being readable NOW, not when its cache entry ages
   // out, at least in this colo. A 404 is never stored, so the next read

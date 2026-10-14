@@ -57,10 +57,21 @@ export const READ_CACHE_CONTROL = `public, s-maxage=${READ_CACHE_TTL_SECONDS}, s
  * at `/@…/rss.xml`) and `/p/…` (v0 document URL). */
 const READ_SURFACE_RE = /^\/(@|p\/)/;
 
-/** Whether this request is a GET to a cacheable reading surface. */
+/**
+ * Whether this request is a GET to a cacheable reading surface.
+ *
+ * A search (`?q=` on the archive) is not. The key strips every param but
+ * `cursor`, so a cached search would be served the plain archive or the
+ * reverse; keying on `q` instead would mint a stored page per query, and no
+ * purge after a delete or takedown can enumerate those, so a removed post's
+ * words could keep showing in a stored result for the whole TTL.
+ */
 export function isCacheableReadRequest(request: Request): boolean {
   if (request.method !== "GET") return false;
-  return READ_SURFACE_RE.test(new URL(request.url).pathname);
+  const url = new URL(request.url);
+  if (PAGINATED_PATH_RE.test(url.pathname) && url.searchParams.has("q"))
+    return false;
+  return READ_SURFACE_RE.test(url.pathname);
 }
 
 /** The only paths that paginate: a bare `/@handle`, whose "Older posts" link

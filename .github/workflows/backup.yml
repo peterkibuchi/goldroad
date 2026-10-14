@@ -75,22 +75,26 @@ jobs:
             exit 1
           fi
 
-      - name: Install age
+      - name: Install age and sqlite3
         run: |
           sudo apt-get update
-          sudo apt-get install -y age
+          sudo apt-get install -y age sqlite3
 
       # --env production is load-bearing. The top-level wrangler config carries a
       # PLACEHOLDER database_id (it exists so a self-hoster can point the repo at
       # their own D1); the real production id lives in the env.production block.
       # Without the flag wrangler resolves the placeholder and the API answers
       # "database not found [code: 7404]".
+      #
+      # Through the script, not a bare `wrangler d1 export`: D1 refuses to export
+      # a database with a virtual table, and the post search index is one. The
+      # script exports the ordinary tables and appends the rest (see its header).
       - name: Export the database
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          pnpm wrangler d1 export "$DATABASE_NAME" --env production --remote --output "$DUMP" -y
+          scripts/d1-export.sh "$DATABASE_NAME" "$DUMP" --env production --remote
 
       # A dump that exists is not a dump that is usable. An export can report
       # success and leave a truncated or schema-only file, which is exactly the
@@ -113,6 +117,16 @@ jobs:
           # INSERTs, not just schema — a data-less export is not a backup.
           grep -q "INSERT INTO" "$DUMP" || {
             echo "::error::dump contains no rows"; exit 1; }
+          # And it has to load. The export is assembled from parts (see
+          # scripts/d1-export.sh), so restore it into a scratch database and
+          # run the search index's own consistency check over the rebuild.
+          RESTORED=$(mktemp)
+          sqlite3 -bail "$RESTORED" < "$DUMP" || {
+            shred -u "$RESTORED"; echo "::error::dump does not restore"; exit 1; }
+          sqlite3 -bail "$RESTORED" \
+            "INSERT INTO post_search(post_search) VALUES('integrity-check');" || {
+            shred -u "$RESTORED"; echo "::error::restored search index is inconsistent"; exit 1; }
+          shred -u "$RESTORED"
           echo "BACKUP_BYTES=${BYTES}" >> "$GITHUB_ENV"
           echo "Verified ${BYTES} bytes."
 

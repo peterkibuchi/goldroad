@@ -56,6 +56,8 @@ import {
   oauthKv,
   readerEmails,
   scheduledPosts,
+  searchBackfills,
+  searchDocuments,
 } from "~/db/schema";
 import { MAX_DRAFTS_PER_USER } from "~/lib/drafts-schema";
 import { SNAPSHOT_RETENTION_DAYS } from "~/lib/follower-snapshots";
@@ -208,6 +210,24 @@ export function deleteScheduledPostsForDid(db: DrizzleD1, did: string) {
     .delete(scheduledPosts)
     .where(eq(scheduledPosts.did, did))
     .returning({ id: scheduledPosts.id });
+}
+
+/** Deletes the search index of a writer's posts (account deletion). It is
+ * our copy of their words, so it goes with everything else; the triggers on
+ * `search_documents` take the FTS5 entries with it. */
+export function deleteSearchDocumentsForDid(db: DrizzleD1, did: string) {
+  return db
+    .delete(searchDocuments)
+    .where(eq(searchDocuments.did, did))
+    .returning({ id: searchDocuments.id });
+}
+
+/** Deletes a writer's search-backfill progress (account deletion). */
+export function deleteSearchBackfillForDid(db: DrizzleD1, did: string) {
+  return db
+    .delete(searchBackfills)
+    .where(eq(searchBackfills.did, did))
+    .returning({ did: searchBackfills.did });
 }
 
 /** Deletes every draft a writer owns (account deletion, not the single-draft

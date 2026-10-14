@@ -58,6 +58,23 @@ Section 2 exists only for those.
 production database, verifies the dump is real, encrypts it, uploads it as a
 workflow artifact, and then records a row in `backup_runs`.
 
+The export goes through `scripts/d1-export.sh` rather than a bare
+`wrangler d1 export`, because D1 refuses to export a database that holds a
+virtual table, and post search is one (an FTS5 index). The script exports the
+ordinary tables by name, then appends what a table-scoped export leaves out:
+the search index's definition, every index, view and trigger, and a rebuild
+of the search index from `search_documents`. Because the dump is assembled,
+the workflow proves it: it loads the dump into a scratch SQLite database and
+runs the search index's consistency check before encrypting anything. The dump
+still restores with the one command below. One difference from a whole-database
+export: SQLite's AUTOINCREMENT counters aren't in it, so a restored table's next
+id follows its highest row, not its highest id ever. Run the script against
+your local database to see what it produces:
+
+```sh
+scripts/d1-export.sh goldroad-db /tmp/d1-dump.sql --local
+```
+
 It runs in CI rather than in the Worker cron for two reasons: D1's export is an
 account-scoped REST operation that needs an account API token (which has no
 business being in a Worker), and it is polled to completion, which no cron
@@ -158,8 +175,9 @@ pnpm wrangler d1 create goldroad-db-restored
 pnpm wrangler d1 execute goldroad-db-restored --remote --file d1-dump.sql
 ```
 
-Then point `database_id` in `wrangler.jsonc` at the restored database and
-deploy. Importing over an existing populated database will collide on primary
+The dump ends by rebuilding the search index, so search works as soon as the
+import finishes. Then point `database_id` in `wrangler.jsonc` at the restored
+database and deploy. Importing over an existing populated database will collide on primary
 keys — restore into an empty one.
 
 Note that restored OAuth session rows may be stale, so writers may need to sign
