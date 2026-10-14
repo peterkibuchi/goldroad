@@ -68,9 +68,9 @@ export const THREAD_FETCH_TIMEOUT_MS = 5_000;
  * ~13 KB a thread response does. */
 export const MAX_THREAD_RESPONSE_BYTES = 768 * 1024;
 
-/** app.bsky.feed.post caps `text` at 3000 characters (300 for `alt`s sibling
- * fields, but alt itself is generous) — a record claiming more is malformed or
- * hostile, so it is clamped rather than trusted. */
+/** app.bsky.feed.post caps `text` at 300 graphemes / 3000 bytes, so a
+ * record claiming more than 3000 characters is malformed or hostile, and is
+ * clamped rather than trusted. */
 const MAX_POST_TEXT_CHARS = 3_000;
 
 /** Alt text carried per image. Bluesky's own limit is far below this; the cap
@@ -348,11 +348,12 @@ export function threadTitle(text: string): string {
 export function escapeMarkdownText(text: string): string {
   return (
     text
-      .replace(/([\\`*_[\]<>|])/g, "\\$1")
+      .replace(/([\\`*_[\]<>|~&])/g, "\\$1")
       // Line-leading structure: #, >, -, +, = would become a heading, quote,
-      // list or setext rule. `1.` too, hence the digit case.
-      .replace(/^([#>\-+=])/gm, "\\$1")
-      .replace(/^(\d+)\./gm, "$1\\.")
+      // list or setext rule; `1.` and `1)` a numbered list. Leading space
+      // counts, because lines are trimmed after this runs.
+      .replace(/^(\s*)([#>\-+=])/gm, "$1\\$2")
+      .replace(/^(\s*\d+)([.)])/gm, "$1\\$2")
   );
 }
 
@@ -361,10 +362,10 @@ export function escapeMarkdownText(text: string): string {
  * plain text.
  *
  * Links are https-only, matching ~/lib/import's safeLink rule: an `http://`
- * link from a years-old post is left as visible text rather than upgraded to a
- * scheme it never had, and a `javascript:`/`data:` URI never reaches the
- * renderer at all. (The reader's react-markdown would refuse those anyway —
- * this is the layer that refuses them first.)
+ * link facet from a years-old post stays visible text rather than being
+ * upgraded to a scheme it never had, and a `javascript:`/`data:` URI never
+ * reaches the renderer. (The reader's markdown-it strips those too; this is
+ * the layer that refuses them first.)
  *
  * Mentions link to the mentioned account's DID rather than to the handle in
  * the text: the DID is what the facet actually asserts, and it keeps resolving
@@ -563,7 +564,10 @@ export function embedMarkdown(post: ThreadPost): EmbedResult {
         if (!url?.startsWith("https://")) continue;
         const alt =
           typeof image.alt === "string"
-            ? escapeMarkdownText(image.alt.slice(0, MAX_ALT_CHARS).trim())
+            ? escapeMarkdownText(
+                // One line: a blank line inside alt text ends the image.
+                image.alt.slice(0, MAX_ALT_CHARS).replace(/\s+/g, " ").trim(),
+              )
             : "";
         blocks.push(`![${alt}](${url})`);
       }
@@ -658,6 +662,9 @@ export function assembleThread(
 
   const root = normalizePost(thread.post, expected.author);
   if (!root || root.uri !== expected.rootUri) return null;
+  // Only a thread's head: a reply (to a stranger, or mid-thread) is not one,
+  // and importing from the middle would give the same thread a second guid.
+  if (root.parentUri !== null) return null;
 
   const spine: ThreadPost[] = [root];
   const nodes: Record<string, unknown>[] = [thread];
@@ -838,6 +845,8 @@ export async function discoverAuthorThreads(
     const result = await fetchAuthorFeedPage(did, cursor, fetcher);
     if (!result) {
       if (i === 0) return { threads: [], truncated: false, unavailable: true };
+      // A later page failed: what we have is not "every thread in the window".
+      truncated = true;
       break;
     }
     pages.push(result.page);
