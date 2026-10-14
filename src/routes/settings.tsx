@@ -567,7 +567,7 @@ function SettingsPage() {
 
         <SettingsSection
           id="your-data"
-          intro="Goldroad stores remarkably little for your account: drafts, your import history, your daily follower count, and your sign-in session. That's everything keyed to your account. What you've published lives in your own data repo, not here, so nothing below touches it."
+          intro="Goldroad stores remarkably little for your account: drafts, your import history, scheduled posts, your daily follower count, the addresses readers have left with your publication, and your sign-in session. That's everything keyed to your account. What you've published lives in your own data repo, not here, so nothing below touches it."
           title="Your data"
         >
           <p className="font-display text-ink-soft text-sm">

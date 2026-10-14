@@ -12,7 +12,7 @@ const store = vi.hoisted(() => ({
   selectFollowerSnapshotsForExport: vi.fn(),
   selectImportItemsForExport: vi.fn(),
   selectScheduledPostsForExport: vi.fn(),
-  countReaderEmailsForDid: vi.fn(),
+  selectReaderEmailsForExport: vi.fn(),
 }));
 vi.mock("~/lib/rights-store", () => store);
 
@@ -73,7 +73,7 @@ beforeEach(() => {
   store.selectImportItemsForExport.mockResolvedValue([]);
   store.selectFollowerSnapshotsForExport.mockResolvedValue([]);
   store.selectScheduledPostsForExport.mockResolvedValue([]);
-  store.countReaderEmailsForDid.mockResolvedValue([]);
+  store.selectReaderEmailsForExport.mockResolvedValue([]);
   atproto.resolveDidIdentity.mockResolvedValue({ handle: null, pds: null });
 });
 
@@ -310,36 +310,51 @@ describe("response shape", () => {
   });
 
   /**
-   * `reader_emails` IS keyed by the writer's DID, so the old manifest's "that
-   * is everything we hold keyed to your DID" was simply false the day the
-   * table shipped. The remedy is not to start exporting the addresses: those
-   * are the readers' personal data, left with a publication, and a
-   * subject-access download is not a lawful route to a list of other people's
-   * email addresses. So the export reports the COUNT and says what it is
-   * withholding and why.
+   * The writer controls their publication's reader list and Goldroad holds it
+   * for them, so the export is where they get it: every address, where it was
+   * left, and when.
    */
-  it("reports how many readers left an address, and no addresses at all", async () => {
-    store.countReaderEmailsForDid.mockResolvedValue([
-      { id: 1 },
-      { id: 2 },
-      { id: 3 },
+  it("hands the writer their reader list, with where and when each was left", async () => {
+    store.selectReaderEmailsForExport.mockResolvedValue([
+      {
+        email: "first@example.com",
+        source: "post",
+        consentedAt: new Date("2026-09-01T10:00:00.000Z"),
+      },
+      {
+        email: "second@example.com",
+        source: "publication",
+        consentedAt: new Date("2026-09-02T11:30:00.000Z"),
+      },
     ]);
     const res = await call();
-    const raw = await res.text();
-    const body = JSON.parse(raw) as {
+    const body = (await res.json()) as {
       manifest: string;
-      readerList: { count: number; addressesIncluded: boolean; note: string };
+      readerList: {
+        count: number;
+        readers: { email: string; source: string; consentedAt: string }[];
+      };
     };
 
-    expect(store.countReaderEmailsForDid).toHaveBeenCalledWith(
+    expect(store.selectReaderEmailsForExport).toHaveBeenCalledWith(
       expect.anything(),
       DID,
     );
-    expect(body.readerList.count).toBe(3);
-    expect(body.readerList.addressesIncluded).toBe(false);
-    expect(body.readerList.note).toMatch(/not exported/i);
-    // Nothing that looks like an address anywhere in the payload.
-    expect(raw).not.toMatch(/@(?!trygoldroad\.com)[a-z0-9.-]+\.[a-z]{2,}/i);
+    expect(body.readerList.count).toBe(2);
+    expect(body.readerList.readers).toEqual([
+      {
+        email: "first@example.com",
+        source: "post",
+        consentedAt: "2026-09-01T10:00:00.000Z",
+      },
+      {
+        email: "second@example.com",
+        source: "publication",
+        consentedAt: "2026-09-02T11:30:00.000Z",
+      },
+    ]);
+    expect(body.manifest).toMatch(/yours to control/i);
+    expect(body.manifest).toMatch(/on your behalf/i);
   });
 
   it("no longer claims the file is everything keyed to the DID", async () => {
