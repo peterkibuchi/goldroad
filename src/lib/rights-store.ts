@@ -20,17 +20,11 @@
  * which is exactly what happened to `reader_emails`, keyed by `writer_did`
  * and missed by both halves for as long as it existed.
  *
- * READER EMAILS ARE THE ONE ASYMMETRIC CASE, and the asymmetry is the point.
- * The rows are keyed to the writer's DID, so deletion reaches them and must:
- * a closed account cannot go on holding other people's addresses. The EXPORT
- * does not include them. They are a list of third parties' email addresses,
- * given to a publication rather than to its owner's data file, and handing
- * them over on a button press would be a disclosure of other people's
- * personal data dressed up as the writer's own subject-access right. The
- * export names the COUNT — which is a fact about the writer's publication —
- * and says plainly that the addresses go when the account goes. When sending
- * ships, a writer-facing subscriber list is a deliberate feature with its own
- * consent story, not a side effect of this file.
+ * READER EMAILS: the writer is the controller of their publication's reader
+ * list, and Goldroad processes it on their behalf. So the export hands the
+ * writer the addresses, with where and when each was left, and deleting the
+ * account deletes them: a closed account cannot go on holding other people's
+ * addresses.
  *
  * DELIBERATELY UNREACHABLE FROM HERE: `waitlist` and `reports` also hold an
  * email a writer may have typed, and neither can ever be covered by these
@@ -192,18 +186,20 @@ export function deleteHandleHistoryForDid(db: DrizzleD1, did: string) {
 }
 
 /**
- * How many readers have left an address with this writer's publication.
- *
- * The only thing about `reader_emails` the export reports, and deliberately so
- * — the count is a fact about the writer's own publication, while the
- * addresses belong to the readers who typed them. See the note at the top of
- * this file.
+ * The addresses readers have left with this writer's publication, oldest
+ * first, with the surface each was left on and when. Uncapped on purpose: a
+ * truncated list is a list the writer can't trust.
  */
-export function countReaderEmailsForDid(db: DrizzleD1, did: string) {
+export function selectReaderEmailsForExport(db: DrizzleD1, did: string) {
   return db
-    .select({ id: readerEmails.id })
+    .select({
+      email: readerEmails.email,
+      source: readerEmails.source,
+      consentedAt: readerEmails.consentedAt,
+    })
     .from(readerEmails)
-    .where(eq(readerEmails.writerDid, did));
+    .where(eq(readerEmails.writerDid, did))
+    .orderBy(asc(readerEmails.consentedAt), asc(readerEmails.id));
 }
 
 /**
