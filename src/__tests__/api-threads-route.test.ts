@@ -87,7 +87,7 @@ const OTHER = "did:plc:fake3333333333reader3333";
 const SECRET = "vitest-fake-cookie-secret"; // mirrors mocks/cloudflare-workers
 
 async function sessionCookie(): Promise<string> {
-  return `gr_session=${await signSession(DID, SECRET)}`;
+  return `gr_session=${await signSession(DID, "test-sid", SECRET)}`;
 }
 
 function uri(did: string, rkey: string): string {

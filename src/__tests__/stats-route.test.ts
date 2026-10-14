@@ -63,7 +63,7 @@ const DID_B = "did:plc:bbbbbbbbbbbbbbbbbbbbbbbb";
 async function requestAs(did: string | null, path = "/api/stats") {
   const headers: Record<string, string> = {};
   if (did) {
-    const token = await signSession(did, String(env.COOKIE_SECRET));
+    const token = await signSession(did, "test-sid", String(env.COOKIE_SECRET));
     headers.cookie = `gr_session=${token}`;
   }
   return GET({

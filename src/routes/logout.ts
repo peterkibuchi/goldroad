@@ -1,9 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { drizzle } from "drizzle-orm/d1";
 
 import { isDid } from "~/lib/atproto";
+import { readLiveSessionDid } from "~/lib/live-session";
 import { createOAuthClient } from "~/lib/oauth";
 import { isCrossSite } from "~/lib/origin";
-import { clearSessionCookies, readSessionDid } from "~/lib/session";
+import { deleteOAuthSessionForDid } from "~/lib/rights-store";
+import { clearSessionCookies } from "~/lib/session";
 import { env } from "cloudflare:workers";
 
 /**
@@ -30,20 +33,31 @@ export const Route = createFileRoute("/logout")({
           });
         if (isCrossSite(request)) return home();
 
-        // Deliberately the signature-only read, not the liveness one: signing
-        // out must work even when the session row is already gone. Requiring a
-        // live row here would make a half-revoked session impossible to clear,
-        // which is the opposite of what someone clicking "sign out" wants. This
-        // handler only revokes upstream and clears a cookie — there is nothing
-        // to protect behind a liveness check.
-        const did = await readSessionDid(request, env.COOKIE_SECRET);
+        // The cookies are cleared whatever happens. The session itself is
+        // only ended when this cookie names the live one: a stale cookie from
+        // an earlier session must not be able to sign out the current one.
+        const db = drizzle(env.DB);
+        const did = await readLiveSessionDid(
+          request,
+          env.COOKIE_SECRET,
+          db,
+        ).catch((err) => {
+          console.error("session read failed during sign-out", err);
+          return null;
+        });
         if (did && isDid(did)) {
-          // Best-effort: revoke tokens upstream and drop the D1 session.
-          // A failed revoke must never block clearing the cookie.
+          // Best-effort upstream revoke, then the row itself: revoke() can
+          // throw before it reaches its own delete, and the row is what
+          // keeps this cookie valid.
           try {
             await createOAuthClient(url.origin).revoke(did);
           } catch (err) {
             console.warn("token revoke failed", err);
+          }
+          try {
+            await deleteOAuthSessionForDid(db, did);
+          } catch (err) {
+            console.error("session row delete failed", err);
           }
         }
         const headers = new Headers({ location: "/" });

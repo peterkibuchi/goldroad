@@ -74,9 +74,11 @@ vi.mock("@atcute/client", () => ({
 }));
 
 const DID = "did:plc:fake2222222222writer2222";
+const extendSessionRow = vi.hoisted(() => vi.fn(async () => {}));
 vi.mock("~/lib/live-session", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/live-session")>()),
   readLiveSessionDid: () => Promise.resolve(DID),
+  extendSessionRow,
 }));
 
 import { Route } from "../routes/api.publish";
@@ -141,6 +143,7 @@ beforeEach(() => {
   for (const fn of Object.values(publishing)) fn.mockReset();
   for (const fn of Object.values(store)) fn.mockReset();
   restore.mockClear();
+  extendSessionRow.mockClear();
   store.selectDraft.mockResolvedValue([draftRow()]);
   store.deleteDraft.mockResolvedValue([{ id: DRAFT_ID }]);
   schedules.upsertSchedule.mockResolvedValue([{ id: ROW_ID, dueAt: NOW }]);
@@ -209,6 +212,17 @@ describe("intent=schedule", () => {
     expect(schedules.upsertSchedule.mock.calls[0][1]).toMatchObject({
       announce: false,
     });
+  });
+
+  it("keeps the session alive until 30 days past the due time", async () => {
+    // The cron publishes with the writer's session, which otherwise lapses
+    // after 30 idle days: a post due in 60 must not find it gone.
+    await call(fields);
+    expect(extendSessionRow).toHaveBeenCalledWith(
+      expect.anything(),
+      DID,
+      Date.parse("2026-08-04T06:00:00.000Z") + 30 * 24 * 60 * 60 * 1000,
+    );
   });
 
   it("converts the other sign correctly too", async () => {

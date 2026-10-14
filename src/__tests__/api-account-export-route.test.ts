@@ -58,7 +58,7 @@ const SECRET = "vitest-fake-cookie-secret"; // mirrors mocks/cloudflare-workers
 const NOW = new Date("2026-07-27T12:00:00.000Z");
 
 async function sessionCookie(): Promise<string> {
-  return `gr_session=${await signSession(DID, SECRET)}`;
+  return `gr_session=${await signSession(DID, "test-sid", SECRET)}`;
 }
 
 async function call(authed = true, crossSite = false): Promise<Response> {
