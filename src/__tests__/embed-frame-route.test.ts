@@ -33,11 +33,17 @@ const thumb = handlerOf<{ request: Request; params: { id: string } }>(
 
 const DID = "did:plc:z72i7hdynmk6r22z27h6tvur";
 
-async function open(path: string) {
+async function open(
+  path: string,
+  headers: HeadersInit = { "sec-fetch-dest": "iframe" },
+) {
   const url = new URL(path, "https://trygoldroad.com");
   const res = await frame({
-    request: new Request(url),
-    params: { _splat: url.pathname.replace(/^\/embed\//, "") },
+    request: new Request(url, { headers }),
+    // Decoded, as the router hands it over.
+    params: {
+      _splat: decodeURIComponent(url.pathname.replace(/^\/embed\//, "")),
+    },
   });
   // Through the same pass every page takes, with the site's own policy.
   return withSecurityHeaders(res, buildContentSecurityPolicy());
@@ -65,9 +71,19 @@ describe("/embed — the frame page", () => {
     expect(csp.get("frame-src")).toBe(PLAYER_ORIGINS.youtube);
     expect(csp.get("frame-ancestors")).toBe("'self'");
     expect(csp.get("default-src")).toBe("'none'");
-    expect(csp.has("script-src")).toBe(false);
     expect(res.headers.get("x-frame-options")).toBe("SAMEORIGIN");
+    expect(res.headers.get("referrer-policy")).toBe("strict-origin");
     const html = await res.text();
+    // The one script hands focus to the player, and is the one script allowed.
+    const script = /<script>([^<]*)<\/script>/.exec(html)?.[1] ?? "";
+    expect(script).toContain('querySelector("iframe").focus()');
+    const digest = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(script),
+    );
+    expect(csp.get("script-src")).toBe(
+      `'sha256-${Buffer.from(digest).toString("base64")}'`,
+    );
     expect(html).toContain(
       'src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?autoplay=1&amp;rel=0&amp;start=30"',
     );
@@ -89,7 +105,7 @@ describe("/embed — the frame page", () => {
     const res = await open("/embed/bluesky/alice.example/3l6oveex3ii2l");
     const html = await res.text();
     expect(html).toContain(
-      `src="https://embed.bsky.app/embed/${DID}/app.bsky.feed.post/3l6oveex3ii2l?id=post"`,
+      `src="https://embed.bsky.app/embed/${DID}/app.bsky.feed.post/3l6oveex3ii2l?id=post&amp;colorMode=system"`,
     );
     const script = /<script>([^<]*)<\/script>/.exec(html)?.[1] ?? "";
     const digest = await crypto.subtle.digest(
@@ -119,12 +135,23 @@ describe("/embed — the frame page", () => {
       "/embed/evil/dQw4w9WgXcQ",
       "/embed/youtube/dQw4w9WgXcQ/extra",
       "/embed/spotify/user/4uLU6hMCjMI75M1A2tKUQC",
-      "/embed/youtube/%E0%A4%A",
     ]) {
       const res = await open(path);
       expect(res.status).toBe(404);
       expect(directives(res).has("frame-src")).toBe(false);
     }
+  });
+});
+
+describe("/embed — opened directly", () => {
+  it("sends the reader to the provider's own page instead of playing", async () => {
+    const res = await open("/embed/youtube/dQw4w9WgXcQ?start=30", {
+      "sec-fetch-dest": "document",
+    });
+    expect(res.status).toBe(303);
+    expect(res.headers.get("location")).toBe(
+      "https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=30",
+    );
   });
 });
 
@@ -170,16 +197,28 @@ describe("/embed/thumb/youtube — the thumbnail proxy", () => {
     );
   });
 
-  it("serves nothing that isn't a JPEG", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(
-        async () =>
-          new Response("<svg/>", {
-            headers: { "content-type": "image/svg+xml" },
-          }),
-      ),
+  it("serves nothing that isn't a JPEG, and keeps the miss for an hour", async () => {
+    const store = new Map<string, Response>();
+    vi.stubGlobal("caches", {
+      default: {
+        match: async (key: URL) => store.get(String(key))?.clone(),
+        put: async (key: URL, res: Response) => {
+          store.set(String(key), res);
+        },
+      },
+    });
+    const fetchSpy = vi.fn(
+      async () =>
+        new Response("<svg/>", {
+          headers: { "content-type": "image/svg+xml" },
+        }),
     );
+    vi.stubGlobal("fetch", fetchSpy);
+    const first = await get("dQw4w9WgXcQ");
+    expect(first.status).toBe(404);
+    expect(first.headers.get("cache-control")).toBe("public, max-age=3600");
     expect((await get("dQw4w9WgXcQ")).status).toBe(404);
+    // The second reader got the kept miss, not another trip upstream.
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 });

@@ -32,6 +32,7 @@ const SPOTIFY_KINDS = [
 type SpotifyKind = (typeof SPOTIFY_KINDS)[number];
 
 const YOUTUBE_ID = /^[A-Za-z0-9_-]{11}$/;
+const NOT_VIDEO_IDS = new Set(["videoseries", "live_stream"]);
 const VIMEO_ID = /^\d{1,12}$/;
 const VIMEO_HASH = /^[0-9a-f]{6,20}$/;
 const SPOTIFY_ID = /^[A-Za-z0-9]{22}$/;
@@ -71,7 +72,9 @@ export function parseEmbed(raw: string): Embed | null {
         : path.length === 2 && ["shorts", "embed", "live"].includes(path[0])
           ? path[1]
           : null;
-    if (!id || !YOUTUBE_ID.test(id)) return null;
+    // Two 11-character path words that name a playlist or a channel's live
+    // stream, not a video.
+    if (!id || !YOUTUBE_ID.test(id) || NOT_VIDEO_IDS.has(id)) return null;
     return {
       provider: "youtube",
       id,
@@ -152,8 +155,9 @@ export function playerUrl(embed: Embed, did?: string): string | null {
     case "bluesky": {
       const actor = did ?? embed.actor;
       if (!isDid(actor)) return null;
-      // `id` is the Bluesky player's own key for the height it reports.
-      return `${PLAYER_ORIGINS.bluesky}/embed/${actor}/app.bsky.feed.post/${embed.rkey}?id=post`;
+      // `id` is the Bluesky player's own key for the height it reports; it
+      // draws light unless told to follow the reader's system.
+      return `${PLAYER_ORIGINS.bluesky}/embed/${actor}/app.bsky.feed.post/${embed.rkey}?id=post&colorMode=system`;
     }
   }
 }
@@ -202,6 +206,21 @@ export function parseFramePath(
         : null;
     default:
       return null;
+  }
+}
+
+/** The provider's own page for an embed: where a frame page opened directly,
+ * rather than inside one of our posts, sends the reader. */
+export function originalUrl(embed: Embed): string {
+  switch (embed.provider) {
+    case "youtube":
+      return `https://www.youtube.com/watch?v=${embed.id}${embed.start ? `&t=${embed.start}` : ""}`;
+    case "vimeo":
+      return `https://vimeo.com/${embed.id}${embed.hash ? `/${embed.hash}` : ""}`;
+    case "spotify":
+      return `https://open.spotify.com/${embed.kind}/${embed.id}`;
+    case "bluesky":
+      return `https://bsky.app/profile/${encodeURIComponent(embed.actor)}/post/${embed.rkey}`;
   }
 }
 

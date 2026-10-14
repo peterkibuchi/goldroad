@@ -11,8 +11,11 @@
  *
  * The player is sandboxed (scripts, its own origin, popups for "watch on
  * YouTube", and presentation for fullscreen; never top-level navigation), and
- * the reader's page is not in its referrer: the player sees this frame's URL,
- * which names the video and nothing about the post it sat in.
+ * its referrer is our origin alone, nothing about the post it sat in.
+ *
+ * Opened directly rather than in a frame, the page sends the reader to the
+ * provider's own page instead: it is a frame for our posts, not a player for
+ * anyone's link.
  *
  * A Bluesky player addresses a post by DID, and a post link usually carries a
  * handle, so the handle is resolved here, at click time, once. The player
@@ -24,24 +27,35 @@ import { createFileRoute } from "@tanstack/react-router";
 import { resolveHandleToDid } from "~/lib/atproto";
 import {
   embedLabel,
+  originalUrl,
   PLAYER_ORIGINS,
   parseFramePath,
   playerUrl,
 } from "~/lib/embeds";
 
-/** Forwards the Bluesky player's reported height, clamped by the parent. The
- * text is hashed into the page's script-src, so it can't change silently. */
-const HEIGHT_RELAY = `addEventListener("message",function(e){if(e.origin!=="${PLAYER_ORIGINS.bluesky}"||!e.data||typeof e.data.height!=="number")return;parent.postMessage({goldroadEmbedHeight:e.data.height},location.origin)})`;
+/** Hands keyboard focus to the player as soon as it exists: the reader's
+ * click focused this frame, and their next key (Space to pause) is for the
+ * player inside it. */
+const FOCUS_PLAYER = `document.querySelector("iframe").focus();`;
 
-let relayHash: Promise<string> | null = null;
-function heightRelayHash(): Promise<string> {
-  relayHash ??= crypto.subtle
-    .digest("SHA-256", new TextEncoder().encode(HEIGHT_RELAY))
-    .then(
-      (digest) =>
-        `'sha256-${btoa(String.fromCharCode(...new Uint8Array(digest)))}'`,
-    );
-  return relayHash;
+/** Forwards the Bluesky player's reported height, clamped by the parent. */
+const HEIGHT_RELAY = `addEventListener("message",function(e){if(e.origin!=="${PLAYER_ORIGINS.bluesky}"||!e.data||typeof e.data.height!=="number")return;parent.postMessage({goldroadEmbedHeight:e.data.height},location.origin)});`;
+
+/** The page's one script, and its hash for script-src: the text can't change
+ * without the policy changing with it. */
+const scriptHashes = new Map<string, Promise<string>>();
+function hashOf(script: string): Promise<string> {
+  let hash = scriptHashes.get(script);
+  if (!hash) {
+    hash = crypto.subtle
+      .digest("SHA-256", new TextEncoder().encode(script))
+      .then(
+        (digest) =>
+          `'sha256-${btoa(String.fromCharCode(...new Uint8Array(digest)))}'`,
+      );
+    scriptHashes.set(script, hash);
+  }
+  return hash;
 }
 
 const STYLE =
@@ -104,17 +118,14 @@ export const Route = createFileRoute("/embed/$")({
     handlers: {
       GET: async ({ request, params }) => {
         const url = new URL(request.url);
-        let segments: string[];
-        try {
-          segments = (params._splat ?? "")
-            .split("/")
-            .filter(Boolean)
-            .map((part) => decodeURIComponent(part));
-        } catch {
-          return unavailable(null);
-        }
+        // The router has already decoded the splat once.
+        const segments = (params._splat ?? "").split("/").filter(Boolean);
         const embed = parseFramePath(segments, url.searchParams);
         if (!embed) return unavailable(null);
+        // Browsers say where a request is headed; only a frame gets a player.
+        const dest = request.headers.get("sec-fetch-dest");
+        if (dest && dest !== "iframe")
+          return Response.redirect(originalUrl(embed), 303);
 
         let did: string | undefined;
         if (embed.provider === "bluesky" && !embed.actor.startsWith("did:")) {
@@ -129,14 +140,16 @@ export const Route = createFileRoute("/embed/$")({
 
         const { provider, kind } = embedLabel(embed);
         const player = `<iframe src="${escapeAttr(src)}" title="${escapeAttr(`${provider} ${kind.toLowerCase()}`)}" allow="autoplay; encrypted-media; fullscreen; picture-in-picture; clipboard-write" allowfullscreen sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-presentation"></iframe>`;
-        if (embed.provider !== "bluesky")
-          return page(player, frameCsp(PLAYER_ORIGINS[embed.provider]));
+        const script =
+          embed.provider === "bluesky"
+            ? FOCUS_PLAYER + HEIGHT_RELAY
+            : FOCUS_PLAYER;
         return page(
-          `${player}<script>${HEIGHT_RELAY}</script>`,
-          frameCsp(PLAYER_ORIGINS.bluesky, await heightRelayHash()),
+          `${player}<script>${script}</script>`,
+          frameCsp(PLAYER_ORIGINS[embed.provider], await hashOf(script)),
           200,
           // A handle can move to another account; don't hold the answer long.
-          3_600,
+          embed.provider === "bluesky" ? 3_600 : 86_400,
         );
       },
     },
