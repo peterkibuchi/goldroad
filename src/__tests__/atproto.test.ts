@@ -15,6 +15,7 @@ import {
   resolveDidIdentity,
   resolveDidToHandle,
   resolveDidToPds,
+  resolveHandleToDid,
   rkeyFromUri,
 } from "../lib/atproto";
 
@@ -439,6 +440,87 @@ describe("resolveDidIdentity", () => {
     await expect(resolveDidToPds(did)).rejects.toBeInstanceOf(NotFoundError);
     mockFetch(document);
     await expect(resolveDidToHandle(did)).resolves.toBe("writer.example");
+  });
+});
+
+describe("reader identity cache", () => {
+  const did = "did:plc:ukp7pzzht32uigg6bg4vxr5t";
+  const document = {
+    service: [
+      {
+        id: "#atproto_pds",
+        type: "AtprotoPersonalDataServer",
+        serviceEndpoint: "https://pds.example",
+      },
+    ],
+  };
+
+  /** Workers-cache stand-in over a Map, as in read-cache.test.ts. */
+  function mockCache() {
+    const store = new Map<string, string>();
+    vi.stubGlobal("caches", {
+      default: {
+        match: async (url: string) =>
+          store.has(url) ? new Response(store.get(url)) : undefined,
+        put: async (url: string, res: Response) => {
+          store.set(url, await res.text());
+        },
+      },
+    });
+    return store;
+  }
+
+  function mockFetch(respond: (url: string) => Response) {
+    const fn = vi.fn(async (input: URL | string) => respond(String(input)));
+    vi.stubGlobal("fetch", fn);
+    return fn;
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("resolves a handle and its PDS once, then answers from the cache", async () => {
+    mockCache();
+    const fetchMock = mockFetch((url) =>
+      url.includes("resolveHandle")
+        ? Response.json({ did })
+        : Response.json(document),
+    );
+    for (const handle of ["writer.example", "Writer.Example"]) {
+      await expect(resolveHandleToDid(handle)).resolves.toBe(did);
+      await expect(resolveDidToPds(did)).resolves.toBe("https://pds.example");
+    }
+    // Two serial round trips on the first page; none on the second, and a
+    // differently-cased handle is the same handle.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("never stores a failure", async () => {
+    mockCache();
+    let up = false;
+    const fetchMock = mockFetch(() =>
+      up ? Response.json(document) : new Response("", { status: 503 }),
+    );
+    await expect(resolveDidToPds(did)).rejects.toBeInstanceOf(NotFoundError);
+    up = true;
+    // The outage wasn't remembered, and the answer that followed it was.
+    for (let i = 0; i < 2; i++)
+      await expect(resolveDidToPds(did)).resolves.toBe("https://pds.example");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("re-checks a cached PDS with the SSRF guard", async () => {
+    const store = mockCache();
+    store.set(
+      `https://goldroad-identity.internal/v1/pds/${encodeURIComponent(did)}`,
+      "http://localhost:8080",
+    );
+    const fetchMock = mockFetch(() => Response.json(document));
+    // Refused and resolved afresh, and the fresh answer replaces it.
+    for (let i = 0; i < 2; i++)
+      await expect(resolveDidToPds(did)).resolves.toBe("https://pds.example");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 

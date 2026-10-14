@@ -71,6 +71,14 @@ function mockCache() {
   return cache;
 }
 
+/** Stores of the image itself. The PDS lookup shares caches.default
+ * (~/lib/atproto keeps resolved identities there too), so filter it out. */
+function blobPuts(cache: ReturnType<typeof mockCache>) {
+  return cache.put.mock.calls.filter(
+    ([url]) => !String(url).startsWith("https://goldroad-identity.internal/"),
+  );
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -101,7 +109,7 @@ describe("/img/$did/$cid — happy path + cache flow", () => {
       "cross-origin",
     );
     expect(new Uint8Array(await res.arrayBuffer())).toEqual(BYTES);
-    expect(cache.put).toHaveBeenCalledTimes(1);
+    expect(blobPuts(cache)).toHaveLength(1);
     expect(fetchFn).toHaveBeenCalledTimes(2); // DID doc + getBlob
   });
 
@@ -162,7 +170,7 @@ describe("/img/$did/$cid — every rejection is a plain 404", () => {
     const res = await call(DID, CID);
     expect(res.status).toBe(404);
     expect(res.headers.get("cache-control")).toBe("no-store");
-    expect(cache.put).not.toHaveBeenCalled();
+    expect(blobPuts(cache)).toHaveLength(0);
   });
 
   it("404s disallowed content types — SVG and text/html never serve", async () => {
