@@ -38,6 +38,7 @@ import { Route as ApiStatsRouteImport } from './routes/api.stats'
 import { Route as ApiSubscribeRouteImport } from './routes/api.subscribe'
 import { Route as ApiSubscriptionRouteImport } from './routes/api.subscription'
 import { Route as ApiWaitlistRouteImport } from './routes/api.waitlist'
+import { Route as EmbedSplatRouteImport } from './routes/embed.$'
 import { Route as OauthCallbackRouteImport } from './routes/oauth.callback'
 import { Route as OauthClientMetadataDotjsonRouteImport } from './routes/oauth.client-metadata[.]json'
 import { Route as OauthJwksDotjsonRouteImport } from './routes/oauth.jwks[.]json'
@@ -47,6 +48,7 @@ import { Route as ApiImportDraftRouteImport } from './routes/api.import.draft'
 import { Route as ApiImportStatusRouteImport } from './routes/api.import.status'
 import { Route as ImgDidCidRouteImport } from './routes/img.$did.$cid'
 import { Route as PHandleRkeyRouteImport } from './routes/p.$handle.$rkey'
+import { Route as EmbedThumbYoutubeIdRouteImport } from './routes/embed.thumb.youtube.$id'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -196,6 +198,11 @@ const ApiWaitlistRoute = ApiWaitlistRouteImport.update({
   path: '/api/waitlist',
   getParentRoute: () => rootRouteImport,
 } as any)
+const EmbedSplatRoute = EmbedSplatRouteImport.update({
+  id: '/embed/$',
+  path: '/embed/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OauthCallbackRoute = OauthCallbackRouteImport.update({
   id: '/oauth/callback',
   path: '/oauth/callback',
@@ -242,6 +249,11 @@ const PHandleRkeyRoute = PHandleRkeyRouteImport.update({
   path: '/p/$handle/$rkey',
   getParentRoute: () => rootRouteImport,
 } as any)
+const EmbedThumbYoutubeIdRoute = EmbedThumbYoutubeIdRouteImport.update({
+  id: '/embed/thumb/youtube/$id',
+  path: '/embed/thumb/youtube/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -272,6 +284,7 @@ export interface FileRoutesByFullPath {
   '/api/subscribe': typeof ApiSubscribeRoute
   '/api/subscription': typeof ApiSubscriptionRoute
   '/api/waitlist': typeof ApiWaitlistRoute
+  '/embed/$': typeof EmbedSplatRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/oauth/client-metadata.json': typeof OauthClientMetadataDotjsonRoute
   '/oauth/jwks.json': typeof OauthJwksDotjsonRoute
@@ -282,6 +295,7 @@ export interface FileRoutesByFullPath {
   '/api/import/status': typeof ApiImportStatusRoute
   '/img/$did/$cid': typeof ImgDidCidRoute
   '/p/$handle/$rkey': typeof PHandleRkeyRoute
+  '/embed/thumb/youtube/$id': typeof EmbedThumbYoutubeIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -312,6 +326,7 @@ export interface FileRoutesByTo {
   '/api/subscribe': typeof ApiSubscribeRoute
   '/api/subscription': typeof ApiSubscriptionRoute
   '/api/waitlist': typeof ApiWaitlistRoute
+  '/embed/$': typeof EmbedSplatRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/oauth/client-metadata.json': typeof OauthClientMetadataDotjsonRoute
   '/oauth/jwks.json': typeof OauthJwksDotjsonRoute
@@ -322,6 +337,7 @@ export interface FileRoutesByTo {
   '/api/import/status': typeof ApiImportStatusRoute
   '/img/$did/$cid': typeof ImgDidCidRoute
   '/p/$handle/$rkey': typeof PHandleRkeyRoute
+  '/embed/thumb/youtube/$id': typeof EmbedThumbYoutubeIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -353,6 +369,7 @@ export interface FileRoutesById {
   '/api/subscribe': typeof ApiSubscribeRoute
   '/api/subscription': typeof ApiSubscriptionRoute
   '/api/waitlist': typeof ApiWaitlistRoute
+  '/embed/$': typeof EmbedSplatRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/oauth/client-metadata.json': typeof OauthClientMetadataDotjsonRoute
   '/oauth/jwks.json': typeof OauthJwksDotjsonRoute
@@ -363,6 +380,7 @@ export interface FileRoutesById {
   '/api/import/status': typeof ApiImportStatusRoute
   '/img/$did/$cid': typeof ImgDidCidRoute
   '/p/$handle/$rkey': typeof PHandleRkeyRoute
+  '/embed/thumb/youtube/$id': typeof EmbedThumbYoutubeIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -395,6 +413,7 @@ export interface FileRouteTypes {
     | '/api/subscribe'
     | '/api/subscription'
     | '/api/waitlist'
+    | '/embed/$'
     | '/oauth/callback'
     | '/oauth/client-metadata.json'
     | '/oauth/jwks.json'
@@ -405,6 +424,7 @@ export interface FileRouteTypes {
     | '/api/import/status'
     | '/img/$did/$cid'
     | '/p/$handle/$rkey'
+    | '/embed/thumb/youtube/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -435,6 +455,7 @@ export interface FileRouteTypes {
     | '/api/subscribe'
     | '/api/subscription'
     | '/api/waitlist'
+    | '/embed/$'
     | '/oauth/callback'
     | '/oauth/client-metadata.json'
     | '/oauth/jwks.json'
@@ -445,6 +466,7 @@ export interface FileRouteTypes {
     | '/api/import/status'
     | '/img/$did/$cid'
     | '/p/$handle/$rkey'
+    | '/embed/thumb/youtube/$id'
   id:
     | '__root__'
     | '/'
@@ -475,6 +497,7 @@ export interface FileRouteTypes {
     | '/api/subscribe'
     | '/api/subscription'
     | '/api/waitlist'
+    | '/embed/$'
     | '/oauth/callback'
     | '/oauth/client-metadata.json'
     | '/oauth/jwks.json'
@@ -485,6 +508,7 @@ export interface FileRouteTypes {
     | '/api/import/status'
     | '/img/$did/$cid'
     | '/p/$handle/$rkey'
+    | '/embed/thumb/youtube/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -516,6 +540,7 @@ export interface RootRouteChildren {
   ApiSubscribeRoute: typeof ApiSubscribeRoute
   ApiSubscriptionRoute: typeof ApiSubscriptionRoute
   ApiWaitlistRoute: typeof ApiWaitlistRoute
+  EmbedSplatRoute: typeof EmbedSplatRoute
   OauthCallbackRoute: typeof OauthCallbackRoute
   OauthClientMetadataDotjsonRoute: typeof OauthClientMetadataDotjsonRoute
   OauthJwksDotjsonRoute: typeof OauthJwksDotjsonRoute
@@ -524,6 +549,7 @@ export interface RootRouteChildren {
   ApiAccountExportRoute: typeof ApiAccountExportRoute
   ImgDidCidRoute: typeof ImgDidCidRoute
   PHandleRkeyRoute: typeof PHandleRkeyRoute
+  EmbedThumbYoutubeIdRoute: typeof EmbedThumbYoutubeIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -731,6 +757,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWaitlistRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/embed/$': {
+      id: '/embed/$'
+      path: '/embed/$'
+      fullPath: '/embed/$'
+      preLoaderRoute: typeof EmbedSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/oauth/callback': {
       id: '/oauth/callback'
       path: '/oauth/callback'
@@ -794,6 +827,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PHandleRkeyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/embed/thumb/youtube/$id': {
+      id: '/embed/thumb/youtube/$id'
+      path: '/embed/thumb/youtube/$id'
+      fullPath: '/embed/thumb/youtube/$id'
+      preLoaderRoute: typeof EmbedThumbYoutubeIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -840,6 +880,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiSubscribeRoute: ApiSubscribeRoute,
   ApiSubscriptionRoute: ApiSubscriptionRoute,
   ApiWaitlistRoute: ApiWaitlistRoute,
+  EmbedSplatRoute: EmbedSplatRoute,
   OauthCallbackRoute: OauthCallbackRoute,
   OauthClientMetadataDotjsonRoute: OauthClientMetadataDotjsonRoute,
   OauthJwksDotjsonRoute: OauthJwksDotjsonRoute,
@@ -848,6 +889,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAccountExportRoute: ApiAccountExportRoute,
   ImgDidCidRoute: ImgDidCidRoute,
   PHandleRkeyRoute: PHandleRkeyRoute,
+  EmbedThumbYoutubeIdRoute: EmbedThumbYoutubeIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

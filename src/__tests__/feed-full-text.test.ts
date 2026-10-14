@@ -264,7 +264,7 @@ it("pins the renderer's output to RENDER_VERSION", async () => {
   );
   const hash = Buffer.from(digest).toString("hex").slice(0, 16);
   expect({ RENDER_VERSION, hash }).toEqual({
-    RENDER_VERSION: 1,
+    RENDER_VERSION: 2,
     hash: "2aa45ce6a1269f0c",
   });
 });

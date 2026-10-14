@@ -166,7 +166,8 @@
  *               accent, which is the pair accentForeground exists for.
  */
 @layer base {
-  [data-writer-theme] .gr-prose a {
+  /* Not the embed previews: each is a whole card, not a word in a line. */
+  [data-writer-theme] .gr-prose a:not(.gr-embed-preview) {
     color: var(--color-spot);
   }
 }

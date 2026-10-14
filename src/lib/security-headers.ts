@@ -39,8 +39,9 @@ const TURNSTILE_ORIGIN = "https://challenges.cloudflare.com";
  *   ingest origin (VITE_PUBLIC_POSTHOG_HOST) for reverse-proxied setups.
  * - Turnstile (optional anti-bot) needs script-src for api.js and frame-src
  *   for the challenge iframe. frame-src is stated explicitly because adding
- *   the Turnstile origin means default-src no longer covers it; 'self' is
- *   kept so a future same-origin frame doesn't silently break.
+ *   the Turnstile origin means default-src no longer covers it. 'self' is
+ *   what an embedded video, song or post loads into: our own frame page
+ *   (/embed/…), which allows that one player. No provider is ever named here.
  */
 export function buildContentSecurityPolicy(
   posthogHost: string = POSTHOG_INGEST,
@@ -101,12 +102,17 @@ export function withSecurityHeaders(
   // Reconstruct: a handler/cache response may carry immutable headers.
   const res = new Response(response.body, response);
   const h = res.headers;
+  // A page that states its own policy keeps it. Only the /embed frame pages
+  // do: theirs is stricter than this one in every directive but two, which
+  // allow one provider's player and let our own pages frame them.
+  const own = h.get("content-security-policy");
+  const frameableBySelf = own?.includes("frame-ancestors 'self'") === true;
   h.set("strict-transport-security", "max-age=31536000; includeSubDomains");
-  h.set("x-frame-options", "DENY");
+  h.set("x-frame-options", frameableBySelf ? "SAMEORIGIN" : "DENY");
   h.set("x-content-type-options", "nosniff");
   h.set("referrer-policy", "strict-origin-when-cross-origin");
   h.set("cross-origin-opener-policy", "same-origin");
-  if (csp) h.set("content-security-policy", csp);
+  if (csp && !own) h.set("content-security-policy", csp);
   if (buildSha) h.set("x-goldroad-version", buildSha);
   return res;
 }

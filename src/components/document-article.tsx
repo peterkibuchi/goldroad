@@ -247,7 +247,9 @@ export async function loadDocument(
     // Rendered here, once, and shipped as HTML so hydration never re-parses
     // it. Started last: without a cache it renders synchronously.
     const body = documentBodyMarkdown(doc);
-    const bodyHtmlPromise = renderBodies([body]).then(([html]) => html);
+    const bodyHtmlPromise = renderBodies([body], undefined, {
+      embeds: true,
+    }).then(([html]) => html);
 
     const [pub, relatedPage, engagement, mirror, bodyHtml] = await Promise.all([
       pubPromise,
@@ -630,7 +632,8 @@ export function DocumentArticle({
   bodyHtml?: string;
   readingMinutes?: number;
 }) {
-  const html = bodyHtml ?? markdownToHtml(documentBodyMarkdown(doc));
+  const html =
+    bodyHtml ?? markdownToHtml(documentBodyMarkdown(doc), { embeds: true });
   const date = formatDate(doc.publishedAt);
   const updated = formatDate(doc.updatedAt);
   const publicationHref = `/@${encodeURIComponent(ident)}`;
