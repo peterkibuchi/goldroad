@@ -192,10 +192,49 @@ describe("documentHead — JSON-LD Article script", () => {
   it("falls back the publisher to the handle when no publication record was resolved", () => {
     const { scripts } = documentHead({ ...loaderData, publicationName: null });
     const jsonLd = JSON.parse(scripts?.[0]?.children ?? "{}");
+    // No record URL either, so both point at the writer's page here.
     expect(jsonLd.publisher).toEqual({
       "@type": "Organization",
       name: "writer.example",
+      url: "https://trygoldroad.com/@writer.example",
     });
+    expect(jsonLd.author).toEqual({
+      "@type": "Person",
+      name: "writer.example",
+      url: "https://trygoldroad.com/@writer.example",
+      sameAs: ["https://bsky.app/profile/writer.example"],
+    });
+  });
+
+  it("links the author and publisher to the publication, with its icon as the logo", () => {
+    const { scripts } = documentHead({
+      ...loaderData,
+      publicationUrl: "https://writer.leaflet.pub",
+      publicationIcon: {
+        did: "did:plc:fake0000000000writer0000",
+        cid: "bafkreiicon",
+      },
+    });
+    const jsonLd = JSON.parse(scripts?.[0]?.children ?? "{}");
+    expect(jsonLd.author.url).toBe("https://writer.leaflet.pub");
+    expect(jsonLd.publisher).toEqual({
+      "@type": "Organization",
+      name: "The Long Way",
+      url: "https://writer.leaflet.pub",
+      logo: {
+        "@type": "ImageObject",
+        url: "https://trygoldroad.com/img/did%3Aplc%3Afake0000000000writer0000/bafkreiicon",
+      },
+    });
+    expect(jsonLd.description).toBe("An excerpt.");
+    expect(jsonLd.dateModified).toBe("2026-01-01T00:00:00.000Z");
+    expect(jsonLd.mainEntityOfPage).toBe(loaderData.canonicalUrl);
+  });
+
+  it("falls back the image to the default card, as og:image does", () => {
+    const { scripts } = documentHead(loaderData);
+    const jsonLd = JSON.parse(scripts?.[0]?.children ?? "{}");
+    expect(jsonLd.image).toBe("https://trygoldroad.com/og.png");
   });
 
   it("includes the same absolute cover-image URL used for og:image", () => {
