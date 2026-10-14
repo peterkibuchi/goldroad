@@ -70,6 +70,7 @@ describe("privacy policy — your rights", () => {
       /drafts/i,
       /import history/i,
       /follower history/i,
+      /publication address/i,
       /sign-in session/i,
     ]) {
       expect(text).toMatch(category);

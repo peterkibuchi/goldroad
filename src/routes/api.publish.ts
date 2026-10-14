@@ -31,6 +31,7 @@ import { deleteDraft, selectDraft } from "~/lib/drafts";
 import { isDraftId } from "~/lib/drafts-schema";
 import { captureHandledFailure } from "~/lib/error-tracking";
 import { recordWriterHandle } from "~/lib/handle-history";
+import { noteHostedPublication } from "~/lib/hosted-publications";
 import {
   clampOriginalDate,
   IMAGE_SUBREQUEST_BUDGET,
@@ -667,7 +668,6 @@ async function publishDocument({
     (originalAt ? generateTid(originalAt.getTime()) : generateTid());
   const site = await resolvePublicationSite({
     rpc,
-    db: drizzle(env.DB),
     did,
     ident,
     pds,
@@ -776,6 +776,8 @@ async function publishDocument({
   await indexDocument(drizzle(env.DB), did, rkey, record).catch((err) => {
     console.warn("search index after publish failed", err);
   });
+  // The sitemap's list of publications hosted here; best-effort, never fails.
+  await noteHostedPublication(drizzle(env.DB), did, ident, site);
 
   // Import ledger write-back: record the rkey this item published under —
   // that row is what gives the reader page its provenance treatment (a feed

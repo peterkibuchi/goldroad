@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "74799481-9def-49ab-8c55-3cc198f1c039",
+  "id": "11f57f97-1611-4dfe-8fb5-7fd333d62fc8",
   "prevId": "f98cde17-29d6-4f95-a9a5-114b723623dc",
   "tables": {
     "backup_runs": {
@@ -273,8 +273,8 @@
           "notNull": true,
           "autoincrement": false
         },
-        "url": {
-          "name": "url",
+        "ident": {
+          "name": "ident",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -288,7 +288,13 @@
           "autoincrement": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "hosted_publications_updated_idx": {
+          "name": "hosted_publications_updated_idx",
+          "columns": ["updated_at"],
+          "isUnique": false
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
