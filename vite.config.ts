@@ -6,6 +6,8 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import viteReact, { reactCompilerPreset } from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
+import { randomUUID } from "node:crypto";
+
 /**
  * The commit this bundle was built from, stamped in at build time so a deployed
  * Worker can say which source it is running.
@@ -18,8 +20,18 @@ import { defineConfig } from "vite";
  */
 const BUILD_SHA = process.env.WORKERS_CI_COMMIT_SHA ?? "dev";
 
+/**
+ * Different for every build, unlike BUILD_SHA ("dev" off CI, and the same
+ * when one commit is rebuilt with other settings). The edge cache keys stored
+ * pages on it, because a page names this build's hashed assets.
+ */
+const BUILD_ID = randomUUID();
+
 const config = defineConfig({
-  define: { __BUILD_SHA__: JSON.stringify(BUILD_SHA) },
+  define: {
+    __BUILD_SHA__: JSON.stringify(BUILD_SHA),
+    __BUILD_ID__: JSON.stringify(BUILD_ID),
+  },
   resolve: { tsconfigPaths: true },
   plugins: [
     devtools(),

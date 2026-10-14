@@ -5,7 +5,8 @@
  * uncached — so a loop of requests burns the Worker request budget AND hammers
  * third-party PDSes from our IP. This wraps those GET responses in the Workers
  * Cache API (free tier — NOT R2, like `/img`), collapsing repeat reads to a
- * single edge lookup.
+ * single edge lookup. The marketing and policy pages share it (see
+ * MARKETING_PATHS); the takedown notes below concern the reading surfaces.
  *
  * TTL AND THE TAKEDOWN SLA. The takedown check runs INSIDE the loader, and a
  * HIT here returns the stored bytes without invoking the loader at all — so the
@@ -74,12 +75,14 @@ const MARKETING_PATHS = new Set([
 const BUILD_HEADER = "x-goldroad-build";
 
 /** Whether this request is a GET to a cacheable reading surface or marketing
- * page. A marketing URL with a query string is rendered fresh: `/` reads
- * `?notice=` server-side, and the key below drops the query. */
+ * page. The key below drops the query, so `/?utm_source=…` shares `/`'s
+ * entry. The one query a marketing page reads on the server is `/`'s
+ * `?notice=` (the goodbye after account deletion), which renders fresh. */
 export function isCacheableReadRequest(request: Request): boolean {
   if (request.method !== "GET") return false;
   const url = new URL(request.url);
-  if (MARKETING_PATHS.has(url.pathname)) return url.search === "";
+  if (MARKETING_PATHS.has(url.pathname))
+    return !(url.pathname === "/" && url.searchParams.has("notice"));
   return READ_SURFACE_RE.test(url.pathname);
 }
 
@@ -135,8 +138,8 @@ function isCacheableResponse(response: Response): boolean {
  * A stored page carries the `build` that rendered it, and a hit from another
  * build is rendered afresh. The HTML names that build's hashed scripts and
  * stylesheet, which a deploy removes: served after one, a cached page loaded
- * no JavaScript at all (every script a 404) until its TTL ran out. Every
- * local build is "dev", so a local preview can still show that for a TTL.
+ * no JavaScript at all (every script a 404) until its TTL ran out. A page
+ * stored before builds were recorded has no build, so it misses too.
  */
 export async function serveWithReadCache(
   request: Request,

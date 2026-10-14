@@ -11,6 +11,8 @@
 
 /** Stamped by vite.config.ts from WORKERS_CI_COMMIT_SHA; "dev" off CI. */
 declare const __BUILD_SHA__: string;
+/** Unique per build (vite.config.ts); keys the edge cache's stored pages. */
+declare const __BUILD_ID__: string;
 
 import handler, { createServerEntry } from "@tanstack/react-start/server-entry";
 
@@ -40,13 +42,13 @@ const entry = createServerEntry({
   async fetch(request, opts) {
     const redirect = canonicalRedirect(request);
     if (redirect) return redirect;
-    // Reading surfaces are served through the edge cache; everything
-    // else (and any non-reading path) falls straight through.
+    // Reading surfaces and marketing pages are served through the edge
+    // cache; everything else falls straight through.
     const response = await serveWithReadCache(
       request,
       () => handler.fetch(request, opts),
       waitUntil,
-      __BUILD_SHA__,
+      __BUILD_ID__,
     );
     // Security-header baseline on HTML documents. Applied after the
     // cache so policy changes take effect on already-cached pages immediately.
