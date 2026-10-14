@@ -24,6 +24,8 @@
  * builder (awaitable, and verifiable via `.toSQL()` without a live D1) or a
  * pure function. The pass takes a `ScheduledPostStore` and a publisher, so it
  * can be exercised end to end against plain objects — no D1, no PDS, no OAuth.
+ * A `.toSQL()` string can't show whether SQLite accepts a conflict target
+ * against a partial index; those run against real SQLite in the tests.
  */
 import { and, asc, eq, isNull, lt, lte, or, sql } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/d1";
@@ -274,7 +276,9 @@ export function upsertSchedule(
     .values({ ...row, status: "pending", createdAt: now, updatedAt: now })
     .onConflictDoUpdate({
       target: [scheduledPosts.did, scheduledPosts.draftId],
-      targetWhere: eq(scheduledPosts.status, "pending"),
+      // Must equal the partial index's predicate literally (~/db/schema): a
+      // bound `status = ?` never matches it, and SQLite refuses the upsert.
+      targetWhere: sql`${scheduledPosts.status} = 'pending'`,
       set: {
         dueAt: row.dueAt,
         attempts: 0,

@@ -286,6 +286,8 @@ export const scheduledPosts = sqliteTable(
     // At most one live schedule per draft: re-scheduling updates that row
     // instead of stacking a second publish behind the first. Partial, so a
     // finished row never blocks the writer scheduling that draft again.
+    // `upsertSchedule`'s conflict target repeats this predicate literally;
+    // change both or neither.
     uniqueIndex("scheduled_posts_did_draft_pending_idx")
       .on(table.did, table.draftId)
       .where(sql`${table.status} = 'pending'`),
