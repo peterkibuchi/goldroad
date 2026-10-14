@@ -17,7 +17,9 @@ import { afterEach, describe, expect, it } from "vitest";
  * every entry now, and the markdown projection saved alongside the blocks is
  * what the editor falls back to.
  */
-import Editor from "../components/editor";
+import Editor, {
+  type BlockNoteEditor as EditorInstance,
+} from "../components/editor";
 import { parseDraftBlocks } from "../routes/write";
 
 afterEach(cleanup);
@@ -132,12 +134,12 @@ describe("parseDraftBlocks", () => {
 });
 
 describe("the editor's fallback when stored blocks won't load", () => {
-  function documentText(editor: BlockNoteEditor): string {
+  function documentText(editor: EditorInstance): string {
     return JSON.stringify(editor.document);
   }
 
   it("loads the markdown projection instead of opening blank", async () => {
-    let editor: BlockNoteEditor | null = null;
+    let editor: EditorInstance | null = null;
     render(
       <Editor
         initialBlocks={[null]}
@@ -148,7 +150,7 @@ describe("the editor's fallback when stored blocks won't load", () => {
       />,
     );
     await waitFor(() => expect(editor).not.toBeNull());
-    expect(documentText(editor as unknown as BlockNoteEditor)).toContain(
+    expect(documentText(editor as unknown as EditorInstance)).toContain(
       "The words the writer actually typed.",
     );
   });
@@ -160,7 +162,7 @@ describe("the editor's fallback when stored blocks won't load", () => {
    * it and loads the words.
    */
   it("still recovers when an object turns out not to be content", async () => {
-    let editor: BlockNoteEditor | null = null;
+    let editor: EditorInstance | null = null;
     render(
       <Editor
         initialBlocks={[{ type: "paragraph", content: { nonsense: true } }]}
@@ -171,13 +173,13 @@ describe("the editor's fallback when stored blocks won't load", () => {
       />,
     );
     await waitFor(() => expect(editor).not.toBeNull());
-    expect(documentText(editor as unknown as BlockNoteEditor)).toContain(
+    expect(documentText(editor as unknown as EditorInstance)).toContain(
       "The words the writer actually typed.",
     );
   });
 
   it("prefers the blocks when they load — markdown is lossy", async () => {
-    let editor: BlockNoteEditor | null = null;
+    let editor: EditorInstance | null = null;
     render(
       <Editor
         initialBlocks={[
@@ -193,7 +195,7 @@ describe("the editor's fallback when stored blocks won't load", () => {
       />,
     );
     await waitFor(() => expect(editor).not.toBeNull());
-    const text = documentText(editor as unknown as BlockNoteEditor);
+    const text = documentText(editor as unknown as EditorInstance);
     expect(text).toContain("Lossless");
     expect(text).not.toContain("The lossy projection");
   });
