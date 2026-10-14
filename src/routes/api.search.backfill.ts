@@ -44,9 +44,11 @@ export const Route = createFileRoute("/api/search/backfill")({
               "site.standard.document",
               { cursor, limit: BACKFILL_PAGE_SIZE },
             ).catch((err: unknown) => {
-              // A repo the PDS won't list has nothing to index, which is an
-              // end, not a failure to retry forever.
-              if (err instanceof NotFoundError)
+              // A repo the PDS won't list at all has nothing to index, which
+              // is an end, not a failure to retry forever. Halfway through
+              // the walk the same refusal is a failure: calling it the end
+              // would mark a partial index complete.
+              if (err instanceof NotFoundError && cursor === undefined)
                 return { records: [], cursor: null };
               throw err;
             });

@@ -62,9 +62,14 @@ The export goes through `scripts/d1-export.sh` rather than a bare
 `wrangler d1 export`, because D1 refuses to export a database that holds a
 virtual table, and post search is one (an FTS5 index). The script exports the
 ordinary tables by name, then appends what a table-scoped export leaves out:
-the search index's definition, every index and trigger, and a rebuild of the
-search index from `search_documents`. The dump still restores with the one
-command below. Run it against your local database to see what it produces:
+the search index's definition, every index, view and trigger, and a rebuild
+of the search index from `search_documents`. Because the dump is assembled,
+the workflow proves it: it loads the dump into a scratch SQLite database and
+runs the search index's consistency check before encrypting anything. The dump
+still restores with the one command below. One difference from a whole-database
+export: SQLite's AUTOINCREMENT counters aren't in it, so a restored table's next
+id follows its highest row, not its highest id ever. Run the script against
+your local database to see what it produces:
 
 ```sh
 scripts/d1-export.sh goldroad-db /tmp/d1-dump.sql --local
