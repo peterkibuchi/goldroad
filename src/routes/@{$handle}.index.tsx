@@ -1,5 +1,5 @@
 import { createFileRoute, notFound } from "@tanstack/react-router";
-import { Fragment, useState } from "react";
+import { Fragment } from "react";
 
 import {
   ContentUnavailable,
@@ -34,6 +34,12 @@ import { documentBodyMarkdown } from "~/lib/document-content";
 import { checkHidden } from "~/lib/moderation";
 import { CANONICAL_ORIGIN } from "~/lib/origin";
 import { formatReadingTime, listItemReadingMinutes } from "~/lib/reading-time";
+import { type SearchHit, searchPublication } from "~/lib/search";
+import {
+  MAX_QUERY_LENGTH,
+  normalizeQuery,
+  snippetParts,
+} from "~/lib/search-query";
 import { type BasicTheme, parseTheme } from "~/lib/theme";
 import { cn } from "~/lib/utils";
 
@@ -43,14 +49,22 @@ import { cn } from "~/lib/utils";
  * (name/description/icon) and one 50-document page of site.standard.document
  * records ("Older posts" continues via the PDS cursor in ?cursor=). Works
  * for any atproto author, not just Goldroad writers.
+ *
+ * `?q=` searches, from a plain GET form so it works without JavaScript. A
+ * Goldroad writer whose posts are indexed gets full-text results with the
+ * matches highlighted (~/lib/search); anyone else gets the first page's titles
+ * and summaries filtered, and the page says that is what it searched. A
+ * search is never cached (~/lib/read-cache).
  */
 export const Route = createFileRoute("/@{$handle}/")({
   validateSearch: (search: Record<string, unknown>) => {
-    const out: { cursor?: string } = {};
+    const out: { cursor?: string; q?: string } = {};
     if (isValidCursor(search.cursor)) out.cursor = search.cursor;
+    const q = normalizeQuery(search.q);
+    if (q) out.q = q;
     return out;
   },
-  loaderDeps: ({ search }) => ({ cursor: search.cursor }),
+  loaderDeps: ({ search }) => ({ cursor: search.cursor, q: search.q }),
   loader: async ({ params, deps }) => {
     const ident = decodeURIComponent(params.handle);
     if (!isHandle(ident) && !isDid(ident)) throw notFound();
@@ -62,6 +76,12 @@ export const Route = createFileRoute("/@{$handle}/")({
       // below, so nothing of a hidden author's is ever fetched — only the
       // waiting is shared.
       const hiddenPromise = checkHidden({ data: { did } });
+      // The index answers in parallel with the directory; its results are
+      // only used once the takedown check below has passed.
+      const q = deps.q ?? "";
+      const searchPromise = q
+        ? searchPublication({ data: { did, q } })
+        : Promise.resolve(null);
       // NOT a `Promise.all`: that would reject with whichever settled first, so
       // a hidden author on an unreachable directory would get the generic 404
       // instead of the takedown notice. The error waits its turn instead.
@@ -76,6 +96,8 @@ export const Route = createFileRoute("/@{$handle}/")({
       const resolvedPds = await pdsPromise;
       if (typeof resolvedPds !== "string") throw resolvedPds.pdsError;
       const pds = resolvedPds;
+      const indexed = await searchPromise;
+      const fullSearch = indexed?.ready ? indexed : null;
       const [pubs, docsPage] = await Promise.all([
         // Oldest publication = the author's original one; display-only here.
         listRecords<StandardPublication>(
@@ -87,18 +109,27 @@ export const Route = createFileRoute("/@{$handle}/")({
             reverse: true,
           },
         ).catch((err: unknown) => (err instanceof NotFoundError ? [] : null)),
-        listRecordsPage<StandardDocument>(pds, did, "site.standard.document", {
-          cursor: deps.cursor,
-          limit: LIST_PAGE_SIZE,
-        }).catch((err: unknown) =>
-          // A PDS that refuses the listing has nothing to show. Anything else
-          // is a failure the page must say out loud, not an empty archive.
-          err instanceof NotFoundError
-            ? { records: [], cursor: null }
-            : err instanceof ResponseTooLargeError
-              ? ("too_large" as const)
-              : ("unavailable" as const),
-        ),
+        // A full-text search needs no listing: its results came from the index.
+        // The title filter searches the newest page, whatever the cursor says.
+        fullSearch
+          ? { records: [], cursor: null }
+          : listRecordsPage<StandardDocument>(
+              pds,
+              did,
+              "site.standard.document",
+              {
+                cursor: q ? undefined : deps.cursor,
+                limit: LIST_PAGE_SIZE,
+              },
+            ).catch((err: unknown) =>
+              // A PDS that refuses the listing has nothing to show. Anything else
+              // is a failure the page must say out loud, not an empty archive.
+              err instanceof NotFoundError
+                ? { records: [], cursor: null }
+                : err instanceof ResponseTooLargeError
+                  ? ("too_large" as const)
+                  : ("unavailable" as const),
+            ),
       ]);
       const postsError = typeof docsPage === "string" ? docsPage : null;
       const docs = typeof docsPage === "string" ? [] : docsPage.records;
@@ -141,8 +172,25 @@ export const Route = createFileRoute("/@{$handle}/")({
             Date.parse(b.publishedAt ?? "") - Date.parse(a.publishedAt ?? "") ||
             (a.rkey < b.rkey ? 1 : -1),
         );
+      const search: ArchiveSearch | null = !q
+        ? null
+        : fullSearch
+          ? { q, scope: "full", hits: fullSearch.hits, more: fullSearch.more }
+          : {
+              q,
+              scope: "titles",
+              more: false,
+              hits: filterPostsByQuery(posts, q).map((post) => ({
+                rkey: post.rkey,
+                title: post.title,
+                snippet: "",
+                description: post.description ?? "",
+                publishedAt: post.publishedAt,
+              })),
+            };
       return {
         ident,
+        search,
         // The author's DID: whose address an email left here would be held for
         // (~/components/reader-email-capture). The publication's own url, which
         // decides whether that offer is made at all, is on `publication`.
@@ -174,8 +222,12 @@ export const Route = createFileRoute("/@{$handle}/")({
   // matching document-page tags in ~/components/document-article). Canonical
   // is the record's own url field: for Goldroad writers that is this page; for
   // third-party authors it honestly points at their home (e.g. *.leaflet.pub).
+  // A search answers for one query and can show a post that was just deleted
+  // or taken down, so it is never stored anywhere (see ~/lib/read-cache).
   headers: ({ loaderData }) =>
-    loaderData?.transientFailure ? { "cache-control": "no-store" } : undefined,
+    loaderData?.transientFailure || loaderData?.search
+      ? { "cache-control": "no-store" }
+      : undefined,
   head: ({ loaderData }) => {
     if (!loaderData) return { meta: [{ title: "Not found" }] };
     const { ident, publication, publicationAtUri } = loaderData;
@@ -185,9 +237,14 @@ export const Route = createFileRoute("/@{$handle}/")({
       : null;
     return {
       meta: [
-        { title },
-        // A page whose posts failed to load is not one to index.
-        ...(loaderData.postsError
+        {
+          title: loaderData.search
+            ? `“${loaderData.search.q}” in ${title}`
+            : title,
+        },
+        // A page whose posts failed to load is not one to index, and neither
+        // is a search result.
+        ...(loaderData.postsError || loaderData.search
           ? [{ name: "robots", content: "noindex" }]
           : []),
         // A description always, so a shared archive link is never a bare title.
@@ -230,6 +287,17 @@ export const Route = createFileRoute("/@{$handle}/")({
   component: PublicationPage,
   notFoundComponent: PublicationNotFound,
 });
+
+/** A search on the archive. `full` came from the index, with snippets;
+ * `titles` is the fallback filter over the newest page of titles and
+ * summaries, for a publication that isn't indexed. */
+export type ArchiveSearch = {
+  q: string;
+  scope: "full" | "titles";
+  hits: SearchHit[];
+  /** More matched than are shown. */
+  more: boolean;
+};
 
 /** One archive row's view model — matches the loader's `posts` mapping
  * above. Kept as an explicit type (rather than derived from the loader's
@@ -317,6 +385,117 @@ function PostRow({
   );
 }
 
+/**
+ * Text with the search's matches marked. The snippet arrives as plain text
+ * with control-character markers (~/lib/search-query) and is split into nodes
+ * here, so the writer's words are never parsed as HTML.
+ *
+ * The mark is a tint of the rule colour, not the spot: a results page can
+ * carry dozens of matches, and the writer's accent is one moment per page.
+ */
+function HitText({ text }: { text: string }) {
+  return snippetParts(text).map((part, i) =>
+    part.hit ? (
+      // biome-ignore lint/suspicious/noArrayIndexKey: parts never reorder
+      <mark className="bg-rule text-ink [box-decoration-break:clone]" key={i}>
+        {part.text}
+      </mark>
+    ) : (
+      // biome-ignore lint/suspicious/noArrayIndexKey: parts never reorder
+      <Fragment key={i}>{part.text}</Fragment>
+    ),
+  );
+}
+
+/** One search result: the same row as the archive's, with the passage that
+ * matched in place of the summary when the index found one. */
+function SearchRow({ ident, hit }: { ident: string; hit: SearchHit }) {
+  const date = formatDate(hit.publishedAt ?? undefined);
+  const passage = hit.snippet.trim() ? hit.snippet : hit.description;
+  return (
+    <li className="border-rule border-b">
+      <a
+        className="group block py-8"
+        href={`/@${encodeURIComponent(ident)}/${encodeURIComponent(hit.rkey)}`}
+      >
+        <h2 className="text-balance font-bold font-display text-[1.375rem] text-ink leading-snug tracking-[-0.01em] group-hover:underline group-hover:underline-offset-4">
+          <HitText text={hit.title} />
+        </h2>
+        {passage ? (
+          // Body serif: this is the writer's own prose, quoted.
+          <p className="mt-2 line-clamp-3 font-body text-[1rem] text-ink-soft leading-[1.6]">
+            <HitText text={passage} />
+          </p>
+        ) : null}
+        {date && (
+          <p className="mt-3 font-display text-ink-soft text-xs uppercase tracking-wide">
+            <time dateTime={hit.publishedAt ?? undefined}>{date}</time>
+          </p>
+        )}
+      </a>
+    </li>
+  );
+}
+
+/**
+ * The search box. A GET form to this same page, so it works with JavaScript
+ * off and every search is a link someone can share. One field, so Enter (or a
+ * phone keyboard's search key) submits it; the button is there for pointers.
+ */
+function SearchForm({ ident, q }: { ident: string; q: string }) {
+  return (
+    <search>
+      <form
+        action={`/@${encodeURIComponent(ident)}`}
+        className="flex items-center gap-1 text-ink-soft"
+        method="get"
+      >
+        <label className="sr-only" htmlFor="archive-search">
+          Search posts
+        </label>
+        {/* 16px at base, 14px from `sm:` up. iOS Safari zooms the page in on a
+          focused control under 16px and never zooms back out, and this is a
+          public page: searching the archive is often a phone visitor's first
+          interaction with it. */}
+        <input
+          className={cn(
+            "min-h-9 border-transparent border-b bg-transparent font-display text-base text-ink transition-[width,border-color] placeholder:text-ink-soft focus:w-56 focus:border-ink focus:outline-none sm:text-sm",
+            // A query stays visibly a field: without the rule it reads as a
+            // loose phrase floating at the end of the row.
+            q ? "w-48 border-rule" : "w-32",
+          )}
+          defaultValue={q}
+          enterKeyHint="search"
+          id="archive-search"
+          maxLength={MAX_QUERY_LENGTH}
+          name="q"
+          placeholder="Search posts"
+          type="search"
+        />
+        <button
+          aria-label="Search"
+          className="-my-1 -mr-2 flex min-h-11 min-w-11 items-center justify-center transition-colors hover:text-ink"
+          type="submit"
+        >
+          <SearchIcon className="h-4 w-4" />
+        </button>
+      </form>
+    </search>
+  );
+}
+
+/** What a search found, said once, above the results. */
+function searchSummary(search: ArchiveSearch): string {
+  const n = search.hits.length;
+  if (n === 0) return `No posts match “${search.q}”`;
+  const count = search.more
+    ? `The ${n} closest matches`
+    : n === 1
+      ? "1 post matches"
+      : `${n} posts match`;
+  return search.more ? `${count} for “${search.q}”` : `${count} “${search.q}”`;
+}
+
 function PublicationPage() {
   // Spread, for the same reason the document route does it: the loader
   // returns exactly the facts the page renders, and hand-picking them is how
@@ -336,6 +515,7 @@ export function PublicationView({
   postsError = null,
   iconPath,
   theme,
+  search = null,
 }: {
   ident: string;
   /** The author's DID — who an email left on this page is held for. */
@@ -351,13 +531,11 @@ export function PublicationView({
   iconPath: string | null;
   /** The author's validated theme, or null for our default palette. */
   theme?: BasicTheme | null;
+  /** The search this page is answering, or null for the archive itself. */
+  search?: ArchiveSearch | null;
 }) {
-  const [query, setQuery] = useState("");
-  const filtered = filterPostsByQuery(posts, query);
-  const isSearching = query.trim() !== "";
-  const groups = isSearching
-    ? [{ label: null as string | null, posts: filtered }]
-    : groupPostsByMonth(filtered);
+  const groups = groupPostsByMonth(posts);
+  const archiveHref = `/@${encodeURIComponent(ident)}`;
 
   return (
     // The writer's surface, not ours: their theme applies here, our dark-mode
@@ -427,66 +605,97 @@ export function PublicationView({
             </div>
           </div>
         </header>
-        {posts.length > 0 && (
+        {(posts.length > 0 || search) && (
           // Sort/search row: "Latest" is the only real sort today (no view
           // or reply-count signal yet to back Top/Discussions) — the row is
           // laid out so those can join later, but a tab that doesn't work
-          // yet is never rendered.
-          <div className="mb-8 flex flex-wrap items-center justify-between gap-4 border-rule border-b pb-3">
-            <nav aria-label="Sort posts">
-              <span className="font-display font-semibold text-ink text-sm uppercase tracking-wide">
-                Latest
-              </span>
-            </nav>
-            <label className="flex items-center gap-2 text-ink-soft">
-              <SearchIcon className="h-4 w-4 shrink-0" />
-              <span className="sr-only">Search posts</span>
-              {/* 16px at base, 14px from `sm:` up. iOS Safari zooms the page
-                  in on a focused control under 16px and never zooms back out,
-                  and this is a public page: searching the archive is often a
-                  phone visitor's first interaction with it. */}
-              <input
-                className="w-28 bg-transparent font-display text-base text-ink placeholder:text-ink-soft/60 focus:w-48 focus:outline-none sm:text-sm"
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search posts"
-                style={{ transition: "width 150ms ease" }}
-                type="search"
-                value={query}
-              />
-            </label>
+          // yet is never rendered. During a search the left side says what
+          // the search found instead, with the way back to every post.
+          <div className="mb-8 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-rule border-b pb-3">
+            {search ? (
+              <p
+                className="min-w-0 font-display text-ink text-sm"
+                role="status"
+              >
+                <span className="font-semibold">{searchSummary(search)}</span>
+                <span className="text-ink-soft"> · </span>
+                <a
+                  className="text-ink-soft underline underline-offset-2 transition-colors hover:text-ink"
+                  href={archiveHref}
+                >
+                  All posts
+                </a>
+              </p>
+            ) : (
+              <nav aria-label="Sort posts">
+                <span className="font-display font-semibold text-ink text-sm uppercase tracking-wide">
+                  Latest
+                </span>
+              </nav>
+            )}
+            <SearchForm ident={ident} q={search?.q ?? ""} />
           </div>
         )}
-        {posts.length > 0 ? (
-          isSearching && filtered.length === 0 ? (
-            <p className="mt-8 text-ink-soft text-lg italic leading-relaxed">
-              No posts match "{query}".
-            </p>
-          ) : (
-            groups.map((group, gi) => (
-              <Fragment key={group.label ?? `flat-${gi}`}>
-                {group.label && (
-                  <p
-                    className={cn(
-                      "font-display text-ink-soft text-xs uppercase tracking-wide",
-                      gi === 0 ? "mb-2" : "mt-10 mb-2",
-                    )}
-                  >
-                    {group.label}
-                  </p>
-                )}
-                <ul>
-                  {group.posts.map((post) => (
-                    <PostRow
-                      ident={ident}
-                      iconPath={iconPath}
-                      key={post.rkey}
-                      post={post}
-                    />
-                  ))}
-                </ul>
-              </Fragment>
-            ))
-          )
+        {search ? (
+          <>
+            {/* Said whenever the search was narrower than "every word of every
+                post", so an empty result can't read as "they never wrote
+                about it". */}
+            {search.scope === "titles" && (
+              <p className="-mt-4 mb-6 font-display text-ink-soft text-xs leading-relaxed">
+                Searched the titles and summaries of the {LIST_PAGE_SIZE} most
+                recent posts.
+              </p>
+            )}
+            {search.hits.length > 0 ? (
+              <ul>
+                {search.hits.map((hit) => (
+                  <SearchRow hit={hit} ident={ident} key={hit.rkey} />
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-8 text-ink-soft text-lg italic leading-relaxed">
+                Try fewer or different words, or{" "}
+                <a
+                  className="not-italic underline underline-offset-2 transition-colors hover:text-ink"
+                  href={archiveHref}
+                >
+                  browse every post
+                </a>
+                .
+              </p>
+            )}
+            {search.more && (
+              <p className="mt-8 font-display text-ink-soft text-sm">
+                Add a word to narrow it down.
+              </p>
+            )}
+          </>
+        ) : posts.length > 0 ? (
+          groups.map((group, gi) => (
+            <Fragment key={group.label ?? `flat-${gi}`}>
+              {group.label && (
+                <p
+                  className={cn(
+                    "font-display text-ink-soft text-xs uppercase tracking-wide",
+                    gi === 0 ? "mb-2" : "mt-10 mb-2",
+                  )}
+                >
+                  {group.label}
+                </p>
+              )}
+              <ul>
+                {group.posts.map((post) => (
+                  <PostRow
+                    ident={ident}
+                    iconPath={iconPath}
+                    key={post.rkey}
+                    post={post}
+                  />
+                ))}
+              </ul>
+            </Fragment>
+          ))
         ) : postsError ? (
           <Notice tone="alert">
             {postsError === "too_large"
@@ -499,7 +708,7 @@ export function PublicationView({
             appear here.
           </p>
         )}
-        {nextCursor && (
+        {nextCursor && !search && (
           // Calm register: a quiet text link, no buttons, no page numbers.
           <p className="mt-12 border-rule border-t pt-6">
             {/* A plain anchor, deliberately: the page turn must be a SERVER
