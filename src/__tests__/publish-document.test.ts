@@ -435,6 +435,19 @@ describe("publishStoredDraft", () => {
     quiet.mockRestore();
   });
 
+  it("names a missing image, and doesn't retry what can't come back", async () => {
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { rpc } = fakeRpc([
+      { ok: false, status: 400, data: { error: "BlobNotFound" } },
+    ]);
+    const result = await publishStoredDraft(input(rpc, { pds: null }));
+    if (result.ok) throw new Error("expected a failure");
+    expect(result.retry).toBe(false);
+    expect(result.code).toBe("image_missing");
+    expect(result.reason).toMatch(/images is no longer in your repo/);
+    quiet.mockRestore();
+  });
+
   it("does not delete the draft when the publish failed", async () => {
     const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
     const { rpc } = fakeRpc([
@@ -443,6 +456,85 @@ describe("publishStoredDraft", () => {
     await publishStoredDraft(input(rpc, { pds: null }));
     expect(drafts.deleteDraft).not.toHaveBeenCalled();
     quiet.mockRestore();
+  });
+});
+
+describe("publishStoredDraft past an image the repo no longer holds", () => {
+  const CID_A = "bafkreigoneaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const CID_B = "bafkreikeptbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+  const ref = (cid: string) => ({
+    $type: "blob",
+    ref: { $link: cid },
+    mimeType: "image/jpeg",
+    size: 1234,
+  });
+  const draft = {
+    ...DRAFT,
+    markdown: `Words.\n\n![gone](/img/${DID}/${CID_A})\n\n![kept](/img/${DID}/${CID_B})`,
+    inlineImages: JSON.stringify([ref(CID_A), ref(CID_B)]),
+  };
+  const missing = (cid: string) => ({
+    ok: false,
+    status: 400,
+    data: { error: "BlobNotFound", message: `Could not find blob: ${cid}` },
+  });
+  const documents = (posted: Posted[]) =>
+    posted
+      .filter((p) => p.input.collection === "site.standard.document")
+      .map(
+        (p) =>
+          p.input.record as {
+            textContent?: string;
+            goldroadInlineImages?: unknown[];
+          },
+      );
+
+  it("goes out without the missing image and keeps the rest", async () => {
+    const { rpc, posted } = fakeRpc([missing(CID_A)]);
+    const result = await publishStoredDraft(
+      input(rpc, { pds: null, draft, missingImageBudget: 14 }),
+    );
+    if (!result.ok) throw new Error("expected a publish");
+    expect(result.imagesDropped).toBe(1);
+    const [, second] = documents(posted);
+    expect(second.goldroadInlineImages).toEqual([ref(CID_B)]);
+    expect(second.textContent).toContain("kept");
+    expect(second.textContent).not.toContain("gone");
+  });
+
+  it("spends no more writes than its budget, then refuses", async () => {
+    const { rpc, posted } = fakeRpc([missing(CID_A), missing(CID_B)]);
+    const result = await publishStoredDraft(
+      input(rpc, { pds: null, draft, missingImageBudget: 1 }),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.code).toBe("image_missing");
+    expect(documents(posted)).toHaveLength(2);
+  });
+
+  it("counts a reserved key's write as three", async () => {
+    const { rpc, posted } = fakeRpc([missing(CID_A)]);
+    const result = await publishStoredDraft(
+      input(rpc, {
+        pds: null,
+        draft,
+        rkey: "3lyk73wxnokrs",
+        missingImageBudget: 2,
+      }),
+    );
+    expect(result.ok).toBe(false);
+    expect(documents(posted)).toHaveLength(1);
+  });
+
+  it("refuses without retrying when the server names no image the body uses", async () => {
+    const { rpc, posted } = fakeRpc([
+      { ok: false, status: 400, data: { error: "BlobNotFound" } },
+    ]);
+    const result = await publishStoredDraft(
+      input(rpc, { pds: null, draft, missingImageBudget: 14 }),
+    );
+    expect(result.ok).toBe(false);
+    expect(documents(posted)).toHaveLength(1);
   });
 });
 
@@ -457,7 +549,7 @@ describe("publishStoredDraft with a reserved key (the cron's retries)", () => {
   it("publishes under the reserved key", async () => {
     const { rpc, posted } = fakeRpc();
     const result = await publishStoredDraft(input(rpc, { rkey: RESERVED }));
-    expect(result).toEqual({ ok: true, rkey: RESERVED });
+    expect(result).toEqual({ ok: true, rkey: RESERVED, imagesDropped: 0 });
     expect(documentWrites(posted)[0].input.rkey).toBe(RESERVED);
   });
 
@@ -472,7 +564,7 @@ describe("publishStoredDraft with a reserved key (the cron's retries)", () => {
     };
     const { rpc, posted, got } = fakeRpc(refused(), earlier);
     const result = await publishStoredDraft(input(rpc, { rkey: RESERVED }));
-    expect(result).toEqual({ ok: true, rkey: RESERVED });
+    expect(result).toEqual({ ok: true, rkey: RESERVED, imagesDropped: 0 });
     expect(got).toEqual([
       { repo: DID, collection: "site.standard.document", rkey: RESERVED },
     ]);

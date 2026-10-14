@@ -446,3 +446,181 @@ describe("/api/import/draft — intake", () => {
     expect(inserted.originalAt.getTime()).toBeLessThanOrEqual(Date.now());
   });
 });
+
+/**
+ * One intake, two importers. `source.kind` is the only thing that differs, and
+ * it is the field the reader page's canonical decision hangs off — so it has to
+ * be recorded from the request and defaulted conservatively when absent.
+ */
+describe("/api/import/draft — which import a row came from", () => {
+  const THREAD_PAYLOAD = {
+    title: "On leaving",
+    content: [{ type: "paragraph", content: [] }],
+    source: {
+      guid: `at://${DID}/app.bsky.feed.post/3aa1`,
+      kind: "thread",
+      link: `https://bsky.app/profile/${DID}/post/3aa1`,
+      publishedAt: "2026-02-04T10:00:00.000Z",
+    },
+  };
+
+  it("records a thread import as a thread, keyed by the root URI", async () => {
+    const res = await callDraft(THREAD_PAYLOAD);
+    expect(res.status).toBe(201);
+    const inserted = store.insertImportItem.mock.calls[0][1];
+    expect(inserted.sourceKind).toBe("thread");
+    expect(inserted.guidHash).toBe(
+      await hashOf(`at://${DID}/app.bsky.feed.post/3aa1`),
+    );
+    expect(inserted.sourceUrl).toBe(
+      `https://bsky.app/profile/${DID}/post/3aa1`,
+    );
+    // Backdated to the thread's own root date, for publish to pick up.
+    expect(inserted.originalAt.toISOString()).toBe("2026-02-04T10:00:00.000Z");
+  });
+
+  it("keeps a thread's image blob refs on the draft, and only well-formed ones", async () => {
+    const blob = {
+      $type: "blob",
+      ref: { $link: "bafkreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+      mimeType: "image/jpeg",
+      size: 120_000,
+    };
+    const res = await callDraft({
+      ...THREAD_PAYLOAD,
+      inlineImages: [blob, { $type: "blob", ref: "nope" }, "junk"],
+    });
+    expect(res.status).toBe(201);
+    // Publishing reads these to reference the blobs instead of copying them.
+    expect(
+      JSON.parse(draftsStore.insertDraft.mock.calls[0][1].inlineImages),
+    ).toEqual([blob]);
+  });
+
+  it("stores no image refs when the client sends none", async () => {
+    expect((await callDraft(THREAD_PAYLOAD)).status).toBe(201);
+    expect(draftsStore.insertDraft.mock.calls[0][1].inlineImages).toBe("");
+  });
+
+  it("refuses more image refs than one document can reference", async () => {
+    const res = await callDraft({
+      ...THREAD_PAYLOAD,
+      inlineImages: Array.from({ length: 51 }, () => ({})),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("defaults to feed when a client sends no kind (a tab open across a deploy)", async () => {
+    await callDraft(DRAFT_PAYLOAD);
+    expect(store.insertImportItem.mock.calls[0][1].sourceKind).toBe("feed");
+  });
+
+  it("refuses a kind it doesn't recognize rather than storing it", async () => {
+    const res = await callDraft({
+      ...THREAD_PAYLOAD,
+      source: { ...THREAD_PAYLOAD.source, kind: "whatever" },
+    });
+    expect(res.status).toBe(400);
+    expect(store.insertImportItem).not.toHaveBeenCalled();
+  });
+
+  /**
+   * `source.kind` is a CLAIM, and the server checks it against the guid.
+   *
+   * It decides what a published page says about where the words came from —
+   * "First published as a thread on Bluesky" versus a mirror's noindex and a
+   * link to somebody else's publication. That sentence is permanent, public, and
+   * about provenance, which makes a client-supplied enum the wrong shape: any
+   * session could mint a thread-labelled origin for arbitrary text, or launder a
+   * real thread as a generic feed import.
+   *
+   * A thread is exactly one thing: an app.bsky.feed.post in the SESSION'S OWN
+   * repo. The repo half is the one that matters — without it a writer could
+   * claim a stranger's thread as self-imported, which is the provenance line
+   * asserting a relationship that does not exist.
+   */
+  const OTHER_DID = "did:plc:fakeforeign22222writer22";
+
+  it("refuses a thread claim on ANOTHER repo's post", async () => {
+    const res = await callDraft({
+      ...THREAD_PAYLOAD,
+      source: {
+        ...THREAD_PAYLOAD.source,
+        guid: `at://${OTHER_DID}/app.bsky.feed.post/3aa1`,
+      },
+    });
+    expect(res.status).toBe(400);
+    expect(store.insertImportItem).not.toHaveBeenCalled();
+  });
+
+  it("refuses a thread claim on an ordinary https link", async () => {
+    const res = await callDraft({
+      ...THREAD_PAYLOAD,
+      source: { ...THREAD_PAYLOAD.source, guid: "https://w.example/p/one" },
+    });
+    expect(res.status).toBe(400);
+    expect(store.insertImportItem).not.toHaveBeenCalled();
+  });
+
+  it("refuses a thread claim on an at:// URI in another collection", async () => {
+    // A record of the writer's own, but not a Bluesky post — a document of
+    // theirs is not a thread and must not be labelled as one.
+    const res = await callDraft({
+      ...THREAD_PAYLOAD,
+      source: {
+        ...THREAD_PAYLOAD.source,
+        guid: `at://${DID}/site.standard.document/3aa1`,
+      },
+    });
+    expect(res.status).toBe(400);
+    expect(store.insertImportItem).not.toHaveBeenCalled();
+  });
+
+  it("files a FEED item that is the writer's own post as a self-import", async () => {
+    // The writer's Bluesky RSS feed: its guids are their own post URIs, and
+    // /import sends them as feed items. The evidence decides the kind.
+    const res = await callDraft({
+      ...THREAD_PAYLOAD,
+      source: { ...THREAD_PAYLOAD.source, kind: "feed" },
+    });
+    expect(res.status).toBe(201);
+    expect(store.insertImportItem.mock.calls[0][1].sourceKind).toBe("thread");
+  });
+
+  it("builds a self-import's link from the guid, never from the client", async () => {
+    await callDraft({
+      ...THREAD_PAYLOAD,
+      source: { ...THREAD_PAYLOAD.source, link: "https://evil.example/" },
+    });
+    expect(store.insertImportItem.mock.calls[0][1].sourceUrl).toBe(
+      `https://bsky.app/profile/${DID}/post/3aa1`,
+    );
+  });
+
+  it("accepts a genuine self at:// URI", async () => {
+    const res = await callDraft(THREAD_PAYLOAD);
+    expect(res.status).toBe(201);
+    expect(store.insertImportItem.mock.calls[0][1].sourceKind).toBe("thread");
+  });
+
+  it("carries the kind through a revive too", async () => {
+    store.selectImportItem.mockResolvedValue([
+      { publishedRkey: null, draftId: "11111111-2222-3333-4444-555555555555" },
+    ]);
+    store.selectLiveDraftIds.mockResolvedValue([]); // discarded
+    await callDraft(THREAD_PAYLOAD);
+    expect(store.reviveImportItem.mock.calls[0][3].sourceKind).toBe("thread");
+  });
+
+  it("dedupes a thread by its root URI — the second import is refused", async () => {
+    store.selectImportItem.mockResolvedValue([
+      { publishedRkey: "3lzabc", draftId: null },
+    ]);
+    const res = await callDraft(THREAD_PAYLOAD);
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { error: string }).error).toBe(
+      "already_imported",
+    );
+    expect(fakeDb.batch).not.toHaveBeenCalled();
+  });
+});

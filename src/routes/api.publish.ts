@@ -28,7 +28,11 @@ import {
 import { hasForeignContent } from "~/lib/document-content";
 import { deleteDraft, selectDraft } from "~/lib/drafts";
 import { isDraftId } from "~/lib/drafts-schema";
-import { clampOriginalDate, rehostBodyImages } from "~/lib/import";
+import {
+  clampOriginalDate,
+  IMAGE_SUBREQUEST_BUDGET,
+  rehostBodyImages,
+} from "~/lib/import";
 import {
   adoptMirror,
   clearPublishedImport,
@@ -50,12 +54,15 @@ import {
   buildPublicationRecord,
   type CoverImageBlob,
   composeDocumentUrl,
+  firstInlineImage,
   generateTid,
   type IconBlob,
+  inlineImagesForBody,
   isOverRecordByteLimit,
   isOwnPublicationUrl,
   MAX_BODY_LENGTH,
   MAX_DEK_LENGTH,
+  MAX_INLINE_IMAGES,
   MAX_NAME_LENGTH,
   MAX_PUBLICATION_DESCRIPTION_LENGTH,
   MAX_TITLE_LENGTH,
@@ -68,7 +75,7 @@ import {
   findOwnPublication,
   publishStoredDraft,
   resolvePublicationSite,
-  writeDocument,
+  writeDocumentWithoutMissingImages,
 } from "~/lib/publish-document";
 import {
   purgeLocalReadCache,
@@ -640,6 +647,8 @@ async function publishDocument({
   // trusted. Best-effort per image: a miss keeps the original URL.
   let publishBody = body;
   let rehostedBlobs: unknown[] = [];
+  let imagesKept = 0;
+  let imageSubrequests = IMAGE_SUBREQUEST_BUDGET;
   if (importRow) {
     const rehosted = await rehostBodyImages({
       body,
@@ -647,6 +656,10 @@ async function publishDocument({
       maxBytes: MAX_IMAGE_BLOB_BYTES,
       isAllowedMime: isAllowedImageMime,
       imagePath: blobImagePath,
+      budget: IMAGE_SUBREQUEST_BUDGET,
+      slots:
+        MAX_INLINE_IMAGES -
+        inlineImagesForBody(body, inlineImageSources).length,
       upload: async (bytes, mime) => {
         const uploaded = await rpc
           .post("com.atproto.repo.uploadBlob", {
@@ -663,47 +676,67 @@ async function publishDocument({
     if (rehosted) {
       publishBody = rehosted.body;
       rehostedBlobs = rehosted.blobs;
+      imageSubrequests -= rehosted.spent;
+      // Images that stayed on the source CDN — past the budget, too big,
+      // refused, or the wrong type. Not an error, and the post is fine, but the
+      // writer imported precisely to stop depending on that server. Saying
+      // nothing would let them believe the archive is theirs when part of it
+      // isn't.
+      imagesKept = rehosted.skipped;
     }
   }
 
-  // An imported post with no writer-picked cover borrows its first body
-  // image — already fetched and uploaded just above, so this costs nothing.
-  // thumbFromCover is the same validation a cover gets (raster, ≤1MB).
-  if (!coverBlob && rehostedBlobs.length > 0)
-    coverBlob = thumbFromCover(rehostedBlobs[0]) ?? undefined;
-
+  // Rehosted blobs need a record reference exactly as uploaded ones do.
+  const sources = [...inlineImageSources, ...rehostedBlobs];
   // Canonical URL composes as publication.url + path: …/@<ident> + /<rkey>.
-  const record = buildDocumentRecord({
-    title,
-    body: publishBody,
-    dek,
-    site,
-    path: `/${rkey}`,
-    coverImage: coverBlob,
-    // Rehosted blobs need a record reference exactly as uploaded ones do.
-    inlineImageSources: [...inlineImageSources, ...rehostedBlobs],
-    publishedAt: originalAt ?? undefined,
-  });
+  const build = (publishing: string) =>
+    buildDocumentRecord({
+      title,
+      body: publishing,
+      dek,
+      site,
+      path: `/${rkey}`,
+      // An imported post with no writer-picked cover borrows its first body
+      // image — a blob already in the repo (a thread's own picture, or one
+      // just copied above), so this costs nothing. thumbFromCover is the same
+      // validation a cover gets (raster, ≤1MB).
+      coverImage:
+        coverBlob ??
+        (importRow
+          ? (thumbFromCover(firstInlineImage(publishing, sources)) ?? undefined)
+          : undefined),
+      inlineImageSources: sources,
+      publishedAt: originalAt ?? undefined,
+    });
+  const record = build(publishBody);
   // Same byte ceiling as the edit path above, and the same reason: the
   // character cap the form already passed counts UTF-16 units, the PDS counts
   // serialized bytes, and a rehosted import can add inline-image references on
   // top of a body that only just fit.
   if (isOverRecordByteLimit(record)) return reject("too_large");
 
-  const written = await writeDocument(
+  const { written, dropped } = await writeDocumentWithoutMissingImages({
     rpc,
     did,
     rkey,
-    toRecordInput(record),
-    reservedRkey !== null,
-  );
+    reserved: reservedRkey !== null,
+    body: publishBody,
+    record,
+    build,
+    budget: imageSubrequests,
+  });
   if (!written.ok) {
     console.error("document write failed", written);
-    return reject(`publish_failed:${written.error}`);
+    return reject(
+      written.error === "BlobNotFound"
+        ? "image_missing"
+        : `publish_failed:${written.error}`,
+    );
   }
 
   // Import ledger write-back: record the rkey this item published under —
-  // that row is what makes the reader page a "mirror" (noindex + provenance)
+  // that row is what gives the reader page its provenance treatment (a feed
+  // mirror's noindex, or a thread's "first published" line; ~/lib/mirror)
   // and what keeps re-imports refusing the item as a duplicate. Best-effort:
   // the record is already live; a flaked write-back costs the mirror
   // treatment, never the publish.
@@ -734,12 +767,14 @@ async function publishDocument({
   // Success lands on the dashboard: the new post on top, a "view it live"
   // link, and the explicit opt-in "Announce on Bluesky" action. The archive
   // index and feed are purged, so they list the new post.
-  return purgingReaderPages(backToDashboard({ published: rkey }), {
-    origin,
-    did,
-    ident,
-    rkey,
-  });
+  return purgingReaderPages(
+    backToDashboard({
+      published: rkey,
+      ...(imagesKept > 0 ? { imagesKept: String(imagesKept) } : {}),
+      ...(dropped > 0 ? { imagesDropped: String(dropped) } : {}),
+    }),
+    { origin, did, ident, rkey },
+  );
 }
 
 /**
@@ -992,15 +1027,20 @@ async function publishNow({
     draft,
     // A failed tick's write may have landed; its reserved key finds it.
     rkey: released?.publishedRkey ?? undefined,
+    // Nothing is copied here, so the whole image budget is free for this.
+    missingImageBudget: IMAGE_SUBREQUEST_BUDGET,
   });
   if (!outcome.ok)
     return backToDashboard({ error: outcome.code, tab: "scheduled" });
-  return purgingReaderPages(backToDashboard({ published: outcome.rkey }), {
-    origin,
-    did,
-    ident,
-    rkey: outcome.rkey,
-  });
+  return purgingReaderPages(
+    backToDashboard({
+      published: outcome.rkey,
+      ...(outcome.imagesDropped > 0
+        ? { imagesDropped: String(outcome.imagesDropped) }
+        : {}),
+    }),
+    { origin, did, ident, rkey: outcome.rkey },
+  );
 }
 
 /**

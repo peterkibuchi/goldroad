@@ -486,16 +486,40 @@ export async function fetchImportableImage(
   }
 }
 
-/** Markdown images in a body. Shared by the extractors below so the cover
- * candidate and the rehost list can never disagree about what an image is. */
-const MARKDOWN_IMAGE_RE = /!\[[^[\]]*\]\(\s*([^()\s]+)[^()]*\)/g;
+/**
+ * Markdown images in a body. Shared by the extractors below so the cover
+ * candidate and the rehost list can never disagree about what an image is.
+ *
+ * THE ALT CLASS HAS TO TOLERATE ESCAPES. Alt text is the writer's own words, so
+ * anything producing this markdown escapes the markdown-significant characters
+ * in it — brackets included, as `\[` and `\]`. The class used to be
+ * `[^[\]]*`, which excludes the literal `[` an escape leaves behind, so an alt
+ * like "chart \[2026\]" failed to match and the whole image line went
+ * unrecognised: not rehosted at publish, not a cover candidate. The image kept
+ * pointing at somebody else's CDN, and the only clue was a square bracket in a
+ * description.
+ *
+ * So an alt is now any run of escaped-anything (`\\.`) or ordinary
+ * non-bracket, non-backslash characters. Unescaped brackets are still excluded,
+ * which is what keeps this from running past the end of one image and swallowing
+ * the next.
+ */
+const MARKDOWN_IMAGE_RE = /!\[(?:\\.|[^[\]\\])*\]\(\s*([^()\s]+)[^()]*\)/g;
 
 /**
- * How many body images one publish will rehost. A bound on the fetches and
- * blob writes a single publish can trigger; beyond it the remaining images
- * keep pointing at the source, which is exactly what they did before.
+ * Subrequests one publish may spend on body images: copying them here, or
+ * retrying past ones the repo no longer holds (~/lib/publish-document). The
+ * free plan allows 50 per invocation, and the rest of a publish can take 32:
+ * session restore with a token refresh 8 (metadata, DID document, handle,
+ * token, DPoP nonce retries), identity 1, cover upload 2, publication lookup
+ * or first-time create 3, document write up to 3, cache purges 15. So images
+ * get 14 and 4 stay spare.
  */
-export const MAX_REHOSTED_IMAGES = 20;
+export const IMAGE_SUBREQUEST_BUDGET = 14;
+
+/** Images one publish can copy at best: one fetch and one upload each. A
+ * redirecting image costs a fetch per hop, so fewer fit. */
+export const MAX_REHOSTED_IMAGES = IMAGE_SUBREQUEST_BUDGET / 2;
 
 /**
  * Distinct public-https image URLs in a body, in first-appearance order.
@@ -530,8 +554,10 @@ export type RehostResult = {
    * the PDS never serves them (see DocumentRecord in ~/lib/publish). */
   blobs: unknown[];
   /** Images left pointing at the source (fetch refused, too big, wrong type,
-   * or past the cap). Not an error — just not rehosted. */
+   * or past the budget). Not an error — just not rehosted. */
   skipped: number;
+  /** Subrequests spent, so the rest of the publish knows what is left. */
+  spent: number;
 };
 
 /**
@@ -563,26 +589,51 @@ export async function rehostBodyImages(opts: {
    * blobImagePath) — injected to keep this module free of blob.ts's
    * route-shape concerns. */
   imagePath: (did: string, cid: string) => string;
+  /** Subrequests this may spend (IMAGE_SUBREQUEST_BUDGET on a publish). */
+  budget: number;
+  /** Blob refs the record still has room for: MAX_INLINE_IMAGES less those
+   * already in use. A copy past that would never be referenced, so it would
+   * never be served, where the source URL at least still loads. */
+  slots: number;
   fetchImpl?: FetchLike;
 }): Promise<RehostResult> {
   const urls = extractImageUrls(opts.body);
-  if (urls.length === 0) return { body: opts.body, blobs: [], skipped: 0 };
+  if (urls.length === 0)
+    return { body: opts.body, blobs: [], skipped: 0, spent: 0 };
 
   const replacements = new Map<string, string>();
   const blobs: unknown[] = [];
-  let skipped = Math.max(0, urls.length - MAX_REHOSTED_IMAGES);
+  let skipped = 0;
 
-  for (const url of urls.slice(0, MAX_REHOSTED_IMAGES)) {
+  // Every fetch, redirect hops included, and every upload is a subrequest. A
+  // fetch only goes out if the upload after it still fits, and only while the
+  // record has a slot for the result, so an image never starts that can't
+  // finish and the budget is never overrun.
+  let spent = 0;
+  const baseFetch = opts.fetchImpl ?? fetch;
+  const fits = () => spent + 2 <= opts.budget && blobs.length < opts.slots;
+  const budgetedFetch: FetchLike = (url, init) => {
+    if (!fits()) return Promise.reject(new Error("subrequest budget spent"));
+    spent += 1;
+    return baseFetch(url, init);
+  };
+
+  for (const [i, url] of urls.entries()) {
+    if (!fits()) {
+      skipped += urls.length - i;
+      break;
+    }
     const candidate = await fetchImportableImage(
       url,
       opts.maxBytes,
       opts.isAllowedMime,
-      opts.fetchImpl,
+      budgetedFetch,
     );
     if (!candidate) {
       skipped += 1;
       continue;
     }
+    spent += 1;
     const blob = await opts.upload(candidate.bytes, candidate.mime);
     // A CID we can't build a servable path from is a skip, not a rewrite to
     // a URL that would 404 — the original at least still renders.
@@ -599,7 +650,8 @@ export async function rehostBodyImages(opts: {
     replacements.set(url, opts.imagePath(opts.did, cid));
     blobs.push(blob);
   }
-  if (replacements.size === 0) return { body: opts.body, blobs, skipped };
+  if (replacements.size === 0)
+    return { body: opts.body, blobs, skipped, spent };
 
   // Rewritten through the same image pattern that found them, so a bare URL
   // appearing in prose or a link href is never touched.
@@ -607,7 +659,7 @@ export async function rehostBodyImages(opts: {
     const next = replacements.get(safeLink(raw) ?? "");
     return next ? whole.replace(raw, next) : whole;
   });
-  return { body, blobs, skipped };
+  return { body, blobs, skipped, spent };
 }
 
 /**

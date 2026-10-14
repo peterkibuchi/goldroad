@@ -13,6 +13,7 @@ import {
   fetchImportable,
   fetchImportableImage,
   guidHash,
+  IMAGE_SUBREQUEST_BUDGET,
   ImportError,
   looksLikeHtml,
   MAX_FEED_BYTES,
@@ -24,6 +25,7 @@ import {
   readFeedBody,
   rehostBodyImages,
 } from "../lib/import";
+import { MAX_INLINE_IMAGES } from "../lib/publish";
 
 // ---------------------------------------------------------------- SSRF guard
 
@@ -616,6 +618,40 @@ describe("extractImageUrls", () => {
   it("ignores links that are not images", () => {
     expect(extractImageUrls("[a link](https://cdn.example/1.jpg)")).toEqual([]);
   });
+
+  /**
+   * ALT TEXT WITH BRACKETS IN IT.
+   *
+   * Anything generating this markdown escapes the markdown-significant
+   * characters in alt text, brackets included — thread import does it via
+   * `escapeMarkdownText`, and the alt is the writer's own description of their
+   * own picture. The escape leaves a literal `[` behind, which the old alt class
+   * (`[^[\]]*`) excluded, so the whole image line stopped being recognised as
+   * an image: not rehosted at publish, not a cover candidate, still loading from
+   * somebody else's CDN. The only symptom was a square bracket in a caption.
+   */
+  it("sees images whose alt text contains escaped brackets", () => {
+    const escapeAlt = (text: string) =>
+      text.replace(/([\\`*_[\]<>|])/g, "\\$1");
+    const alts = ["a photo", "chart [2026]", "figure 1] of 3", "*bold* claim"];
+    const body = alts
+      .map((alt, i) => `![${escapeAlt(alt)}](https://cdn.example/${i}.jpg)`)
+      .join("\n\n");
+
+    // All four, not the two that happen to contain no brackets.
+    expect(extractImageUrls(body)).toEqual([
+      "https://cdn.example/0.jpg",
+      "https://cdn.example/1.jpg",
+      "https://cdn.example/2.jpg",
+      "https://cdn.example/3.jpg",
+    ]);
+  });
+
+  it("still stops at an unescaped bracket rather than running past the image", () => {
+    // The class tolerates ESCAPED brackets only. A raw `]` still ends the alt,
+    // which is what keeps one malformed line from swallowing the next image.
+    expect(extractImageUrls("![a]b](https://cdn.example/1.jpg)")).toEqual([]);
+  });
 });
 
 describe("rehostBodyImages", () => {
@@ -634,6 +670,8 @@ describe("rehostBodyImages", () => {
         maxBytes: 100,
         isAllowedMime: isJpeg,
         imagePath,
+        budget: IMAGE_SUBREQUEST_BUDGET,
+        slots: MAX_INLINE_IMAGES,
         fetchImpl: fakeFetch(routes),
         upload: async (_bytes, mime) => {
           uploaded.push(mime);
@@ -671,6 +709,8 @@ describe("rehostBodyImages", () => {
       maxBytes: 100,
       isAllowedMime: isJpeg,
       imagePath,
+      budget: IMAGE_SUBREQUEST_BUDGET,
+      slots: MAX_INLINE_IMAGES,
       fetchImpl: impl,
       upload: async () => blobFor(CID_1),
     });
@@ -762,12 +802,75 @@ describe("rehostBodyImages", () => {
       maxBytes: 100,
       isAllowedMime: isJpeg,
       imagePath,
+      budget: IMAGE_SUBREQUEST_BUDGET,
+      slots: MAX_INLINE_IMAGES,
       fetchImpl: impl,
       upload: async () => blobFor(CID_1),
     });
     expect(blobs).toHaveLength(MAX_REHOSTED_IMAGES);
     expect(impl.calls).toHaveLength(MAX_REHOSTED_IMAGES);
     expect(skipped).toBe(3);
+  });
+
+  it("counts every redirect hop against the subrequest budget, and never overruns it", async () => {
+    // Each image bounces through the full MAX_REDIRECT_HOPS before it answers:
+    // five subrequests apiece with its upload, the worst a single image costs.
+    const routes: Record<string, () => Response> = {};
+    const urls = Array.from({ length: 10 }, (_, i) => {
+      const hops = Array.from(
+        { length: MAX_REDIRECT_HOPS + 1 },
+        (_, h) => `https://cdn${h}.example/${i}.jpg`,
+      );
+      hops.forEach((hop, h) => {
+        routes[hop] = hops[h + 1]
+          ? () => redirectTo(hops[h + 1])
+          : () => jpegBytes(10);
+      });
+      return hops[0];
+    });
+    const impl = fakeFetch(routes);
+    let uploads = 0;
+    const { blobs, skipped } = await rehostBodyImages({
+      body: urls.map((u) => `![x](${u})`).join("\n\n"),
+      did: DID,
+      maxBytes: 100,
+      isAllowedMime: isJpeg,
+      imagePath,
+      budget: IMAGE_SUBREQUEST_BUDGET,
+      slots: MAX_INLINE_IMAGES,
+      fetchImpl: impl,
+      upload: async () => {
+        uploads += 1;
+        return blobFor(CID_1);
+      },
+    });
+    expect(impl.calls.length + uploads).toBeLessThanOrEqual(
+      IMAGE_SUBREQUEST_BUDGET,
+    );
+    // 14 / 5 = 2 whole images; the third runs out of room mid-redirect, before
+    // its upload, and nothing after it starts.
+    expect(blobs).toHaveLength(2);
+    expect(uploads).toBe(2);
+    expect(skipped).toBe(8);
+  });
+
+  it("copies no more than the record has slots for, and fetches nothing past them", async () => {
+    // A thread past 50 pictures already uses every slot: a copy would never be
+    // referenced, so never served, where the source URL at least still loads.
+    const { result, uploaded } = run(
+      "![a](https://cdn.example/1.jpg)\n\n![b](https://cdn.example/2.jpg)",
+      {
+        "https://cdn.example/1.jpg": () => jpegBytes(10),
+        "https://cdn.example/2.jpg": () => jpegBytes(10),
+      },
+      { slots: 1 },
+    );
+    const { body, blobs, skipped, spent } = await result;
+    expect(blobs).toEqual([blobFor(CID_1)]);
+    expect(uploaded).toHaveLength(1);
+    expect(skipped).toBe(1);
+    expect(spent).toBe(2);
+    expect(body).toContain("![b](https://cdn.example/2.jpg)");
   });
 
   it("does nothing, and fetches nothing, for a body with no remote images", async () => {
@@ -779,10 +882,12 @@ describe("rehostBodyImages", () => {
       maxBytes: 100,
       isAllowedMime: isJpeg,
       imagePath,
+      budget: IMAGE_SUBREQUEST_BUDGET,
+      slots: MAX_INLINE_IMAGES,
       fetchImpl: impl,
       upload: async () => blobFor(CID_1),
     });
-    expect(result).toEqual({ body, blobs: [], skipped: 0 });
+    expect(result).toEqual({ body, blobs: [], skipped: 0, spent: 0 });
     expect(impl.calls).toEqual([]);
   });
 });

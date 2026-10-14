@@ -23,12 +23,15 @@ import { setPublishedRkey } from "~/lib/import-store";
 import {
   buildDocumentRecord,
   buildPublicationRecord,
+  type DocumentRecord,
   generateTid,
+  inlineImageCidsInBody,
   isOverRecordByteLimit,
   isOwnPublicationUrl,
   MAX_RECORD_BYTES,
   parseInlineImagesField,
   toRecordInput,
+  withoutInlineImage,
 } from "~/lib/publish";
 import { deleteSchedulesForDraft } from "~/lib/scheduled-posts";
 
@@ -111,6 +114,13 @@ export async function resolvePublicationSite(input: {
   return publicationUrl;
 }
 
+/** A write refused with `BlobNotFound` that couldn't go ahead without the
+ * image: the record names one the repo no longer holds, most likely a
+ * thread's picture whose post was deleted after the import. The cron has no
+ * budget to retry past it, so this fails for good and says what will work. */
+const IMAGE_MISSING_REASON =
+  "One of this post's images is no longer in your repo, usually because the Bluesky post it came from was deleted. Use Publish now and the post goes out without the missing images.";
+
 /** A stored draft, as the two draft-publishing callers read it. */
 export type StoredDraft = {
   id: string;
@@ -135,7 +145,12 @@ export type StoredDraft = {
  *   tell them apart, which is why the cron doesn't try to.
  */
 export type StoredDraftPublish =
-  | { ok: true; rkey: string }
+  | {
+      ok: true;
+      rkey: string;
+      /** Images it went out without: the repo no longer held them. */
+      imagesDropped: number;
+    }
   | { ok: false; retry: boolean; reason: string; code: string };
 
 /** Transient by nature: the PDS was there but unwilling right now. Anything
@@ -176,7 +191,7 @@ export async function readExistingDocument(
 
 export type DocumentWrite =
   | { ok: true }
-  | { ok: false; retry: boolean; error: string };
+  | { ok: false; retry: boolean; error: string; message?: string };
 
 /**
  * Writes a new document at `rkey`.
@@ -204,6 +219,7 @@ export async function writeDocument(
     ok: false as const,
     retry: isTransientStatus(created.status),
     error: created.data.error,
+    message: created.data.message,
   };
   if (!reserved) return refused;
 
@@ -226,7 +242,61 @@ export async function writeDocument(
     ok: false,
     retry: isTransientStatus(replaced.status),
     error: replaced.data.error,
+    message: replaced.data.message,
   };
+}
+
+/**
+ * writeDocument, going ahead without any image the repo no longer holds.
+ *
+ * A thread draft references its pictures where they already are, in the
+ * writer's repo, so deleting the thread before publishing deletes them too.
+ * The PDS then refuses the whole record with BlobNotFound and names one blob.
+ * Dropping that image and writing again publishes the words with every
+ * picture that is still there. Each retry is another write, so the caller
+ * passes a subrequest budget. Past it, or when the PDS names no blob the body
+ * uses, the refusal stands.
+ *
+ * `record` is the first attempt, already built and size-checked; `build`
+ * rebuilds it for a body with an image removed, which can only shrink it.
+ */
+export async function writeDocumentWithoutMissingImages(input: {
+  rpc: Client;
+  did: Did;
+  rkey: string;
+  reserved: boolean;
+  body: string;
+  record: DocumentRecord;
+  build: (body: string) => DocumentRecord;
+  budget: number;
+}): Promise<{ written: DocumentWrite; dropped: number }> {
+  const { rpc, did, rkey, reserved } = input;
+  // One write, or three on a reserved key (writeDocument's read-and-replace).
+  const cost = reserved ? 3 : 1;
+  let { body, record } = input;
+  let spent = 0;
+  let dropped = 0;
+  for (;;) {
+    const written = await writeDocument(
+      rpc,
+      did,
+      rkey,
+      toRecordInput(record),
+      reserved,
+    );
+    if (written.ok || written.error !== "BlobNotFound")
+      return { written, dropped };
+    const named = [...inlineImageCidsInBody(body)].find((cid) =>
+      written.message?.includes(cid),
+    );
+    const next = named ? withoutInlineImage(body, named) : body;
+    if (next === body || spent + cost > input.budget)
+      return { written, dropped };
+    spent += cost;
+    dropped += 1;
+    body = next;
+    record = input.build(body);
+  }
 }
 
 /**
@@ -256,6 +326,11 @@ export async function publishStoredDraft(input: {
   origins: readonly string[];
   draft: StoredDraft;
   rkey?: string;
+  /** Subrequests for retrying past missing images (see
+   * writeDocumentWithoutMissingImages). The cron passes none: its tick budget
+   * is shared by every due post, so it refuses, and the reason points the
+   * writer at Publish now. */
+  missingImageBudget?: number;
 }): Promise<StoredDraftPublish> {
   const { rpc, db, did, ident, pds, origin, origins, draft } = input;
   const title = draft.title.trim();
@@ -278,11 +353,11 @@ export async function publishStoredDraft(input: {
     origins,
   });
 
-  let record: ReturnType<typeof buildDocumentRecord>;
-  try {
-    record = buildDocumentRecord({
+  const inlineImageSources = parseInlineImagesField(draft.inlineImages);
+  const build = (body: string) =>
+    buildDocumentRecord({
       title,
-      body: draft.markdown,
+      body,
       dek: draft.dek,
       site,
       path: `/${rkey}`,
@@ -291,8 +366,11 @@ export async function publishStoredDraft(input: {
       // broken — and the browser's per-session store of them is long gone by
       // the time a cron runs. The record builder keeps only the blobs the body
       // still references, and only if they validate.
-      inlineImageSources: parseInlineImagesField(draft.inlineImages),
+      inlineImageSources,
     });
+  let record: ReturnType<typeof buildDocumentRecord>;
+  try {
+    record = build(draft.markdown);
   } catch (err) {
     console.warn("scheduled record build refused", err);
     return {
@@ -315,17 +393,27 @@ export async function publishStoredDraft(input: {
       code: "too_large",
     };
 
-  // The one seam where a document record crosses into the XRPC input —
-  // shared with the interactive path rather than re-widened here.
-  const written = await writeDocument(
+  // Shared with the interactive path, so both go ahead without a missing
+  // image the same way.
+  const { written, dropped } = await writeDocumentWithoutMissingImages({
     rpc,
     did,
     rkey,
-    toRecordInput(record),
-    input.rkey !== undefined,
-  );
+    reserved: input.rkey !== undefined,
+    body: draft.markdown,
+    record,
+    build,
+    budget: input.missingImageBudget ?? 0,
+  });
   if (!written.ok) {
     console.error("stored-draft write failed", written);
+    if (written.error === "BlobNotFound")
+      return {
+        ok: false,
+        retry: false,
+        reason: IMAGE_MISSING_REASON,
+        code: "image_missing",
+      };
     return {
       ok: false,
       retry: written.retry,
@@ -337,8 +425,8 @@ export async function publishStoredDraft(input: {
   }
 
   // Import ledger write-back: an imported draft's row records the rkey it
-  // published under, which is what makes the reader page treat it as a mirror
-  // and what keeps a re-import refusing it as a duplicate.
+  // published under, which is what gives the reader page its provenance
+  // treatment (~/lib/mirror) and keeps a re-import refusing it as a duplicate.
   await setPublishedRkey(db, did, draft.id, rkey).catch((err) => {
     console.warn("import ledger write-back failed", err);
   });
@@ -356,5 +444,5 @@ export async function publishStoredDraft(input: {
     }),
   ]);
 
-  return { ok: true, rkey };
+  return { ok: true, rkey, imagesDropped: dropped };
 }

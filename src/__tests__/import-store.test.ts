@@ -70,6 +70,9 @@ describe("mirror lookup and adoption", () => {
     expectDidBound(sql, params);
     expect(params).toContain(RKEY);
     expect(sql.toLowerCase()).toContain('"adopted_at" is null');
+    // The reader's canonical decision hangs off source_kind, so it has to
+    // travel with the lookup rather than be guessed from the URL.
+    expect(sql).toContain('"source_kind"');
   });
 
   it("adoptMirror sets adopted_at only on the un-adopted row, RETURNING", () => {
@@ -102,6 +105,7 @@ describe("ledger writes", () => {
       did: DID,
       guidHash: HASH,
       sourceUrl: "https://writer.substack.com/p/x",
+      sourceKind: "feed",
       originalAt: new Date("2025-01-01T00:00:00Z"),
       draftId: DRAFT_ID,
     }).toSQL();
@@ -120,6 +124,7 @@ describe("ledger writes", () => {
     const { sql, params } = reviveImportItem(db, DID, HASH, {
       draftId: DRAFT_ID,
       sourceUrl: null,
+      sourceKind: "feed",
       originalAt: null,
     }).toSQL();
     expectDidBound(sql, params);
@@ -146,10 +151,39 @@ describe("rate-limit ledger", () => {
     expect(sql).toContain('"created_at"');
   });
 
-  it("insertImportFetch records the run for the writer", () => {
+  /**
+   * The two imports hold SEPARATE hourly budgets off one table (see `kind` in
+   * ~/db/schema): a thread import spends a row per discovery walk and per
+   * thread assembled, so sharing one counter would either throttle a normal
+   * thread import at three threads or hand the feed importer a tenfold raise.
+   * If the kind ever falls out of the WHERE, both of those happen silently.
+   */
+  it("countRecentImportFetches scopes to one kind, defaulting to feed", () => {
+    const feed = countRecentImportFetches(db, DID, since).toSQL();
+    expect(feed.sql).toContain('"kind"');
+    expect(feed.params).toContain("feed");
+
+    const thread = countRecentImportFetches(db, DID, since, "thread").toSQL();
+    expect(thread.params).toContain("thread");
+    expect(thread.params).not.toContain("feed");
+  });
+
+  it("insertImportFetch records the run for the writer, under its kind", () => {
     const { sql, params } = insertImportFetch(db, DID).toSQL();
     expect(sql.toLowerCase()).toContain('insert into "import_fetches"');
     expect(params).toContain(DID);
+    expect(params).toContain("feed");
+    expect(insertImportFetch(db, DID, "thread").toSQL().params).toContain(
+      "thread",
+    );
+  });
+
+  /** Both kinds share the same one-hour window, which is what lets ONE prune
+   * keep the table tidy for both — it must therefore stay kind-agnostic. */
+  it("pruneImportFetches is kind-agnostic — one prune serves both budgets", () => {
+    const { sql, params } = pruneImportFetches(db, since).toSQL();
+    expect(sql).not.toContain('"kind"');
+    expect(params).not.toContain("thread");
   });
 
   it("pruneImportFetches deletes only rows older than the cutoff", () => {

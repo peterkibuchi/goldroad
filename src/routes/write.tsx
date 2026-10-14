@@ -25,6 +25,7 @@ import {
 import { selectDraft } from "~/lib/drafts";
 import { isDraftId, MAX_DRAFTS_PER_USER } from "~/lib/drafts-schema";
 import { downscaleImage } from "~/lib/image";
+import { MAX_REHOSTED_IMAGES } from "~/lib/import";
 import { selectImportItemByDraft, selectMirror } from "~/lib/import-store";
 import {
   countRemoteImages,
@@ -83,6 +84,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   not_found: "That post couldn't be loaded, so you're starting a new one.",
   not_editable:
     "That post was written in another app, in a form Goldroad can't edit without losing part of it. Edit it where it was written.",
+  image_missing:
+    "One of this post's images is no longer in your repo, so your server refused the post. If it came from a Bluesky post you've since deleted, remove that image and publish again.",
   cover_type: "Covers can be a JPEG, PNG, WebP, AVIF, or GIF image.",
   cover_too_large:
     "That cover is too large even after shrinking — pick an image under 1 MB.",
@@ -115,9 +118,11 @@ type Draft = {
   markdown: string;
   /** Same-origin /img path for the existing cover, when the record has one. */
   coverPath: string | null;
-  /** Set when this published post is a mirror (imported; original elsewhere):
-   * the edit form then offers "make this the Goldroad original". */
-  mirror: { sourceUrl: string | null } | null;
+  /** Set when this published post came in through an import: the edit form then
+   * offers to drop the provenance note. `kind` decides what that note claims —
+   * a mirror also carries an indexing consequence, a thread self-import does
+   * not (see ~/lib/mirror). */
+  mirror: { sourceUrl: string | null; kind: "feed" | "thread" } | null;
 };
 
 /** A pending schedule on the draft being resumed. `dueAt` is an ISO string —
@@ -156,6 +161,11 @@ type ResumedDraft = {
   /** This draft came in through a feed/archive import, so publishing it will
    * copy its remote body images into the writer's own repo. */
   imported: boolean;
+  /** It came from the writer's own Bluesky thread, whose pictures their
+   * server already serves: the post records reference them. */
+  fromThread: boolean;
+  /** How many remote images one publish can copy (~/lib/import). */
+  copyLimit: number;
 };
 
 const getWriteContext = createServerFn({ method: "GET" })
@@ -224,6 +234,8 @@ const getWriteContext = createServerFn({ method: "GET" })
             markdown: row.markdown,
             inlineImages: row.inlineImages,
             imported: importRow !== undefined,
+            fromThread: importRow?.sourceKind === "thread",
+            copyLimit: MAX_REHOSTED_IMAGES,
             schedule: pending
               ? { id: pending.id, dueAt: pending.dueAt.toISOString() }
               : null,
@@ -253,7 +265,7 @@ const getWriteContext = createServerFn({ method: "GET" })
         if (hasForeignContent(doc)) draftError = "not_editable";
         else {
           const coverCid = coverImageCid(doc.coverImage);
-          // Mirror lookup (import ledger): editing a mirrored post offers
+          // Provenance lookup (import ledger): editing an imported post offers
           // adoption. Best-effort — a flaked read just hides the offer.
           const [mirror] = await selectMirror(
             drizzle(env.DB),
@@ -266,7 +278,12 @@ const getWriteContext = createServerFn({ method: "GET" })
             dek: writerDek(doc),
             markdown: documentBodyMarkdown(doc),
             coverPath: coverCid ? blobImagePath(did, coverCid) : null,
-            mirror: mirror ? { sourceUrl: mirror.sourceUrl } : null,
+            mirror: mirror
+              ? {
+                  sourceUrl: mirror.sourceUrl,
+                  kind: mirror.sourceKind === "thread" ? "thread" : "feed",
+                }
+              : null,
           };
         }
       } catch {
@@ -1416,14 +1433,15 @@ export function Compose({
           {editing && draft.mirror && (
             <div className="mb-6 border border-rule px-4 py-3">
               <p className="font-display text-ink-soft text-sm leading-relaxed">
-                This post is a mirror — readers see a note pointing to the
-                original{mirrorHost ? ` at ${mirrorHost}` : ""}, and search
-                engines are told to index the original, not this copy.
+                {draft.mirror.kind === "thread"
+                  ? "This post came from one of your threads — readers see a line saying it was first published as a thread on Bluesky. This page is already the original, so search engines index it as normal."
+                  : `This post is a mirror — readers see a note pointing to the original${mirrorHost ? ` at ${mirrorHost}` : ""}, and search engines are told to index the original, not this copy.`}
               </p>
               <label className="mt-2 flex min-h-9 cursor-pointer items-center gap-2 font-display text-ink text-sm">
                 <input name="adoptOriginal" type="checkbox" value="1" />
-                Make this the Goldroad original — remove the note and let this
-                page be indexed
+                {draft.mirror.kind === "thread"
+                  ? "Drop the line about the thread — this stands on its own now"
+                  : "Make this the Goldroad original — remove the note and let this page be indexed"}
               </label>
             </div>
           )}
@@ -1493,9 +1511,9 @@ export function Compose({
             here rather than left to be discovered as breakage. */}
         {!editing && resumedHasImages && (
           <p className="mt-4 font-display text-ink-soft text-xs leading-relaxed">
-            Images in this draft are already saved to your repo, but they stay
-            blank here until you publish — that's when your server starts
-            serving them.
+            {resumed?.fromThread
+              ? "Pictures from the thread already show. Any image you added yourself is saved to your repo but stays blank here until you publish, which is when your server starts serving it."
+              : "Images in this draft are already saved to your repo, but they stay blank here until you publish — that's when your server starts serving them."}
           </p>
         )}
         {/* An imported draft's images still live on the source's servers, and
@@ -1506,6 +1524,8 @@ export function Compose({
             {remoteImages === 1
               ? "This post has one image still hosted by the site you imported from. Publishing saves a copy to your own repo — it counts against your storage there — so the post keeps working if the original disappears."
               : `This post has ${remoteImages} images still hosted by the site you imported from. Publishing saves copies to your own repo — they count against your storage there — so the post keeps working if the originals disappear.`}
+            {remoteImages > resumed.copyLimit &&
+              ` One publish copies up to ${resumed.copyLimit}; the rest keep loading from the original site.`}
           </p>
         )}
         {/* Alt text is what a screen reader has to work with, and the only

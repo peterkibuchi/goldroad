@@ -67,7 +67,8 @@ const posted = vi.hoisted(() => [] as Posted[]);
  * plus the D1 side effects, so "before"/"after" is assertable across both. */
 const steps = vi.hoisted(() => [] as string[]);
 type Reply = { ok: boolean; status: number; data: Record<string, unknown> };
-const replies = vi.hoisted(() => new Map<string, Reply>());
+/** One reply for every call, or a list answered in order. */
+const replies = vi.hoisted(() => new Map<string, Reply | Reply[]>());
 vi.mock("@atcute/client", () => ({
   Client: class {
     post(nsid: string, options: { input: Record<string, unknown> }) {
@@ -76,8 +77,13 @@ vi.mock("@atcute/client", () => ({
       steps.push(
         typeof collection === "string" ? `${nsid}:${collection}` : nsid,
       );
+      const reply = replies.get(nsid);
       return Promise.resolve(
-        replies.get(nsid) ?? { ok: true, status: 200, data: {} },
+        (Array.isArray(reply) ? reply.shift() : reply) ?? {
+          ok: true,
+          status: 200,
+          data: {},
+        },
       );
     }
   },
@@ -747,6 +753,151 @@ describe("POST /api/publish — intent=document, a post that arrived by import",
     expect(ledger.setPublishedRkey).not.toHaveBeenCalled();
   });
 
+  /**
+   * WHEN AN IMAGE STAYS ON SOMEBODY ELSE'S SERVER, THE WRITER IS TOLD.
+   *
+   * Rehosting is the point of importing: the copy on the source CDN is exactly
+   * the one that vanishes when the writer leaves that platform. It is
+   * best-effort per image — past the cap, too big, refused, wrong type — and
+   * that is fine, but it was silent. The writer published, saw "Published.",
+   * and believed the archive was now theirs while part of it still loaded from
+   * the site they were leaving.
+   *
+   * The count rides back on the redirect so the confirmation can say it. Not an
+   * error and not a warning to act on — there is nothing they can do today —
+   * just the true state of what they just published.
+   */
+  it("tells the writer how many images stayed on the source", async () => {
+    // Every fetch refused, so every image is skipped: deterministic, and no
+    // network. The publish itself is unaffected, which is the other half.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("no", { status: 404 })),
+    );
+    const res = await publish({
+      ...fields,
+      body: [
+        "![one](https://cdn.example/1.jpg)",
+        "![two](https://cdn.example/2.jpg)",
+      ].join("\n\n"),
+    });
+    vi.unstubAllGlobals();
+
+    expect(location(res).searchParams.get("published")).toBeTruthy();
+    expect(location(res).searchParams.get("imagesKept")).toBe("2");
+  });
+
+  it("references a thread's pictures where they already are, and covers with the first", async () => {
+    const fetchSpy = vi.fn(async () => new Response("no", { status: 404 }));
+    vi.stubGlobal("fetch", fetchSpy);
+    const res = await publish({
+      ...fields,
+      body: `Words.\n\n![chart](/img/${encodeURIComponent(DID)}/${CID})`,
+      // What the thread import stored on the draft, replayed by the editor.
+      images: JSON.stringify([blob()]),
+    });
+    vi.unstubAllGlobals();
+
+    expect(location(res).searchParams.get("published")).toBeTruthy();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(callOf("com.atproto.repo.uploadBlob")).toBeUndefined();
+    expect(documentRecord().goldroadInlineImages).toEqual([blob()]);
+    // The first picture is the cover, as a copied one would have been.
+    expect(documentRecord().coverImage).toEqual(blob());
+  });
+
+  it("goes out without an image the repo no longer holds, and says so", async () => {
+    // The thread was deleted after the import, taking this picture with it.
+    const gone = "bafkreigoneaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    replies.set("com.atproto.repo.createRecord", [
+      {
+        ok: false,
+        status: 400,
+        data: {
+          error: "BlobNotFound",
+          message: `Could not find blob: ${gone}`,
+        },
+      },
+    ]);
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await publish({
+      ...fields,
+      body: [
+        `![gone](/img/${encodeURIComponent(DID)}/${gone})`,
+        `![kept](/img/${encodeURIComponent(DID)}/${CID})`,
+      ].join("\n\n"),
+      images: JSON.stringify([blob({ ref: { $link: gone } }), blob()]),
+    });
+    quiet.mockRestore();
+
+    expect(location(res).searchParams.get("published")).toBeTruthy();
+    expect(location(res).searchParams.get("imagesDropped")).toBe("1");
+    const writes = posted.filter(
+      (p) => p.options.input.collection === "site.standard.document",
+    );
+    expect(writes).toHaveLength(2);
+    const record = writes[1].options.input.record as Record<string, unknown>;
+    expect(record.goldroadInlineImages).toEqual([blob()]);
+    // The cover was the missing picture; it moves to the next one.
+    expect(record.coverImage).toEqual(blob());
+  });
+
+  it("refuses with a reason when the server names no image the body uses", async () => {
+    replies.set("com.atproto.repo.createRecord", {
+      ok: false,
+      status: 400,
+      data: { error: "BlobNotFound" },
+    });
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await publish({
+      ...fields,
+      body: `![chart](/img/${encodeURIComponent(DID)}/${CID})`,
+      images: JSON.stringify([blob()]),
+    });
+    quiet.mockRestore();
+    expect(errorFrom(res)).toBe("image_missing");
+    expect(location(res).searchParams.get("draft")).toBe(DRAFT_ID);
+    expect(drafts.deleteDraft).not.toHaveBeenCalled();
+  });
+
+  it("copies nothing a full record couldn't reference", async () => {
+    // A thread past 50 pictures: the first 50 are borrowed and fill every
+    // slot, so a copy of the 51st would never be referenced or served.
+    const cids = Array.from(
+      { length: 50 },
+      (_, i) => `bafkrei${String(i).padStart(36, "0")}`,
+    );
+    const fetchSpy = vi.fn(
+      async () =>
+        new Response(new Uint8Array(10), {
+          headers: { "content-type": "image/jpeg" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+    const res = await publish({
+      ...fields,
+      body: [
+        ...cids.map((cid) => `![](/img/${encodeURIComponent(DID)}/${cid})`),
+        "![51st](https://cdn.bsky.app/img/feed_fullsize/plain/x/y@jpeg)",
+      ].join("\n\n"),
+      images: JSON.stringify(cids.map((cid) => blob({ ref: { $link: cid } }))),
+    });
+    vi.unstubAllGlobals();
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(callOf("com.atproto.repo.uploadBlob")).toBeUndefined();
+    expect(documentRecord().goldroadInlineImages).toHaveLength(50);
+    expect(location(res).searchParams.get("imagesKept")).toBe("1");
+  });
+
+  it("says nothing when every image came across", async () => {
+    // The counter-case: a silent success stays silent. A notice that always
+    // appeared would train the writer to ignore it.
+    const res = await publish({ ...fields, body: "Just words." });
+    expect(location(res).searchParams.get("published")).toBeTruthy();
+    expect(location(res).searchParams.get("imagesKept")).toBeNull();
+  });
+
   it("publishes as a normal now-dated post when the ledger read flakes", async () => {
     ledger.selectImportItemByDraft.mockRejectedValue(new Error("d1 down"));
     const res = await publish(fields);
@@ -755,6 +906,28 @@ describe("POST /api/publish — intent=document, a post that arrived by import",
     expect(String(documentRecord().publishedAt)).not.toBe(
       ORIGINAL.toISOString(),
     );
+  });
+
+  /**
+   * The rule that makes a backfill survivable: nothing announces.
+   *
+   * A writer bringing twenty old threads (or twenty old newsletter posts)
+   * across publishes them one after another, and if publishing announced, each
+   * one would land in their followers' timelines — twenty notifications for
+   * work from 2024. What keeps that from happening is the IMPORT SKIP: a
+   * publish carrying import provenance never announces, whatever the request
+   * asked for and whatever the writer's account setting says. Stated that way
+   * on purpose — "announcing is a separate intent" was the old reason and stops
+   * being true the moment publishing announces by default, which would leave
+   * this test passing for a reason that no longer holds.
+   */
+  it("never announces — a backfill must not reach the writer's followers", async () => {
+    await publish(fields);
+    expect(
+      callOf("com.atproto.repo.createRecord", "app.bsky.feed.post"),
+    ).toBeUndefined();
+    // And the document record carries no announcement reference of its own.
+    expect(documentRecord().bskyPostRef).toBeUndefined();
   });
 
   it("ignores an original date in the future rather than publishing ahead of now", async () => {
