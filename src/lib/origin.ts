@@ -87,9 +87,9 @@ export function ownOrigins(requestOrigin: string): readonly string[] {
 
 /**
  * Hostname and scheme canonicalization for the server entry. Production
- * requests on a non-canonical hostname (i.e. goldroad.kibuchi.workers.dev) 301
- * to the same path + query on CANONICAL_ORIGIN, and plain-http requests 301 to
- * https on the same host. Returns null when the request should be served: dev
+ * requests on a non-canonical hostname (i.e. goldroad.kibuchi.workers.dev)
+ * redirect to the same path + query on CANONICAL_ORIGIN, and plain-http
+ * requests to https on the same host: 301 for GET and HEAD, 308 otherwise. Returns null when the request should be served: dev
  * loopback, and https on the canonical or a versioned preview hostname.
  *
  * The scheme comes from the `cf-visitor` header, NOT from request.url:
@@ -107,9 +107,11 @@ export function canonicalRedirect(request: Request): Response | null {
     url.hostname.endsWith(PREVIEW_HOST_SUFFIX);
   const plainHttp = visitorScheme(request) === "http";
   if (known && !plainHttp) return null;
-  const origin = known ? `https://${url.host}` : CANONICAL_ORIGIN;
+  // Hostname, not host: a port on a plain-http request has no https twin.
+  const origin = known ? `https://${url.hostname}` : CANONICAL_ORIGIN;
   return new Response(null, {
-    status: 301,
+    // 308 keeps a POST a POST; a 301 turns it into a GET.
+    status: request.method === "GET" || request.method === "HEAD" ? 301 : 308,
     headers: { location: `${origin}${url.pathname}${url.search}` },
   });
 }
