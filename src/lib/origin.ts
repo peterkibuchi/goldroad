@@ -86,23 +86,41 @@ export function ownOrigins(requestOrigin: string): readonly string[] {
 }
 
 /**
- * Hostname canonicalization for the server entry: production requests on a
- * non-canonical hostname (i.e. goldroad.kibuchi.workers.dev) 301 to the same
- * path + query on CANONICAL_ORIGIN. Returns null when the request should be
- * served: dev loopback, the canonical host, and versioned preview hostnames.
+ * Hostname and scheme canonicalization for the server entry. Production
+ * requests on a non-canonical hostname (i.e. goldroad.kibuchi.workers.dev) 301
+ * to the same path + query on CANONICAL_ORIGIN, and plain-http requests 301 to
+ * https on the same host. Returns null when the request should be served: dev
+ * loopback, and https on the canonical or a versioned preview hostname.
  *
- * HOSTNAME only, deliberately not protocol: `wrangler dev` on the built
- * worker presents the zone host over plain http (local_protocol), so an
- * http→https upgrade here would loop local preview forever (verified
- * 2026-07-24). http→https belongs to the Cloudflare edge (Always Use HTTPS).
+ * The scheme comes from the `cf-visitor` header, NOT from request.url:
+ * `wrangler dev` on the built worker presents the zone host over plain http
+ * (local_protocol), so upgrading on request.url's scheme would loop local
+ * preview forever (verified 2026-07-24). The Cloudflare edge sets cf-visitor
+ * on real traffic only. The zone's "Always Use HTTPS" setting does the same
+ * job one hop earlier, but it lives in the dashboard, not in this repo.
  */
 export function canonicalRedirect(request: Request): Response | null {
   const url = new URL(request.url);
   if (isLoopbackOrigin(url.origin)) return null;
-  if (url.hostname === CANONICAL_HOST) return null;
-  if (url.hostname.endsWith(PREVIEW_HOST_SUFFIX)) return null;
+  const known =
+    url.hostname === CANONICAL_HOST ||
+    url.hostname.endsWith(PREVIEW_HOST_SUFFIX);
+  const plainHttp = visitorScheme(request) === "http";
+  if (known && !plainHttp) return null;
+  const origin = known ? `https://${url.host}` : CANONICAL_ORIGIN;
   return new Response(null, {
     status: 301,
-    headers: { location: `${CANONICAL_ORIGIN}${url.pathname}${url.search}` },
+    headers: { location: `${origin}${url.pathname}${url.search}` },
   });
+}
+
+/** The scheme the visitor connected with, per the Cloudflare edge's
+ * `cf-visitor: {"scheme":"http"}` header; null when absent or unreadable. */
+function visitorScheme(request: Request): string | null {
+  try {
+    const visitor = JSON.parse(request.headers.get("cf-visitor") ?? "null");
+    return typeof visitor?.scheme === "string" ? visitor.scheme : null;
+  } catch {
+    return null;
+  }
 }
