@@ -507,11 +507,18 @@ export async function fetchImportableImage(
 const MARKDOWN_IMAGE_RE = /!\[(?:\\.|[^[\]\\])*\]\(\s*([^()\s]+)[^()]*\)/g;
 
 /**
- * How many body images one publish will rehost. A bound on the fetches and
- * blob writes a single publish can trigger; beyond it the remaining images
- * keep pointing at the source, which is exactly what they did before.
+ * Subrequests one publish may spend copying body images. The free plan allows
+ * 50 per invocation, and the rest of a publish can take 29 of them: session
+ * restore with a token refresh 5, identity 1, cover upload 2, publication
+ * lookup or first-time create 3, document write up to 3, cache purges 15. So
+ * copying gets 16 and 5 stay spare. Images past the budget keep pointing at
+ * the source, and the writer is told.
  */
-export const MAX_REHOSTED_IMAGES = 20;
+export const REHOST_SUBREQUEST_BUDGET = 16;
+
+/** Images one publish can copy at best: one fetch and one upload each. A
+ * redirecting image costs a fetch per hop, so fewer fit. */
+export const MAX_REHOSTED_IMAGES = REHOST_SUBREQUEST_BUDGET / 2;
 
 /**
  * Distinct public-https image URLs in a body, in first-appearance order.
@@ -546,7 +553,7 @@ export type RehostResult = {
    * the PDS never serves them (see DocumentRecord in ~/lib/publish). */
   blobs: unknown[];
   /** Images left pointing at the source (fetch refused, too big, wrong type,
-   * or past the cap). Not an error — just not rehosted. */
+   * or past the budget). Not an error — just not rehosted. */
   skipped: number;
 };
 
@@ -586,19 +593,36 @@ export async function rehostBodyImages(opts: {
 
   const replacements = new Map<string, string>();
   const blobs: unknown[] = [];
-  let skipped = Math.max(0, urls.length - MAX_REHOSTED_IMAGES);
+  let skipped = 0;
 
-  for (const url of urls.slice(0, MAX_REHOSTED_IMAGES)) {
+  // Every fetch, redirect hops included, and every upload is a subrequest. A
+  // fetch only goes out if the upload after it still fits, so an image never
+  // starts that can't finish and the budget is never overrun.
+  let spent = 0;
+  const baseFetch = opts.fetchImpl ?? fetch;
+  const fits = () => spent + 2 <= REHOST_SUBREQUEST_BUDGET;
+  const budgetedFetch: FetchLike = (url, init) => {
+    if (!fits()) return Promise.reject(new Error("subrequest budget spent"));
+    spent += 1;
+    return baseFetch(url, init);
+  };
+
+  for (const [i, url] of urls.entries()) {
+    if (!fits()) {
+      skipped += urls.length - i;
+      break;
+    }
     const candidate = await fetchImportableImage(
       url,
       opts.maxBytes,
       opts.isAllowedMime,
-      opts.fetchImpl,
+      budgetedFetch,
     );
     if (!candidate) {
       skipped += 1;
       continue;
     }
+    spent += 1;
     const blob = await opts.upload(candidate.bytes, candidate.mime);
     // A CID we can't build a servable path from is a skip, not a rewrite to
     // a URL that would 404 — the original at least still renders.

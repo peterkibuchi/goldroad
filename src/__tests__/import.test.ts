@@ -21,6 +21,7 @@ import {
   MAX_REDIRECT_HOPS,
   MAX_REHOSTED_IMAGES,
   parseFeedDocument,
+  REHOST_SUBREQUEST_BUDGET,
   readFeedBody,
   rehostBodyImages,
 } from "../lib/import";
@@ -802,6 +803,45 @@ describe("rehostBodyImages", () => {
     expect(blobs).toHaveLength(MAX_REHOSTED_IMAGES);
     expect(impl.calls).toHaveLength(MAX_REHOSTED_IMAGES);
     expect(skipped).toBe(3);
+  });
+
+  it("counts every redirect hop against the subrequest budget, and never overruns it", async () => {
+    // Each image bounces through the full MAX_REDIRECT_HOPS before it answers:
+    // five subrequests apiece with its upload, the worst a single image costs.
+    const routes: Record<string, () => Response> = {};
+    const urls = Array.from({ length: 10 }, (_, i) => {
+      const hops = Array.from(
+        { length: MAX_REDIRECT_HOPS + 1 },
+        (_, h) => `https://cdn${h}.example/${i}.jpg`,
+      );
+      hops.forEach((hop, h) => {
+        routes[hop] = hops[h + 1]
+          ? () => redirectTo(hops[h + 1])
+          : () => jpegBytes(10);
+      });
+      return hops[0];
+    });
+    const impl = fakeFetch(routes);
+    let uploads = 0;
+    const { blobs, skipped } = await rehostBodyImages({
+      body: urls.map((u) => `![x](${u})`).join("\n\n"),
+      did: DID,
+      maxBytes: 100,
+      isAllowedMime: isJpeg,
+      imagePath,
+      fetchImpl: impl,
+      upload: async () => {
+        uploads += 1;
+        return blobFor(CID_1);
+      },
+    });
+    expect(impl.calls.length + uploads).toBeLessThanOrEqual(
+      REHOST_SUBREQUEST_BUDGET,
+    );
+    // 16 / 5 = 3 whole images; the fourth's hops would leave no room to upload.
+    expect(blobs).toHaveLength(3);
+    expect(uploads).toBe(3);
+    expect(skipped).toBe(7);
   });
 
   it("does nothing, and fetches nothing, for a body with no remote images", async () => {
