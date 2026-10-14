@@ -204,6 +204,19 @@ describe("canonicalRedirect", () => {
     );
   });
 
+  it("keeps a POST a POST, and drops a port that has no https twin", () => {
+    const post = canonicalRedirect(
+      new Request("http://trygoldroad.com:8080/api/report", {
+        method: "POST",
+        headers: { "cf-visitor": '{"scheme":"http"}' },
+      }),
+    );
+    expect(post?.status).toBe(308);
+    expect(post?.headers.get("location")).toBe(
+      "https://trygoldroad.com/api/report",
+    );
+  });
+
   it("upgrades a preview host on itself, and sends other hosts to the canonical origin", () => {
     expect(
       overHttp(
