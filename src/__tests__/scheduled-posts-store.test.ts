@@ -204,7 +204,7 @@ describe("the writer-facing queries are bound to the writer", () => {
   it("upsertSchedule writes the writer's DID and reschedules in one statement", () => {
     const { sql, params } = upsertSchedule(
       db,
-      { id: ROW_ID, did: DID, draftId: DRAFT_ID, dueAt: NOW },
+      { id: ROW_ID, did: DID, draftId: DRAFT_ID, dueAt: NOW, announce: true },
       NOW,
     ).toSQL();
     const lower = sql.toLowerCase();
@@ -280,6 +280,7 @@ describe("d1ScheduledPostStore against SQLite — a retry can't publish twice", 
       did: DID,
       draftId: DRAFT_ID,
       dueAt,
+      announce: false,
     });
     return { d1, realDb, store: d1ScheduledPostStore(realDb) };
   }
@@ -314,6 +315,7 @@ describe("d1ScheduledPostStore against SQLite — a retry can't publish twice", 
       did: DID,
       draftId: DRAFT_ID,
       dueAt: new Date(NOW.getTime() + 60_000),
+      announce: false,
     });
     expect(await store.claim(ROW_ID, NOW, "3lyk73wxnokbb")).toMatchObject({
       rkey: "3lyk73wxnokaa",
@@ -351,6 +353,7 @@ describe("upsertSchedule against SQLite", () => {
         did: DID,
         draftId: DRAFT_ID,
         dueAt: NOW,
+        announce: false,
       }),
     ).toEqual([{ id: ROW_ID, dueAt: NOW }]);
     // A second schedule of the same draft moves the pending row, not a new one.
@@ -360,6 +363,7 @@ describe("upsertSchedule against SQLite", () => {
         did: DID,
         draftId: DRAFT_ID,
         dueAt: later,
+        announce: false,
       }),
     ).toEqual([{ id: ROW_ID, dueAt: later }]);
     expect(
@@ -375,6 +379,7 @@ describe("upsertSchedule against SQLite", () => {
       did: DID,
       draftId: DRAFT_ID,
       dueAt: NOW,
+      announce: false,
     });
     await markFailed(realDb, ROW_ID, "refused", NOW);
     // The index is partial for this: a finished row mustn't block a new one.
@@ -384,6 +389,7 @@ describe("upsertSchedule against SQLite", () => {
         did: DID,
         draftId: DRAFT_ID,
         dueAt: NOW,
+        announce: false,
       }),
     ).toEqual([{ id: "fresh-id", dueAt: NOW }]);
     expect(
@@ -394,5 +400,30 @@ describe("upsertSchedule against SQLite", () => {
       { id: ROW_ID, status: "failed" },
       { id: "fresh-id", status: "pending" },
     ]);
+  });
+});
+
+describe("the announce choice against SQLite", () => {
+  it("is stored with the schedule, read by the cron, and moved by a reschedule", async () => {
+    const realDb = drizzle(sqliteD1());
+    await upsertSchedule(realDb, {
+      id: ROW_ID,
+      did: DID,
+      draftId: DRAFT_ID,
+      dueAt: NOW,
+      announce: true,
+    });
+    expect(await selectDuePosts(realDb, NOW)).toEqual([
+      { id: ROW_ID, did: DID, draftId: DRAFT_ID, announce: true },
+    ]);
+    // Rescheduling with the box unticked changes the choice.
+    await upsertSchedule(realDb, {
+      id: "ignored",
+      did: DID,
+      draftId: DRAFT_ID,
+      dueAt: NOW,
+      announce: false,
+    });
+    expect((await selectDuePosts(realDb, NOW))[0]?.announce).toBe(false);
   });
 });

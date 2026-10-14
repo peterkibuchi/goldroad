@@ -105,6 +105,8 @@ const ERROR_MESSAGES: Record<string, string> = {
     "Deleting needs a permission your current sign-in doesn't include yet — re-connect your account to enable deletion.",
   announce_scope:
     "Posting to Bluesky needs a permission your current sign-in doesn't include yet — re-connect your account to enable announcing.",
+  already_announced:
+    "That post was already announced on Bluesky, so it wasn't posted again.",
   move_no_publication:
     "There's no publication to move yet — it's created when you publish your first post.",
   schedule_in_flight:
@@ -258,6 +260,7 @@ const getDashboard = createServerFn({ method: "GET" })
               : ("pending" as const),
           attempts: row.attempts,
           lastError: row.lastError,
+          announce: row.announce,
           // The join is a LEFT join: a row whose draft vanished still has to be
           // nameable, because it is the row the writer most needs to see.
           title: row.title?.trim() || "(untitled draft)",
@@ -1186,6 +1189,7 @@ export function ScheduledListRow({ row }: { row: ScheduledPostRow }) {
         <span className="font-display text-sm text-ink-soft">
           {failed ? "Didn't go out \u00b7 was due " : "Scheduled for "}
           <ScheduledTime iso={row.dueAt} />
+          {!failed && row.announce && " \u00b7 announces on Bluesky"}
         </span>
       </div>
       {failed && (
@@ -1356,10 +1360,42 @@ function FirstRun() {
 }
 
 /**
- * The one-shot outcome of a write. A server redirect appends exactly one of
- * these to /dashboard (`?published=<rkey>`, `?announced=<rkey>`,
- * `?scheduled=1`) and they are read once: into the confirmation notice, and
- * into a single analytics event.
+ * "Published", with a way to see it. The announce offer is left out when this
+ * publish already announced it: a second post would be one unconfirmed click
+ * away. Exported for tests (dashboard-scheduled.test.tsx) — not a route.
+ */
+export function PublishedNotice({
+  ident,
+  rkey,
+  announced,
+}: {
+  ident: string;
+  rkey: string;
+  announced: boolean;
+}) {
+  return (
+    <Notice tone="info">
+      Published. {/* New tab: the writer keeps their dashboard context. */}
+      <ExternalLink
+        className="underline underline-offset-2"
+        href={`/@${encodeURIComponent(ident)}/${rkey}`}
+      >
+        View it live
+      </ExternalLink>
+      {!announced && (
+        <span className="mt-1 block">
+          {ANNOUNCE_EXPLAINER} <AnnounceButton rkey={rkey} />
+        </span>
+      )}
+    </Notice>
+  );
+}
+
+/**
+ * The one-shot outcome of a write. A server redirect appends these to
+ * /dashboard (`?published=<rkey>`, `?announced=<rkey>`, `?scheduled=1`; a
+ * publish that also announced carries both of the first two) and they are
+ * read once: into the confirmation notices, and into the analytics events.
  */
 export type DashboardOutcome = {
   published?: string;
@@ -1479,19 +1515,13 @@ function DashboardPage() {
         </div>
 
         {outcome.published && (
-          <Notice tone="info">
-            Published.{" "}
-            {/* New tab: the writer keeps their dashboard context. */}
-            <ExternalLink
-              className="underline underline-offset-2"
-              href={`/@${encodeURIComponent(ident)}/${outcome.published}`}
-            >
-              View it live
-            </ExternalLink>
-            <span className="mt-1 block">
-              {ANNOUNCE_EXPLAINER} <AnnounceButton rkey={outcome.published} />
-            </span>
-          </Notice>
+          <PublishedNotice
+            announced={
+              Boolean(outcome.announced) || error === "already_announced"
+            }
+            ident={ident}
+            rkey={outcome.published}
+          />
         )}
         {outcome.announced && (
           <Notice tone="info">

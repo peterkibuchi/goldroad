@@ -2,7 +2,11 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { PostsTab, ScheduledPostRow } from "../lib/dashboard";
-import { PostsManager, ScheduledListRow } from "../routes/dashboard";
+import {
+  PostsManager,
+  PublishedNotice,
+  ScheduledListRow,
+} from "../routes/dashboard";
 import { VIEWS_OFF } from "./support/views-envelope";
 
 /**
@@ -37,6 +41,7 @@ function scheduledRow(extra: Partial<ScheduledPostRow> = {}): ScheduledPostRow {
     status: "pending",
     attempts: 0,
     lastError: null,
+    announce: false,
     title: "The long way round",
     description: null,
     ...extra,
@@ -212,5 +217,43 @@ describe("the tab and its empty states", () => {
     renderManager([scheduledRow()]);
     const tab = screen.getByRole("tab", { name: /scheduled/i });
     expect(tab.textContent).toMatch(/1/);
+  });
+});
+
+describe("a queued post's announce", () => {
+  it("says it will be announced when it goes out", () => {
+    render(<ScheduledListRow row={scheduledRow({ announce: true })} />);
+    expect(screen.getByText(/Scheduled for/).textContent).toMatch(
+      /announces on Bluesky/,
+    );
+  });
+
+  it("says nothing when it won't be", () => {
+    render(<ScheduledListRow row={scheduledRow()} />);
+    expect(screen.getByText(/Scheduled for/).textContent).not.toMatch(
+      /announce/i,
+    );
+  });
+});
+
+describe("the Published notice", () => {
+  it("offers the announce when the publish didn't", () => {
+    render(
+      <PublishedNotice
+        announced={false}
+        ident="writer.example"
+        rkey="3lyk73wxnok2f"
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: /announce on bluesky/i }),
+    ).toBeTruthy();
+  });
+
+  it("doesn't offer a second one after the publish announced it", () => {
+    render(
+      <PublishedNotice announced ident="writer.example" rkey="3lyk73wxnok2f" />,
+    );
+    expect(screen.queryByRole("button", { name: /announce/i })).toBeNull();
   });
 });

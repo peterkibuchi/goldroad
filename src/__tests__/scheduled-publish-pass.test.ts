@@ -55,7 +55,7 @@ function fakeStore(rows: Row[]) {
       return rows
         .filter((row) => !row.claimed)
         .slice(0, limit)
-        .map(({ id, did, draftId }) => ({ id, did, draftId }));
+        .map(({ id, did, draftId }) => ({ id, did, draftId, announce: false }));
     },
     async claim(id, _now, rkey) {
       const row = rows.find((r) => r.id === id);
@@ -232,8 +232,8 @@ describe("the per-tick cap is bounded AND reported", () => {
     expect(calls.dueLimits).toEqual([6]);
   });
 
-  it("defaults the cap to five", async () => {
-    expect(MAX_PUBLISHES_PER_TICK).toBe(5);
+  it("defaults the cap to three, which leaves room to announce each one", async () => {
+    expect(MAX_PUBLISHES_PER_TICK).toBe(3);
     const { store, calls } = fakeStore([row("a")]);
     await runScheduledPublishPass({
       mintRkey,

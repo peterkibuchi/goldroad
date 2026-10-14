@@ -34,6 +34,9 @@ const publishing = vi.hoisted(() => ({
 }));
 vi.mock("~/lib/publish-document", () => publishing);
 
+const announcing = vi.hoisted(() => ({ announceDocument: vi.fn() }));
+vi.mock("~/lib/announce-document", () => announcing);
+
 vi.mock("@atcute/client", () => ({
   Client: class {
     constructor(readonly options: unknown) {}
@@ -51,7 +54,13 @@ import {
 const DID = "did:plc:fake2222222222writer2222";
 const DRAFT_ID = "11111111-2222-4333-8444-555555555555";
 const RESERVED = "3lyk73wxnokrs";
-const POST = { id: "row-1", did: DID, draftId: DRAFT_ID, rkey: RESERVED };
+const POST = {
+  id: "row-1",
+  did: DID,
+  draftId: DRAFT_ID,
+  rkey: RESERVED,
+  announce: false,
+};
 // biome-ignore lint/suspicious/noExplicitAny: the store calls are all mocked
 const db = {} as any;
 
@@ -80,6 +89,7 @@ beforeEach(() => {
     rkey: "3lyk73wxnok2f",
   });
   publishing.readExistingDocument.mockResolvedValue({ state: "missing" });
+  announcing.announceDocument.mockResolvedValue({ ok: true, postRkey: "p" });
   vi.spyOn(console, "warn").mockImplementation(() => {});
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
@@ -249,5 +259,65 @@ describe("the read cache", () => {
       vi.unstubAllGlobals();
     }
     expect(cache.delete).not.toHaveBeenCalled();
+  });
+});
+
+describe("the announce the writer asked for when they scheduled it", () => {
+  const ANNOUNCING = { ...POST, announce: true };
+
+  it("announces the published post, and never a second time", async () => {
+    expect(await publishDuePost(db, ANNOUNCING)).toEqual({
+      ok: true,
+      rkey: "3lyk73wxnok2f",
+    });
+    expect(announcing.announceDocument).toHaveBeenCalledWith(
+      expect.objectContaining({
+        did: DID,
+        ident: "writer.example",
+        rkey: "3lyk73wxnok2f",
+        origin: CANONICAL_ORIGIN,
+        onlyOnce: true,
+      }),
+    );
+  });
+
+  it("doesn't announce a post scheduled without it", async () => {
+    await publishDuePost(db, POST);
+    expect(announcing.announceDocument).not.toHaveBeenCalled();
+  });
+
+  it("never fails a published post over its announce", async () => {
+    // The post is live; a thrown publisher would be retried.
+    announcing.announceDocument.mockRejectedValue(new Error("bsky down"));
+    expect(await publishDuePost(db, ANNOUNCING)).toMatchObject({ ok: true });
+    announcing.announceDocument.mockResolvedValue({
+      ok: false,
+      code: "announce_failed:Upstream",
+    });
+    expect(await publishDuePost(db, ANNOUNCING)).toMatchObject({ ok: true });
+  });
+
+  it("announces a post an earlier attempt published but didn't get to announce", async () => {
+    drafts.selectDraft.mockResolvedValue([]);
+    publishing.readExistingDocument.mockResolvedValue({
+      state: "exists",
+      value: {},
+      cid: "bafy",
+    });
+    expect(await publishDuePost(db, ANNOUNCING)).toMatchObject({ ok: true });
+    expect(announcing.announceDocument).toHaveBeenCalledWith(
+      expect.objectContaining({ rkey: RESERVED, onlyOnce: true }),
+    );
+  });
+
+  it("doesn't announce a publish that failed", async () => {
+    publishing.publishStoredDraft.mockResolvedValue({
+      ok: false,
+      retry: true,
+      reason: "later",
+      code: "publish_failed:Timeout",
+    });
+    await publishDuePost(db, ANNOUNCING);
+    expect(announcing.announceDocument).not.toHaveBeenCalled();
   });
 });

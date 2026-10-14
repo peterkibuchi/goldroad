@@ -263,6 +263,9 @@ export const scheduledPosts = sqliteTable(
     /** The record key reserved by the first claim; every retry, and a
      * "publish now", writes under it. */
     publishedRkey: text("published_rkey"),
+    /** Announce on Bluesky once it's published: the writer's choice when
+     * they scheduled it. */
+    announce: integer("announce", { mode: "boolean" }).notNull().default(false),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .notNull()
       .$defaultFn(() => new Date()),

@@ -56,10 +56,12 @@ describe("SchedulePanel — its own form, and what it refuses to do", () => {
 
   function panel(
     prepare: () => Promise<string | null>,
-    existing: { id: string; dueAt: string } | null = null,
+    existing: { id: string; dueAt: string; announce: boolean } | null = null,
+    announce = true,
   ) {
     render(
       <SchedulePanel
+        announce={() => announce}
         draftId={DRAFT_ID}
         existing={existing}
         prepare={prepare}
@@ -106,6 +108,20 @@ describe("SchedulePanel — its own form, and what it refuses to do", () => {
     expect(Number(data.get("dueTzOffset"))).toBe(expected);
   });
 
+  it("carries the Also announce choice as it is when Schedule is pressed", async () => {
+    for (const choice of [true, false]) {
+      requestSubmit.mockClear();
+      cleanup();
+      const { time, button } = panel(async () => DRAFT_ID, null, choice);
+      fireEvent.change(time, { target: { value: "2027-08-04T09:00" } });
+      fireEvent.click(button);
+      await waitFor(() => expect(requestSubmit).toHaveBeenCalled());
+      const form = (requestSubmit.mock.instances[0] ??
+        requestSubmit.mock.contexts[0]) as HTMLFormElement;
+      expect(new FormData(form).get("announce")).toBe(choice ? "1" : "");
+    }
+  });
+
   it("schedules NOTHING when the draft save fails, and says why", async () => {
     const { time, button } = panel(async () => null);
     fireEvent.change(time, { target: { value: "2027-08-04T09:00" } });
@@ -143,8 +159,13 @@ describe("SchedulePanel — its own form, and what it refuses to do", () => {
   it("shows an existing schedule with its zone named, and offers a cancel", () => {
     render(
       <SchedulePanel
+        announce={() => true}
         draftId={DRAFT_ID}
-        existing={{ id: ROW_ID, dueAt: "2027-08-04T06:00:00.000Z" }}
+        existing={{
+          id: ROW_ID,
+          dueAt: "2027-08-04T06:00:00.000Z",
+          announce: true,
+        }}
         prepare={async () => DRAFT_ID}
       />,
     );
@@ -158,14 +179,36 @@ describe("SchedulePanel — its own form, and what it refuses to do", () => {
     expect(screen.getByRole("button", { name: "Reschedule" })).toBeTruthy();
   });
 
+  it("says a pending schedule will announce, and how to change that", () => {
+    render(
+      <SchedulePanel
+        announce={() => true}
+        draftId={DRAFT_ID}
+        existing={{
+          id: ROW_ID,
+          dueAt: "2027-08-04T06:00:00.000Z",
+          announce: true,
+        }}
+        prepare={async () => DRAFT_ID}
+      />,
+    );
+    expect(document.body.textContent).toMatch(/announced on Bluesky then/);
+    expect(document.body.textContent).toMatch(/Reschedule to change/);
+  });
+
   it("cancels by the schedule's id, but returns to the DRAFT", () => {
     // The two ids are both UUIDs, so sending the wrong one here would land the
     // writer in a blank editor with a "draft not found" and their piece
     // apparently gone.
     render(
       <SchedulePanel
+        announce={() => true}
         draftId={DRAFT_ID}
-        existing={{ id: ROW_ID, dueAt: "2027-08-04T06:00:00.000Z" }}
+        existing={{
+          id: ROW_ID,
+          dueAt: "2027-08-04T06:00:00.000Z",
+          announce: true,
+        }}
         prepare={async () => DRAFT_ID}
       />,
     );
@@ -182,6 +225,7 @@ describe("SchedulePanel — its own form, and what it refuses to do", () => {
   it("states the cover limitation where the decision is made", () => {
     render(
       <SchedulePanel
+        announce={() => true}
         draftId={null}
         existing={null}
         prepare={async () => DRAFT_ID}
@@ -244,7 +288,11 @@ describe("Compose — the schedule control's place in the publish flow", () => {
           markdown: "",
           inlineImages: "",
           imported: false,
-          schedule: { id: ROW_ID, dueAt: "2027-08-04T06:00:00.000Z" },
+          schedule: {
+            id: ROW_ID,
+            dueAt: "2027-08-04T06:00:00.000Z",
+            announce: true,
+          },
         }}
       />,
     );
@@ -252,5 +300,103 @@ describe("Compose — the schedule control's place in the publish flow", () => {
     expect(
       screen.getByRole("button", { name: "Cancel the schedule" }),
     ).toBeTruthy();
+  });
+
+  it("offers Also announce on Bluesky on a new post, ticked, on the publish form", async () => {
+    render(
+      <Compose
+        draft={null}
+        error={undefined}
+        reconnectHandle={null}
+        resumed={null}
+      />,
+    );
+    const box = (await screen.findByRole(
+      "checkbox",
+      { name: "Also announce on Bluesky" },
+      { timeout: 30_000 },
+    )) as HTMLInputElement;
+    expect(box.checked).toBe(true);
+    expect(box.getAttribute("form")).toBe("publish-form");
+    expect(box.name).toBe("announce");
+    // The consequence, read with the box.
+    expect(
+      document.getElementById(box.getAttribute("aria-describedby") ?? "")
+        ?.textContent,
+    ).toMatch(/timeline/);
+  });
+
+  it("reopens a scheduled draft with the choice it was scheduled with", async () => {
+    render(
+      <Compose
+        draft={null}
+        error={undefined}
+        reconnectHandle={null}
+        resumed={{
+          id: DRAFT_ID,
+          title: "Queued",
+          dek: "",
+          blocksJson: "[]",
+          markdown: "",
+          inlineImages: "",
+          imported: false,
+          schedule: {
+            id: ROW_ID,
+            dueAt: "2027-08-04T06:00:00.000Z",
+            announce: false,
+          },
+        }}
+      />,
+    );
+    const box = (await screen.findByRole("checkbox", {
+      name: "Also announce on Bluesky",
+    })) as HTMLInputElement;
+    expect(box.checked).toBe(false);
+  });
+
+  it("leaves it unticked on an imported post, which is old news to followers", async () => {
+    render(
+      <Compose
+        draft={null}
+        error={undefined}
+        reconnectHandle={null}
+        resumed={{
+          id: DRAFT_ID,
+          title: "From the archive",
+          dek: "",
+          blocksJson: "[]",
+          markdown: "",
+          inlineImages: "",
+          imported: true,
+          schedule: null,
+        }}
+      />,
+    );
+    const box = (await screen.findByRole("checkbox", {
+      name: "Also announce on Bluesky",
+    })) as HTMLInputElement;
+    expect(box.checked).toBe(false);
+  });
+
+  it("doesn't offer it while editing a post that's already out", async () => {
+    render(
+      <Compose
+        draft={{
+          rkey: "3lyk73wxnok2f",
+          title: "Live post",
+          dek: "",
+          markdown: "words",
+          coverPath: null,
+          mirror: null,
+        }}
+        error={undefined}
+        reconnectHandle={null}
+        resumed={null}
+      />,
+    );
+    await screen.findByRole("button", { name: "Save changes" });
+    expect(
+      screen.queryByRole("checkbox", { name: "Also announce on Bluesky" }),
+    ).toBeNull();
   });
 });
