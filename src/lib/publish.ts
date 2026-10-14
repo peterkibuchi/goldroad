@@ -210,6 +210,22 @@ export function inlineImagesForBody(
   return out;
 }
 
+/** The first body image a record can reference, in body order: an imported
+ * post's cover when the writer picked none. */
+export function firstInlineImage(
+  body: string,
+  candidates: readonly unknown[],
+): InlineImageBlob | null {
+  const usable = new Map(
+    inlineImagesForBody(body, candidates).map((blob) => [blob.ref.$link, blob]),
+  );
+  for (const cid of inlineImageCidsInBody(body)) {
+    const blob = usable.get(cid);
+    if (blob) return blob;
+  }
+  return null;
+}
+
 /**
  * The browser's `images` form field → candidate blobs. Malformed JSON is an
  * empty list, never a failed publish: the words are what matter, and an image

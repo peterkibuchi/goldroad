@@ -50,6 +50,7 @@ import {
   buildPublicationRecord,
   type CoverImageBlob,
   composeDocumentUrl,
+  firstInlineImage,
   generateTid,
   type IconBlob,
   isOverRecordByteLimit,
@@ -673,10 +674,17 @@ async function publishDocument({
   }
 
   // An imported post with no writer-picked cover borrows its first body
-  // image — already fetched and uploaded just above, so this costs nothing.
-  // thumbFromCover is the same validation a cover gets (raster, ≤1MB).
-  if (!coverBlob && rehostedBlobs.length > 0)
-    coverBlob = thumbFromCover(rehostedBlobs[0]) ?? undefined;
+  // image — a blob already in the repo (a thread's own picture, or one just
+  // copied above), so this costs nothing. thumbFromCover is the same
+  // validation a cover gets (raster, ≤1MB).
+  if (!coverBlob && importRow)
+    coverBlob =
+      thumbFromCover(
+        firstInlineImage(publishBody, [
+          ...inlineImageSources,
+          ...rehostedBlobs,
+        ]),
+      ) ?? undefined;
 
   // Canonical URL composes as publication.url + path: …/@<ident> + /<rkey>.
   const record = buildDocumentRecord({
@@ -705,7 +713,14 @@ async function publishDocument({
   );
   if (!written.ok) {
     console.error("document write failed", written);
-    return reject(`publish_failed:${written.error}`);
+    // The record names an image the repo no longer holds: a thread's picture
+    // whose post was deleted before this publish. It shows broken in the
+    // editor, so the writer can find it once they know to look.
+    return reject(
+      written.error === "BlobNotFound"
+        ? "image_missing"
+        : `publish_failed:${written.error}`,
+    );
   }
 
   // Import ledger write-back: record the rkey this item published under —

@@ -25,6 +25,7 @@ import {
 import { selectDraft } from "~/lib/drafts";
 import { isDraftId, MAX_DRAFTS_PER_USER } from "~/lib/drafts-schema";
 import { downscaleImage } from "~/lib/image";
+import { MAX_REHOSTED_IMAGES } from "~/lib/import";
 import { selectImportItemByDraft, selectMirror } from "~/lib/import-store";
 import {
   countRemoteImages,
@@ -83,6 +84,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   not_found: "That post couldn't be loaded, so you're starting a new one.",
   not_editable:
     "That post was written in another app, in a form Goldroad can't edit without losing part of it. Edit it where it was written.",
+  image_missing:
+    "One of this post's images is no longer in your repo, usually because the Bluesky post it came from was deleted. It shows as a broken image below. Remove it and publish again.",
   cover_type: "Covers can be a JPEG, PNG, WebP, AVIF, or GIF image.",
   cover_too_large:
     "That cover is too large even after shrinking — pick an image under 1 MB.",
@@ -158,6 +161,11 @@ type ResumedDraft = {
   /** This draft came in through a feed/archive import, so publishing it will
    * copy its remote body images into the writer's own repo. */
   imported: boolean;
+  /** It came from the writer's own Bluesky thread, whose pictures their
+   * server already serves: the post records reference them. */
+  fromThread: boolean;
+  /** How many remote images one publish can copy (~/lib/import). */
+  copyLimit: number;
 };
 
 const getWriteContext = createServerFn({ method: "GET" })
@@ -226,6 +234,8 @@ const getWriteContext = createServerFn({ method: "GET" })
             markdown: row.markdown,
             inlineImages: row.inlineImages,
             imported: importRow !== undefined,
+            fromThread: importRow?.sourceKind === "thread",
+            copyLimit: MAX_REHOSTED_IMAGES,
             schedule: pending
               ? { id: pending.id, dueAt: pending.dueAt.toISOString() }
               : null,
@@ -1499,7 +1509,7 @@ export function Compose({
             repo, but a PDS only serves a blob some record references — so
             after a reload they stay blank until this draft publishes. Said
             here rather than left to be discovered as breakage. */}
-        {!editing && resumedHasImages && (
+        {!editing && resumedHasImages && !resumed?.fromThread && (
           <p className="mt-4 font-display text-ink-soft text-xs leading-relaxed">
             Images in this draft are already saved to your repo, but they stay
             blank here until you publish — that's when your server starts
@@ -1514,6 +1524,8 @@ export function Compose({
             {remoteImages === 1
               ? "This post has one image still hosted by the site you imported from. Publishing saves a copy to your own repo — it counts against your storage there — so the post keeps working if the original disappears."
               : `This post has ${remoteImages} images still hosted by the site you imported from. Publishing saves copies to your own repo — they count against your storage there — so the post keeps working if the originals disappear.`}
+            {remoteImages > resumed.copyLimit &&
+              ` One publish copies up to ${resumed.copyLimit}; the rest keep loading from the original site.`}
           </p>
         )}
         {/* Alt text is what a screen reader has to work with, and the only

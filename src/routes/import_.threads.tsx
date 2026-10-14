@@ -164,6 +164,8 @@ export type WireAssembled = {
   sourceUrl: string;
   truncated: boolean;
   droppedVideo: boolean;
+  /** Blob refs for the thread's images, already in the writer's repo. */
+  images?: unknown[];
 };
 
 /** The /api/threads/assemble success body. Exported for tests — not a route. */
@@ -357,6 +359,9 @@ function ThreadImportPage() {
           body: JSON.stringify({
             title: assembled.thread.title,
             content: blocks,
+            // Passed through for the draft to keep: publishing references
+            // these blobs rather than copying the pictures again.
+            inlineImages: assembled.thread.images ?? [],
             source: {
               // The root's at:// URI is the ledger's dedupe identity.
               guid: thread.rootUri,
@@ -591,8 +596,8 @@ export function ThreadPicker({
       <p className="mt-2 font-display text-ink-soft text-sm">
         Each draft keeps a line pointing back at the thread it came from, and
         these pages stay the original — the same words, in the shape they should
-        have been in. Pictures come across with their descriptions, copied into
-        your own storage when you publish.
+        have been in. Pictures come across with their descriptions, and once you
+        publish, the post keeps them even if you delete the thread.
       </p>
       {overCap && (
         <Notice tone="alert">

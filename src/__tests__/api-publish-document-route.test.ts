@@ -781,6 +781,43 @@ describe("POST /api/publish — intent=document, a post that arrived by import",
     expect(location(res).searchParams.get("imagesKept")).toBe("2");
   });
 
+  it("references a thread's pictures where they already are: nothing fetched, nothing uploaded", async () => {
+    const fetchSpy = vi.fn(async () => new Response("no", { status: 404 }));
+    vi.stubGlobal("fetch", fetchSpy);
+    const res = await publish({
+      ...fields,
+      body: `Words.\n\n![chart](/img/${encodeURIComponent(DID)}/${CID})`,
+      // What the thread import stored on the draft, replayed by the editor.
+      images: JSON.stringify([blob()]),
+    });
+    vi.unstubAllGlobals();
+
+    expect(location(res).searchParams.get("published")).toBeTruthy();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(callOf("com.atproto.repo.uploadBlob")).toBeUndefined();
+    expect(documentRecord().goldroadInlineImages).toEqual([blob()]);
+    // The first picture is the cover, as a copied one would have been.
+    expect(documentRecord().coverImage).toEqual(blob());
+  });
+
+  it("says which image is gone when the repo no longer holds one, and keeps the draft", async () => {
+    replies.set("com.atproto.repo.createRecord", {
+      ok: false,
+      status: 400,
+      data: { error: "BlobNotFound", message: `Could not find blob: ${CID}` },
+    });
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await publish({
+      ...fields,
+      body: `![chart](/img/${encodeURIComponent(DID)}/${CID})`,
+      images: JSON.stringify([blob()]),
+    });
+    quiet.mockRestore();
+    expect(errorFrom(res)).toBe("image_missing");
+    expect(location(res).searchParams.get("draft")).toBe(DRAFT_ID);
+    expect(drafts.deleteDraft).not.toHaveBeenCalled();
+  });
+
   it("says nothing when every image came across", async () => {
     // The counter-case: a silent success stays silent. A notice that always
     // appeared would train the writer to ignore it.

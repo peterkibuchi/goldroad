@@ -106,6 +106,8 @@ describe("/write — the subtitle field", () => {
           markdown: "",
           inlineImages: "",
           imported: false,
+          fromThread: false,
+          copyLimit: 8,
           schedule: null,
         }}
       />,

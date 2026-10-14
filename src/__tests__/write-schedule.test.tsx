@@ -244,6 +244,8 @@ describe("Compose — the schedule control's place in the publish flow", () => {
           markdown: "",
           inlineImages: "",
           imported: false,
+          fromThread: false,
+          copyLimit: 8,
           schedule: { id: ROW_ID, dueAt: "2027-08-04T06:00:00.000Z" },
         }}
       />,
