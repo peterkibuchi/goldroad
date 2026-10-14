@@ -21,9 +21,8 @@
  *    budget ever actually bites.
  * 2. Purge expired oauth_kv rows. `D1Store.get` only deletes an
  *    expired row when that exact key is read again, so abandoned authorize
- *    `state:` rows — every login started but never completed — accumulate
- *    forever. This sweeps them. Sessions (`sess:`, expires_at = null) are left
- *    alone; they're removed on logout.
+ *    `state:` rows and idle sessions (`sess:`, see ~/lib/live-session) would
+ *    otherwise accumulate forever, refresh tokens included.
  * 3. Sample follower counts, one row per writer per UTC day, and prune samples
  *    past their retention window (~/lib/follower-snapshots). Hourly rather than
  *    daily on purpose: the pass is idempotent per day, so running it 24 times
@@ -58,6 +57,7 @@ import {
   runFollowerSnapshotPass,
   type SnapshotPassResult,
 } from "~/lib/follower-snapshots";
+import { backfillSessionExpiry } from "~/lib/live-session";
 import { CANONICAL_ORIGIN } from "~/lib/origin";
 import { d1ReportStore, runReportAlertPass } from "~/lib/reports";
 import {
@@ -68,14 +68,12 @@ import { cronPublisher, type WaitUntil } from "~/lib/scheduled-publish";
 
 type DrizzleD1 = ReturnType<typeof drizzle>;
 
-/** WHERE for expired oauth_kv rows: an expiry is set AND it's in the past.
- * Rows with expires_at = null (sessions) never match. */
+/** WHERE for expired oauth_kv rows: an expiry is set AND it's in the past. */
 export function expiredOauthKvCondition(now: number) {
   return and(isNotNull(oauthKv.expiresAt), lte(oauthKv.expiresAt, now));
 }
 
-/** Delete expired authorize-state rows. Exposed (and unit-tested via
- * .toSQL()) so the query is verifiable without a live D1. */
+/** Delete expired authorize states and idle sessions. */
 export function purgeExpiredOauthKv(db: DrizzleD1, now: number) {
   return db.delete(oauthKv).where(expiredOauthKvCondition(now));
 }
@@ -247,6 +245,7 @@ export async function runScheduled(
   });
   console.log("scheduled publish pass", scheduled);
   try {
+    await backfillSessionExpiry(db, Date.now());
     await purgeExpiredOauthKv(db, Date.now());
   } catch (err) {
     console.error("oauth_kv purge failed", err);

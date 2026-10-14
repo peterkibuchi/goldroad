@@ -3,6 +3,8 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { isHandle } from "~/lib/atproto";
 import { createOAuthClient, safeReturnTo } from "~/lib/oauth";
+import { isCrossSite } from "~/lib/origin";
+import { oauthStateSetCookie } from "~/lib/session";
 
 /**
  * A sign-in that can't start is a designed moment, not a bare 400: a
@@ -41,7 +43,8 @@ function normalizeHandle(raw: string): string {
 /**
  * Starts the OAuth flow: resolves the handle to its authorization server,
  * pushes the PAR request, and 302s the user to authorize. The state (with
- * returnTo) is persisted in the D1 state store by the library. POST-only —
+ * returnTo) is persisted in the D1 state store by the library, and its id is
+ * set in a cookie the callback checks, binding the flow to this browser. POST-only —
  * this is the side-effecting path: a D1 write + a PAR push to an
  * attacker-named PDS must never ride on an unauthenticated GET.
  */
@@ -64,13 +67,19 @@ async function startLogin(
   if (!isHandle(trimmed)) return backToSignIn("invalid_handle", trimmed, dest);
   const client = createOAuthClient(new URL(request.url).origin);
   try {
-    const { url } = await client.authorize({
+    const { url, stateId } = await client.authorize({
       target: { type: "account", identifier: trimmed },
       state: { returnTo: safeReturnTo(returnTo) },
     });
     return new Response(null, {
       status: 302,
-      headers: { location: url.toString() },
+      headers: {
+        location: url.toString(),
+        "set-cookie": oauthStateSetCookie(
+          stateId,
+          new URL(request.url).protocol === "https:",
+        ),
+      },
     });
   } catch (err) {
     console.error("authorize failed", err);
@@ -108,6 +117,9 @@ export const Route = createFileRoute("/login")({
         return seeOther(`/write?${params}`);
       },
       POST: async ({ request }) => {
+        // Another site must not start a sign-in here: it could pick its own
+        // account and plant the state cookie, and the callback would accept it.
+        if (isCrossSite(request)) return seeOther("/write");
         const form = await request.formData().catch(() => null);
         if (!form) return new Response("Invalid form", { status: 400 });
         return startLogin(
