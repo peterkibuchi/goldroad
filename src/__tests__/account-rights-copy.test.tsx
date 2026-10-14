@@ -2,6 +2,8 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { PrivacyPage } from "../routes/privacy";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 /**
  * The privacy policy is a promise about code. These tests pin the two halves
@@ -126,11 +128,43 @@ describe("privacy policy — retention", () => {
     );
   });
 
-  it("says the addresses are never in the writer's export, and why", async () => {
+  it("says the writer's export includes the addresses, and why", async () => {
     const text = textOf();
-    expect(text).toMatch(/never included in a writer's data export/i);
-    // The reason, not just the fact: they are the readers' addresses.
-    expect(text).toMatch(/belong to the readers who left them/i);
-    expect(text).toMatch(/only how many there are/i);
+    expect(text).toMatch(/writer's data export includes them/i);
+    expect(text).toMatch(/with where and when each was left/i);
+    // The reason, not just the fact: whose list it is, and who holds it.
+    expect(text).toMatch(/the writer controls their publication's list/i);
+    expect(text).toMatch(/processes it on their behalf/i);
+    expect(text).not.toMatch(/never included in a writer's data export/i);
+  });
+
+  it("lists the reader addresses among what a writer can download", async () => {
+    expect(textOf()).toMatch(
+      /download everything we hold under that account[^.]*addresses readers\s+have left with your publication/i,
+    );
+  });
+});
+
+describe("settings — what the download contains", () => {
+  it("names every table the export reads, reader addresses included", () => {
+    // The intro says "That's everything keyed to your account", so a table it
+    // leaves out makes the sentence false.
+    const source = readFileSync(
+      join(import.meta.dirname, "..", "routes", "settings.tsx"),
+      "utf8",
+    ).replace(/\s+/g, " ");
+    const intro = source.match(
+      /intro="Goldroad stores remarkably little[^"]*"/,
+    );
+    expect(intro?.[0]).toBeDefined();
+    for (const item of [
+      /drafts/,
+      /import history/,
+      /scheduled posts/,
+      /follower count/,
+      /addresses readers have left with your publication/,
+      /sign-in session/,
+    ])
+      expect(intro?.[0]).toMatch(item);
   });
 });
