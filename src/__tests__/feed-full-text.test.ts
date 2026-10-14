@@ -106,8 +106,9 @@ describe("markdownToHtml — the same rendering the page does", () => {
     ];
     for (const [make, n] of hostiles) {
       // markdown-it is linear on these but slow, so the ratio alone can't
-      // tell whether it ran. The trailing emphasis can: rendered, it would be
-      // <strong>; through the fallback it stays literal text.
+      // tell whether it ran; it checks the fallback itself. The trailing
+      // emphasis tells: rendered, it would be <strong>; through the fallback
+      // it stays literal text.
       const html = markdownToHtml(`${make(n)} **bold**`);
       expect(html.startsWith("<p")).toBe(true);
       expect(html).toContain("**bold**");

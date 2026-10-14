@@ -310,9 +310,9 @@ rules.footnote_anchor = (tokens, idx) => {
   return ` <a href="#user-content-fnref-${id}" data-footnote-backref aria-label="Back to reference ${escapeHtml(id)}" class="${CLASSES.a}">↩︎</a>`;
 };
 
-/** Inputs past these render as plain paragraphs. markdown-it is linear on
- * prose but not on bracket floods: 5,000 unclosed `[` cost ~100 ms, and a
- * hostile record must not cost every reader in the isolate. */
+/** Inputs past these render as plain paragraphs. markdown-it is slow on
+ * bracket floods: 5,000 unclosed `[` cost ~100 ms, and a hostile record must
+ * not cost every reader in the isolate. */
 const MAX_RENDER_CHARS = 100_000;
 const MAX_BRACKETS = 2_000;
 

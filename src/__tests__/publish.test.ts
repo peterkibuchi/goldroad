@@ -16,7 +16,11 @@ import {
   updateDocumentRecord,
   writerDek,
 } from "../lib/publish";
-import { expectLinear, LINEAR_TEST_TIMEOUT_MS } from "./linear-time";
+import {
+  BRACKET_FLOODS,
+  expectLinear,
+  LINEAR_TEST_TIMEOUT_MS,
+} from "./linear-time";
 
 describe("generateTid", () => {
   it("emits 13 chars of base32-sortable alphabet", () => {
@@ -121,19 +125,11 @@ describe("excerpt", () => {
     // Bodies are writer-authored and capped at MAX_BODY_LENGTH (100k), but
     // the pre-refactor link/image patterns went quadratic on
     // unmatched-bracket floods even at that size (seconds of CPU on a
-    // ~10 ms Workers budget). The shared hardened strip must keep the worst
-    // validated input trivial.
-    // [repeated unit, length in units]; the ratio test compares a quarter of
-    // that length against the whole of it.
-    const hostiles: Array<[string, number]> = [
-      ["[", MAX_BODY_LENGTH],
-      ["[a](b", MAX_BODY_LENGTH / 5],
-      ["![", MAX_BODY_LENGTH / 2],
-      ["`", MAX_BODY_LENGTH],
-    ];
-    for (const [unit, units] of hostiles) {
-      expectLinear(excerpt, (k) => unit.repeat(k), units / 4);
-      expect(excerpt(unit.repeat(units)).length).toBeLessThanOrEqual(300);
+    // ~10 ms Workers budget). The shared hardened strip must grow linearly
+    // up to the worst validated input.
+    for (const [unit, n] of BRACKET_FLOODS) {
+      expectLinear(excerpt, (k) => unit.repeat(k), n);
+      expect(excerpt(unit.repeat(4 * n)).length).toBeLessThanOrEqual(300);
     }
   });
 });

@@ -363,9 +363,9 @@ describe("plainTextBody: constructs the strip used to leave standing", () => {
     timeout: LINEAR_TEST_TIMEOUT_MS,
   }, () => {
     // [repeated unit, repeats in the smaller input]; the larger is 4x that,
-    // half the validated body limit. Quadratic work shows at any of these
-    // sizes, and the strip is slow enough per character here that the full
-    // limit would spend most of the test's time budget on a loaded machine.
+    // at most 50k characters, half the validated body limit. Quadratic work
+    // shows at any of these sizes, and this strip is slow enough per
+    // character that the full limit makes the test slow on a loaded machine.
     const hostiles: Array<[string, number]> = [
       ["|", 12_500],
       ["[^", 6_250],
