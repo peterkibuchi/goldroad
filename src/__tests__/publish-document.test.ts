@@ -22,6 +22,12 @@ vi.mock("~/lib/drafts", () => drafts);
 const ledger = vi.hoisted(() => ({ setPublishedRkey: vi.fn() }));
 vi.mock("~/lib/import-store", () => ledger);
 
+const searchIndex = vi.hoisted(() => ({ indexDocument: vi.fn() }));
+vi.mock("~/lib/search", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/search")>()),
+  ...searchIndex,
+}));
+
 const schedules = vi.hoisted(() => ({ deleteSchedulesForDraft: vi.fn() }));
 vi.mock("~/lib/scheduled-posts", () => schedules);
 
@@ -104,6 +110,8 @@ function input(
 
 beforeEach(() => {
   atproto.listRecords.mockReset();
+  searchIndex.indexDocument.mockReset();
+  searchIndex.indexDocument.mockResolvedValue(undefined);
   drafts.deleteDraft.mockReset();
   ledger.setPublishedRkey.mockReset();
   atproto.listRecords.mockResolvedValue([
@@ -293,6 +301,18 @@ describe("publishStoredDraft", () => {
       expect.anything(),
       DID,
       DRAFT.id,
+    );
+  });
+
+  it("puts a scheduled post into search under the key it published at", async () => {
+    const { rpc } = fakeRpc();
+    const result = await publishStoredDraft(input(rpc));
+    if (!result.ok) throw new Error("expected a publish");
+    expect(searchIndex.indexDocument).toHaveBeenCalledWith(
+      expect.anything(),
+      DID,
+      result.rkey,
+      expect.objectContaining({ textContent: "Some words." }),
     );
   });
 

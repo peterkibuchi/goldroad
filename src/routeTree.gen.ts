@@ -48,6 +48,7 @@ import { Route as ApiAccountDeleteRouteImport } from './routes/api.account.delet
 import { Route as ApiAccountExportRouteImport } from './routes/api.account.export'
 import { Route as ApiImportDraftRouteImport } from './routes/api.import.draft'
 import { Route as ApiImportStatusRouteImport } from './routes/api.import.status'
+import { Route as ApiSearchBackfillRouteImport } from './routes/api.search.backfill'
 import { Route as ApiThreadsAssembleRouteImport } from './routes/api.threads.assemble'
 import { Route as ImgDidCidRouteImport } from './routes/img.$did.$cid'
 import { Route as PHandleRkeyRouteImport } from './routes/p.$handle.$rkey'
@@ -252,6 +253,11 @@ const ApiImportStatusRoute = ApiImportStatusRouteImport.update({
   path: '/status',
   getParentRoute: () => ApiImportRoute,
 } as any)
+const ApiSearchBackfillRoute = ApiSearchBackfillRouteImport.update({
+  id: '/api/search/backfill',
+  path: '/api/search/backfill',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiThreadsAssembleRoute = ApiThreadsAssembleRouteImport.update({
   id: '/assemble',
   path: '/assemble',
@@ -313,6 +319,7 @@ export interface FileRoutesByFullPath {
   '/api/account/export': typeof ApiAccountExportRoute
   '/api/import/draft': typeof ApiImportDraftRoute
   '/api/import/status': typeof ApiImportStatusRoute
+  '/api/search/backfill': typeof ApiSearchBackfillRoute
   '/api/threads/assemble': typeof ApiThreadsAssembleRoute
   '/img/$did/$cid': typeof ImgDidCidRoute
   '/p/$handle/$rkey': typeof PHandleRkeyRoute
@@ -358,6 +365,7 @@ export interface FileRoutesByTo {
   '/api/account/export': typeof ApiAccountExportRoute
   '/api/import/draft': typeof ApiImportDraftRoute
   '/api/import/status': typeof ApiImportStatusRoute
+  '/api/search/backfill': typeof ApiSearchBackfillRoute
   '/api/threads/assemble': typeof ApiThreadsAssembleRoute
   '/img/$did/$cid': typeof ImgDidCidRoute
   '/p/$handle/$rkey': typeof PHandleRkeyRoute
@@ -404,6 +412,7 @@ export interface FileRoutesById {
   '/api/account/export': typeof ApiAccountExportRoute
   '/api/import/draft': typeof ApiImportDraftRoute
   '/api/import/status': typeof ApiImportStatusRoute
+  '/api/search/backfill': typeof ApiSearchBackfillRoute
   '/api/threads/assemble': typeof ApiThreadsAssembleRoute
   '/img/$did/$cid': typeof ImgDidCidRoute
   '/p/$handle/$rkey': typeof PHandleRkeyRoute
@@ -451,6 +460,7 @@ export interface FileRouteTypes {
     | '/api/account/export'
     | '/api/import/draft'
     | '/api/import/status'
+    | '/api/search/backfill'
     | '/api/threads/assemble'
     | '/img/$did/$cid'
     | '/p/$handle/$rkey'
@@ -496,6 +506,7 @@ export interface FileRouteTypes {
     | '/api/account/export'
     | '/api/import/draft'
     | '/api/import/status'
+    | '/api/search/backfill'
     | '/api/threads/assemble'
     | '/img/$did/$cid'
     | '/p/$handle/$rkey'
@@ -541,6 +552,7 @@ export interface FileRouteTypes {
     | '/api/account/export'
     | '/api/import/draft'
     | '/api/import/status'
+    | '/api/search/backfill'
     | '/api/threads/assemble'
     | '/img/$did/$cid'
     | '/p/$handle/$rkey'
@@ -585,6 +597,7 @@ export interface RootRouteChildren {
   AtChar123handleChar125IndexRoute: typeof AtChar123handleChar125IndexRoute
   ApiAccountDeleteRoute: typeof ApiAccountDeleteRoute
   ApiAccountExportRoute: typeof ApiAccountExportRoute
+  ApiSearchBackfillRoute: typeof ApiSearchBackfillRoute
   ImgDidCidRoute: typeof ImgDidCidRoute
   PHandleRkeyRoute: typeof PHandleRkeyRoute
   EmbedThumbYoutubeIdRoute: typeof EmbedThumbYoutubeIdRoute
@@ -865,6 +878,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiImportStatusRouteImport
       parentRoute: typeof ApiImportRoute
     }
+    '/api/search/backfill': {
+      id: '/api/search/backfill'
+      path: '/api/search/backfill'
+      fullPath: '/api/search/backfill'
+      preLoaderRoute: typeof ApiSearchBackfillRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/threads/assemble': {
       id: '/api/threads/assemble'
       path: '/assemble'
@@ -960,6 +980,7 @@ const rootRouteChildren: RootRouteChildren = {
   AtChar123handleChar125IndexRoute: AtChar123handleChar125IndexRoute,
   ApiAccountDeleteRoute: ApiAccountDeleteRoute,
   ApiAccountExportRoute: ApiAccountExportRoute,
+  ApiSearchBackfillRoute: ApiSearchBackfillRoute,
   ImgDidCidRoute: ImgDidCidRoute,
   PHandleRkeyRoute: PHandleRkeyRoute,
   EmbedThumbYoutubeIdRoute: EmbedThumbYoutubeIdRoute,

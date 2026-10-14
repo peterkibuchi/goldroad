@@ -30,6 +30,15 @@ const ledger = vi.hoisted(() => ({
 }));
 vi.mock("~/lib/import-store", () => ledger);
 
+const searchIndex = vi.hoisted(() => ({
+  indexDocument: vi.fn(),
+  unindexDocument: vi.fn(),
+}));
+vi.mock("~/lib/search", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/search")>()),
+  ...searchIndex,
+}));
+
 /** Everything the handler does, in order: the XRPC write and the D1 cleanup. */
 const steps = vi.hoisted(() => [] as string[]);
 type Posted = { nsid: string; options: { input: Record<string, unknown> } };
@@ -109,6 +118,10 @@ beforeEach(() => {
   session.did = DID;
   for (const fn of Object.values(atproto)) fn.mockReset();
   for (const fn of Object.values(ledger)) fn.mockReset();
+  for (const fn of Object.values(searchIndex)) fn.mockReset();
+  searchIndex.unindexDocument.mockImplementation(async () => {
+    steps.push("unindexDocument");
+  });
   atproto.resolveDidIdentity.mockResolvedValue({
     handle: "writer.example",
     pds: "https://pds.example.com",
@@ -185,8 +198,22 @@ describe("POST /api/publish — intent=delete", () => {
     expect(steps).toEqual([
       "com.atproto.repo.deleteRecord",
       "clearPublishedImport",
+      "unindexDocument",
     ]);
     expect(ledger.clearPublishedImport).toHaveBeenCalledWith(
+      expect.anything(),
+      DID,
+      RKEY,
+    );
+  });
+
+  it("takes the post out of search once the record is gone", async () => {
+    await remove();
+    expect(steps).toContain("unindexDocument");
+    expect(steps.indexOf("unindexDocument")).toBeGreaterThan(
+      steps.indexOf("com.atproto.repo.deleteRecord"),
+    );
+    expect(searchIndex.unindexDocument).toHaveBeenCalledWith(
       expect.anything(),
       DID,
       RKEY,

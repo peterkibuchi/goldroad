@@ -21,15 +21,18 @@ CREATE UNIQUE INDEX `search_documents_did_rkey_idx` ON `search_documents` (`did`
 -- stores no text of its own, so the nightly backup can skip it (D1 cannot
 -- export a virtual table) and a restore rebuilds it from search_documents
 -- with: INSERT INTO post_search(post_search) VALUES('rebuild');
--- porter stems English ("running" finds "run"); unicode61 with
--- remove_diacritics 2 folds accents ("cafe" finds "café").
+-- unicode61 with remove_diacritics 2 folds case and accents ("cafe" finds
+-- "café") in any script. No stemmer: every query word matches as a prefix
+-- (~/lib/search-query), which finds "gardens" and "gardening" for "garden"
+-- in any language, where porter is English-only and stops a half-typed word
+-- ("runn") from finding its own full form.
 CREATE VIRTUAL TABLE `post_search` USING fts5(
 	title,
 	description,
 	body,
 	content='search_documents',
 	content_rowid='id',
-	tokenize='porter unicode61 remove_diacritics 2'
+	tokenize='unicode61 remove_diacritics 2'
 );
 --> statement-breakpoint
 -- An external-content index is only as current as these triggers keep it. A

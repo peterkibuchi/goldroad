@@ -34,6 +34,7 @@ import {
   withoutInlineImage,
 } from "~/lib/publish";
 import { deleteSchedulesForDraft } from "~/lib/scheduled-posts";
+import { indexDocument } from "~/lib/search";
 
 type DrizzleD1 = ReturnType<typeof drizzle>;
 
@@ -429,6 +430,10 @@ export async function publishStoredDraft(input: {
   // treatment (~/lib/mirror) and keeps a re-import refusing it as a duplicate.
   await setPublishedRkey(db, did, draft.id, rkey).catch((err) => {
     console.warn("import ledger write-back failed", err);
+  });
+  // Into search (~/lib/search), on the same best-effort terms.
+  await indexDocument(db, did, rkey, record).catch((err) => {
+    console.warn("search index after publish failed", err);
   });
   // The publish completes the draft — and with it any schedule pointing at it.
   // A row that outlives its own published post is not harmless: the next tick
