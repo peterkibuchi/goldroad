@@ -9,6 +9,7 @@ import {
   resetTurnstileWidgets,
   TURNSTILE_TOKEN_FIELD,
   TurnstileWidget,
+  turnstileReady,
 } from "~/components/turnstile";
 
 /**
@@ -38,8 +39,10 @@ function ReportForm({ initialUrl }: { initialUrl: string }) {
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
-    const data = new FormData(form);
     setState("sending");
+    // A submit can beat the lazily loaded challenge; wait for its token.
+    await turnstileReady(form);
+    const data = new FormData(form);
     // Present only when the Turnstile widget rendered (sitekey configured);
     // without it the payload stays exactly the pre-Turnstile shape.
     const turnstileToken = data.get(TURNSTILE_TOKEN_FIELD);
