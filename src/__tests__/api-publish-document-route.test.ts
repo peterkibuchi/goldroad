@@ -34,6 +34,9 @@ vi.mock("~/lib/atproto", async (importOriginal) => ({
   ...atproto,
 }));
 
+const announcing = vi.hoisted(() => ({ announceDocument: vi.fn() }));
+vi.mock("~/lib/announce-document", () => announcing);
+
 const drafts = vi.hoisted(() => ({
   selectDraft: vi.fn(),
   deleteDraft: vi.fn(),
@@ -209,6 +212,11 @@ beforeEach(() => {
   });
   // Not scheduled unless a test says otherwise.
   schedules.selectScheduleForDraft.mockResolvedValue([]);
+  announcing.announceDocument.mockReset();
+  announcing.announceDocument.mockResolvedValue({
+    ok: true,
+    postRkey: "3lyk73wxpost1",
+  });
   // No import provenance unless a test says otherwise.
   ledger.selectImportItemByDraft.mockResolvedValue([]);
   ledger.setPublishedRkey.mockResolvedValue([]);
@@ -429,6 +437,11 @@ describe("POST /api/publish — intent=document, editing a published post", () =
 
   const edit = (over: Record<string, string | File> = {}) =>
     publish({ rkey: EDIT_RKEY, ...over });
+
+  it("never announces an edit, whatever the form says", async () => {
+    await edit({ announce: "1" });
+    expect(announcing.announceDocument).not.toHaveBeenCalled();
+  });
 
   it("updates the existing record in place instead of publishing a second one", async () => {
     const res = await edit();
@@ -1002,5 +1015,69 @@ describe("POST /api/publish — intent=document, a refusal hands the words back"
     });
     expect(location(res).searchParams.get("edit")).toBe("my-first-post");
     expect(draftOf(res)).toBeNull();
+  });
+});
+
+describe("POST /api/publish — intent=document, Also announce on Bluesky", () => {
+  it("announces the new post when the box is ticked, and says so", async () => {
+    const res = await publish({ announce: "1" });
+    const record = documentRecord();
+    const rkey = String(record.path).slice(1);
+    expect(announcing.announceDocument).toHaveBeenCalledWith(
+      expect.objectContaining({ did: DID, rkey, onlyOnce: true }),
+    );
+    expect(location(res).searchParams.get("published")).toBe(rkey);
+    expect(location(res).searchParams.get("announced")).toBe("3lyk73wxpost1");
+  });
+
+  it("doesn't announce when the box is unticked", async () => {
+    const res = await publish();
+    expect(announcing.announceDocument).not.toHaveBeenCalled();
+    expect(location(res).searchParams.get("announced")).toBeNull();
+  });
+
+  it("keeps the publish when the announce throws, and says it couldn't reach Bluesky", async () => {
+    announcing.announceDocument.mockRejectedValue(new Error("network"));
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await publish({ announce: "1" });
+    quiet.mockRestore();
+    expect(res.status).toBe(303);
+    expect(location(res).searchParams.get("published")).not.toBeNull();
+    expect(errorFrom(res)).toBe("announce_failed:unreachable");
+  });
+
+  it("doesn't call a live post missing when its announce couldn't read it", async () => {
+    announcing.announceDocument.mockResolvedValue({
+      ok: false,
+      code: "not_found",
+    });
+    const res = await publish({ announce: "1" });
+    expect(errorFrom(res)).toBe("announce_failed:unreadable");
+  });
+
+  it("refuses while a scheduled tick is publishing the same draft", async () => {
+    schedules.selectScheduleForDraft.mockResolvedValue([
+      {
+        id: "row",
+        status: "pending",
+        publishedRkey: null,
+        claimedAt: new Date(),
+      },
+    ]);
+    const res = await publish({ draftId: DRAFT_ID, announce: "1" });
+    expect(errorFrom(res)).toBe("schedule_in_flight");
+    expect(callOf("com.atproto.repo.createRecord")).toBeUndefined();
+    expect(announcing.announceDocument).not.toHaveBeenCalled();
+  });
+
+  it("keeps the publish when the announce fails, and reports the failure", async () => {
+    announcing.announceDocument.mockResolvedValue({
+      ok: false,
+      code: "announce_scope",
+    });
+    const res = await publish({ announce: "1" });
+    expect(location(res).pathname).toBe("/dashboard");
+    expect(location(res).searchParams.get("published")).not.toBeNull();
+    expect(errorFrom(res)).toBe("announce_scope");
   });
 });

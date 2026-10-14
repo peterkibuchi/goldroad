@@ -42,14 +42,16 @@ type DrizzleD1 = ReturnType<typeof drizzle>;
  * Due posts published per tick.
  *
  * The cron handler shares one hourly invocation — a ~10 ms CPU budget and 50
- * subrequests — with four other jobs (~/lib/scheduled), and a single publish
- * spends several subrequests: an OAuth token refresh, a DID/PDS resolution, the
- * publication lookup, the createRecord. Five is what fits beside the rest with
- * room to spare. Anything over the cap waits for the next tick, and the pass
+ * subrequests — with four other jobs (~/lib/scheduled). A publish spends up to
+ * about ten (a token refresh alone re-verifies the issuer and may retry for a
+ * DPoP nonce; then DID/PDS resolution, the publication lookup, the
+ * createRecord) and an announce four more, so three publishes that all announce
+ * fit with room for the jobs behind them. Anything over the cap waits for the
+ * next tick, and the pass
  * SAYS SO in its result and its log line — a silent cap reads as "handled
  * everything", which is the same lie as a silent failure.
  */
-export const MAX_PUBLISHES_PER_TICK = 5;
+export const MAX_PUBLISHES_PER_TICK = 3;
 
 /**
  * Attempts before a post is failed for good.
@@ -80,8 +82,14 @@ export const STALE_CLAIM_MS = 2 * 60 * 60 * 1000;
  * quota. */
 export const MAX_SCHEDULES_PER_WRITER = 100;
 
-/** A due row as the cron reads it — identity only, no content. */
-export type DuePost = { id: string; did: string; draftId: string };
+/** A due row as the cron reads it — identity and the writer's announce
+ * choice, no content. */
+export type DuePost = {
+  id: string;
+  did: string;
+  draftId: string;
+  announce: boolean;
+};
 
 /** A claimed row: the record key the publish must use, reserved by its first
  * claim and the same on every retry. */
@@ -109,6 +117,7 @@ export function selectDuePosts(
       id: scheduledPosts.id,
       did: scheduledPosts.did,
       draftId: scheduledPosts.draftId,
+      announce: scheduledPosts.announce,
     })
     .from(scheduledPosts)
     .where(
@@ -252,7 +261,13 @@ export function releaseStaleClaims(db: DrizzleD1, before: Date, now: Date) {
  */
 export function upsertSchedule(
   db: DrizzleD1,
-  row: { id: string; did: string; draftId: string; dueAt: Date },
+  row: {
+    id: string;
+    did: string;
+    draftId: string;
+    dueAt: Date;
+    announce: boolean;
+  },
   now: Date = new Date(),
 ) {
   return db
@@ -267,6 +282,7 @@ export function upsertSchedule(
       // under it, so the rescheduled post has to be written there too.
       set: {
         dueAt: row.dueAt,
+        announce: row.announce,
         attempts: 0,
         lastError: null,
         claimedAt: null,
@@ -289,6 +305,7 @@ export function selectPendingScheduleForDraft(
       dueAt: scheduledPosts.dueAt,
       attempts: scheduledPosts.attempts,
       lastError: scheduledPosts.lastError,
+      announce: scheduledPosts.announce,
     })
     .from(scheduledPosts)
     .where(
@@ -320,6 +337,7 @@ export function selectWriterSchedule(db: DrizzleD1, did: string) {
       status: scheduledPosts.status,
       attempts: scheduledPosts.attempts,
       lastError: scheduledPosts.lastError,
+      announce: scheduledPosts.announce,
       title: drafts.title,
     })
     .from(scheduledPosts)
@@ -411,6 +429,7 @@ export function deleteUnclaimedSchedulesForDraft(
       id: scheduledPosts.id,
       status: scheduledPosts.status,
       publishedRkey: scheduledPosts.publishedRkey,
+      announce: scheduledPosts.announce,
     });
 }
 
@@ -533,7 +552,7 @@ const THREW_REASON =
  * retry of a half-finished pass is only safe because of the claim; logging and
  * moving on keeps one writer's broken row from costing every other writer their
  * scheduled post. Each post is attempted in sequence, not in parallel: the
- * shared budget is the constraint, and five sequential publishes with a
+ * shared budget is the constraint, and a few sequential publishes with a
  * bounded cap is the cheap, predictable shape.
  */
 export async function runScheduledPublishPass(opts: {

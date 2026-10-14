@@ -11,7 +11,7 @@
  *    idempotent per day) or reported by CI. The pass is bounded — a handful of
  *    posts per tick — and says in its log line when it left a queue behind.
  *
- *    The tick's 50 subrequests are shared: five publishes spend about 25, the
+ *    The tick's 50 subrequests are shared: three publishes spend up to 42, the
  *    follower sample 2, the alerts one each, and the self-check none (it runs
  *    in-process), so the jobs behind the publishes keep room.
  * 2. Purge expired oauth_kv rows. `D1Store.get` only deletes an

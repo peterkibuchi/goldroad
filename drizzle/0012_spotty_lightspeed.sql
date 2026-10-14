@@ -1,0 +1,1 @@
+ALTER TABLE `scheduled_posts` ADD `announce` integer DEFAULT false NOT NULL;

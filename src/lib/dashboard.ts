@@ -262,6 +262,8 @@ export type ScheduledPostRow = {
   status: "pending" | "failed";
   attempts: number;
   lastError: string | null;
+  /** Announced on Bluesky when it goes out. */
+  announce: boolean;
   title: string;
   description: null;
 };
