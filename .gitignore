@@ -19,4 +19,3 @@ slop/*
 !slop/README.md
 # Editor and assistant config is per-person, not a project convention.
 .claude/
-.agents/evidence/

@@ -15,7 +15,7 @@ COOKIE_SECRET=
 #     | pnpm wrangler secret put OAUTH_PRIVATE_KEY_JWK
 OAUTH_PRIVATE_KEY_JWK=""
 
-# OPTIONAL alert webhook for the hourly cron self-check (audit #6). When set,
+# OPTIONAL alert webhook for the hourly cron self-check. When set,
 # the scheduled handler POSTs core-invariant failures here (Slack/Discord/etc.);
 # absent = alerting is a silent no-op. In prod set it as a wrangler secret:
 #   echo "https://hooks.example/…" | pnpm wrangler secret put WEBHOOK_URL
