@@ -13,19 +13,26 @@
  */
 import "@blocknote/shadcn/style.css";
 
-import type { BlockNoteEditor, PartialBlock } from "@blocknote/core";
+import type { PartialBlock } from "@blocknote/core";
 import { en } from "@blocknote/core/locales";
 import { useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
 import { useEffect, useRef, useState } from "react";
 
 import {
+  type EditorWithEmbeds,
+  editorSchema,
+  embedPasteHandler,
+  withEmbedBlocks,
+} from "~/components/embed-block";
+import {
   createInlineImageUploader,
   type InlineImageStore,
   type UploadStatus,
 } from "~/lib/inline-images";
 
-export type { BlockNoteEditor };
+/** The editor, with the embed block in its schema (~/components/embed-block). */
+export type BlockNoteEditor = EditorWithEmbeds;
 
 /**
  * BlockNote's own image controls, relabelled.
@@ -83,7 +90,10 @@ export default function Editor({
   }, [imageStore]);
 
   const editor = useCreateBlockNote({
+    schema: editorSchema,
     dictionary: DICTIONARY,
+    pasteHandler: (context) =>
+      embedPasteHandler(context as Parameters<typeof embedPasteHandler>[0]),
     uploadFile: createInlineImageUploader({
       store: () => storeRef.current,
       onStatus: setStatus,
@@ -119,7 +129,11 @@ export default function Editor({
         }
       }
       if (!loaded && initialMarkdown) {
-        const blocks = editor.tryParseMarkdownToBlocks(initialMarkdown);
+        // A post's bare video, song and post links come back as the embed
+        // blocks the writer pasted.
+        const blocks = withEmbedBlocks(
+          editor.tryParseMarkdownToBlocks(initialMarkdown),
+        );
         if (blocks.length > 0) editor.replaceBlocks(editor.document, blocks);
       }
     }
