@@ -47,14 +47,14 @@ import { markdownToHtml, renderBodies } from "~/lib/markdown-html";
 import { checkMirror, type MirrorInfo } from "~/lib/mirror";
 import { checkHidden, recordAtUri } from "~/lib/moderation";
 import { CANONICAL_ORIGIN } from "~/lib/origin";
-import { composeDocumentUrl } from "~/lib/publish";
+import { composeDocumentUrl, publicationBase } from "~/lib/publish";
 import { documentReadingMinutes, formatReadingTime } from "~/lib/reading-time";
 import {
   RELATED_POSTS_LIMIT,
   type RelatedPost,
   selectRelatedPosts,
 } from "~/lib/related-posts";
-import { DEFAULT_OG_IMAGE } from "~/lib/social-card";
+import { DEFAULT_CARD_META } from "~/lib/social-card";
 import { type BasicTheme, parseTheme } from "~/lib/theme";
 
 /** A validated cover/icon image reference, serveable through /img/$did/$cid. */
@@ -379,11 +379,12 @@ export function documentHead(
   // and could never verify against a domain the writer doesn't control.
   // The at:// link tags stay: they're record discovery, not SEO.
   const isMirror = mirror != null;
-  // The writer's home: their publication's own URL (absolute https only, it
-  // is the record's word), else their page here.
-  const writerHome = publicationUrl?.startsWith("https://")
-    ? publicationUrl
-    : `${CANONICAL_ORIGIN}/@${encodeURIComponent(ident)}`;
+  // The writer's home: the base the canonical URL composes onto (the
+  // document's own https site, else its publication's url), else their page
+  // here.
+  const writerHome =
+    publicationBase({ site: doc.site, publicationUrl }) ??
+    `${CANONICAL_ORIGIN}/@${encodeURIComponent(ident)}`;
   return {
     meta: [
       { title },
@@ -410,7 +411,8 @@ export function documentHead(
               content: `Cover image for "${doc.title ?? "Untitled"}"`,
             },
           ]
-        : []),
+        : // No cover: the page shows the default card, so it describes it.
+          DEFAULT_CARD_META),
     ],
     links: [
       ...(canonicalUrl && !isMirror
@@ -457,9 +459,8 @@ export function documentHead(
               ? `${CANONICAL_ORIGIN}${blobImagePath(publicationIcon.did, publicationIcon.cid)}`
               : null,
             url: canonicalUrl,
-            // The same picture og:image falls back to, so a consumer reading
-            // either sees one card.
-            imageUrl: imageUrl ?? DEFAULT_OG_IMAGE,
+            mainEntityOfPage: isMirror ? null : canonicalUrl,
+            imageUrl,
           }),
         ),
       },

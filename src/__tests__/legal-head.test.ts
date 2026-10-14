@@ -5,8 +5,6 @@ import { Route as policies } from "../routes/policies";
 import { Route as privacy } from "../routes/privacy";
 import { Route as terms } from "../routes/terms";
 
-/** A shared /privacy link used to preview as a bare title: no canonical, no
- * og:* tags, nothing describing the card image it inherits. */
 type HeadFn = () => {
   meta: Array<Record<string, string>>;
   links: Array<Record<string, string>>;
@@ -14,6 +12,8 @@ type HeadFn = () => {
 const headOf = (route: unknown) =>
   (route as { options: { head: HeadFn } }).options.head();
 
+/** A shared /privacy link used to preview as a bare title: no canonical, no
+ * og:* tags, nothing describing the card image it inherits. */
 describe("policy pages — head tags for a link preview", () => {
   for (const [route, path] of [
     [privacy, "/privacy"],

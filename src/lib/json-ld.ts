@@ -24,6 +24,9 @@ export type ArticleJsonLd = {
   image?: string;
 };
 
+const isText = (value: unknown): value is string =>
+  typeof value === "string" && value !== "";
+
 export function buildArticleJsonLd(input: {
   headline: string;
   description?: string | null;
@@ -44,6 +47,9 @@ export function buildArticleJsonLd(input: {
   /** The publication's icon, absolute, when it has one. */
   publisherLogoUrl?: string | null;
   url?: string | null;
+  /** The page this Article is the main subject of. Absent on a mirror, whose
+   * original lives elsewhere. */
+  mainEntityOfPage?: string | null;
   imageUrl?: string | null;
 }): ArticleJsonLd {
   const publisher: Organization = {
@@ -61,16 +67,14 @@ export function buildArticleJsonLd(input: {
     publisher,
   };
   if (input.authorSameAs?.length) jsonLd.author.sameAs = input.authorSameAs;
-  if (input.description) jsonLd.description = input.description;
-  if (input.publishedAt) jsonLd.datePublished = input.publishedAt;
-  // Always alongside datePublished, as search engines ask: a post never
-  // edited was last modified when it was published.
-  const modified = input.updatedAt || input.publishedAt;
-  if (modified) jsonLd.dateModified = modified;
-  if (input.url) {
-    jsonLd.url = input.url;
-    jsonLd.mainEntityOfPage = input.url;
-  }
+  // Record fields are untrusted: only strings make it in.
+  if (isText(input.description)) jsonLd.description = input.description;
+  if (isText(input.publishedAt)) jsonLd.datePublished = input.publishedAt;
+  // Only what the record says. A record without updatedAt doesn't say it was
+  // never edited, so the publish date isn't offered in its place.
+  if (isText(input.updatedAt)) jsonLd.dateModified = input.updatedAt;
+  if (input.url) jsonLd.url = input.url;
+  if (input.mainEntityOfPage) jsonLd.mainEntityOfPage = input.mainEntityOfPage;
   if (input.imageUrl) jsonLd.image = input.imageUrl;
   return jsonLd;
 }

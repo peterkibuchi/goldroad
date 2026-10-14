@@ -631,14 +631,29 @@ export function composeDocumentUrl(input: {
   /** publication.url, resolved by the caller when `site` is an at:// URI. */
   publicationUrl?: string;
 }): string | null {
-  const { site, path, publicationUrl } = input;
+  const { path } = input;
   if (typeof path !== "string" || !path.startsWith("/")) return null;
+  const base = publicationBase(input);
+  return base === null ? null : base + path;
+}
+
+/**
+ * The publication URL a document composes onto: its own `site` when that is
+ * an https URL (a loose document), else the publication record's url. Null
+ * unless it is an absolute https URL with no whitespace, query or fragment —
+ * a base with a query/fragment would absorb an appended path, and a canonical
+ * URL we can't compose honestly is better omitted than mangled. Trailing
+ * slashes are dropped. Both fields are untrusted record data.
+ */
+export function publicationBase(input: {
+  site?: string;
+  publicationUrl?: string | null;
+}): string | null {
+  const { site, publicationUrl } = input;
   const base = site?.startsWith("https://") ? site : publicationUrl;
   if (typeof base !== "string" || !/^https:\/\/\S+$/.test(base)) return null;
-  // A base with a query/fragment would absorb the appended path — a canonical
-  // URL we can't compose honestly is better omitted than mangled.
   if (base.includes("?") || base.includes("#")) return null;
-  return base.replace(/\/+$/, "") + path;
+  return base.replace(/\/+$/, "");
 }
 
 /**
