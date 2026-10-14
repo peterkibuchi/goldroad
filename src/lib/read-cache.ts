@@ -77,15 +77,26 @@ const MARKETING_PATHS = new Set([
 /** On a stored page: the build that rendered it (see serveWithReadCache). */
 const BUILD_HEADER = "x-goldroad-build";
 
-/** Whether this request is a GET to a cacheable reading surface or marketing
+/**
+ * Whether this request is a GET to a cacheable reading surface or marketing
  * page. The key below drops the query, so `/?utm_source=…` shares `/`'s
  * entry. The one query a marketing page reads on the server is `/`'s
- * `?notice=` (the goodbye after account deletion), which renders fresh. */
+ * `?notice=` (the goodbye after account deletion), which renders fresh.
+ *
+ * A search (`?q=` on the archive) is not cacheable either. The key strips
+ * every param but `cursor`, so a cached search would be served the plain
+ * archive or the reverse; keying on `q` instead would mint a stored page per
+ * query, and no purge after a delete or takedown can enumerate those, so a
+ * removed post's words could keep showing in a stored result for the whole
+ * TTL.
+ */
 export function isCacheableReadRequest(request: Request): boolean {
   if (request.method !== "GET") return false;
   const url = new URL(request.url);
   if (MARKETING_PATHS.has(url.pathname))
     return !(url.pathname === "/" && url.searchParams.has("notice"));
+  if (PAGINATED_PATH_RE.test(url.pathname) && url.searchParams.has("q"))
+    return false;
   return READ_SURFACE_RE.test(url.pathname);
 }
 

@@ -66,8 +66,8 @@ export function matchesPostQuery(
 }
 
 /**
- * Quiet client-side search over ALREADY-LOADED posts — no new backend, no new
- * fetch.
+ * Title-and-summary search over ALREADY-LOADED posts — no new fetch. The
+ * archive's fallback for a publication with no full-text index (~/lib/search).
  */
 export function filterPostsByQuery<
   T extends { title: string; description: string | null },
