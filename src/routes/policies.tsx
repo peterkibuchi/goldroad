@@ -2,22 +2,20 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { ExternalLink } from "~/components/external-link";
 import { LegalLayout, LegalList, LegalSection } from "~/components/legal-page";
+import { defaultCardHead } from "~/lib/social-card";
 
 /**
  * Acceptable-use + takedown policy. Plain, outcome-first copy.
  * abuse@trygoldroad.com is a placeholder until the mailbox is wired.
  */
 export const Route = createFileRoute("/policies")({
-  head: () => ({
-    meta: [
-      { title: "Content policies — Goldroad" },
-      {
-        name: "description",
-        content:
-          "What's allowed on Goldroad, how to report content, and how takedowns work.",
-      },
-    ],
-  }),
+  head: () =>
+    defaultCardHead({
+      title: "Content policies — Goldroad",
+      description:
+        "What's allowed on Goldroad, how to report content, and how takedowns work.",
+      path: "/policies",
+    }),
   component: PoliciesPage,
 });
 

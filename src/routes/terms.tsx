@@ -1,22 +1,20 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { LegalLayout, LegalList, LegalSection } from "~/components/legal-page";
+import { defaultCardHead } from "~/lib/social-card";
 
 /**
  * Terms of service. DRAFT pending final legal review — governing law is still
  * a placeholder and must be set before these are in force.
  */
 export const Route = createFileRoute("/terms")({
-  head: () => ({
-    meta: [
-      { title: "Terms — Goldroad" },
-      {
-        name: "description",
-        content:
-          "The terms for using Goldroad. Your content stays yours, in your own repo; the service is provided as-is.",
-      },
-    ],
-  }),
+  head: () =>
+    defaultCardHead({
+      title: "Terms — Goldroad",
+      description:
+        "The terms for using Goldroad. Your content stays yours, in your own repo; the service is provided as-is.",
+      path: "/terms",
+    }),
   component: TermsPage,
 });
 
