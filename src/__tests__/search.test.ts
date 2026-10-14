@@ -318,6 +318,23 @@ describe("runPublicationSearch", () => {
     expect(result.ready && result.hits.map((h) => h.rkey)).toEqual(["3ma"]);
   });
 
+  it("doesn't let hidden matches use up the page", async () => {
+    markComplete();
+    // The best matches are all taken down; the one visible post ranks last.
+    for (let i = 0; i < SEARCH_RESULT_LIMIT + 2; i++) {
+      await indexDocument(db, ME, `3mh${i}`, post("common common", "x"));
+      d1.sqlite
+        .prepare(
+          "insert into hidden_content (subject, created_at) values (?, 1)",
+        )
+        .run(`at://${ME}/site.standard.document/3mh${i}`);
+    }
+    await indexDocument(db, ME, "3mv", post("Visible", "common"));
+    const result = await runPublicationSearch(db, ME, "common");
+    expect(result.ready && result.hits.map((h) => h.rkey)).toEqual(["3mv"]);
+    expect(result.ready && result.more).toBe(false);
+  });
+
   it("shows a page of results and says there are more", async () => {
     markComplete();
     for (let i = 0; i < SEARCH_RESULT_LIMIT + 3; i++)

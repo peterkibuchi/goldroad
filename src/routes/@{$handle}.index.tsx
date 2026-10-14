@@ -83,7 +83,8 @@ export const Route = createFileRoute("/@{$handle}/")({
       // only used once the takedown check below has passed.
       const q = deps.q ?? "";
       const searchPromise = q
-        ? searchPublication({ data: { did, q } })
+        ? // A failed call is the title filter, not a failed page.
+          searchPublication({ data: { did, q } }).catch(() => null)
         : Promise.resolve(null);
       // NOT a `Promise.all`: that would reject with whichever settled first, so
       // a hidden author on an unreachable directory would get the generic 404
