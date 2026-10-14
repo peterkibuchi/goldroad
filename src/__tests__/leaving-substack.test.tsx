@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { LeavingSubstack } from "#/routes/leaving-substack";
@@ -9,47 +9,62 @@ import { LeavingSubstack } from "#/routes/leaving-substack";
 afterEach(cleanup);
 
 describe("LeavingSubstack", () => {
-  it("makes the Stripe-portability claim the page's payments argument", () => {
-    render(<LeavingSubstack />);
+  it("promises no subscriber or card continuity", () => {
+    const { container } = render(<LeavingSubstack />);
+    const shown = (container.textContent ?? "").replace(/\s+/g, " ");
 
+    // Carrying Substack's paying subscribers over would need a payments
+    // platform this project can't operate, so the page must not imply it.
+    expect(shown).not.toMatch(
+      /same stripe account|keep paying|same cards|connect that same account|subscribers will come with you/i,
+    );
     expect(
-      screen.getByRole("heading", {
-        name: /your paying subscribers will come with you/i,
-      }),
+      screen.getByRole("heading", { name: /paid subscriptions/i }),
     ).toBeDefined();
   });
 
-  it("keeps the reader-payments row marked as unshipped", () => {
+  it("keeps the reader-payments row on the writer's own processor, and unshipped", () => {
     render(<LeavingSubstack />);
 
     const row = screen
       .getByRole("rowheader", { name: /reader payments/i })
       .closest("tr");
 
-    // The row carries the subscriber-continuity point...
-    expect(row?.textContent).toMatch(/same stripe account/i);
-    // ...and never without the honest "not shipped" marker beside it.
+    expect(row?.textContent).toMatch(/payment processor you hold yourself/i);
+    expect(row?.textContent).not.toMatch(/stripe/i);
     expect(row?.textContent).toMatch(/on the roadmap/i);
   });
 
   it("labels every unshipped capability, in the table and in prose", () => {
     render(<LeavingSubstack />);
 
-    // Every table row promising an unshipped capability carries the marker.
-    // Asserting per-row rather than counting markers page-wide: a global count
-    // breaks whenever any unrelated section mentions the roadmap, which teaches
-    // the next person to bump the number instead of checking the claim.
+    // Per row rather than a page-wide count: a global count breaks whenever an
+    // unrelated section mentions the roadmap.
     for (const label of ["Newsletters", "Reader payments"]) {
       const row = screen.getByRole("rowheader", { name: label }).closest("tr");
       expect(row?.textContent).toMatch(/on the roadmap/i);
     }
 
-    // Payments prose stays future-tense: no present-tense "runs through" /
-    // "connect your Stripe today" phrasing may creep in.
-    const payments = screen.getByText(
-      /substack charges your paid subscriptions through stripe/i,
-    ).textContent;
-    expect(payments).toMatch(/when reader payments ship/i);
+    // The payments section says it isn't built before saying what it will be.
+    expect(
+      screen.getByText(/paid subscriptions aren't built yet/i).textContent,
+    ).toMatch(/takes 0%/i);
+  });
+
+  it("marks its own header link as the current page", () => {
+    render(<LeavingSubstack />);
+    expect(
+      within(screen.getByRole("banner"))
+        .getByRole("link", { name: "Leaving Substack?" })
+        .getAttribute("aria-current"),
+    ).toBe("page");
+  });
+
+  it("leads with the archive, not the readers", () => {
+    render(<LeavingSubstack />);
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toMatch(
+      /^Bring your archive\./,
+    );
   });
 });
 

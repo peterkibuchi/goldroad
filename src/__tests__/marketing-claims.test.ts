@@ -95,6 +95,14 @@ const FALSE_CLAIMS: ReadonlyArray<{ phrase: string; why: string }> = [
     why: "import IS live; this said it wasn't, contradicting /leaving-substack (corrected 2026-07-31)",
   },
   {
+    phrase: "same Stripe account",
+    why: "carrying a writer's Substack subscribers over on their existing Stripe account needs a payments platform this project can't operate (corrected 2026-10-14)",
+  },
+  {
+    phrase: "keep paying",
+    why: "same claim: no paying subscriber moves across today, and none is promised to (corrected 2026-10-14)",
+  },
+  {
     phrase: "your list, your name",
     why: "'your list' implies a subscriber list we do not have (corrected 2026-07-31)",
   },
@@ -174,7 +182,7 @@ describe("marketing copy makes no claim we cannot keep", () => {
       surface: "/leaving-substack",
       ui: () => createElement(LeavingSubstack),
       phrase: "Stripe's processing fee",
-      why: "named, because a Substack refugee already holds a Stripe account — and this is the only page carrying arithmetic",
+      why: "named, because Substack's 10% sits on top of Stripe's fee on this reader's statement — and this is the only page carrying arithmetic",
     },
   ];
 
