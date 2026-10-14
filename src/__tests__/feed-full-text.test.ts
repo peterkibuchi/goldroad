@@ -98,15 +98,21 @@ describe("markdownToHtml — the same rendering the page does", () => {
   it("falls back to plain paragraphs for input markdown-it is slow on", {
     timeout: LINEAR_TEST_TIMEOUT_MS,
   }, () => {
-    // Both sizes of each input are past the fallback's thresholds (bracket
-    // count, then length), so the ratio compares the fallback with itself.
+    // Both sizes of each input are past a fallback threshold (bracket count,
+    // then length), so the ratio compares the fallback with itself.
     const hostiles: Array<[(k: number) => string, number]> = [
       [(k) => "[".repeat(k), 12_500],
       [(k) => `${"word ".repeat(k)}*`, 25_000],
     ];
     for (const [make, n] of hostiles) {
+      // markdown-it is linear on these but slow, so the ratio alone can't
+      // tell whether it ran. The trailing emphasis can: rendered, it would be
+      // <strong>; through the fallback it stays literal text.
+      const html = markdownToHtml(`${make(n)} **bold**`);
+      expect(html.startsWith("<p")).toBe(true);
+      expect(html).toContain("**bold**");
+      expect(html).not.toContain("<strong>");
       expectLinear(markdownToHtml, make, n);
-      expect(markdownToHtml(make(n)).startsWith("<p")).toBe(true);
     }
     expect(markdownToHtml("a\n\n<b>&</b>")).toContain("&lt;b&gt;&amp;");
   });
