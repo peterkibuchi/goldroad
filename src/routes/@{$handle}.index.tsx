@@ -35,6 +35,7 @@ import { documentBodyMarkdown } from "~/lib/document-content";
 import { checkHidden } from "~/lib/moderation";
 import { CANONICAL_ORIGIN } from "~/lib/origin";
 import { formatReadingTime, listItemReadingMinutes } from "~/lib/reading-time";
+import { DEFAULT_CARD_META } from "~/lib/social-card";
 import { type BasicTheme, parseTheme } from "~/lib/theme";
 import { cn } from "~/lib/utils";
 
@@ -217,6 +218,9 @@ export const Route = createFileRoute("/@{$handle}/")({
         ...(canonicalUrl
           ? [{ property: "og:url", content: canonicalUrl }]
           : []),
+        // The archive shows the default card (the root's og:image), so it
+        // describes it, as the other pages that show it do.
+        ...DEFAULT_CARD_META,
       ],
       links: [
         ...(canonicalUrl ? [{ rel: "canonical", href: canonicalUrl }] : []),

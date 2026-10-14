@@ -32,3 +32,29 @@ export const DEFAULT_CARD_META = [
       "Goldroad — writer-owned publishing. Your posts, your readers, your name, in an account you control.",
   },
 ];
+
+/**
+ * The whole head for a first-party page that shows the default card: title,
+ * description, the og:* set a link preview reads, and the canonical link, all
+ * minted from the canonical origin. twitter:card comes from the root.
+ */
+export function defaultCardHead(input: {
+  title: string;
+  description: string;
+  /** The page's path, e.g. "/privacy". */
+  path: string;
+}) {
+  const url = `${CANONICAL_ORIGIN}${input.path}`;
+  return {
+    meta: [
+      { title: input.title },
+      { name: "description", content: input.description },
+      { property: "og:title", content: input.title },
+      { property: "og:description", content: input.description },
+      { property: "og:type", content: "website" },
+      { property: "og:url", content: url },
+      ...DEFAULT_CARD_META,
+    ],
+    links: [{ rel: "canonical", href: url }],
+  };
+}

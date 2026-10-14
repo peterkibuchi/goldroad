@@ -6,6 +6,7 @@ import { Route } from "../routes/@{$handle}.index";
 /** The publication page's head, driven directly with loader data (the route
  * head function is pure) — pins the RSS discovery link. */
 type HeadFn = (ctx: { loaderData?: unknown }) => {
+  meta?: Array<Record<string, string>>;
   links?: Array<Record<string, string>>;
 };
 
@@ -45,5 +46,28 @@ describe("publication page head — feed discovery", () => {
       title: "writer.example — RSS",
       href: "https://trygoldroad.com/@writer.example/rss.xml",
     });
+  });
+});
+
+describe("publication page head — the link preview", () => {
+  it("names the page and describes the default card it shows", () => {
+    const { meta, links } = head({ loaderData });
+    expect(links).toContainEqual({
+      rel: "canonical",
+      href: "https://trygoldroad.com/@writer.example",
+    });
+    expect(meta).toContainEqual({
+      property: "og:url",
+      content: "https://trygoldroad.com/@writer.example",
+    });
+    expect(meta).toContainEqual({
+      property: "og:image:width",
+      content: "1200",
+    });
+    expect(meta).toContainEqual({
+      property: "og:image:height",
+      content: "630",
+    });
+    expect(meta?.some((m) => m.property === "og:image:alt")).toBe(true);
   });
 });

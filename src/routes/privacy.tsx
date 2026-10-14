@@ -2,22 +2,20 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { ExternalLink } from "~/components/external-link";
 import { LegalLayout, LegalList, LegalSection } from "~/components/legal-page";
+import { defaultCardHead } from "~/lib/social-card";
 
 /**
  * Privacy policy. GDPR/UK GDPR-aware, but DRAFT pending final legal review.
  * privacy@trygoldroad.com is a placeholder until the mailbox is wired.
  */
 export const Route = createFileRoute("/privacy")({
-  head: () => ({
-    meta: [
-      { title: "Privacy — Goldroad" },
-      {
-        name: "description",
-        content:
-          "What Goldroad collects, why, and your rights — including exporting or deleting everything we hold, any day you like.",
-      },
-    ],
-  }),
+  head: () =>
+    defaultCardHead({
+      title: "Privacy — Goldroad",
+      description:
+        "What Goldroad collects, why, and your rights — including exporting or deleting everything we hold, any day you like.",
+      path: "/privacy",
+    }),
   component: PrivacyPage,
 });
 
