@@ -37,7 +37,7 @@ import {
   hasForeignContent,
 } from "~/lib/document-content";
 import { plainTextBody } from "~/lib/feed";
-import { hiddenSubjects, recordAtUri } from "~/lib/moderation";
+import { anyHidden } from "~/lib/moderation";
 import { MAX_BODY_LENGTH } from "~/lib/publish";
 import {
   normalizeQuery,
@@ -241,6 +241,10 @@ export type SearchHit = {
  * matches are ever joined, so a search costs rows read in proportion to one
  * writer's archive, not everyone's. The query words are confined to the text
  * columns, so none of them can match an owner token.
+ *
+ * Posts taken down one at a time are left out here, before the limit, so a
+ * run of hidden matches can't use up the page and hide visible ones behind
+ * it. `hidden_content.subject` is unique, so each check is one index probe.
  */
 export async function searchPosts(
   db: DrizzleD1,
@@ -258,6 +262,10 @@ export async function searchPosts(
     from post_search
     join search_documents d on d.id = post_search.rowid
     where post_search match ${scoped} and d.did = ${did}
+      and not exists (
+        select 1 from hidden_content h
+        where h.subject = 'at://' || d.did || '/site.standard.document/' || d.rkey
+      )
     order by bm25(post_search, 0.0, 10.0, 4.0, 1.0)
     limit ${limit + 1}`);
 }
@@ -293,18 +301,15 @@ export async function runPublicationSearch(
   if (!did || !match) return { ready: false };
   try {
     if (!(await isSearchReady(db, did))) return { ready: false };
+    // An author-level takedown is checked here, not left to the archive
+    // loader: this is a server function, callable on its own. Record-level
+    // ones are left out inside searchPosts.
+    if (await anyHidden(db, [did]))
+      return { ready: true, hits: [], more: false };
     const found = await searchPosts(db, did, match);
-    // Takedowns. The author's DID is checked here too, not left to the
-    // archive loader: this is a server function, callable on its own.
-    const uri = (hit: SearchHit) =>
-      recordAtUri(did, "site.standard.document", hit.rkey);
-    const hidden = await hiddenSubjects(db, [did, ...found.map(uri)]);
-    if (hidden.has(did)) return { ready: true, hits: [], more: false };
     return {
       ready: true,
-      hits: found
-        .filter((hit) => !hidden.has(uri(hit)))
-        .slice(0, SEARCH_RESULT_LIMIT),
+      hits: found.slice(0, SEARCH_RESULT_LIMIT),
       more: found.length > SEARCH_RESULT_LIMIT,
     };
   } catch (err) {

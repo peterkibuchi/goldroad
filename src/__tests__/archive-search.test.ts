@@ -119,6 +119,12 @@ describe("archive search — loader", () => {
     expect(hit.title).toBe("slow fake title");
   });
 
+  it("falls back to the title filter when the search call itself fails", async () => {
+    vi.mocked(search.searchPublication).mockRejectedValue(new Error("network"));
+    const data = await load({ q: "slow" });
+    expect((data.search as { scope: string }).scope).toBe("titles");
+  });
+
   it("never asks the index when nobody searched", async () => {
     const data = await load({});
     expect(search.searchPublication).not.toHaveBeenCalled();
