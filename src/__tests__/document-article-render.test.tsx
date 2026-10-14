@@ -492,3 +492,14 @@ describe("clearEdition without matchMedia", () => {
     }
   });
 });
+
+describe("DocumentArticle — landmarks", () => {
+  it("puts the post in a <main> landmark that the skip link targets", () => {
+    render(<DocumentArticle doc={baseDoc} ident="writer.example" />);
+    const main = screen.getByRole("main");
+    // Assistive tech jumps to <main>; the post inside it is still an article.
+    expect(main.id).toBe("main-content");
+    expect(main.querySelector("article")).not.toBeNull();
+    expect(main.textContent).toContain("Full body text here.");
+  });
+});

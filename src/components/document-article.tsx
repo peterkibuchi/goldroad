@@ -656,30 +656,31 @@ export function DocumentArticle({
     // The writer's surface, not ours: their theme applies here, our dark-mode
     // toggle deliberately does not (see WriterSurface and styles.css).
     <WriterSurface theme={theme}>
-      {/* The post itself is this page's content, and it is the only landmark
-          the surface has — there is no <main> here to hang the skip target
-          on, so the article carries it. */}
-      <article
+      {/* The post is this page's main content: <main> makes it the landmark
+          assistive tech jumps to and carries the skip link's target, and
+          <article> says what it is. */}
+      <main
         className="mx-auto max-w-[42rem] px-6 py-16 md:py-24"
         id={MAIN_CONTENT_ID}
         tabIndex={-1}
       >
-        {cover && (
-          // Fixed aspect box reserves the layout slot before the image
-          // loads (no lexicon width/height metadata exists to size it
-          // otherwise) — zero CLS regardless of the writer's source
-          // dimensions. Decorative on the page (the adjacent title names
-          // the piece); calm register — no border ornament, the image
-          // speaks alone.
-          <div className="mb-10 aspect-video w-full overflow-hidden bg-ink/5">
-            <img
-              alt=""
-              className="h-full w-full object-cover"
-              src={blobImagePath(cover.did, cover.cid)}
-            />
-          </div>
-        )}
-        {/* THE FLAG — the writer's masthead, above their own headline.
+        <article>
+          {cover && (
+            // Fixed aspect box reserves the layout slot before the image
+            // loads (no lexicon width/height metadata exists to size it
+            // otherwise) — zero CLS regardless of the writer's source
+            // dimensions. Decorative on the page (the adjacent title names
+            // the piece); calm register — no border ornament, the image
+            // speaks alone.
+            <div className="mb-10 aspect-video w-full overflow-hidden bg-ink/5">
+              <img
+                alt=""
+                className="h-full w-full object-cover"
+                src={blobImagePath(cover.did, cover.cid)}
+              />
+            </div>
+          )}
+          {/* THE FLAG — the writer's masthead, above their own headline.
             This page is where every timeline card lands, so "whose page is
             this" has to be answered before the title, not footnoted under it.
             The archive page already sets the publication name like a masthead;
@@ -687,27 +688,30 @@ export function DocumentArticle({
             grey line of small text. The calm register says the platform
             disappears and the WRITER'S identity dominates — this is the second
             half of that sentence, finally executed. */}
-        {(publicationName || publicationIcon) && (
-          <div className="mb-12 border-rule border-b pb-4">
-            <a
-              className="inline-flex items-center gap-2.5 transition-colors hover:text-ink"
-              href={publicationHref}
-            >
-              {publicationIcon && (
-                <img
-                  alt=""
-                  className="h-7 w-7 shrink-0 object-cover"
-                  src={blobImagePath(publicationIcon.did, publicationIcon.cid)}
-                />
-              )}
-              <span className="font-display font-semibold text-[0.85rem] text-ink uppercase tracking-[0.14em]">
-                {publicationName ?? `@${ident}`}
-              </span>
-            </a>
-          </div>
-        )}
-        <header className="mb-10 border-rule border-b pb-8">
-          {/* THE HEADER IS FURNITURE; THE PIECE IS PROSE. Two faces, and the
+          {(publicationName || publicationIcon) && (
+            <div className="mb-12 border-rule border-b pb-4">
+              <a
+                className="inline-flex items-center gap-2.5 transition-colors hover:text-ink"
+                href={publicationHref}
+              >
+                {publicationIcon && (
+                  <img
+                    alt=""
+                    className="h-7 w-7 shrink-0 object-cover"
+                    src={blobImagePath(
+                      publicationIcon.did,
+                      publicationIcon.cid,
+                    )}
+                  />
+                )}
+                <span className="font-display font-semibold text-[0.85rem] text-ink uppercase tracking-[0.14em]">
+                  {publicationName ?? `@${ident}`}
+                </span>
+              </a>
+            </div>
+          )}
+          <header className="mb-10 border-rule border-b pb-8">
+            {/* THE HEADER IS FURNITURE; THE PIECE IS PROSE. Two faces, and the
               line between them is the point.
 
               Everything here used to be one serif — title, dek and body — so
@@ -731,10 +735,10 @@ export function DocumentArticle({
               Negative tracking because display bold at 32px sets loose,
               especially in the all-caps titles older texts carry. Well inside
               the -0.04em floor. */}
-          <h1 className="text-balance font-bold font-display text-[2rem] text-ink leading-[1.15] tracking-[-0.02em]">
-            {doc.title ?? "Untitled"}
-          </h1>
-          {/* The dek belongs to the header block, not to the prose, so it
+            <h1 className="text-balance font-bold font-display text-[2rem] text-ink leading-[1.15] tracking-[-0.02em]">
+              {doc.title ?? "Untitled"}
+            </h1>
+            {/* The dek belongs to the header block, not to the prose, so it
               takes the header's face. An earlier pass set it in the body serif
               on the argument that it is the writer's own sentence — true, but
               it made the dek indistinguishable from the first paragraph, which
@@ -751,189 +755,191 @@ export function DocumentArticle({
               them read as a mistake rather than as a choice. The column is
               already the measure; capping inside it just breaks the left-edge
               alignment the header depends on. */}
-          {dek && (
-            <p className="mt-4 font-display text-[0.9375rem] text-ink-soft leading-[1.55]">
-              {dek}
-            </p>
-          )}
-          {/* The byline, split in two. Five facts used to share one whisper —
+            {dek && (
+              <p className="mt-4 font-display text-[0.9375rem] text-ink-soft leading-[1.55]">
+                {dek}
+              </p>
+            )}
+            {/* The byline, split in two. Five facts used to share one whisper —
               the person's name deserves its own line at ink weight; the
               circumstances of publication belong beneath it, softer. */}
-          <div className="mt-6 font-display text-sm">
-            <p>
-              <a
-                className="font-semibold text-ink transition-colors hover:text-ink-soft"
-                href={publicationHref}
-              >
-                @{ident}
-              </a>
-            </p>
-            <p className="mt-1 text-ink-soft">
-              {date && <time dateTime={doc.publishedAt}>{date}</time>}
-              {readingLabel && (
-                <>
-                  {date && " · "}
-                  {readingLabel}
-                </>
-              )}
-              {updated && updated !== date && <> · updated {updated}</>}
-            </p>
-          </div>
-          {/* Provenance for mirrored posts (import ledger): the original
+            <div className="mt-6 font-display text-sm">
+              <p>
+                <a
+                  className="font-semibold text-ink transition-colors hover:text-ink-soft"
+                  href={publicationHref}
+                >
+                  @{ident}
+                </a>
+              </p>
+              <p className="mt-1 text-ink-soft">
+                {date && <time dateTime={doc.publishedAt}>{date}</time>}
+                {readingLabel && (
+                  <>
+                    {date && " · "}
+                    {readingLabel}
+                  </>
+                )}
+                {updated && updated !== date && <> · updated {updated}</>}
+              </p>
+            </div>
+            {/* Provenance for mirrored posts (import ledger): the original
               lives elsewhere and this page says so, visibly — the honest
               half of "keep your Substack". Calm register, no ornament. */}
-          {mirror && mirrorHost && mirror.sourceUrl && (
-            <p className="mt-2 font-display text-ink-soft text-sm">
-              Originally published at{" "}
-              <ExternalLink
-                className="underline underline-offset-2 transition-colors hover:text-ink"
-                href={mirror.sourceUrl}
-              >
-                {mirrorHost}
-              </ExternalLink>
-            </p>
-          )}
-        </header>
-        {/* Engagement row: announced posts only, and
+            {mirror && mirrorHost && mirror.sourceUrl && (
+              <p className="mt-2 font-display text-ink-soft text-sm">
+                Originally published at{" "}
+                <ExternalLink
+                  className="underline underline-offset-2 transition-colors hover:text-ink"
+                  href={mirror.sourceUrl}
+                >
+                  {mirrorHost}
+                </ExternalLink>
+              </p>
+            )}
+          </header>
+          {/* Engagement row: announced posts only, and
             only when the AppView actually returned a counted metric —
             silence, never a placeholder or a false zero. */}
-        {engagement && hasVisibleEngagement(engagement.counts) && (
-          <EngagementRow engagement={engagement} />
-        )}
-        {html !== "" ? (
-          <Prose html={html} />
-        ) : (
-          <p className="font-display text-ink-soft text-sm">
-            This document keeps its full text elsewhere
-            {doc.site?.startsWith("https://") ? (
-              <>
-                {" — "}
-                {/* Third-party canonical home (e.g. *.leaflet.pub): new tab. */}
-                <ExternalLink
-                  className="underline underline-offset-2"
-                  href={`${doc.site}${doc.path ?? ""}`}
-                >
-                  read it at the source
-                </ExternalLink>
-              </>
-            ) : null}
-            .
-          </p>
-        )}
-        {/* THE COLOPHON — the signature moment, placed where goodwill is
+          {engagement && hasVisibleEngagement(engagement.counts) && (
+            <EngagementRow engagement={engagement} />
+          )}
+          {html !== "" ? (
+            <Prose html={html} />
+          ) : (
+            <p className="font-display text-ink-soft text-sm">
+              This document keeps its full text elsewhere
+              {doc.site?.startsWith("https://") ? (
+                <>
+                  {" — "}
+                  {/* Third-party canonical home (e.g. *.leaflet.pub): new tab. */}
+                  <ExternalLink
+                    className="underline underline-offset-2"
+                    href={`${doc.site}${doc.path ?? ""}`}
+                  >
+                    read it at the source
+                  </ExternalLink>
+                </>
+              ) : null}
+              .
+            </p>
+          )}
+          {/* THE COLOPHON — the signature moment, placed where goodwill is
             highest: directly after the last line of the piece, before the
             letters. A magazine's contributor note, not a leftover grey box.
             This is the reading surface's ONE capture moment and it belongs to
             the writer, not to us; the email field lands here and nowhere else on
             a post. No sticky bar, no modal, no second ask. */}
-        <aside className="mt-14 border-ink border-t pt-8">
-          <div className="flex items-start gap-4">
-            {publicationIcon && (
-              <img
-                alt=""
-                className="h-10 w-10 shrink-0 object-cover"
-                src={blobImagePath(publicationIcon.did, publicationIcon.cid)}
-              />
-            )}
-            <div className="min-w-0">
-              <p className="font-bold font-display text-ink text-lg leading-tight">
-                {publicationName ?? `@${ident}`}
-              </p>
-              {publicationDescription && (
-                <p className="mt-2 text-base text-ink-soft leading-relaxed">
-                  {publicationDescription}
-                </p>
+          <aside className="mt-14 border-ink border-t pt-8">
+            <div className="flex items-start gap-4">
+              {publicationIcon && (
+                <img
+                  alt=""
+                  className="h-10 w-10 shrink-0 object-cover"
+                  src={blobImagePath(publicationIcon.did, publicationIcon.cid)}
+                />
               )}
-              {/* Subscribing leads, because it is the only one of the three
+              <div className="min-w-0">
+                <p className="font-bold font-display text-ink text-lg leading-tight">
+                  {publicationName ?? `@${ident}`}
+                </p>
+                {publicationDescription && (
+                  <p className="mt-2 text-base text-ink-soft leading-relaxed">
+                    {publicationDescription}
+                  </p>
+                )}
+                {/* Subscribing leads, because it is the only one of the three
                   that happens HERE — the other two hand the reader to Bluesky
                   or to their feed reader. Still ink and still quiet: this
                   card is the writer's capture moment, not ours. */}
-              <SubscribeControl
-                className="mt-5"
-                publicationAtUri={publicationAtUri ?? null}
-              />
-              {/* The email, under the network relationship rather than over it:
+                <SubscribeControl
+                  className="mt-5"
+                  publicationAtUri={publicationAtUri ?? null}
+                />
+                {/* The email, under the network relationship rather than over it:
                   subscribing works today and sending does not, so the thing that
                   works leads. Renders nothing at all for a publication this
                   instance doesn't host. */}
-              <ReaderEmailCapture
-                className="mt-6"
-                ident={ident}
-                publicationName={publicationName}
-                publicationUrl={publicationUrl}
-                source="post"
-                writerDid={did}
-              />
-              <p className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 font-display text-sm">
-                <ExternalLink
-                  className="font-semibold text-ink underline underline-offset-2 transition-colors hover:text-ink-soft"
-                  href={bskyProfileUrl(ident)}
-                >
-                  Follow @{ident} on Bluesky
-                </ExternalLink>
-                <a
-                  className="text-ink-soft underline underline-offset-2 transition-colors hover:text-ink"
-                  href={`${publicationHref}/rss.xml`}
-                >
-                  RSS
-                </a>
-              </p>
+                <ReaderEmailCapture
+                  className="mt-6"
+                  ident={ident}
+                  publicationName={publicationName}
+                  publicationUrl={publicationUrl}
+                  source="post"
+                  writerDid={did}
+                />
+                <p className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 font-display text-sm">
+                  <ExternalLink
+                    className="font-semibold text-ink underline underline-offset-2 transition-colors hover:text-ink-soft"
+                    href={bskyProfileUrl(ident)}
+                  >
+                    Follow @{ident} on Bluesky
+                  </ExternalLink>
+                  <a
+                    className="text-ink-soft underline underline-offset-2 transition-colors hover:text-ink"
+                    href={`${publicationHref}/rss.xml`}
+                  >
+                    RSS
+                  </a>
+                </p>
+              </div>
             </div>
-          </div>
-        </aside>
-        {/* The conversation that already exists on the network. Announced
+          </aside>
+          {/* The conversation that already exists on the network. Announced
             posts with at least one readable reply only — a post nobody has
             replied to (or that was never announced) renders nothing here, and
             so does an AppView that was down. No empty state to design. */}
-        {conversation && (
-          <Suspense fallback={null}>
-            <Await promise={conversation}>
-              {(replies) => replies && <Conversation conversation={replies} />}
-            </Await>
-          </Suspense>
-        )}
-        <aside className="mt-16 border-rule border-t pt-10">
-          {relatedPosts && relatedPosts.length > 0 && (
-            <div className="mt-10">
-              <p className="font-display font-semibold text-ink-soft text-xs uppercase tracking-wide">
-                More from {publicationName ?? `@${ident}`}
-              </p>
-              <ul>
-                {relatedPosts.map((post) => {
-                  const postDate = formatDate(post.publishedAt ?? undefined);
-                  return (
-                    <li
-                      className="border-rule border-t py-4 first:border-t-0"
-                      key={post.rkey}
-                    >
-                      <a
-                        className="font-semibold text-ink leading-snug hover:underline hover:underline-offset-4"
-                        href={`${publicationHref}/${encodeURIComponent(post.rkey)}`}
-                      >
-                        {post.title}
-                      </a>
-                      {postDate && (
-                        <p className="mt-1 font-display text-ink-soft text-xs uppercase tracking-wide">
-                          <time dateTime={post.publishedAt ?? undefined}>
-                            {postDate}
-                          </time>
-                        </p>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
+          {conversation && (
+            <Suspense fallback={null}>
+              <Await promise={conversation}>
+                {(replies) =>
+                  replies && <Conversation conversation={replies} />
+                }
+              </Await>
+            </Suspense>
           )}
-        </aside>
-        {/* The close, in two voices — the printed-book settlement between the
+          <aside className="mt-16 border-rule border-t pt-10">
+            {relatedPosts && relatedPosts.length > 0 && (
+              <div className="mt-10">
+                <p className="font-display font-semibold text-ink-soft text-xs uppercase tracking-wide">
+                  More from {publicationName ?? `@${ident}`}
+                </p>
+                <ul>
+                  {relatedPosts.map((post) => {
+                    const postDate = formatDate(post.publishedAt ?? undefined);
+                    return (
+                      <li
+                        className="border-rule border-t py-4 first:border-t-0"
+                        key={post.rkey}
+                      >
+                        <a
+                          className="font-semibold text-ink leading-snug hover:underline hover:underline-offset-4"
+                          href={`${publicationHref}/${encodeURIComponent(post.rkey)}`}
+                        >
+                          {post.title}
+                        </a>
+                        {postDate && (
+                          <p className="mt-1 font-display text-ink-soft text-xs uppercase tracking-wide">
+                            <time dateTime={post.publishedAt ?? undefined}>
+                              {postDate}
+                            </time>
+                          </p>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+          </aside>
+          {/* The close, in two voices — the printed-book settlement between the
             two-surface rule and the need to be findable. The writer's fact
             leads; Goldroad gets exactly one line, last, at printer's-mark
             volume. Never a band, never a badge. The line is also the only
             surface a reader who might become a writer ever meets us on, so it
             points at /open rather than at a pitch. */}
-        <footer className="mt-10 border-rule border-t pt-6">
-          {/* Deliberately NOT a copyright notice.
+          <footer className="mt-10 border-rule border-t pt-6">
+            {/* Deliberately NOT a copyright notice.
               Copyright is automatic under Berne — a notice grants nothing, and
               "All rights reserved" has been legally inert since the last Buenos
               Aires signatory joined Berne in 2000. Worse, it would be a claim
@@ -942,29 +948,30 @@ export function DocumentArticle({
               "all rights reserved" on it. Their byline above already carries
               the attribution, which is the part that does real work.
               When writers can declare a licence, this line shows THEIR choice. */}
-          <p className="font-display text-ink-soft/80 text-xs">
-            {copyrightYear} · {publicationName ?? `@${ident}`}
-          </p>
-          <p className="mt-1 font-display text-ink-soft/80 text-xs">
-            <a
-              className="transition-colors hover:text-ink"
-              href={`${CANONICAL_ORIGIN}/open`}
-            >
-              Goldroad — open-source, writer-owned publishing
-            </a>{" "}
-            · <ReportLink />
-            {/* Only when the author set no theme. An unthemed page follows the
+            <p className="font-display text-ink-soft/80 text-xs">
+              {copyrightYear} · {publicationName ?? `@${ident}`}
+            </p>
+            <p className="mt-1 font-display text-ink-soft/80 text-xs">
+              <a
+                className="transition-colors hover:text-ink"
+                href={`${CANONICAL_ORIGIN}/open`}
+              >
+                Goldroad — open-source, writer-owned publishing
+              </a>{" "}
+              · <ReportLink />
+              {/* Only when the author set no theme. An unthemed page follows the
                 READER's edition, so the control belongs where the preference
                 actually applies — and on a themed page there would be nothing
                 for it to change, because the author's colours are the answer.
                 Down here rather than in the header: the platform disappears on
                 a writer's surface, so our one control keeps our one line's
                 volume instead of putting a widget above their masthead. */}
-            {" · "}
-            <ReaderEdition themed={Boolean(theme)} />
-          </p>
-        </footer>
-      </article>
+              {" · "}
+              <ReaderEdition themed={Boolean(theme)} />
+            </p>
+          </footer>
+        </article>
+      </main>
     </WriterSurface>
   );
 }
