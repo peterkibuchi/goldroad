@@ -27,7 +27,6 @@ import { MAIN_CONTENT_ID } from "~/components/skip-link";
 import {
   listRecords,
   listRecordsPage,
-  MAX_LIST_RECORDS,
   resolveDidIdentity,
   type StandardDocument,
   type StandardPublication,
@@ -122,9 +121,7 @@ const getOverview = createServerFn({ method: "GET" }).handler(async () => {
     published: rows
       ? ({
           count: rows.length,
-          countComplete: docsPage
-            ? docsPage.records.length < MAX_LIST_RECORDS
-            : false,
+          countComplete: docsPage?.cursor === null,
           latest,
         } satisfies PublishedSummary)
       : null,
@@ -279,7 +276,7 @@ function HeadlineNumbers({
         {published && !published.countComplete && (
           <>
             {" "}
-            Your post count covers the most recent {MAX_LIST_RECORDS};{" "}
+            Your post count covers the most recent {published.count};{" "}
             <a
               className="underline underline-offset-2 transition-colors hover:text-ink"
               href={`/@${encodeURIComponent(ident)}`}

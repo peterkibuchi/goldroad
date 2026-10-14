@@ -67,6 +67,12 @@ const FEED_ITEMS = 20;
  * of escaping. Under feed.ts's per-item cap, so no post is ever cut short. */
 const FEED_CONTENT_BUDGET_CHARS = 150_000;
 
+const UNAVAILABLE = () =>
+  new Response("This feed couldn't be loaded right now. Try again shortly.", {
+    status: 503,
+    headers: { "cache-control": "no-store", "retry-after": "300" },
+  });
+
 export const Route = createFileRoute("/@{$handle}/rss.xml")({
   server: {
     handlers: {
@@ -90,20 +96,29 @@ export const Route = createFileRoute("/@{$handle}/rss.xml")({
               did,
               "site.standard.publication",
               { limit: 10, reverse: true },
-            ).catch(() => []),
+            ).catch((err: unknown) =>
+              err instanceof NotFoundError ? [] : null,
+            ),
             listRecordsPage<StandardDocument>(
               pds,
               did,
               "site.standard.document",
               { limit: FEED_ITEMS },
-            ).catch(() => ({ records: [], cursor: null })),
+            ).catch((err: unknown) =>
+              // A refused listing is an empty feed; a failed one (too large,
+              // unreachable) is a 503, so readers keep the items they have
+              // and retry, instead of being told every post is gone.
+              err instanceof NotFoundError
+                ? { records: [], cursor: null }
+                : null,
+            ),
           ]);
-          const publication = pubs[0]?.value ?? null;
+          const publication = pubs?.[0]?.value ?? null;
           // Documents may reference ANY of the author's publications (site =
           // at:// URI); the fetched page already holds them, so composition
           // resolves against all of them, not just the oldest.
           const pubUrlByAtUri = new Map(
-            pubs.flatMap((p) =>
+            (pubs ?? []).flatMap((p) =>
               typeof p.value.url === "string"
                 ? [[p.uri, p.value.url] as const]
                 : [],
@@ -114,7 +129,7 @@ export const Route = createFileRoute("/@{$handle}/rss.xml")({
           // from the PDS-reported uri, which a hostile PDS could skew so a
           // record-level takedown row (keyed on the minted shape, see
           // recordAtUri) would fail to match. The same minted URI is the guid.
-          const entries = docsPage.records.flatMap((r) => {
+          const entries = (docsPage?.records ?? []).flatMap((r) => {
             const rkey = rkeyFromUri(r.uri);
             if (!rkey || typeof r.value.title !== "string") return [];
             return [
@@ -141,6 +156,7 @@ export const Route = createFileRoute("/@{$handle}/rss.xml")({
               ]).catch(() => new Set<string>())
             : new Set<string>();
           if (hidden.has(did)) return NOT_FOUND();
+          if (docsPage === null) return UNAVAILABLE();
 
           const visible = entries
             .filter((e) => !hidden.has(e.atUri))
@@ -219,6 +235,8 @@ export const Route = createFileRoute("/@{$handle}/rss.xml")({
             headers: {
               "content-type": RSS_CONTENT_TYPE,
               "x-content-type-options": "nosniff",
+              // Titled from a failed publication read: don't cache that.
+              ...(pubs === null ? { "cache-control": "no-store" } : {}),
             },
           });
         } catch (err) {
