@@ -99,6 +99,10 @@ const FALSE_CLAIMS: ReadonlyArray<{ phrase: string; why: string }> = [
     why: "carrying a writer's Substack subscribers over on their existing Stripe account needs a payments platform this project can't operate (corrected 2026-10-14)",
   },
   {
+    phrase: "your list, and your revenue",
+    why: "the share card claimed a subscriber list and paid revenue in the present tense (corrected 2026-10-14)",
+  },
+  {
     phrase: "keep paying",
     why: "same claim: no paying subscriber moves across today, and none is promised to (corrected 2026-10-14)",
   },
@@ -111,10 +115,11 @@ const FALSE_CLAIMS: ReadonlyArray<{ phrase: string; why: string }> = [
 describe("marketing copy makes no claim we cannot keep", () => {
   for (const page of MARKETING_PAGES) {
     it(`${page} carries none of the phrasings that shipped falsely`, () => {
-      const source = readFlat(page);
+      // Case-folded: a sentence-initial "Keep paying" is the same claim.
+      const source = readFlat(page).toLowerCase();
       for (const { phrase, why } of FALSE_CLAIMS) {
         expect(
-          source.includes(phrase),
+          source.includes(phrase.toLowerCase()),
           `${page} contains "${phrase}" — ${why}`,
         ).toBe(false);
       }
@@ -130,14 +135,16 @@ describe("marketing copy makes no claim we cannot keep", () => {
     // of taking 0% must sit near a marker that payments are still ahead.
     for (const page of MARKETING_PAGES) {
       const source = read(page);
-      const claim = /take (?:zero|0%)/g;
+      const claim = /takes? (?:zero|0%)|0% (?:is )?taken/g;
       for (const match of source.matchAll(claim)) {
         const window = source.slice(
           Math.max(0, match.index - 160),
           match.index + 80,
         );
         expect(
-          /\bship(?:s|ped|ping)?\b|\bwill\b|roadmap/i.test(window),
+          /\bship(?:s|ped|ping)?\b|\bwill\b|roadmap|being designed|(?:aren't|isn't) built/i.test(
+            window,
+          ),
           `${page}: "${match[0]}" is not qualified as future — payments have not shipped`,
         ).toBe(true);
       }

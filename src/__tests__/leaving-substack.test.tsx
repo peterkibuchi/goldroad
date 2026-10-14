@@ -19,7 +19,9 @@ describe("LeavingSubstack", () => {
       /same stripe account|keep paying|same cards|connect that same account|subscribers will come with you/i,
     );
     expect(
-      screen.getByRole("heading", { name: /paid subscriptions/i }),
+      screen.getByRole("heading", {
+        name: "Paid subscriptions, on a processor you hold.",
+      }),
     ).toBeDefined();
   });
 
@@ -46,9 +48,13 @@ describe("LeavingSubstack", () => {
     }
 
     // The payments section says it isn't built before saying what it will be.
-    expect(
-      screen.getByText(/paid subscriptions aren't built yet/i).textContent,
-    ).toMatch(/takes 0%/i);
+    const payments =
+      screen.getByText(/paid subscriptions aren't built yet/i).textContent ??
+      "";
+    expect(payments.indexOf("aren't built yet")).toBeGreaterThan(-1);
+    expect(payments.indexOf("aren't built yet")).toBeLessThan(
+      payments.indexOf("takes 0%"),
+    );
   });
 
   it("marks its own header link as the current page", () => {

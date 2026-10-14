@@ -25,7 +25,7 @@ export const Route = createFileRoute("/leaving-substack")({
       {
         property: "og:description",
         content:
-          "Own your publication, your list, and your revenue on the open network. See how Goldroad compares to Substack — honestly, roadmap status included.",
+          "Bring your archive to a page you own on the open network. See how Goldroad compares to Substack — honestly, roadmap status included.",
       },
       { property: "og:type", content: "website" },
       { property: "og:url", content: `${CANONICAL_ORIGIN}/leaving-substack` },
@@ -263,16 +263,16 @@ export function LeavingSubstack() {
           <div className="mx-auto w-full max-w-5xl px-6 pt-14 pb-16 md:px-16 md:pt-20 md:pb-20">
             <Kicker>Coming from Substack?</Kicker>
             <h1 className="mt-5 max-w-[18ch] text-balance font-black font-display text-4xl text-ink leading-[1.05] tracking-tight md:text-6xl">
-              Bring your archive.{" "}
-              <span className="spot-highlight">Keep the 10%</span> Substack
-              takes.
+              Bring your archive.
+              <br />
+              Our cut is{" "}
+              <span className="spot-highlight">0%, for{"\u00a0"}good</span>.
             </h1>
             <p className="mt-6 max-w-[54ch] text-pretty font-body text-ink-soft text-lg italic md:text-xl">
               Goldroad is writer-owned publishing on the open network: your
               writing on a page you own, and your archive here today. Paid
               subscriptions are still being designed, around a payment processor
               you hold yourself. Substack takes 10% of what readers pay you.
-              Ours will always be 0%.
             </p>
             {/* The contrast that did not exist when this page was written. In
                 June 2026 Substack began selling sponsorships into newsletters —
@@ -345,9 +345,9 @@ export function LeavingSubstack() {
                 Processing fees apply either way. Substack's 10% is charged on
                 top of Stripe's processing fee, which is about 2.9% + 30¢ a
                 charge on a standard US card, and whichever processor you use
-                with Goldroad charges its own. So the $5,000 is the difference
-                between two platforms, not a claim that payments are free.
-                (Illustrative; your numbers are your own.)
+                with Goldroad will charge its own. So the $5,000 is the
+                difference between two platforms, not a claim that payments are
+                free. (Illustrative; your numbers are your own.)
               </span>
             </figcaption>
           </figure>
@@ -436,10 +436,10 @@ export function LeavingSubstack() {
           </p>
         </MarketingSection>
 
-        {/* Paid subscriptions: a direction, not a migration promise. Moving
-            Substack's paying subscribers would mean charging cards on an
-            account Substack set up, which this project can't operate, so the
-            page doesn't say they come along. */}
+        {/* Paid subscriptions: a direction, not a migration promise. Charging
+            a writer's existing Substack subscriptions from here would need a
+            Stripe Connect platform, which this project can't run, so the page
+            doesn't say they come along. */}
         <MarketingSection divider>
           <Kicker>On the roadmap</Kicker>
           <h2 className="mt-4 max-w-[24ch] text-balance font-black font-display text-3xl text-ink leading-tight tracking-tight md:text-4xl">
@@ -449,11 +449,6 @@ export function LeavingSubstack() {
             Paid subscriptions aren't built yet. They're being designed so that
             you are the merchant: readers pay you through a payment processor
             account in your name, and Goldroad takes 0% of it.
-          </p>
-          <p className="mt-4 max-w-[60ch] text-pretty text-ink-soft text-lg leading-relaxed">
-            What we can't promise yet is that the readers paying you on Substack
-            carry on without signing up again. Until that's built and tested, we
-            won't say it.
           </p>
           <p className="mt-8 max-w-[56ch] border-rule border-t pt-4 font-display text-ink-soft text-sm leading-normal">
             Paid subscriptions are still being designed. This is the direction,
@@ -469,10 +464,10 @@ export function LeavingSubstack() {
           </h2>
           <p className="mt-4 max-w-[58ch] text-pretty text-ink-soft text-lg leading-relaxed">
             Substack import is live. Your archive can come across today.
-            Newsletters and paid subscriptions are still being built, and we
-            won't ask anyone whose income depends on them to switch until
-            they're solid. Join the founding writers and we'll bring you in the
-            moment they are.
+            Newsletters are still being built and paid subscriptions designed,
+            and we won't ask anyone whose income depends on them to switch until
+            they're solid. Join the founding writers and you'll hear the moment
+            they are.
           </p>
           <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3">
             <CtaLink href="/#join">Join the founding writers</CtaLink>
