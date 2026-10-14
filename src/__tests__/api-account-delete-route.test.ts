@@ -16,6 +16,8 @@ const store = vi.hoisted(() => ({
   deleteOAuthSessionForDid: vi.fn(),
   deleteReaderEmailsForDid: vi.fn(),
   deleteScheduledPostsForDid: vi.fn(),
+  deleteSearchBackfillForDid: vi.fn(),
+  deleteSearchDocumentsForDid: vi.fn(),
 }));
 vi.mock("~/lib/rights-store", () => store);
 
@@ -114,6 +116,15 @@ describe("deletion", () => {
     // A pending scheduled post is queued WORK, not just a record: leaving one
     // behind would have the cron publishing for a deleted account.
     expect(store.deleteScheduledPostsForDid).toHaveBeenCalledWith(
+      expect.anything(),
+      DID,
+    );
+    // The search index is our copy of the writer's words.
+    expect(store.deleteSearchDocumentsForDid).toHaveBeenCalledWith(
+      expect.anything(),
+      DID,
+    );
+    expect(store.deleteSearchBackfillForDid).toHaveBeenCalledWith(
       expect.anything(),
       DID,
     );

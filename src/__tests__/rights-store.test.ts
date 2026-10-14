@@ -14,6 +14,8 @@ import {
   deleteOAuthSessionForDid,
   deleteReaderEmailsForDid,
   deleteScheduledPostsForDid,
+  deleteSearchBackfillForDid,
+  deleteSearchDocumentsForDid,
   MAX_LEDGER_ROWS_PER_EXPORT,
   MAX_SNAPSHOT_ROWS_PER_EXPORT,
   selectDraftsForExport,
@@ -127,6 +129,15 @@ describe("account-deletion deletes — DID-scoped, RETURNing so callers can see 
     expectDidBound(sql, params);
     expect(sql.toLowerCase()).toContain('delete from "follower_snapshots"');
     expect(sql.toLowerCase()).toContain("returning");
+  });
+
+  it("deleteSearchDocumentsForDid and deleteSearchBackfillForDid take only the caller's index", () => {
+    const docs = deleteSearchDocumentsForDid(db, DID).toSQL();
+    expectDidBound(docs.sql, docs.params);
+    expect(docs.sql.toLowerCase()).toContain('delete from "search_documents"');
+    const state = deleteSearchBackfillForDid(db, DID).toSQL();
+    expectDidBound(state.sql, state.params);
+    expect(state.sql.toLowerCase()).toContain('delete from "search_backfills"');
   });
 
   it("deleteScheduledPostsForDid removes queued publishing work, not just records", () => {
