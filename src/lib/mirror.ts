@@ -14,7 +14,7 @@
  * error (null = treat as not-a-mirror): a transient store outage must not
  * blank canonical tags across the reader; the check re-runs on the next
  * uncached request. Same freshness caveat as moderation: the read cache can
- * serve a stale verdict for up to its TTL (≤60 s).
+ * serve a stale verdict for up to its TTL (≤300 s).
  */
 import { createServerFn } from "@tanstack/react-start";
 import { drizzle } from "drizzle-orm/d1";

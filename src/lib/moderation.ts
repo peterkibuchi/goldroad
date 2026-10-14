@@ -7,7 +7,7 @@
  *
  * FRESHNESS CAVEAT: the reader-page check runs in the loader, which a warm read
  * cache short-circuits — so a takedown on an already-cached page is only
- * enforced once that cache entry expires (≤60 s, see read-cache.ts) OR the
+ * enforced once that cache entry expires (≤300 s, see read-cache.ts) OR the
  * cache is purged. A takedown is a row in `hidden_content` keyed on the DID or
  * AT-URI; inserting that row is therefore only half of an URGENT (legal/CSAM)
  * takedown — the edge cache must be purged for the same URLs in the same
