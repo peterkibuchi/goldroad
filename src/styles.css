@@ -13,6 +13,54 @@
    editor component (code-split — reader surfaces never load it). */
 @source "../node_modules/@blocknote/shadcn/dist";
 
+/* Stand-ins for the two web fonts while they load, sized to match them.
+   Before these, the page was laid out in system-ui and Georgia, which set the
+   same text 10 to 17% wider, so a headline that wrapped differently reflowed
+   everything below it when the real face arrived (a 0.10 layout shift on the
+   landing page). size-adjust matches the width of a sentence of English at
+   each weight; the overrides match the line box. Measured in Chrome against
+   the bundled latin files, within 1%. Arial and Times New Roman are on Windows
+   and macOS; Liberation and Arimo/Tinos are their metric twins on Linux and
+   ChromeOS. Where none is installed the stack falls through as before. */
+@font-face {
+  font-family: "Libre Franklin Fallback";
+  font-weight: 100 500;
+  src: local("Arial"), local("Liberation Sans"), local("Arimo");
+  size-adjust: 103.2%;
+  ascent-override: 94%;
+  descent-override: 24.2%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: "Libre Franklin Fallback";
+  font-weight: 600 900;
+  src: local("Arial Bold"), local("Liberation Sans Bold"), local("Arimo Bold");
+  size-adjust: 99.5%;
+  ascent-override: 97.5%;
+  descent-override: 25.1%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: "Source Serif 4 Fallback";
+  font-weight: 100 500;
+  src: local("Times New Roman"), local("Liberation Serif"), local("Tinos");
+  size-adjust: 117.5%;
+  ascent-override: 88.5%;
+  descent-override: 28.9%;
+  line-gap-override: 0%;
+}
+@font-face {
+  font-family: "Source Serif 4 Fallback";
+  font-weight: 600 900;
+  src:
+    local("Times New Roman Bold"), local("Liberation Serif Bold"),
+    local("Tinos Bold");
+  size-adjust: 114.3%;
+  ascent-override: 91%;
+  descent-override: 29.7%;
+  line-gap-override: 0%;
+}
+
 /* Pressroom design direction: ink on paper, one vermillion spot color,
    Franklin Gothic-lineage display type. */
 @theme {
@@ -26,8 +74,10 @@
      site.standard.theme.basic lets a writer choose it (accentForeground) and
      a themed page has to be able to override it. */
   --color-spot-foreground: oklch(1 0 0);
-  --font-display: "Libre Franklin Variable", system-ui, sans-serif;
-  --font-body: "Source Serif 4 Variable", Georgia, serif;
+  --font-display:
+    "Libre Franklin Variable", "Libre Franklin Fallback", system-ui, sans-serif;
+  --font-body:
+    "Source Serif 4 Variable", "Source Serif 4 Fallback", Georgia, serif;
 }
 
 /*
