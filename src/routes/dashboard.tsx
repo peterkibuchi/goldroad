@@ -119,6 +119,8 @@ const ERROR_MESSAGES: Record<string, string> = {
     "That schedule couldn't be cancelled just now. Try again in a moment.",
   missing_title:
     "That draft has no title, so it couldn't be published. Open it, give it a title, and schedule it again.",
+  image_missing:
+    "One of this post's images is no longer in your repo, so your server refused the post. If it came from a Bluesky post you've since deleted, open the draft, remove that image, and publish again.",
   too_large:
     "That post is too large to store as a single record — data servers cap one at about 140,000 bytes, and accents, emoji and non-Latin scripts cost several bytes each. Your draft is safe: open it, trim it or split it in two, and publish again.",
   // Named ahead of the prefix fallbacks below, which would print the raw code.
@@ -276,6 +278,7 @@ export const Route = createFileRoute("/dashboard")({
       published?: string;
       announced?: string;
       imagesKept?: number;
+      imagesDropped?: number;
       deleted?: boolean;
       moved?: boolean;
       scheduled?: boolean;
@@ -298,6 +301,11 @@ export const Route = createFileRoute("/dashboard")({
     // stays on the source, so a big thread reports more than the cap.
     if (Number.isInteger(kept) && kept > 0 && kept < 10_000)
       out.imagesKept = kept;
+    // Images the post went out without, because the repo no longer held them
+    // (~/lib/publish-document). Same parsing, same reason.
+    const dropped = Number(search.imagesDropped);
+    if (Number.isInteger(dropped) && dropped > 0 && dropped < 10_000)
+      out.imagesDropped = dropped;
     if (search.deleted === "1" || search.deleted === 1) out.deleted = true;
     if (search.moved === "1" || search.moved === 1) out.moved = true;
     if (search.scheduled === "1" || search.scheduled === 1)
@@ -1389,12 +1397,15 @@ export function PublishedNotice({
   rkey,
   announced,
   imagesKept,
+  imagesDropped,
 }: {
   ident: string;
   rkey: string;
   announced: boolean;
   /** Body images the publish left on the source site. */
   imagesKept?: number;
+  /** Images the repo no longer held, so the post went out without them. */
+  imagesDropped?: number;
 }) {
   return (
     <Notice tone="info">
@@ -1417,6 +1428,16 @@ export function PublishedNotice({
             : `${imagesKept} images couldn't be copied into your repo and still load from the original site.`}
         </span>
       ) : null}
+      {/* The writer may still see these in their editor (the image
+          proxy caches for a year), so the post going out without them
+          is said here, not left for a reader to notice. */}
+      {imagesDropped ? (
+        <span className="mt-1 block">
+          {imagesDropped === 1
+            ? "One image was no longer in your repo, so the post went out without it. That happens when the Bluesky post it came from was deleted."
+            : `${imagesDropped} images were no longer in your repo, so the post went out without them. That happens when the Bluesky posts they came from were deleted.`}
+        </span>
+      ) : null}
       {!announced && (
         <span className="mt-1 block">
           {ANNOUNCE_EXPLAINER} <AnnounceButton rkey={rkey} />
@@ -1437,6 +1458,8 @@ export type DashboardOutcome = {
   announced?: string;
   /** Body images left on the source CDN by the publish that just happened. */
   imagesKept?: number;
+  /** Body images it went out without: the repo no longer held them. */
+  imagesDropped?: number;
   scheduled?: boolean;
 };
 
@@ -1445,8 +1468,14 @@ export type DashboardOutcome = {
 export function withoutOutcomeParams<T extends object>(
   search: T,
 ): Omit<T, keyof DashboardOutcome> {
-  const { published, announced, imagesKept, scheduled, ...rest } = search as T &
-    DashboardOutcome;
+  const {
+    published,
+    announced,
+    imagesKept,
+    imagesDropped,
+    scheduled,
+    ...rest
+  } = search as T & DashboardOutcome;
   return rest;
 }
 
@@ -1474,13 +1503,14 @@ export function useOutcomeParams(
   ident: string,
   strip: () => void,
 ): DashboardOutcome {
-  const { published, announced, imagesKept, scheduled } = search;
+  const { published, announced, imagesKept, imagesDropped, scheduled } = search;
   // Seeded from the URL so the notice is on screen in the first paint, not one
   // frame after it.
   const [outcome, setOutcome] = useState<DashboardOutcome>(() => ({
     published,
     announced,
     imagesKept,
+    imagesDropped,
     scheduled,
   }));
   const consumed = useRef<string | null>(null);
@@ -1500,9 +1530,17 @@ export function useOutcomeParams(
     // published yet, so there is no record to name.
     if (scheduled) capture("post_scheduled", { ident });
 
-    setOutcome({ published, announced, imagesKept, scheduled });
+    setOutcome({ published, announced, imagesKept, imagesDropped, scheduled });
     strip();
-  }, [published, announced, imagesKept, scheduled, ident, strip]);
+  }, [
+    published,
+    announced,
+    imagesKept,
+    imagesDropped,
+    scheduled,
+    ident,
+    strip,
+  ]);
 
   return outcome;
 }
@@ -1558,6 +1596,7 @@ function DashboardPage() {
               Boolean(outcome.announced) || error === "already_announced"
             }
             ident={ident}
+            imagesDropped={outcome.imagesDropped}
             imagesKept={outcome.imagesKept}
             rkey={outcome.published}
           />

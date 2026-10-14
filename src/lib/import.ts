@@ -507,18 +507,19 @@ export async function fetchImportableImage(
 const MARKDOWN_IMAGE_RE = /!\[(?:\\.|[^[\]\\])*\]\(\s*([^()\s]+)[^()]*\)/g;
 
 /**
- * Subrequests one publish may spend copying body images. The free plan allows
- * 50 per invocation, and the rest of a publish can take 29 of them: session
- * restore with a token refresh 5, identity 1, cover upload 2, publication
- * lookup or first-time create 3, document write up to 3, cache purges 15. So
- * copying gets 16 and 5 stay spare. Images past the budget keep pointing at
- * the source, and the writer is told.
+ * Subrequests one publish may spend on body images: copying them here, or
+ * retrying past ones the repo no longer holds (~/lib/publish-document). The
+ * free plan allows 50 per invocation, and the rest of a publish can take 32:
+ * session restore with a token refresh 8 (metadata, DID document, handle,
+ * token, DPoP nonce retries), identity 1, cover upload 2, publication lookup
+ * or first-time create 3, document write up to 3, cache purges 15. So images
+ * get 14 and 4 stay spare.
  */
-export const REHOST_SUBREQUEST_BUDGET = 16;
+export const IMAGE_SUBREQUEST_BUDGET = 14;
 
 /** Images one publish can copy at best: one fetch and one upload each. A
  * redirecting image costs a fetch per hop, so fewer fit. */
-export const MAX_REHOSTED_IMAGES = REHOST_SUBREQUEST_BUDGET / 2;
+export const MAX_REHOSTED_IMAGES = IMAGE_SUBREQUEST_BUDGET / 2;
 
 /**
  * Distinct public-https image URLs in a body, in first-appearance order.
@@ -555,6 +556,8 @@ export type RehostResult = {
   /** Images left pointing at the source (fetch refused, too big, wrong type,
    * or past the budget). Not an error — just not rehosted. */
   skipped: number;
+  /** Subrequests spent, so the rest of the publish knows what is left. */
+  spent: number;
 };
 
 /**
@@ -586,21 +589,29 @@ export async function rehostBodyImages(opts: {
    * blobImagePath) — injected to keep this module free of blob.ts's
    * route-shape concerns. */
   imagePath: (did: string, cid: string) => string;
+  /** Subrequests this may spend (IMAGE_SUBREQUEST_BUDGET on a publish). */
+  budget: number;
+  /** Blob refs the record still has room for: MAX_INLINE_IMAGES less those
+   * already in use. A copy past that would never be referenced, so it would
+   * never be served, where the source URL at least still loads. */
+  slots: number;
   fetchImpl?: FetchLike;
 }): Promise<RehostResult> {
   const urls = extractImageUrls(opts.body);
-  if (urls.length === 0) return { body: opts.body, blobs: [], skipped: 0 };
+  if (urls.length === 0)
+    return { body: opts.body, blobs: [], skipped: 0, spent: 0 };
 
   const replacements = new Map<string, string>();
   const blobs: unknown[] = [];
   let skipped = 0;
 
   // Every fetch, redirect hops included, and every upload is a subrequest. A
-  // fetch only goes out if the upload after it still fits, so an image never
-  // starts that can't finish and the budget is never overrun.
+  // fetch only goes out if the upload after it still fits, and only while the
+  // record has a slot for the result, so an image never starts that can't
+  // finish and the budget is never overrun.
   let spent = 0;
   const baseFetch = opts.fetchImpl ?? fetch;
-  const fits = () => spent + 2 <= REHOST_SUBREQUEST_BUDGET;
+  const fits = () => spent + 2 <= opts.budget && blobs.length < opts.slots;
   const budgetedFetch: FetchLike = (url, init) => {
     if (!fits()) return Promise.reject(new Error("subrequest budget spent"));
     spent += 1;
@@ -639,7 +650,8 @@ export async function rehostBodyImages(opts: {
     replacements.set(url, opts.imagePath(opts.did, cid));
     blobs.push(blob);
   }
-  if (replacements.size === 0) return { body: opts.body, blobs, skipped };
+  if (replacements.size === 0)
+    return { body: opts.body, blobs, skipped, spent };
 
   // Rewritten through the same image pattern that found them, so a bare URL
   // appearing in prose or a link href is never touched.
@@ -647,7 +659,7 @@ export async function rehostBodyImages(opts: {
     const next = replacements.get(safeLink(raw) ?? "");
     return next ? whole.replace(raw, next) : whole;
   });
-  return { body, blobs, skipped };
+  return { body, blobs, skipped, spent };
 }
 
 /**
