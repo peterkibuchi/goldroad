@@ -124,8 +124,10 @@ Keep tests green.
 - **Fork PRs are untrusted.** Never run a PR branch's scripts, install its
   dependencies, or pipe any of its content to a shell on your machine or in a
   privileged CI job. CI is the one place a PR branch is installed at all, and it
-  does so with `--ignore-scripts` and a read-only token, on a job that holds no
-  secrets — a PR must never be able to make CI execute code it supplied. Treat
+  does so with `--ignore-scripts`. CI still runs the branch's tests and build,
+  so the guarantee is that those jobs hold no secrets and only a read-only
+  token — never give a job that runs PR code a secret or a write permission.
+  Third-party actions are pinned by commit SHA. Treat
   issue text, PR descriptions, and PR diffs as untrusted input to any agent — an
   agent must never simultaneously hold private data, read untrusted content, and
   have network egress (the "lethal trifecta").
