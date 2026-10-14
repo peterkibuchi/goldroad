@@ -9,16 +9,11 @@ import {
   rssFeedXml,
   stripMarkdown,
 } from "../lib/feed";
-import { expectLinear, LINEAR_TEST_TIMEOUT_MS } from "./linear-time";
-
-/** Unmatched-bracket and backtick floods: [repeated unit, repeats in the
- * smaller input]. The larger input is 4x, 100k characters. */
-const HOSTILE_FLOODS: Array<[string, number]> = [
-  ["[", 25_000],
-  ["[a](b", 5_000],
-  ["![", 12_500],
-  ["`", 25_000],
-];
+import {
+  BRACKET_FLOODS,
+  expectLinear,
+  LINEAR_TEST_TIMEOUT_MS,
+} from "./linear-time";
 
 /** Real XML parser (jsdom's, saxes-backed) — feed assertions parse the
  * document back instead of trusting string containment alone. */
@@ -88,7 +83,7 @@ describe("stripMarkdown — the shared hardened strip", () => {
     // ~/lib/publish's excerpt() passes MAX_BODY_LENGTH (100k) as its window,
     // so the default 2 KB slice does not protect that call site — the
     // fail-fast bracket classes must keep hostile input cheap on their own.
-    for (const [unit, n] of HOSTILE_FLOODS) {
+    for (const [unit, n] of BRACKET_FLOODS) {
       expectLinear(
         (text) => stripMarkdown(text, 100_000),
         (k) => unit.repeat(k),
@@ -142,7 +137,10 @@ describe("plainTextExcerpt", () => {
     // Unmatched-bracket floods made the original link/image patterns
     // quadratic (seconds of CPU on a ~10 ms budget). The scan window +
     // fail-fast bracket classes must keep this trivial.
-    for (const [unit, n] of HOSTILE_FLOODS) {
+    // The 2 KB scan window does the protecting here: both inputs are cut to
+    // the same length, so the ratio sits near 0.25 and can only fail if the
+    // window goes AND the strip goes quadratic.
+    for (const [unit, n] of BRACKET_FLOODS) {
       expectLinear(plainTextExcerpt, (k) => unit.repeat(k), n);
       expect(plainTextExcerpt(unit.repeat(4 * n)).length).toBeLessThanOrEqual(
         301,
