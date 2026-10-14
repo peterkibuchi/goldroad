@@ -425,3 +425,52 @@ export const reports = sqliteTable(
       .where(sql`${table.notifiedAt} is null`),
   ],
 );
+
+/**
+ * Full-text search over the posts this app writes: one row per document,
+ * holding the text the index is built from. `post_search`, an FTS5 table, is
+ * the index itself, and it is declared in the migration rather than here,
+ * because drizzle has no virtual tables.
+ *
+ * The index is EXTERNAL-CONTENT (`content='search_documents'`), kept in step by
+ * triggers on this table, and that split is for the nightly backup: D1 can't
+ * export a database with a virtual table, so the backup exports every ordinary
+ * table and skips the index. Everything the index holds is in this table, so a
+ * restore rebuilds it with one statement (docs/BACKUPS.md). The index's column
+ * names have to match `title`, `description` and `body` here.
+ *
+ * Only Goldroad writers' own documents are indexed (see ~/lib/search for why
+ * other authors' are not), written on publish, edit and delete and backfilled
+ * from the writer's repo.
+ */
+export const searchDocuments = sqliteTable(
+  "search_documents",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    did: text("did").notNull(),
+    rkey: text("rkey").notNull(),
+    title: text("title").notNull(),
+    description: text("description").notNull().default(""),
+    body: text("body").notNull().default(""),
+    publishedAt: text("published_at"),
+  },
+  (table) => [
+    uniqueIndex("search_documents_did_rkey_idx").on(table.did, table.rkey),
+  ],
+);
+
+/**
+ * How far the one-off backfill of a writer's existing posts has got. Search
+ * answers from the index only once `completed_at` is set: before that the
+ * index holds only what was published since, and a search that silently
+ * missed every older post would be worse than the title filter it replaces.
+ * `cursor` is the repo listing's, so the backfill resumes where it stopped.
+ */
+export const searchBackfills = sqliteTable("search_backfills", {
+  did: text("did").primaryKey(),
+  cursor: text("cursor"),
+  completedAt: integer("completed_at", { mode: "timestamp_ms" }),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});

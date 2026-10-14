@@ -85,12 +85,16 @@ jobs:
       # their own D1); the real production id lives in the env.production block.
       # Without the flag wrangler resolves the placeholder and the API answers
       # "database not found [code: 7404]".
+      #
+      # Through the script, not a bare `wrangler d1 export`: D1 refuses to export
+      # a database with a virtual table, and the post search index is one. The
+      # script exports the ordinary tables and appends the rest (see its header).
       - name: Export the database
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          pnpm wrangler d1 export "$DATABASE_NAME" --env production --remote --output "$DUMP" -y
+          scripts/d1-export.sh "$DATABASE_NAME" "$DUMP" --env production --remote
 
       # A dump that exists is not a dump that is usable. An export can report
       # success and leave a truncated or schema-only file, which is exactly the
