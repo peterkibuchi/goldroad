@@ -53,13 +53,27 @@ describe("isCacheableReadRequest", () => {
     expect(isCacheableReadRequest(req("/@awarm.space/rss.xml"))).toBe(true);
   });
 
-  it("caches the marketing pages, but only without a query string", () => {
-    for (const path of ["/", "/leaving-substack", "/open", "/privacy"]) {
+  it("caches the marketing pages, campaign links included", () => {
+    for (const path of [
+      "/",
+      "/leaving-substack",
+      "/open",
+      "/privacy",
+      "/terms",
+      "/policies",
+      "/?utm_source=bsky",
+      "/open?ref=x",
+    ]) {
       expect(isCacheableReadRequest(req(path)), path).toBe(true);
     }
-    // `/` renders ?notice= on the server, and the cache key drops the query.
+    // ...and they share the bare page's entry.
+    expect(readCacheKey(req("/?utm_source=bsky"))).toBe(
+      "https://trygoldroad.com/",
+    );
+  });
+
+  it("renders the goodbye notice fresh: `/` reads ?notice= on the server", () => {
     expect(isCacheableReadRequest(req("/?notice=goodbye"))).toBe(false);
-    expect(isCacheableReadRequest(req("/open?utm_source=x"))).toBe(false);
   });
 
   it("never caches the app, api, or img paths", () => {
@@ -240,6 +254,15 @@ describe("serveWithReadCache — HIT/MISS flow", () => {
     await Promise.all(pending);
     const stored = cache.store.get("https://trygoldroad.com/@awarm.space");
     expect(await stored?.text()).toContain("<p>replies</p>");
+  });
+
+  it("renders afresh a page stored before builds were recorded", async () => {
+    const cache = mockCache();
+    cache.store.set("https://trygoldroad.com/", htmlResponse());
+    const fetchFresh = vi.fn(async () => htmlResponse());
+    const res = await serve(req("/"), fetchFresh);
+    expect(res.headers.get("x-goldroad-cache")).toBe("MISS");
+    expect(fetchFresh).toHaveBeenCalledTimes(1);
   });
 
   it("renders afresh a page a previous build stored", async () => {
