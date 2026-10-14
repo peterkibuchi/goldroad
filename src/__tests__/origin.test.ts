@@ -186,7 +186,43 @@ describe("canonicalRedirect", () => {
     ).toBeNull();
   });
 
-  it("matches on hostname only — plain http on the canonical host is served (wrangler dev presents the zone host over http; https upgrades belong to the Cloudflare edge)", () => {
+  it("serves plain http that no visitor sent (wrangler dev presents the zone host over http, and upgrading it would loop)", () => {
     expect(redirectFor("http://trygoldroad.com/write")).toBeNull();
+  });
+
+  /** What the Cloudflare edge sends for a visitor who typed http://. */
+  const overHttp = (url: string) =>
+    canonicalRedirect(
+      new Request(url, { headers: { "cf-visitor": '{"scheme":"http"}' } }),
+    );
+
+  it("301s a visitor's plain http to https, keeping the path and query", () => {
+    const res = overHttp("http://trygoldroad.com/@writer.example/3lyk?ref=x");
+    expect(res?.status).toBe(301);
+    expect(res?.headers.get("location")).toBe(
+      "https://trygoldroad.com/@writer.example/3lyk?ref=x",
+    );
+  });
+
+  it("upgrades a preview host on itself, and sends other hosts to the canonical origin", () => {
+    expect(
+      overHttp(
+        "http://abc12345-goldroad.kibuchi.workers.dev/write",
+      )?.headers.get("location"),
+    ).toBe("https://abc12345-goldroad.kibuchi.workers.dev/write");
+    expect(
+      overHttp("http://www.trygoldroad.com/open")?.headers.get("location"),
+    ).toBe("https://trygoldroad.com/open");
+  });
+
+  it("serves https visitors and an unreadable cf-visitor untouched", () => {
+    const withVisitor = (value: string) =>
+      canonicalRedirect(
+        new Request("https://trygoldroad.com/", {
+          headers: { "cf-visitor": value },
+        }),
+      );
+    expect(withVisitor('{"scheme":"https"}')).toBeNull();
+    expect(withVisitor("not json")).toBeNull();
   });
 });
