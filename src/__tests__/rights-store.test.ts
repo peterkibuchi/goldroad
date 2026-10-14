@@ -9,6 +9,7 @@ import {
   countReaderEmailsForDid,
   deleteDraftsForDid,
   deleteFollowerSnapshotsForDid,
+  deleteHandleHistoryForDid,
   deleteImportFetchesForDid,
   deleteImportItemsForDid,
   deleteOAuthSessionForDid,
@@ -18,6 +19,7 @@ import {
   MAX_SNAPSHOT_ROWS_PER_EXPORT,
   selectDraftsForExport,
   selectFollowerSnapshotsForExport,
+  selectHandleHistoryForExport,
   selectImportItemsForExport,
   selectScheduledPostsForExport,
 } from "../lib/rights-store";
@@ -164,6 +166,15 @@ describe("account-deletion deletes — DID-scoped, RETURNing so callers can see 
     // A count, never the addresses: the export must not be able to select one
     // even by accident.
     expect(sql.toLowerCase()).not.toContain('"email"');
+  });
+
+  it("selectHandleHistoryForExport and deleteHandleHistoryForDid bind the DID", () => {
+    const read = selectHandleHistoryForExport(db, DID).toSQL();
+    expectDidBound(read.sql, read.params);
+    expect(read.sql.toLowerCase()).toContain('from "handle_history"');
+    const removal = deleteHandleHistoryForDid(db, DID).toSQL();
+    expectDidBound(removal.sql, removal.params);
+    expect(removal.sql.toLowerCase()).toContain('delete from "handle_history"');
   });
 
   it("deleteOAuthSessionForDid targets the exact sess:<did> key, not a prefix scan", () => {

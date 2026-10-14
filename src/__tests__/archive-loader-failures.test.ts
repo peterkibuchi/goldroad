@@ -9,13 +9,25 @@ vi.mock("~/lib/atproto", async (importOriginal) => ({
   ...(await importOriginal<typeof import("~/lib/atproto")>()),
   resolveReaderPds: vi.fn(async () => "https://pds.example"),
   refreshReaderPds: vi.fn(async () => null),
+  resolveHandleToDid: vi.fn(async () => {
+    throw new (await import("~/lib/atproto")).NotFoundError("gone");
+  }),
   listRecords: vi.fn(async () => []),
   listRecordsPage: vi.fn(),
+}));
+const former = vi.hoisted(() => ({
+  target: null as { ident: string; permanent: boolean } | null,
+}));
+vi.mock("~/lib/handle-history", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("~/lib/handle-history")>()),
+  findFormerHandle: vi.fn(async () => former.target),
 }));
 vi.mock("~/lib/moderation", async (importOriginal) => ({
   ...(await importOriginal<typeof import("~/lib/moderation")>()),
   checkHidden: vi.fn(async () => false),
 }));
+
+import { isNotFound, isRedirect } from "@tanstack/react-router";
 
 import { Route } from "../routes/@{$handle}.index";
 
@@ -115,5 +127,29 @@ describe("archive loader — how a failed listing is classified", () => {
     expect(options.headers({ loaderData: data })).toEqual({
       "cache-control": "no-store",
     });
+  });
+});
+
+describe("archive loader — an old handle", () => {
+  const loadStale = () =>
+    options
+      .loader({ params: { handle: "alice.example" }, deps: {} })
+      .catch((e: unknown) => e);
+
+  it("301s to the writer's current address", async () => {
+    former.target = { ident: "alice.com", permanent: true };
+    const thrown = (await loadStale()) as {
+      options: { href: string; statusCode: number };
+    };
+    expect(isRedirect(thrown)).toBe(true);
+    expect(thrown.options).toMatchObject({
+      href: "/@alice.com",
+      statusCode: 301,
+    });
+  });
+
+  it("404s a handle with no history", async () => {
+    former.target = null;
+    expect(isNotFound(await loadStale())).toBe(true);
   });
 });

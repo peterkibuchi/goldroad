@@ -7,9 +7,9 @@
  * (awaitable), unit-testable via .toSQL() without a live D1.
  *
  * Scope, deliberately narrow (see AGENTS.md architectural note): these are
- * the ONLY seven places a writer's DID appears in our D1 — drafts,
+ * the ONLY eight places a writer's DID appears in our D1 — drafts,
  * import_items, import_fetches, follower_snapshots, scheduled_posts,
- * reader_emails, and the oauth_kv session row. Published posts live in the
+ * reader_emails, handle_history, and the oauth_kv session row. Published posts live in the
  * writer's own atproto repo and are never touched here; deleting an account
  * purges our copies only.
  *
@@ -51,6 +51,7 @@ import type { drizzle } from "drizzle-orm/d1";
 import {
   drafts,
   followerSnapshots,
+  handleHistory,
   importFetches,
   importItems,
   oauthKv,
@@ -159,6 +160,20 @@ export function selectScheduledPostsForExport(db: DrizzleD1, did: string) {
     .where(eq(scheduledPosts.did, did))
     .orderBy(asc(scheduledPosts.dueAt))
     .limit(MAX_LEDGER_ROWS_PER_EXPORT);
+}
+
+/** The handles we recorded for this writer — the export's handle section. */
+export function selectHandleHistoryForExport(db: DrizzleD1, did: string) {
+  return db
+    .select({ handle: handleHistory.handle, seenAt: handleHistory.seenAt })
+    .from(handleHistory)
+    .where(eq(handleHistory.did, did));
+}
+
+/** Forgets this writer's handles (account deletion): links under them stop
+ * redirecting, which is what a closed account should mean. */
+export function deleteHandleHistoryForDid(db: DrizzleD1, did: string) {
+  return db.delete(handleHistory).where(eq(handleHistory.did, did));
 }
 
 /**

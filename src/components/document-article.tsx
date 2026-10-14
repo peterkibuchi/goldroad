@@ -1,4 +1,4 @@
-import { Await, notFound, useLocation } from "@tanstack/react-router";
+import { Await, notFound, redirect, useLocation } from "@tanstack/react-router";
 import { Suspense, useEffect, useState } from "react";
 
 import { Conversation } from "~/components/conversation";
@@ -42,6 +42,7 @@ import {
   hasVisibleEngagement,
   isWorthShowing,
 } from "~/lib/engagement";
+import { findFormerHandle, formerHandleRedirect } from "~/lib/handle-history";
 import { buildArticleJsonLd, jsonLdScriptContent } from "~/lib/json-ld";
 import { checkMirror, keepsCanonical, type MirrorInfo } from "~/lib/mirror";
 import { checkHidden, recordAtUri } from "~/lib/moderation";
@@ -121,7 +122,7 @@ export async function loadDocument(
   let did: Did | undefined;
   let pdsRead: string | undefined;
   try {
-    did = isDid(ident) ? ident : await resolveHandleToDid(ident);
+    did = isDid(ident) ? ident : await resolveIdent(ident, `/${rkey}`);
 
     // Two D1 reads and one plc.directory fetch, all of which need only the DID
     // and none of which need each other. They used to run one after another,
@@ -336,6 +337,22 @@ export async function loadDocument(
       throw notFound();
     }
     throw err;
+  }
+}
+
+/**
+ * A handle to its DID for a reader route. A handle that no longer resolves
+ * may be a writer's old one, minted into links before they changed it: those
+ * redirect to the same `path` under the writer's current address.
+ */
+export async function resolveIdent(handle: string, path: string) {
+  try {
+    return await resolveHandleToDid(handle);
+  } catch (err) {
+    if (!(err instanceof NotFoundError)) throw err;
+    const target = await findFormerHandle({ data: { handle } });
+    if (target) throw redirect(formerHandleRedirect(target, path));
+    throw notFound();
   }
 }
 
