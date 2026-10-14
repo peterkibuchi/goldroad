@@ -29,7 +29,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { z } from "zod";
 
 import { isDid, parseAtUri } from "~/lib/atproto";
-import { readBodyCapped } from "~/lib/blob";
+import { isBlobObject, readBodyCapped } from "~/lib/blob";
 import { countDrafts, insertDraft } from "~/lib/drafts";
 import { MAX_DRAFT_BODY_BYTES, MAX_DRAFTS_PER_USER } from "~/lib/drafts-schema";
 import { bskyPostUrl } from "~/lib/engagement";
@@ -47,13 +47,19 @@ import {
 import { readLiveSessionDid } from "~/lib/live-session";
 import { isCrossSite } from "~/lib/origin";
 import { privateJson } from "~/lib/private-json";
-import { MAX_TITLE_LENGTH } from "~/lib/publish";
+import { MAX_INLINE_IMAGES, MAX_TITLE_LENGTH } from "~/lib/publish";
 import { env } from "cloudflare:workers";
 
 const importDraftPayload = z.object({
   title: z.string().max(MAX_TITLE_LENGTH),
   /** BlockNote blocks — opaque array, same contract as /api/drafts. */
   content: z.array(z.unknown()),
+  /** Blob refs for images already in the writer's repo (a thread's pictures),
+   * stored as the draft's `inline_images` so publishing references them
+   * instead of copying. Untrusted like the editor's own copy: only
+   * well-formed blobs are kept, and publishing keeps only those the body
+   * still uses. */
+  inlineImages: z.array(z.unknown()).max(MAX_INLINE_IMAGES).default([]),
   source: z.object({
     /** The item's identity — a feed guid, or a thread's root at:// URI.
      * Hashed server-side for the ledger key. */
@@ -129,7 +135,8 @@ export const Route = createFileRoute("/api/import/draft")({
         const parsed = importDraftPayload.safeParse(body);
         if (!parsed.success)
           return privateJson({ ok: false, error: "invalid" }, 400);
-        const { title, content, source } = parsed.data;
+        const { title, content, inlineImages, source } = parsed.data;
+        const blobs = inlineImages.filter(isBlobObject);
 
         // The kind comes from the evidence, not the claim. A "thread" claim
         // the guid doesn't back is refused. A "feed" item whose guid is the
@@ -201,6 +208,7 @@ export const Route = createFileRoute("/api/import/draft")({
           // in the editor, or publishing generates the excerpt as before.
           dek: "",
           content: contentJson,
+          inlineImages: blobs.length > 0 ? JSON.stringify(blobs) : "",
         });
         // One implicit transaction: the draft and its ledger row land (or
         // fail) together.

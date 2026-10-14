@@ -288,6 +288,8 @@ describe("/write — publishing flushes the draft first", () => {
           inlineImages: "",
           schedule: null,
           imported: false,
+          fromThread: false,
+          copyLimit: 8,
         }}
       />,
     );
@@ -506,6 +508,8 @@ describe("/write — resuming a draft keeps the images it already uploaded", () 
           inlineImages: JSON.stringify([STORED_BLOB]),
           schedule: null,
           imported: false,
+          fromThread: false,
+          copyLimit: 8,
         }}
       />,
     );

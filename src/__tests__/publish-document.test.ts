@@ -435,6 +435,19 @@ describe("publishStoredDraft", () => {
     quiet.mockRestore();
   });
 
+  it("names a missing image, and doesn't retry what can't come back", async () => {
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { rpc } = fakeRpc([
+      { ok: false, status: 400, data: { error: "BlobNotFound" } },
+    ]);
+    const result = await publishStoredDraft(input(rpc, { pds: null }));
+    if (result.ok) throw new Error("expected a failure");
+    expect(result.retry).toBe(false);
+    expect(result.code).toBe("image_missing");
+    expect(result.reason).toMatch(/images is no longer in your repo/);
+    quiet.mockRestore();
+  });
+
   it("does not delete the draft when the publish failed", async () => {
     const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
     const { rpc } = fakeRpc([
