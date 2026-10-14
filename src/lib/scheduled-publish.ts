@@ -25,7 +25,8 @@
 import { Client } from "@atcute/client";
 import type { drizzle } from "drizzle-orm/d1";
 
-import { isDid, resolveDidIdentity } from "~/lib/atproto";
+import { announceDocument } from "~/lib/announce-document";
+import { type Did, isDid, resolveDidIdentity } from "~/lib/atproto";
 import { selectDraft } from "~/lib/drafts";
 import { createOAuthClient } from "~/lib/oauth";
 import { CANONICAL_ORIGIN, ownOrigins } from "~/lib/origin";
@@ -106,10 +107,17 @@ export async function publishDuePost(
     // An earlier attempt may have published and deleted the draft, then died
     // before the row was cleared. Its reserved key says whether it did.
     const existing = await readExistingDocument(rpc, post.did, post.rkey);
-    if (existing.state === "exists") return { ok: true, rkey: post.rkey };
     if (existing.state === "unknown")
       return { ok: false, retry: true, reason: UNCONFIRMED_REASON };
-    return { ok: false, retry: false, reason: DRAFT_GONE_REASON };
+    if (existing.state === "missing")
+      return { ok: false, retry: false, reason: DRAFT_GONE_REASON };
+    // That attempt may not have got as far as announcing.
+    if (post.announce) {
+      const { handle, pds } = await resolveDidIdentity(post.did);
+      if (pds)
+        await announceIfAsked(rpc, post.did, post, handle, pds, post.rkey);
+    }
+    return { ok: true, rkey: post.rkey };
   }
 
   const { handle, pds } = await resolveDidIdentity(post.did);
@@ -135,7 +143,40 @@ export async function publishDuePost(
   // picks, so it would clear a cache readers probably aren't using, and every
   // cache call counts against the tick's 50 subrequests. Pages catch up within
   // READ_CACHE_TTL_SECONDS.
+  if (post.announce)
+    await announceIfAsked(rpc, post.did, post, handle, pds, outcome.rkey);
   return { ok: true, rkey: outcome.rkey };
+}
+
+/**
+ * The announce the writer asked for when they scheduled the post. It never
+ * fails the publish (the post is live, and a thrown publisher would be
+ * retried) and never posts twice (`onlyOnce`). A failure is logged; the
+ * dashboard's own "Announce on Bluesky" stays there for the writer.
+ */
+async function announceIfAsked(
+  rpc: Client,
+  did: Did,
+  post: ClaimedPost,
+  handle: string | null,
+  pds: string,
+  rkey: string,
+): Promise<void> {
+  try {
+    const outcome = await announceDocument({
+      rpc,
+      did,
+      ident: handle ?? did,
+      pds,
+      origin: CANONICAL_ORIGIN,
+      rkey,
+      onlyOnce: true,
+    });
+    if (!outcome.ok)
+      console.warn("scheduled publish: announce skipped", post.id, outcome);
+  } catch (err) {
+    console.warn("scheduled publish: announce threw", post.id, err);
+  }
 }
 
 /** The publisher the cron pass calls, bound to a database. */

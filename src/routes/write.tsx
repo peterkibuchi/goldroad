@@ -54,6 +54,8 @@ import { env } from "cloudflare:workers";
 const Editor = lazy(() => import("~/components/editor"));
 
 const ERROR_MESSAGES: Record<string, string> = {
+  schedule_in_flight:
+    "This post is publishing on its schedule right now. Give it a minute, then check your posts.",
   schedule_no_draft:
     "That draft couldn't be found, so nothing was scheduled — reload this page and try again.",
   schedule_invalid: "Pick a date and time to schedule this post for.",
@@ -123,7 +125,7 @@ type Draft = {
 /** A pending schedule on the draft being resumed. `dueAt` is an ISO string —
  * loader data must serialize identically on both sides — and it is UTC, like
  * every stored schedule; the writer's own zone is applied in the browser. */
-type PendingSchedule = { id: string; dueAt: string };
+type PendingSchedule = { id: string; dueAt: string; announce: boolean };
 
 /** A saved (unpublished) draft being resumed from our D1 — distinct from
  * `Draft`, which is a published record being edited. */
@@ -225,7 +227,11 @@ const getWriteContext = createServerFn({ method: "GET" })
             inlineImages: row.inlineImages,
             imported: importRow !== undefined,
             schedule: pending
-              ? { id: pending.id, dueAt: pending.dueAt.toISOString() }
+              ? {
+                  id: pending.id,
+                  dueAt: pending.dueAt.toISOString(),
+                  announce: pending.announce,
+                }
               : null,
           };
         } else {
@@ -661,6 +667,7 @@ export function SchedulePanel({
   existing,
   draftId,
   prepare,
+  announce,
   disabled,
 }: {
   existing: PendingSchedule | null;
@@ -671,11 +678,15 @@ export function SchedulePanel({
   draftId: string | null;
   /** Flush the draft; resolves to its id, or null if the save failed. */
   prepare: () => Promise<string | null>;
+  /** The publish form's "Also announce on Bluesky", read when scheduling:
+   * the writer won't be there when it goes out. */
+  announce: () => boolean;
   disabled?: boolean;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const draftIdRef = useRef<HTMLInputElement>(null);
   const offsetRef = useRef<HTMLInputElement>(null);
+  const announceInputRef = useRef<HTMLInputElement>(null);
   const localRef = useRef<HTMLInputElement>(null);
   const [localValue, setLocalValue] = useState("");
   const [min, setMin] = useState<string | undefined>(undefined);
@@ -727,6 +738,8 @@ export function SchedulePanel({
     }
     if (draftIdRef.current) draftIdRef.current.value = draftId;
     if (offsetRef.current) offsetRef.current.value = String(offset);
+    if (announceInputRef.current)
+      announceInputRef.current.value = announce() ? "1" : "";
     formRef.current?.requestSubmit();
   }
 
@@ -739,8 +752,10 @@ export function SchedulePanel({
       {existing && (
         <p className="font-display text-ink text-sm leading-relaxed">
           <span className="font-bold">Scheduled</span> for{" "}
-          <ScheduledTime iso={existing.dueAt} />. You can keep editing — this
-          publishes whatever is saved when it goes out.
+          <ScheduledTime iso={existing.dueAt} />
+          {existing.announce ? ", and announced on Bluesky then" : ""}. You can
+          keep editing — this publishes whatever is saved when it goes out.
+          Reschedule to change the time or the announce.
         </p>
       )}
       <form action="/api/publish" className="mt-2" method="post" ref={formRef}>
@@ -750,6 +765,7 @@ export function SchedulePanel({
             MOMENT, which is what makes a schedule across a DST change land on
             the hour the writer meant (~/lib/schedule-time). */}
         <input name="dueTzOffset" ref={offsetRef} type="hidden" />
+        <input name="announce" ref={announceInputRef} type="hidden" />
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <label
             className="font-display text-ink-soft text-sm"
@@ -1012,6 +1028,7 @@ export function Compose({
   const dekRef = useRef<HTMLTextAreaElement>(null);
   const draftIdInputRef = useRef<HTMLInputElement>(null);
   const imagesInputRef = useRef<HTMLInputElement>(null);
+  const announceRef = useRef<HTMLInputElement>(null);
   const editing = draft !== null;
   // Two words for one button, kept out of the JSX so the label stays a single
   // readable expression rather than a nested ternary.
@@ -1525,20 +1542,51 @@ export function Compose({
             moment on every signed-in surface (docs/DESIGN.md, and
             `RailPrimaryAction` in ~/components/site-chrome), so this is the
             page's primary button without being the page's accent. */}
-        <div className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-3 border-rule border-t pt-6">
-          <button
-            className="min-h-11 cursor-pointer bg-ink px-8 py-2.5 font-bold font-display text-base text-paper transition-colors hover:bg-spot disabled:cursor-default disabled:opacity-40"
-            disabled={!editor || coverBusy || submitting}
-            form="publish-form"
-            type="submit"
-          >
-            {submitting ? primaryBusyLabel : primaryLabel}
-          </button>
-          <p className="font-display text-ink-soft text-xs leading-relaxed">
-            {editing
-              ? "Saves the changes to the post in your own data repo."
-              : "Goes live on your public page the moment you press it, and saves to your own data repo — the account behind your handle. It's yours; Goldroad just holds the pen."}
-          </p>
+        <div className="mt-10 border-rule border-t pt-6">
+          {/* New posts only: an edit changes a post that's already out. A
+              scheduled draft reopens with the choice it was scheduled with. */}
+          {!editing && (
+            <div className="mb-5">
+              <label className="flex min-h-11 cursor-pointer items-center gap-2 font-display text-ink text-sm">
+                <input
+                  aria-describedby="announce-hint"
+                  className="accent-ink"
+                  // An imported post is old news to followers: unticked.
+                  defaultChecked={
+                    resumed?.schedule?.announce ?? !resumed?.imported
+                  }
+                  form="publish-form"
+                  name="announce"
+                  ref={announceRef}
+                  type="checkbox"
+                  value="1"
+                />
+                Also announce on Bluesky
+              </label>
+              <p
+                className="ml-6 font-display text-ink-soft text-xs leading-relaxed"
+                id="announce-hint"
+              >
+                Posts a card linking to it on your Bluesky timeline as soon as
+                it's live, whether you publish now or schedule it.
+              </p>
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+            <button
+              className="min-h-11 cursor-pointer bg-ink px-8 py-2.5 font-bold font-display text-base text-paper transition-colors hover:bg-spot disabled:cursor-default disabled:opacity-40"
+              disabled={!editor || coverBusy || submitting}
+              form="publish-form"
+              type="submit"
+            >
+              {submitting ? primaryBusyLabel : primaryLabel}
+            </button>
+            <p className="font-display text-ink-soft text-xs leading-relaxed">
+              {editing
+                ? "Saves the changes to the post in your own data repo."
+                : "Goes live on your public page the moment you press it, and saves to your own data repo — the account behind your handle. It's yours; Goldroad just holds the pen."}
+            </p>
+          </div>
         </div>
         {/* Scheduling is only offered for a new composition. Editing changes a
             record that is ALREADY public — there is nothing to queue, and a
@@ -1547,6 +1595,7 @@ export function Compose({
           <SchedulePanel
             disabled={!editor || coverBusy || submitting}
             draftId={resumed?.id ?? null}
+            announce={() => announceRef.current?.checked ?? false}
             existing={resumed?.schedule ?? null}
             prepare={prepareForSchedule}
           />
