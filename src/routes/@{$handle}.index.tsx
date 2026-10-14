@@ -8,6 +8,7 @@ import {
   ReportLink,
 } from "~/components/document-article";
 import { SearchIcon } from "~/components/icons";
+import { Notice } from "~/components/notice";
 import { ReaderEmailCapture } from "~/components/reader-email-capture";
 import { MAIN_CONTENT_ID } from "~/components/skip-link";
 import { SubscribeControl } from "~/components/subscribe-control";
@@ -17,9 +18,11 @@ import {
   isDid,
   isHandle,
   isValidCursor,
+  LIST_PAGE_SIZE,
   listRecords,
   listRecordsPage,
   NotFoundError,
+  ResponseTooLargeError,
   resolveDidToPds,
   resolveHandleToDid,
   rkeyFromUri,
@@ -83,15 +86,25 @@ export const Route = createFileRoute("/@{$handle}/")({
             limit: 10,
             reverse: true,
           },
-        ).catch(() => []),
+        ).catch((err: unknown) => (err instanceof NotFoundError ? [] : null)),
         listRecordsPage<StandardDocument>(pds, did, "site.standard.document", {
           cursor: deps.cursor,
-        }).catch(() => ({ records: [], cursor: null })),
+          limit: LIST_PAGE_SIZE,
+        }).catch((err: unknown) =>
+          // A PDS that refuses the listing has nothing to show. Anything else
+          // is a failure the page must say out loud, not an empty archive.
+          err instanceof NotFoundError
+            ? { records: [], cursor: null }
+            : err instanceof ResponseTooLargeError
+              ? ("too_large" as const)
+              : ("unavailable" as const),
+        ),
       ]);
-      const docs = docsPage.records;
-      const publication = pubs[0]?.value ?? null;
+      const postsError = typeof docsPage === "string" ? docsPage : null;
+      const docs = typeof docsPage === "string" ? [] : docsPage.records;
+      const publication = pubs?.[0]?.value ?? null;
       // The record's AT-URI backs the standard.site publication link tag.
-      const publicationAtUri = pubs[0]?.uri ?? null;
+      const publicationAtUri = pubs?.[0]?.uri ?? null;
       // Publication identity image (the
       // lexicon field already existed, nothing ever rendered it). Served
       // through the same /img proxy as document covers.
@@ -145,7 +158,11 @@ export const Route = createFileRoute("/@{$handle}/")({
         theme: parseTheme(publication?.basicTheme),
         iconPath: iconCid ? blobImagePath(did, iconCid) : null,
         posts,
-        nextCursor: docsPage.cursor,
+        nextCursor: typeof docsPage === "string" ? null : docsPage.cursor,
+        postsError,
+        // Transient failures must not sit in the edge cache for five minutes.
+        // "Too large" is no more likely to clear next request, so it caches.
+        transientFailure: postsError === "unavailable" || pubs === null,
       };
     } catch (err) {
       if (err instanceof NotFoundError) throw notFound();
@@ -157,6 +174,8 @@ export const Route = createFileRoute("/@{$handle}/")({
   // matching document-page tags in ~/components/document-article). Canonical
   // is the record's own url field: for Goldroad writers that is this page; for
   // third-party authors it honestly points at their home (e.g. *.leaflet.pub).
+  headers: ({ loaderData }) =>
+    loaderData?.transientFailure ? { "cache-control": "no-store" } : undefined,
   head: ({ loaderData }) => {
     if (!loaderData) return { meta: [{ title: "Not found" }] };
     const { ident, publication, publicationAtUri } = loaderData;
@@ -167,6 +186,10 @@ export const Route = createFileRoute("/@{$handle}/")({
     return {
       meta: [
         { title },
+        // A page whose posts failed to load is not one to index.
+        ...(loaderData.postsError
+          ? [{ name: "robots", content: "noindex" }]
+          : []),
         // A description always, so a shared archive link is never a bare title.
         // Most publications carry one; records written by other apps often do
         // not, and that is the common case here because these pages render ANY
@@ -310,6 +333,7 @@ export function PublicationView({
   publicationAtUri,
   posts,
   nextCursor,
+  postsError = null,
   iconPath,
   theme,
 }: {
@@ -322,6 +346,8 @@ export function PublicationView({
   publicationAtUri?: string | null;
   posts: ArchivePost[];
   nextCursor: string | null;
+  /** The listing failed: say so rather than show an empty archive. */
+  postsError?: "too_large" | "unavailable" | null;
   iconPath: string | null;
   /** The author's validated theme, or null for our default palette. */
   theme?: BasicTheme | null;
@@ -461,6 +487,12 @@ export function PublicationView({
               </Fragment>
             ))
           )
+        ) : postsError ? (
+          <Notice tone="alert">
+            {postsError === "too_large"
+              ? `@${ident}'s posts couldn't be loaded: their data server's list of recent posts is larger than this page can read.`
+              : `@${ident}'s posts couldn't be loaded right now — their data server didn't answer with a list we could read. Try again in a moment.`}
+          </Notice>
         ) : (
           <p className="mt-8 text-ink-soft text-lg italic leading-relaxed">
             Nothing published yet — when @{ident} starts writing, posts will

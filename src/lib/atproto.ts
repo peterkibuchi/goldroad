@@ -69,9 +69,9 @@ export function assertPublicHttpsUrl(urlString: string): URL {
 /** A slow server must not hold a render open. Matches the import path's budget. */
 const FETCH_TIMEOUT_MS = 10_000;
 
-/** Ceiling for one atproto JSON response. A 50-record `listRecords` page sits
- * far under this; a DID document is a fraction of it. Generous enough never to
- * bite a legitimate PDS, small enough that a hostile one can't exhaust memory. */
+/** Ceiling for one atproto JSON response, so a hostile host can't exhaust
+ * memory. A DID document is a fraction of it; a `listRecords` page of long
+ * documents can pass it, which listRecordsPage handles. */
 const MAX_JSON_BYTES = 1_000_000;
 
 /** fetch() for the URLs above: never follow redirects (a public host could
@@ -95,7 +95,10 @@ function fetchPublic(url: URL): Promise<Response> {
  */
 async function readJsonCapped<T>(res: Response): Promise<T | null> {
   const bytes = await readBodyCapped(res, MAX_JSON_BYTES);
-  if (!bytes) return null;
+  return bytes ? parseJson<T>(bytes) : null;
+}
+
+function parseJson<T>(bytes: Uint8Array): T | null {
   try {
     return JSON.parse(new TextDecoder().decode(bytes)) as T;
   } catch {
@@ -247,6 +250,27 @@ export type ListedRecord<T> = { uri: string; cid: string; value: T };
 
 export const MAX_LIST_RECORDS = 50;
 
+/** Page size for the public archive. Each record carries its body twice
+ * (markdown and plaintext), so a page of long essays is heavy to parse; a
+ * page past the response cap is retried smaller (see listRecordsPage). */
+export const LIST_PAGE_SIZE = 20;
+
+/** The retry size when the oversized response didn't declare its length. */
+const SMALL_PAGE_SIZE = 5;
+
+/** A listRecords page that can't be read right now: the PDS is down, rate
+ * limiting, or answered with something that isn't a listing. Thrown, never
+ * returned as an empty page: "no posts" is a claim we can't make. */
+export class ListUnavailableError extends Error {
+  name = "ListUnavailableError";
+}
+
+/** A listRecords page over the response cap even after a smaller retry. Not
+ * transient: the same records will be just as large next time. */
+export class ResponseTooLargeError extends ListUnavailableError {
+  name = "ResponseTooLargeError";
+}
+
 /** Pagination cursors are opaque PDS strings that round-trip through our own
  * search params — bound the length and reject control chars, nothing more.
  * (URLSearchParams encoding makes any accepted value safe in the XRPC URL.) */
@@ -271,12 +295,18 @@ export type RecordsPage<T> = {
  * Public com.atproto.repo.listRecords against a PDS — no auth. Fetches a
  * single page, capped at MAX_LIST_RECORDS; `cursor` continues a previous
  * page. `reverse: true` = oldest first.
+ *
+ * Throws NotFoundError when the PDS refuses the listing (a 4xx: no such repo,
+ * deactivated), ListUnavailableError when it can't answer usefully (5xx, 429,
+ * a redirect, a body that isn't a listing), and ResponseTooLargeError when a
+ * page stays over the response cap after one smaller retry.
  */
 export async function listRecordsPage<T>(
   pds: string,
   did: string,
   collection: string,
   opts: { limit?: number; reverse?: boolean; cursor?: string } = {},
+  retried = false,
 ): Promise<RecordsPage<T>> {
   const limit = Math.min(
     Math.max(opts.limit ?? MAX_LIST_RECORDS, 1),
@@ -294,13 +324,43 @@ export async function listRecordsPage<T>(
     `${pds}/xrpc/com.atproto.repo.listRecords?${params}`,
   );
   const res = await fetchPublic(url);
-  if (!res.ok)
-    throw new NotFoundError(`could not list ${collection} for ${did}`);
-  const json = await readJsonCapped<{ records?: unknown; cursor?: unknown }>(
-    res,
-  );
+  if (!res.ok) {
+    await res.body?.cancel().catch(() => {});
+    // status 0 is the opaque response a manual redirect yields.
+    const refused = res.status >= 400 && res.status < 500 && res.status !== 429;
+    const message = `could not list ${collection} for ${did}: ${res.status}`;
+    throw refused
+      ? new NotFoundError(message)
+      : new ListUnavailableError(message);
+  }
+  const declared = Number(res.headers.get("content-length"));
+  const bytes = await readBodyCapped(res, MAX_JSON_BYTES);
+  if (!bytes) {
+    if (!retried && limit > 1) {
+      // Size the retry from the declared length when there is one, with
+      // headroom, so a long-form archive costs one retry, not a crawl.
+      const fit =
+        declared > 0
+          ? Math.floor((limit * MAX_JSON_BYTES * 0.8) / declared)
+          : SMALL_PAGE_SIZE;
+      const smaller = Math.max(1, Math.min(fit, limit - 1));
+      return listRecordsPage(
+        pds,
+        did,
+        collection,
+        { ...opts, limit: smaller },
+        true,
+      );
+    }
+    throw new ResponseTooLargeError(
+      `${collection} page for ${did} is over ${MAX_JSON_BYTES} bytes`,
+    );
+  }
+  const json = parseJson<{ records?: unknown; cursor?: unknown }>(bytes);
   if (!json || !Array.isArray(json.records))
-    return { records: [], cursor: null };
+    throw new ListUnavailableError(
+      `${collection} listing for ${did} is not a listing`,
+    );
   return {
     // Drop malformed entries instead of trusting the shape. `cid` is checked
     // too — the ListedRecord type promises it, and callers build strongRefs
@@ -343,10 +403,17 @@ export async function listRecordPages<T>(
   const maxPages = Math.max(1, opts.maxPages ?? MAX_ARCHIVE_PAGES);
   const records: ListedRecord<T>[] = [];
   let cursor: string | undefined;
+  let limit = MAX_LIST_RECORDS;
   for (let page = 0; page < maxPages; page++) {
-    const result = await listRecordsPage<T>(pds, did, collection, { cursor });
+    const result = await listRecordsPage<T>(pds, did, collection, {
+      cursor,
+      limit,
+    });
     records.push(...result.records);
     if (result.cursor === null) return { records, truncated: false };
+    // A short page with a cursor was shrunk to fit: ask for that size next,
+    // rather than paying for the oversized request again.
+    limit = Math.max(1, Math.min(limit, result.records.length));
     cursor = result.cursor;
   }
   return { records, truncated: true };

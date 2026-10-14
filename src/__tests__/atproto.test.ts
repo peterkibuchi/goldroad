@@ -5,10 +5,13 @@ import {
   isDid,
   isHandle,
   isValidCursor,
+  ListUnavailableError,
+  listRecordPages,
   listRecords,
   listRecordsPage,
   NotFoundError,
   parseAtUri,
+  ResponseTooLargeError,
   resolveDidIdentity,
   resolveDidToHandle,
   resolveDidToPds,
@@ -161,7 +164,8 @@ describe("listRecords", () => {
     expect(records).toEqual([goodEntry]);
   });
 
-  it("returns [] when the records field is missing", async () => {
+  it("throws rather than returning [] when the body isn't a listing", async () => {
+    // "No records" is a claim; a body we can't read doesn't support it.
     mockFetch({});
     await expect(
       listRecords(
@@ -169,10 +173,10 @@ describe("listRecords", () => {
         "did:plc:fake0000000000writer0000",
         "c",
       ),
-    ).resolves.toEqual([]);
+    ).rejects.toBeInstanceOf(ListUnavailableError);
   });
 
-  it("throws NotFoundError on non-OK responses", async () => {
+  it("throws NotFoundError when the PDS refuses the listing", async () => {
     mockFetch({}, false);
     await expect(
       listRecords(
@@ -181,6 +185,22 @@ describe("listRecords", () => {
         "c",
       ),
     ).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("throws ListUnavailableError, not NotFoundError, when the PDS is down or limiting", async () => {
+    for (const status of [500, 502, 503, 429]) {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response("{}", { status })),
+      );
+      const listing = listRecords(
+        "https://pds.example",
+        "did:plc:fake0000000000writer0000",
+        "c",
+      );
+      await expect(listing).rejects.toBeInstanceOf(ListUnavailableError);
+      await expect(listing).rejects.not.toBeInstanceOf(NotFoundError);
+    }
   });
 
   it("refuses non-public PDS hosts (SSRF guard)", async () => {
@@ -253,6 +273,87 @@ describe("listRecordsPage — cursor mapping", () => {
     await expect(
       listRecords("https://pds.example", did, "c"),
     ).resolves.toHaveLength(1);
+  });
+});
+
+describe("listRecordsPage — pages over the 1 MB response cap", () => {
+  const did = "did:plc:fake0000000000writer0000";
+  const page = (count: number, bodyChars: number) =>
+    JSON.stringify({
+      records: Array.from({ length: count }, (_, i) => ({
+        uri: `at://${did}/site.standard.document/3abc23456${String(i).padStart(4, "0")}`,
+        cid: "bafyfakecid",
+        value: { title: `${i}`, textContent: "x".repeat(bodyChars) },
+      })),
+      cursor: "3abc2345678de",
+    });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("retries at a small page size rather than reporting no records", async () => {
+    // 20 long essays: about 1.2 MB, over the cap. Five of them fit.
+    const fn = vi.fn(async (url: URL | string) => {
+      const limit = Number(new URL(String(url)).searchParams.get("limit"));
+      return new Response(page(limit, 60_000));
+    });
+    vi.stubGlobal("fetch", fn);
+    const result = await listRecordsPage("https://pds.example", did, "c", {
+      limit: 20,
+      cursor: "3abc2345678zz",
+    });
+    expect(result.records).toHaveLength(5);
+    expect(result.cursor).toBe("3abc2345678de");
+    expect(fn).toHaveBeenCalledTimes(2);
+    const retry = new URL(String(fn.mock.calls[1]?.[0]));
+    expect(retry.searchParams.get("limit")).toBe("5");
+    expect(retry.searchParams.get("cursor")).toBe("3abc2345678zz");
+  });
+
+  it("sizes the retry from a declared length, keeping the options", async () => {
+    const fn = vi.fn(async (url: URL | string) => {
+      const limit = Number(new URL(String(url)).searchParams.get("limit"));
+      const body = page(limit, 60_000);
+      return new Response(body, {
+        headers: { "content-length": String(body.length) },
+      });
+    });
+    vi.stubGlobal("fetch", fn);
+    const result = await listRecordsPage("https://pds.example", did, "c", {
+      limit: 20,
+      reverse: true,
+    });
+    // 20 × ~60 KB declared ≈ 1.2 MB: 80% of the cap fits 13.
+    expect(result.records).toHaveLength(13);
+    expect(fn).toHaveBeenCalledTimes(2);
+    const retry = new URL(String(fn.mock.calls[1]?.[0]));
+    expect(retry.searchParams.get("limit")).toBe("13");
+    expect(retry.searchParams.get("reverse")).toBe("true");
+  });
+
+  it("keeps a shrunk page size across a multi-page walk", async () => {
+    const fn = vi.fn(async (url: URL | string) => {
+      const limit = Number(new URL(String(url)).searchParams.get("limit"));
+      return new Response(page(limit, 60_000));
+    });
+    vi.stubGlobal("fetch", fn);
+    const { records } = await listRecordPages("https://pds.example", did, "c", {
+      maxPages: 3,
+    });
+    expect(records).toHaveLength(15);
+    // 50 → retried at 5, then 5 and 5: four requests, not six.
+    expect(
+      fn.mock.calls.map(([u]) => new URL(String(u)).searchParams.get("limit")),
+    ).toEqual(["50", "5", "5", "5"]);
+  });
+
+  it("throws when even a small page is over the cap", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(page(5, 250_000))),
+    );
+    await expect(
+      listRecordsPage("https://pds.example", did, "c"),
+    ).rejects.toBeInstanceOf(ResponseTooLargeError);
   });
 });
 

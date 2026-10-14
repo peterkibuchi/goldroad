@@ -204,11 +204,12 @@ describe("overview — headline numbers", () => {
   it("marks the post count as a floor when more pages exist behind it", async () => {
     stubStats(viewsReady(120));
     renderOverview({
-      published: { count: 50, countComplete: false, latest: LATEST },
+      published: { count: 7, countComplete: false, latest: LATEST },
     });
     await screen.findByLabelText("Your numbers");
-    screen.getByText("50+");
-    screen.getByText(/covers the most recent/i);
+    screen.getByText("7+");
+    // The count it read (a page shrunk to fit), not a fixed page size.
+    screen.getByText(/covers the most recent 7;/i);
   });
 
   it("drops the post count entirely — not to zero — when the read flaked", async () => {

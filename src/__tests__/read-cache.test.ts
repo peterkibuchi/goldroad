@@ -188,6 +188,17 @@ describe("serveWithReadCache — HIT/MISS flow", () => {
     expect(cache.put).not.toHaveBeenCalled();
   });
 
+  it("never caches a page that marked itself no-store", async () => {
+    const cache = mockCache();
+    const failed = vi.fn(async () => {
+      const r = htmlResponse();
+      r.headers.set("cache-control", "no-store");
+      return r;
+    });
+    await serveWithReadCache(req("/@awarm.space"), failed);
+    expect(cache.put).not.toHaveBeenCalled();
+  });
+
   it("never caches a response that sets a cookie", async () => {
     const cache = mockCache();
     const withCookie = vi.fn(async () => {

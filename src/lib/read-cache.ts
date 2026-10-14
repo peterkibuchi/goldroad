@@ -94,7 +94,9 @@ function isCacheableResponse(response: Response): boolean {
   return (
     response.status === 200 &&
     CACHEABLE_CONTENT_TYPES.some((allowed) => type.includes(allowed)) &&
-    !response.headers.has("set-cookie")
+    !response.headers.has("set-cookie") &&
+    // A page that rendered a failure state opts out (see the archive route).
+    !/\bno-store\b/.test(response.headers.get("cache-control") ?? "")
   );
 }
 

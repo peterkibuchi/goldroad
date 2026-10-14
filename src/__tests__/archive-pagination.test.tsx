@@ -80,3 +80,38 @@ describe("public archive — the page turn stays on the server", () => {
     ).toBe("/@writer.example?cursor=cursor-abc");
   });
 });
+
+describe("public archive — a failed listing", () => {
+  it("says the posts couldn't be loaded instead of claiming there are none", () => {
+    render(
+      <PublicationView
+        ident="writer.example"
+        iconPath={null}
+        nextCursor={null}
+        posts={[]}
+        postsError="unavailable"
+        publication={{ name: "The Long Way" }}
+      />,
+    );
+    expect(screen.getByRole("alert").textContent).toMatch(
+      /couldn't be loaded right now/,
+    );
+    expect(screen.queryByText(/Nothing published yet/)).toBeNull();
+  });
+
+  it("doesn't promise a retry will help when the list is too large", () => {
+    render(
+      <PublicationView
+        ident="writer.example"
+        iconPath={null}
+        nextCursor={null}
+        posts={[]}
+        postsError="too_large"
+        publication={{ name: "The Long Way" }}
+      />,
+    );
+    const alert = screen.getByRole("alert").textContent ?? "";
+    expect(alert).toMatch(/larger than this page can read/);
+    expect(alert).not.toMatch(/try again/i);
+  });
+});

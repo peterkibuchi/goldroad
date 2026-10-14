@@ -383,6 +383,66 @@ describe("/@{$handle}/rss.xml — 404 invariants", () => {
   });
 });
 
+describe("/@{$handle}/rss.xml — a failed listing", () => {
+  it("answers 503 instead of an empty feed when the page is too large", async () => {
+    const fn = vi.fn(async (input: URL | RequestInfo) => {
+      const url = String(input);
+      if (url.startsWith("https://public.api.bsky.app/xrpc/"))
+        return new Response(JSON.stringify({ did: DID }));
+      if (url.startsWith("https://plc.directory/"))
+        return new Response(JSON.stringify(didDoc));
+      const collection = new URL(url).searchParams.get("collection");
+      if (collection === "site.standard.publication")
+        return new Response(JSON.stringify({ records: [] }));
+      return new Response("x".repeat(1_000_001));
+    });
+    vi.stubGlobal("fetch", fn);
+    const res = await call("writer.example");
+    expect(res.status).toBe(503);
+    expect(res.headers.get("cache-control")).toBe("no-store");
+  });
+});
+
+describe("/@{$handle}/rss.xml — a refused or failing listing", () => {
+  function stubListing(status: number) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: URL | RequestInfo) => {
+        const url = String(input);
+        if (url.startsWith("https://public.api.bsky.app/xrpc/"))
+          return new Response(JSON.stringify({ did: DID }));
+        if (url.startsWith("https://plc.directory/"))
+          return new Response(JSON.stringify(didDoc));
+        const collection = new URL(url).searchParams.get("collection");
+        if (collection === "site.standard.publication")
+          return new Response(JSON.stringify({ records: [] }));
+        return new Response("{}", { status });
+      }),
+    );
+  }
+
+  it("serves an empty feed when the PDS refuses the listing", async () => {
+    stubListing(400);
+    const res = await call("writer.example");
+    expect(res.status).toBe(200);
+  });
+
+  it("answers 503 with a retry hint when the PDS is down", async () => {
+    stubListing(502);
+    const res = await call("writer.example");
+    expect(res.status).toBe(503);
+    expect(res.headers.get("retry-after")).toBe("300");
+  });
+
+  it("still 404s a hidden author whose listing failed", async () => {
+    stubListing(502);
+    // biome-ignore lint/suspicious/noExplicitAny: mutating the test env stub
+    (env as any).DB = {};
+    vi.mocked(hiddenSubjects).mockResolvedValue(new Set([DID]));
+    expect((await call("writer.example")).status).toBe(404);
+  });
+});
+
 describe("/@{$handle}/rss.xml — takedowns", () => {
   it("404s the whole feed for a hidden author", async () => {
     mockFetch();
