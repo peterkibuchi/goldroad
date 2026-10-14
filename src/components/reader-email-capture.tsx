@@ -43,6 +43,7 @@ import {
   resetTurnstileWidgets,
   TURNSTILE_TOKEN_FIELD,
   TurnstileWidget,
+  turnstileReady,
 } from "~/components/turnstile";
 import { CANONICAL_ORIGIN, ownOrigins } from "~/lib/origin";
 import { capture } from "~/lib/posthog";
@@ -90,8 +91,10 @@ export function ReaderEmailCapture({
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
-    const data = new FormData(form);
     setState("sending");
+    // A submit can beat the lazily loaded challenge; wait for its token.
+    await turnstileReady(form);
+    const data = new FormData(form);
     // Present only when the Turnstile widget rendered (sitekey configured);
     // without it the payload is exactly the shape the schema describes.
     const turnstileToken = data.get(TURNSTILE_TOKEN_FIELD);

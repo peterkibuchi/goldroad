@@ -72,3 +72,60 @@ describe("TurnstileWidget — loads when the form is about to be used", () => {
     expect(turnstileScripts()).toHaveLength(1);
   });
 });
+
+describe("turnstileReady — a submit that beats the challenge", () => {
+  /** A loaded Turnstile API whose challenge the test solves by hand. */
+  function fakeTurnstile() {
+    const solve: Array<() => void> = [];
+    const api = {
+      render: vi.fn((_el: HTMLElement, params: Record<string, unknown>) => {
+        solve.push(params.callback as () => void);
+        return `widget-${solve.length}`;
+      }),
+      remove: vi.fn(),
+      reset: vi.fn(),
+    };
+    vi.stubGlobal("turnstile", api);
+    return { api, solve };
+  }
+
+  it("starts the challenge and waits for its token before the form is read", async () => {
+    const { api, solve } = fakeTurnstile();
+    const { container } = await renderForm();
+    const { turnstileReady } = await import("#/components/turnstile");
+    const form = container.querySelector("form") as HTMLFormElement;
+    let ready = false;
+    const waiting = turnstileReady(form).then(() => {
+      ready = true;
+    });
+    await vi.waitFor(() => expect(api.render).toHaveBeenCalledTimes(1));
+    expect(ready).toBe(false);
+    solve[0]();
+    await waiting;
+    expect(ready).toBe(true);
+  });
+
+  it("does not wait on a form without a widget", async () => {
+    const { turnstileReady } = await import("#/components/turnstile");
+    await expect(
+      turnstileReady(document.createElement("form")),
+    ).resolves.toBeUndefined();
+  });
+
+  it("still loads on focus where IntersectionObserver is missing", async () => {
+    vi.stubGlobal("IntersectionObserver", undefined);
+    const { getByLabelText } = await renderForm();
+    expect(turnstileScripts()).toHaveLength(0);
+    fireEvent.focusIn(getByLabelText("Email"));
+    expect(turnstileScripts()).toHaveLength(1);
+  });
+
+  it("renders nothing for a form that unmounted before the script arrived", async () => {
+    const { api } = fakeTurnstile();
+    const { unmount } = await renderForm();
+    intersect(true);
+    unmount();
+    await Promise.resolve();
+    expect(api.render).not.toHaveBeenCalled();
+  });
+});

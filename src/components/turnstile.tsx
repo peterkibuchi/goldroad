@@ -6,11 +6,11 @@
  * script loads only once its form is about to be used: when the form comes
  * within a screen of the viewport, or something in it takes focus, whichever
  * is first. Until then the page pays nothing for it, and most visitors to a
- * page with a form never use the form. The script runs in explicit-render
+ * page with a form never use the form. A submit that beats the challenge
+ * waits for it (see `turnstileReady`). The script runs in explicit-render
  * mode, one tag per page, and the widget drops a hidden `turnstileToken` input
- * into the surrounding form,
- * so the existing FormData-driven submit handlers pick the token up without
- * new state plumbing. Server side, /api/waitlist and /api/report verify that
+ * into the surrounding form, so the existing FormData-driven submit handlers
+ * pick the token up without new state plumbing. Server side, /api/waitlist and /api/report verify that
  * token when TURNSTILE_SECRET is set (see ~/lib/turnstile).
  *
  * CSP note: challenges.cloudflare.com must be allowed in script-src and
@@ -46,6 +46,35 @@ let loading: Promise<TurnstileApi | null> | null = null;
 
 /** Widget ids currently rendered on the page (one per form in practice). */
 const activeWidgets = new Set<string>();
+
+/** Per form with a widget: start loading now, and the first token. */
+type PendingChallenge = { start: () => void; solved: Promise<void> };
+const pendingByForm = new WeakMap<Element, PendingChallenge>();
+
+/** How long a submit waits for a challenge still being solved. Past it the
+ * form submits without a token and the server answers as it always has. */
+const SUBMIT_WAIT_MS = 10_000;
+
+/**
+ * For a submit handler, before it reads the form: starts the challenge if it
+ * hasn't started, and waits until it has produced a token. Without this, a
+ * visitor who jumped to the form and submitted straight away would post
+ * before the lazily loaded script had a token, and be refused. Resolves at
+ * once when the form has no widget (no sitekey) or its token already came.
+ */
+export async function turnstileReady(form: HTMLFormElement): Promise<void> {
+  const pending = pendingByForm.get(form);
+  if (!pending) return;
+  pending.start();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([
+    pending.solved,
+    new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, SUBMIT_WAIT_MS);
+    }),
+  ]);
+  clearTimeout(timer);
+}
 
 /**
  * Re-arms every mounted widget with a fresh challenge. Turnstile tokens are
@@ -100,6 +129,10 @@ export function TurnstileWidget() {
     let cancelled = false;
     let started = false;
     let observer: IntersectionObserver | null = null;
+    let markSolved = () => {};
+    const solved = new Promise<void>((resolve) => {
+      markSolved = resolve;
+    });
     const form = container.closest("form") ?? container;
     const start = () => {
       if (started) return;
@@ -113,6 +146,7 @@ export function TurnstileWidget() {
           // Name the auto-injected hidden input after our own field so the
           // submit handlers read it straight out of FormData.
           "response-field-name": TURNSTILE_TOKEN_FIELD,
+          callback: () => markSolved(),
         });
         if (widgetId !== undefined) activeWidgets.add(widgetId);
       });
@@ -131,8 +165,10 @@ export function TurnstileWidget() {
     // Focus covers what the observer can't: a form reached by keyboard, and
     // a browser without IntersectionObserver.
     form.addEventListener("focusin", start);
+    pendingByForm.set(form, { start, solved });
     return () => {
       cancelled = true;
+      pendingByForm.delete(form);
       observer?.disconnect();
       form.removeEventListener("focusin", start);
       if (widgetId !== undefined) {
