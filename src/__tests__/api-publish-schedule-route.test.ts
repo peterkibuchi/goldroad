@@ -37,6 +37,7 @@ const publishing = vi.hoisted(() => ({
   publishStoredDraft: vi.fn(),
   resolvePublicationSite: vi.fn(),
   findOwnPublication: vi.fn(),
+  writeDocument: vi.fn(),
 }));
 vi.mock("~/lib/publish-document", () => publishing);
 
@@ -141,6 +142,7 @@ beforeEach(() => {
     { id: ROW_ID, status: "failed" },
   ]);
   schedules.selectScheduleForDraft.mockResolvedValue([]);
+  publishing.writeDocument.mockResolvedValue({ ok: true });
   publishing.publishStoredDraft.mockResolvedValue({
     ok: true,
     rkey: "3lyk73wxnok2f",
@@ -343,6 +345,17 @@ describe("intent=publish-now", () => {
       DID,
       DRAFT_ID,
     );
+  });
+
+  it("publishes under the key a failed tick reserved, so its write can't be repeated", async () => {
+    schedules.deleteUnclaimedSchedulesForDraft.mockResolvedValue([
+      { id: ROW_ID, status: "pending", publishedRkey: "3lyk73wxnokrs" },
+    ]);
+    await call(fields);
+    const input = publishing.publishStoredDraft.mock.calls[0][0] as {
+      rkey?: string;
+    };
+    expect(input.rkey).toBe("3lyk73wxnokrs");
   });
 
   it("publishes through the same core the cron uses, and reports the rkey", async () => {

@@ -8,9 +8,10 @@ import {
   d1SnapshotStore,
   dayDistance,
   didFromSessionKey,
-  fetchProfileCounts,
+  fetchProfilesCounts,
   insertSnapshot,
   MAX_SAMPLES_PER_RUN,
+  PROFILES_PER_REQUEST,
   pruneSnapshots,
   RECENT_WRITER_DAYS,
   readProfileCounts,
@@ -233,21 +234,45 @@ describe("readProfileCounts — absent is never zero", () => {
   });
 });
 
-describe("fetchProfileCounts — bounded, unauthenticated, never throws", () => {
-  it("calls the public AppView with the DID encoded, and no credentials", async () => {
-    const fetcher = vi.fn(
-      async (_url: string | URL | Request, _init?: RequestInit) =>
-        Response.json({ followersCount: 9, postsCount: 3 }),
+/** A getProfiles stand-in: answers each requested actor with `profile(did)`,
+ * leaving out any it returns null for, as the AppView does for a missing
+ * account. */
+function profilesFetcher(
+  profile: (did: string) => Record<string, unknown> | null = () => ({
+    followersCount: 10,
+    postsCount: 2,
+  }),
+) {
+  return vi.fn(async (input: string | URL | Request, _init?: RequestInit) => {
+    const actors = new URL(String(input)).searchParams.getAll("actors");
+    return Response.json({
+      profiles: actors.flatMap((did) => {
+        const body = profile(did);
+        return body ? [{ did, ...body }] : [];
+      }),
+    });
+  });
+}
+
+describe("fetchProfilesCounts — batched, bounded, unauthenticated, never throws", () => {
+  it("asks the public AppView for every actor in one call, with no credentials", async () => {
+    const fetcher = profilesFetcher(() => ({
+      followersCount: 9,
+      postsCount: 3,
+    }));
+    const counts = await fetchProfilesCounts(
+      ["did:web:writer.example", DID],
+      fetcher as unknown as typeof fetch,
     );
-    expect(
-      await fetchProfileCounts(
-        "did:web:writer.example",
-        fetcher as unknown as typeof fetch,
-      ),
-    ).toEqual({ followers: 9, posts: 3 });
+    expect(counts.get("did:web:writer.example")).toEqual({
+      followers: 9,
+      posts: 3,
+    });
+    expect(counts.get(DID)).toEqual({ followers: 9, posts: 3 });
+    expect(fetcher).toHaveBeenCalledTimes(1);
     const [url, init] = fetcher.mock.calls[0];
     expect(String(url)).toBe(
-      "https://public.api.bsky.app/xrpc/app.bsky.actor.getProfile?actor=did%3Aweb%3Awriter.example",
+      `https://public.api.bsky.app/xrpc/app.bsky.actor.getProfiles?actors=did%3Aweb%3Awriter.example&actors=${encodeURIComponent(DID)}`,
     );
     expect(init?.signal).toBeInstanceOf(AbortSignal);
     // No authorization header: a follower count is public, so this pass never
@@ -255,28 +280,57 @@ describe("fetchProfileCounts — bounded, unauthenticated, never throws", () => 
     expect(init?.headers).toBeUndefined();
   });
 
-  it("returns null (no row) on a non-2xx, a thrown fetch, or a non-JSON body", async () => {
-    expect(
-      await fetchProfileCounts(
-        DID,
-        async () => new Response("", { status: 429 }),
-      ),
-    ).toBeNull();
-    expect(
-      await fetchProfileCounts(DID, async () => {
-        throw new Error("timed out");
+  it("leaves out an actor the AppView didn't return, or returned without a count", async () => {
+    const counts = await fetchProfilesCounts(
+      [DID, OTHER_DID, "did:plc:zzzzzzzzzzzzzzzzzzzzzzzz"],
+      profilesFetcher((did) =>
+        did === DID
+          ? { followersCount: 4 }
+          : did === OTHER_DID
+            ? { followersCount: "lots" }
+            : null,
+      ) as unknown as typeof fetch,
+    );
+    expect([...counts.keys()]).toEqual([DID]);
+  });
+
+  it("ignores a profile it didn't ask for", async () => {
+    const counts = await fetchProfilesCounts([DID], async () =>
+      Response.json({
+        profiles: [
+          { did: DID, followersCount: 1 },
+          { did: OTHER_DID, followersCount: 2 },
+        ],
       }),
-    ).toBeNull();
-    expect(
-      await fetchProfileCounts(DID, async () => new Response("<html>")),
-    ).toBeNull();
+    );
+    expect([...counts.keys()]).toEqual([DID]);
+  });
+
+  it("returns nothing (no rows) on a non-2xx, a thrown fetch, or a non-JSON body", async () => {
+    for (const fetcher of [
+      async () => new Response("", { status: 429 }),
+      async () => {
+        throw new Error("timed out");
+      },
+      async () => new Response("<html>"),
+      async () => Response.json({ profiles: "nope" }),
+    ])
+      expect(
+        (await fetchProfilesCounts([DID], fetcher as typeof fetch)).size,
+      ).toBe(0);
   });
 
   it("refuses an oversized body instead of decoding it", async () => {
-    const huge = `{"followersCount":1,"pad":"${"x".repeat(70_000)}"}`;
+    const huge = `{"profiles":[{"did":"${DID}","followersCount":1}],"pad":"${"x".repeat(1_100_000)}"}`;
     expect(
-      await fetchProfileCounts(DID, async () => new Response(huge)),
-    ).toBeNull();
+      (await fetchProfilesCounts([DID], async () => new Response(huge))).size,
+    ).toBe(0);
+  });
+
+  it("makes no call for an empty batch", async () => {
+    const fetcher = profilesFetcher();
+    await fetchProfilesCounts([], fetcher as unknown as typeof fetch);
+    expect(fetcher).not.toHaveBeenCalled();
   });
 });
 
@@ -300,8 +354,7 @@ describe("runFollowerSnapshotPass — one bad writer can't cost the others their
     return store;
   }
 
-  const okFetcher = () =>
-    vi.fn(async () => Response.json({ followersCount: 10, postsCount: 2 }));
+  const okFetcher = () => profilesFetcher() as unknown as typeof fetch;
 
   it("writes one row per writer, stamped with today's UTC day", async () => {
     const store = fakeStore();
@@ -335,13 +388,11 @@ describe("runFollowerSnapshotPass — one bad writer can't cost the others their
     );
   });
 
-  it("keeps going when one writer's AppView read fails", async () => {
+  it("keeps going when the AppView has no count for one writer", async () => {
     const store = fakeStore();
-    const fetcher = vi.fn(async (input: string | URL | Request) => {
-      if (String(input).includes(encodeURIComponent(DID)))
-        throw new Error("upstream down");
-      return Response.json({ followersCount: 4 });
-    });
+    const fetcher = profilesFetcher((did) =>
+      did === DID ? null : { followersCount: 4 },
+    );
     const result = await runFollowerSnapshotPass({
       store,
       now: NOW,
@@ -369,18 +420,37 @@ describe("runFollowerSnapshotPass — one bad writer can't cost the others their
     expect(result).toMatchObject({ attempted: 2, sampled: 1, failed: 1 });
   });
 
-  it("never sends more requests than the per-run cap", async () => {
-    const fetcher = okFetcher();
+  it("never samples more writers than the per-run cap", async () => {
+    const fetcher = profilesFetcher();
     const sessionKeys = async () =>
       Array.from({ length: 40 }, (_, i) => `sess:${fakeDid(i)}`);
     const result = await runFollowerSnapshotPass({
       store: fakeStore({ sessionKeys }),
       now: NOW,
-      fetcher,
+      fetcher: fetcher as unknown as typeof fetch,
       cap: 5,
     });
     expect(result.attempted).toBe(5);
-    expect(fetcher).toHaveBeenCalledTimes(5);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("spends two subrequests on a full run, not fifty", async () => {
+    // The cron shares 50 subrequests a tick with publishing, the self-check
+    // and the alerts; one call per writer could spend all of them here.
+    const fetcher = profilesFetcher();
+    const sessionKeys = async () =>
+      Array.from({ length: 80 }, (_, i) => `sess:${fakeDid(i)}`);
+    const result = await runFollowerSnapshotPass({
+      store: fakeStore({ sessionKeys }),
+      now: NOW,
+      fetcher: fetcher as unknown as typeof fetch,
+    });
+    expect(result).toMatchObject({ attempted: 50, sampled: 50 });
+    expect(fetcher).toHaveBeenCalledTimes(50 / PROFILES_PER_REQUEST);
+    for (const [url] of fetcher.mock.calls)
+      expect(
+        new URL(String(url)).searchParams.getAll("actors").length,
+      ).toBeLessThanOrEqual(PROFILES_PER_REQUEST);
   });
 
   it("prunes past the retention window, and still prunes when sampling fails", async () => {

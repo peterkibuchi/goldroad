@@ -122,46 +122,47 @@ describe("purgeExpiredOauthKv — the purge query", () => {
   });
 });
 
-describe("selfCheck — core invariants", () => {
-  const origin = "https://trygoldroad.com";
+describe("selfCheck — core invariants, through our own handler", () => {
+  const metadata = (clientId: string) => async () =>
+    Response.json({ client_id: clientId });
+  const CANONICAL_ID = "https://trygoldroad.com/oauth/client-metadata.json";
 
-  function stubFetch(
-    root: () => Response,
-    metadata: () => Response = () =>
-      Response.json({
-        client_id: "https://trygoldroad.com/oauth/client-metadata.json",
-      }),
-  ) {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: URL | RequestInfo) => {
-        const url = String(input);
-        if (url.includes("client-metadata")) return metadata();
-        return root();
-      }),
-    );
-  }
-
-  it("returns no failures when the site is healthy", async () => {
-    stubFetch(() => new Response("<html>Goldroad</html>", { status: 200 }));
-    expect(await selfCheck(origin)).toEqual([]);
+  it("returns no failures when the OAuth identity is right", async () => {
+    expect(await selfCheck(metadata(CANONICAL_ID))).toEqual([]);
   });
 
-  it("flags a non-200 landing page", async () => {
-    stubFetch(() => new Response("", { status: 503 }));
-    const failures = await selfCheck(origin);
-    expect(failures.some((f) => f.includes("GET / -> 503"))).toBe(true);
+  it("calls the handler in-process, never a fetch of our own hostname", async () => {
+    // Cloudflare routes a Worker's fetch of its own zone to the origin, past
+    // the Worker, so a network self-check would test something else.
+    const network = vi.fn();
+    vi.stubGlobal("fetch", network);
+    const own = vi.fn(async (_request: Request) =>
+      Response.json({ client_id: CANONICAL_ID }),
+    );
+    await selfCheck(own);
+    expect(network).not.toHaveBeenCalled();
+    expect(own).toHaveBeenCalledTimes(1);
+    expect(own.mock.calls[0][0].url).toBe(CANONICAL_ID);
   });
 
   it("flags a wrong OAuth client_id", async () => {
-    stubFetch(
-      () => new Response("<html>Goldroad</html>", { status: 200 }),
-      () => Response.json({ client_id: "https://evil.example/x" }),
-    );
-    const failures = await selfCheck(origin);
+    const failures = await selfCheck(metadata("https://evil.example/x"));
     expect(failures.some((f) => f.includes("client_id"))).toBe(true);
   });
+
+  it("flags a handler that throws", async () => {
+    const failures = await selfCheck(async () => {
+      throw new Error("boom");
+    });
+    expect(failures.some((f) => f.includes("client-metadata threw"))).toBe(
+      true,
+    );
+  });
 });
+
+/** Our handler, as the cron sees it — routed through the stubbed global fetch,
+ * so each test's responses stand in for it. */
+const ownFetch = (request: Request) => fetch(request.url);
 
 describe("runScheduled — six jobs, one hourly trigger, none able to sink another", () => {
   function healthyOrigin() {
@@ -224,12 +225,13 @@ describe("runScheduled — six jobs, one hourly trigger, none able to sink anoth
       };
     });
 
-    await runScheduled(brokenDb());
+    await runScheduled(brokenDb(), ownFetch);
 
     expect(order).toEqual(["scheduled", "snapshots"]);
     expect(scheduledPosts.runScheduledPublishPass).toHaveBeenCalledWith({
       store: { scheduleStore: true },
       publish: { publisher: true },
+      mintRkey: expect.any(Function),
     });
   });
 
@@ -250,7 +252,7 @@ describe("runScheduled — six jobs, one hourly trigger, none able to sink anoth
       pruned: true,
     });
 
-    await runScheduled(envWithHook());
+    await runScheduled(envWithHook(), ownFetch);
 
     expect(snapshots.runFollowerSnapshotPass).toHaveBeenCalledTimes(1);
     expect(backup.runBackupCheck).toHaveBeenCalledTimes(1);
@@ -285,7 +287,7 @@ describe("runScheduled — six jobs, one hourly trigger, none able to sink anoth
       pruned: true,
     });
 
-    await runScheduled(envWithHook());
+    await runScheduled(envWithHook(), ownFetch);
 
     // The writer is the person who can fix a revoked grant, and the posts
     // manager tells them. The webhook is for invariants nobody else watches.
@@ -296,7 +298,7 @@ describe("runScheduled — six jobs, one hourly trigger, none able to sink anoth
     healthyOrigin();
     quiet();
 
-    await runScheduled(brokenDb());
+    await runScheduled(brokenDb(), ownFetch);
 
     // The purge failing is logged, not fatal: a missed sampling hour can never
     // be recovered, so it must not depend on an unrelated job succeeding.
@@ -333,7 +335,7 @@ describe("runScheduled — six jobs, one hourly trigger, none able to sink anoth
       pruned: true,
     });
 
-    await runScheduled(envWithHook());
+    await runScheduled(envWithHook(), ownFetch);
 
     expect(posts).toHaveLength(1);
     expect(posts[0]).toContain("73h old");
@@ -350,7 +352,7 @@ describe("runScheduled — six jobs, one hourly trigger, none able to sink anoth
     vi.stubGlobal("fetch", spy);
     quiet();
 
-    await runScheduled(envWithHook());
+    await runScheduled(envWithHook(), ownFetch);
 
     const urls = spy.mock.calls.map((call) => String(call[0]));
     expect(urls.some((u) => u.includes("hook.example"))).toBe(false);
@@ -360,7 +362,7 @@ describe("runScheduled — six jobs, one hourly trigger, none able to sink anoth
     healthyOrigin();
     quiet();
 
-    await runScheduled(envWithHook());
+    await runScheduled(envWithHook(), ownFetch);
 
     expect(reports.d1ReportStore).toHaveBeenCalledTimes(1);
     expect(reports.runReportAlertPass).toHaveBeenCalledWith({
@@ -399,7 +401,7 @@ describe("runScheduled — six jobs, one hourly trigger, none able to sink anoth
       failures: ["abuse reports could not be read for alerting"],
     });
 
-    await runScheduled(envWithHook());
+    await runScheduled(envWithHook(), ownFetch);
 
     expect(posts).toHaveLength(1);
     expect(posts[0]).toContain("could not be read");
@@ -433,7 +435,7 @@ describe("runScheduled — six jobs, one hourly trigger, none able to sink anoth
       pruned: true,
     });
 
-    await runScheduled(envWithHook());
+    await runScheduled(envWithHook(), ownFetch);
 
     expect(posts).toHaveLength(1);
     expect(posts[0]).toContain("73h old");
@@ -463,7 +465,7 @@ describe("runScheduled — six jobs, one hourly trigger, none able to sink anoth
       pruned: true,
     });
 
-    await runScheduled(envWithHook());
+    await runScheduled(envWithHook(), ownFetch);
 
     const logged = errors.mock.calls.map((call) => JSON.stringify(call));
     expect(logged.some((line) => line.includes("alert delivery"))).toBe(true);

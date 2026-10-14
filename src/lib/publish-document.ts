@@ -145,6 +145,90 @@ function isTransientStatus(status: number): boolean {
   return status === 429 || status >= 500;
 }
 
+/** What the writer's repo holds at a document key. `unknown` means the PDS
+ * couldn't say, which must never be read as `missing`. */
+export type ExistingDocument =
+  | { state: "exists"; value: Record<string, unknown>; cid: string }
+  | { state: "missing" }
+  | { state: "unknown" };
+
+export async function readExistingDocument(
+  rpc: Client,
+  did: Did,
+  rkey: string,
+): Promise<ExistingDocument> {
+  const res = await rpc
+    .get("com.atproto.repo.getRecord", {
+      params: { repo: did, collection: "site.standard.document", rkey },
+    })
+    .catch(() => null);
+  if (!res) return { state: "unknown" };
+  if (res.ok)
+    return {
+      state: "exists",
+      value: res.data.value as Record<string, unknown>,
+      cid: res.data.cid ?? "",
+    };
+  return res.data.error === "RecordNotFound"
+    ? { state: "missing" }
+    : { state: "unknown" };
+}
+
+export type DocumentWrite =
+  | { ok: true }
+  | { ok: false; retry: boolean; error: string };
+
+/**
+ * Writes a new document at `rkey`.
+ *
+ * `reserved` says the key was reserved by a scheduled post's first attempt
+ * (see ~/lib/scheduled-posts), so a refused create may mean that attempt
+ * landed without reporting back. Then the record there is replaced with this
+ * one, keeping any `bskyPostRef` it gained, so a retry ends with the current
+ * draft live exactly once: no duplicate, and no edit made between attempts
+ * lost. If the PDS can't say what's there, the write is retried later.
+ */
+export async function writeDocument(
+  rpc: Client,
+  did: Did,
+  rkey: string,
+  record: ReturnType<typeof toRecordInput>,
+  reserved: boolean,
+): Promise<DocumentWrite> {
+  const created = await rpc.post("com.atproto.repo.createRecord", {
+    input: { repo: did, collection: "site.standard.document", rkey, record },
+  });
+  // @atcute/client does not throw on XRPC errors — check ok explicitly.
+  if (created.ok) return { ok: true };
+  const refused = {
+    ok: false as const,
+    retry: isTransientStatus(created.status),
+    error: created.data.error,
+  };
+  if (!reserved) return refused;
+
+  const existing = await readExistingDocument(rpc, did, rkey);
+  if (existing.state === "missing") return refused;
+  if (existing.state === "unknown")
+    return { ok: false, retry: true, error: "unconfirmed" };
+  const { bskyPostRef } = existing.value;
+  const replaced = await rpc.post("com.atproto.repo.putRecord", {
+    input: {
+      repo: did,
+      collection: "site.standard.document",
+      rkey,
+      record: bskyPostRef ? { ...record, bskyPostRef } : record,
+      swapRecord: existing.cid || undefined,
+    },
+  });
+  if (replaced.ok) return { ok: true };
+  return {
+    ok: false,
+    retry: isTransientStatus(replaced.status),
+    error: replaced.data.error,
+  };
+}
+
 /**
  * Publishes a stored draft as a `site.standard.document` in the writer's repo.
  *
@@ -159,6 +243,8 @@ function isTransientStatus(status: number): boolean {
  * interactive path uses: the record is already live in the writer's repo, so a
  * flaked ledger update costs the mirror treatment and a flaked draft delete
  * costs one manual tidy — never the publish, and never a second attempt at it.
+ *
+ * `rkey` is a scheduled post's reserved key (see `writeDocument`).
  */
 export async function publishStoredDraft(input: {
   rpc: Client;
@@ -169,6 +255,7 @@ export async function publishStoredDraft(input: {
   origin: string;
   origins: readonly string[];
   draft: StoredDraft;
+  rkey?: string;
 }): Promise<StoredDraftPublish> {
   const { rpc, db, did, ident, pds, origin, origins, draft } = input;
   const title = draft.title.trim();
@@ -181,7 +268,7 @@ export async function publishStoredDraft(input: {
       code: "missing_title",
     };
 
-  const rkey = generateTid();
+  const rkey = input.rkey ?? generateTid();
   const site = await resolvePublicationSite({
     rpc,
     did,
@@ -228,27 +315,24 @@ export async function publishStoredDraft(input: {
       code: "too_large",
     };
 
-  const res = await rpc.post("com.atproto.repo.createRecord", {
-    input: {
-      repo: did,
-      collection: "site.standard.document",
-      rkey,
-      // The one seam where a document record crosses into the XRPC input —
-      // shared with the interactive path rather than re-widened here.
-      record: toRecordInput(record),
-    },
-  });
-  // @atcute/client does not throw on XRPC errors — check ok explicitly.
-  if (!res.ok) {
-    console.error("stored-draft createRecord failed", res.status, res.data);
-    const retry = isTransientStatus(res.status);
+  // The one seam where a document record crosses into the XRPC input —
+  // shared with the interactive path rather than re-widened here.
+  const written = await writeDocument(
+    rpc,
+    did,
+    rkey,
+    toRecordInput(record),
+    input.rkey !== undefined,
+  );
+  if (!written.ok) {
+    console.error("stored-draft write failed", written);
     return {
       ok: false,
-      retry,
-      reason: retry
-        ? `Your data server couldn't take the post just now (${res.data.error}). Goldroad will try again within the hour.`
-        : `Your data server refused the post (${res.data.error}).`,
-      code: `publish_failed:${res.data.error}`,
+      retry: written.retry,
+      reason: written.retry
+        ? `Your data server couldn't take the post just now (${written.error}). Goldroad will try again within the hour.`
+        : `Your data server refused the post (${written.error}).`,
+      code: `publish_failed:${written.error}`,
     };
   }
 
