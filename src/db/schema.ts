@@ -537,3 +537,21 @@ export const searchBackfills = sqliteTable("search_backfills", {
     .notNull()
     .$defaultFn(() => new Date()),
 });
+
+/**
+ * The publications this instance hosts: one row per writer whose publication
+ * record Goldroad wrote or found as its own while publishing a post. It exists
+ * so /sitemap.xml can list them without a network call per writer. `url` is
+ * the publication record's own url as it was when last seen; `updatedAt` is
+ * the last publish through here, which the sitemap reports as lastmod.
+ *
+ * Keyed by DID, so it is the writer's data: it goes out with the account
+ * export and is deleted with the account (see ~/lib/rights-store).
+ */
+export const hostedPublications = sqliteTable("hosted_publications", {
+  did: text("did").primaryKey(),
+  url: text("url").notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});

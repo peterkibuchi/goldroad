@@ -7,9 +7,10 @@
  * (awaitable), unit-testable via .toSQL() without a live D1.
  *
  * Scope, deliberately narrow (see AGENTS.md architectural note): these are
- * the ONLY eight places a writer's DID appears in our D1 — drafts,
- * import_items, import_fetches, follower_snapshots, scheduled_posts,
- * reader_emails, handle_history, and the oauth_kv session row. Published posts live in the
+ * the ONLY places a writer's DID appears in our D1 — drafts, import_items,
+ * import_fetches, follower_snapshots, scheduled_posts, reader_emails,
+ * handle_history, hosted_publications, search_documents, search_backfills,
+ * and the oauth_kv session row. Published posts live in the
  * writer's own atproto repo and are never touched here; deleting an account
  * purges our copies only.
  *
@@ -52,6 +53,7 @@ import {
   drafts,
   followerSnapshots,
   handleHistory,
+  hostedPublications,
   importFetches,
   importItems,
   oauthKv,
@@ -132,6 +134,17 @@ export function selectFollowerSnapshotsForExport(db: DrizzleD1, did: string) {
     .where(eq(followerSnapshots.did, did))
     .orderBy(asc(followerSnapshots.day))
     .limit(MAX_SNAPSHOT_ROWS_PER_EXPORT);
+}
+
+/** The writer's publication as the sitemap lists it (at most one row). */
+export function selectHostedPublicationForExport(db: DrizzleD1, did: string) {
+  return db
+    .select({
+      url: hostedPublications.url,
+      updatedAt: hostedPublications.updatedAt,
+    })
+    .from(hostedPublications)
+    .where(eq(hostedPublications.did, did));
 }
 
 /**
@@ -267,6 +280,15 @@ export function deleteImportFetchesForDid(db: DrizzleD1, did: string) {
     .delete(importFetches)
     .where(eq(importFetches.did, did))
     .returning({ id: importFetches.id });
+}
+
+/** Deletes the writer's sitemap listing (account deletion). A publish would
+ * re-create it, and a deleted account can't publish. */
+export function deleteHostedPublicationForDid(db: DrizzleD1, did: string) {
+  return db
+    .delete(hostedPublications)
+    .where(eq(hostedPublications.did, did))
+    .returning({ did: hostedPublications.did });
 }
 
 /** Deletes every follower snapshot a writer owns (account deletion). Their

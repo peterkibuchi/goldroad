@@ -13,6 +13,7 @@ const store = vi.hoisted(() => ({
   selectHandleHistoryForExport: vi.fn(),
   selectImportItemsForExport: vi.fn(),
   selectScheduledPostsForExport: vi.fn(),
+  selectHostedPublicationForExport: vi.fn(),
   countReaderEmailsForDid: vi.fn(),
 }));
 vi.mock("~/lib/rights-store", () => store);
@@ -71,6 +72,7 @@ beforeEach(() => {
   for (const fn of Object.values(store)) fn.mockReset();
   for (const fn of Object.values(atproto)) fn.mockReset();
   store.selectDraftsForExport.mockResolvedValue([]);
+  store.selectHostedPublicationForExport.mockResolvedValue([]);
   store.selectImportItemsForExport.mockResolvedValue([]);
   store.selectFollowerSnapshotsForExport.mockResolvedValue([]);
   store.selectScheduledPostsForExport.mockResolvedValue([]);
@@ -183,6 +185,25 @@ describe("response shape", () => {
         createdAt: NOW.toISOString(),
       },
     ]);
+  });
+
+  it("includes the sitemap's listing of the writer's publication", async () => {
+    store.selectHostedPublicationForExport.mockResolvedValue([
+      {
+        url: "https://trygoldroad.com/@writer.example",
+        updatedAt: new Date("2026-10-01T09:00:00.000Z"),
+      },
+    ]);
+    const res = await call();
+    expect(store.selectHostedPublicationForExport).toHaveBeenCalledWith(
+      expect.anything(),
+      DID,
+    );
+    const body = (await res.json()) as { sitemapListing: unknown };
+    expect(body.sitemapListing).toEqual({
+      url: "https://trygoldroad.com/@writer.example",
+      lastPublishedAt: "2026-10-01T09:00:00.000Z",
+    });
   });
 
   it("includes the follower history we hold — it's the writer's own data, and nobody can rebuild it from upstream", async () => {

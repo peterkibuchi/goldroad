@@ -1,7 +1,13 @@
 // @vitest-environment node
 
 import { JSDOM } from "jsdom";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const hosted = vi.hoisted(() => ({ selectSitemapPublications: vi.fn() }));
+vi.mock("~/lib/hosted-publications", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/hosted-publications")>()),
+  ...hosted,
+}));
 
 import { Route } from "../routes/sitemap[.]xml";
 import { handlerOf } from "./support/route-handler";
@@ -17,6 +23,16 @@ function parseXml(xml: string): Document {
     "text/xml",
   ) as unknown as Document;
 }
+
+const locsOf = async (res: Response) =>
+  Array.from(parseXml(await res.text()).querySelectorAll("url > loc")).map(
+    (el) => el.textContent,
+  );
+
+beforeEach(() => {
+  hosted.selectSitemapPublications.mockReset();
+  hosted.selectSitemapPublications.mockResolvedValue([]);
+});
 
 describe("/sitemap.xml", () => {
   it("serves well-formed XML with the right content type", async () => {
@@ -50,8 +66,46 @@ describe("/sitemap.xml", () => {
       "https://trygoldroad.com/terms",
       "https://trygoldroad.com/policies",
     ]);
-    // Third-party publication surfaces are never enumerated (unbounded).
+    // With no hosted publications, no publication surface is listed.
     expect(locs.join(" ")).not.toContain("/@");
+  });
+
+  it("lists the publications hosted here, on the canonical origin, with lastmod", async () => {
+    hosted.selectSitemapPublications.mockResolvedValue([
+      {
+        url: "https://trygoldroad.com/@writer.example",
+        updatedAt: new Date("2026-10-01T09:00:00.000Z"),
+      },
+      // Written before the move to the canonical domain.
+      {
+        url: "https://goldroad.kibuchi.workers.dev/@early.example",
+        updatedAt: new Date("2026-08-01T09:00:00.000Z"),
+      },
+      // Not ours; never listed, whatever a row says.
+      {
+        url: "https://writer.leaflet.pub",
+        updatedAt: new Date("2026-09-01T09:00:00.000Z"),
+      },
+    ]);
+    const res = await GET({
+      request: new Request("http://127.0.0.1:3000/sitemap.xml"),
+    });
+    const xml = await res.clone().text();
+    const locs = await locsOf(res);
+    expect(locs.slice(6)).toEqual([
+      "https://trygoldroad.com/@writer.example",
+      "https://trygoldroad.com/@early.example",
+    ]);
+    expect(xml).toContain("<lastmod>2026-10-01</lastmod>");
+  });
+
+  it("still serves the first-party pages when the publication read fails", async () => {
+    hosted.selectSitemapPublications.mockRejectedValue(new Error("D1 down"));
+    const res = await GET({
+      request: new Request("http://127.0.0.1:3000/sitemap.xml"),
+    });
+    expect(res.status).toBe(200);
+    expect(await locsOf(res)).toHaveLength(6);
   });
 });
 
