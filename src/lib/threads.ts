@@ -34,8 +34,14 @@
  * conversion unit-tests without a worker or a network.
  */
 import { isDid, isHandle, parseAtUri } from "~/lib/atproto";
-import { readBodyCapped } from "~/lib/blob";
+import {
+  type BlobObject,
+  blobImagePath,
+  readBodyCapped,
+  thumbFromCover,
+} from "~/lib/blob";
 import { APPVIEW_HOST, bskyPostUrl, bskyProfileUrl } from "~/lib/engagement";
+import { MAX_INLINE_IMAGES } from "~/lib/publish";
 
 /** Feed items per discovery page. The lexicon allows 100; 50 keeps one
  * response near the 270 KB a real 50-item page measured rather than double
@@ -124,6 +130,10 @@ export type ThreadPost = {
   facets: unknown[];
   /** The record's own embed view (images / quote / external / video). */
   embed: unknown;
+  /** The RECORD's image blob refs, index-aligned with the view's images (the
+   * AppView builds one from the other, in order). Null where an entry isn't a
+   * blob we could reference. */
+  imageBlobs: (BlobObject | null)[];
   /** ISO timestamp. */
   createdAt: string;
   /** at:// URI of the post this replies to, or null for a thread head. */
@@ -181,6 +191,7 @@ export function normalizePost(
         : "",
     facets: Array.isArray(record.facets) ? record.facets : [],
     embed: view.embed,
+    imageBlobs: recordImageBlobs(record.embed),
     createdAt,
     parentUri:
       parentParts && parentParts.collection === POST_COLLECTION
@@ -197,6 +208,29 @@ function firstValidDate(candidates: unknown[]): string | null {
     if (!Number.isNaN(ms)) return new Date(ms).toISOString();
   }
   return null;
+}
+
+/**
+ * The image blob refs in a post record's embed — `images` directly, or under
+ * `media` in a recordWithMedia. Each is rebuilt from its four fields, so
+ * nothing else the network sent rides into a document record, and kept only
+ * if a document can reference it (raster, within the 1 MB cap).
+ */
+function recordImageBlobs(embed: unknown): (BlobObject | null)[] {
+  const media = isRecord(embed) && isRecord(embed.media) ? embed.media : embed;
+  const images =
+    isRecord(media) && Array.isArray(media.images) ? media.images : [];
+  return images.slice(0, MAX_IMAGES_PER_POST).map((image) => {
+    const blob = thumbFromCover(isRecord(image) ? image.image : null);
+    return blob
+      ? {
+          $type: "blob",
+          ref: { $link: blob.ref.$link },
+          mimeType: blob.mimeType,
+          size: blob.size,
+        }
+      : null;
+  });
 }
 
 /** One thread as the picker lists it. */
@@ -502,6 +536,8 @@ export function postTextMarkdown(post: ThreadPost): string[] {
 type EmbedResult = {
   /** Markdown blocks (image lines, quote lines, link-card lines). */
   blocks: string[];
+  /** Blob refs the image lines point at, in body order. */
+  blobs: BlobObject[];
   /** This post carried a video, which cannot come across. */
   video: boolean;
 };
@@ -509,15 +545,15 @@ type EmbedResult = {
 /**
  * One post's embed as markdown.
  *
- * IMAGES rehost for free. The line is `![alt](fullsize-cdn-url)`, which is
- * exactly the shape ~/lib/import's publish-time `rehostBodyImages` already
- * looks for: when the writer publishes the draft, that copies every one into
- * their own repo under the feed importer's SSRF regime and rewrites only the
- * URL inside the match — so the alt text Bluesky carried survives into the
- * record. Nothing about images is reimplemented here, and the alt is
- * first-class rather than an afterthought: it is the writer's own description
- * of their own picture and dropping it would be a regression in the
- * accessibility of their archive.
+ * IMAGES are already in the writer's repo: the post record references each
+ * one as a blob. So the line points at our `/img/<did>/<cid>` proxy and the
+ * blob ref comes back in `blobs`, for the draft to carry and the published
+ * document to reference. Nothing is fetched or uploaded, and once the document
+ * references a blob the PDS keeps it, even after the thread is deleted. Up to
+ * `borrowable` of them; any image past that, or whose ref we can't use, falls
+ * back to `![alt](fullsize-cdn-url)`, which publish-time `rehostBodyImages`
+ * (~/lib/import) copies within its budget. Either way the alt is the writer's
+ * own description of their picture, and it comes across.
  *
  * A QUOTE of another post becomes a LINK, never inlined content. Someone
  * else's words do not go into the writer's record — that would be republishing
@@ -533,8 +569,12 @@ type EmbedResult = {
  * storage), so it is reported rather than silently dropped — the same call the
  * feed importer's "Embed won't come across" badge makes.
  */
-export function embedMarkdown(post: ThreadPost): EmbedResult {
+export function embedMarkdown(
+  post: ThreadPost,
+  borrowable = MAX_IMAGES_PER_POST,
+): EmbedResult {
   const blocks: string[] = [];
+  const blobs: BlobObject[] = [];
   let video = false;
   // recordWithMedia carries BOTH a quote and a media embed; unwrap it into the
   // two halves and treat each exactly as it would be treated on its own. The
@@ -558,10 +598,16 @@ export function embedMarkdown(post: ThreadPost): EmbedResult {
     // and checking the shape rather than only `$type` is what keeps a
     // recordWithMedia half (whose $type names the wrapper) working.
     if (Array.isArray(half.images)) {
-      for (const image of half.images.slice(0, MAX_IMAGES_PER_POST)) {
+      for (const [i, image] of half.images
+        .slice(0, MAX_IMAGES_PER_POST)
+        .entries()) {
         if (!isRecord(image)) continue;
-        const url = str(image.fullsize) ?? str(image.thumb);
-        if (!url?.startsWith("https://")) continue;
+        const blob = blobs.length < borrowable ? post.imageBlobs[i] : null;
+        const url = blob
+          ? blobImagePath(spineAuthor(post), blob.ref.$link)
+          : (str(image.fullsize) ?? str(image.thumb));
+        if (!blob && !url?.startsWith("https://")) continue;
+        if (blob) blobs.push(blob);
         const alt =
           typeof image.alt === "string"
             ? escapeMarkdownText(
@@ -594,7 +640,7 @@ export function embedMarkdown(post: ThreadPost): EmbedResult {
     }
     if (str(half.$type)?.startsWith("app.bsky.embed.video")) video = true;
   }
-  return { blocks, video };
+  return { blocks, blobs, video };
 }
 
 /**
@@ -632,6 +678,10 @@ export type AssembledThread = {
   truncated: boolean;
   /** Some post in the thread carried a video, which cannot come across. */
   droppedVideo: boolean;
+  /** Blob refs for the images the body points at in the writer's own repo
+   * (see embedMarkdown), at most MAX_INLINE_IMAGES: the draft's
+   * `inline_images`, so publishing references them instead of copying. */
+  images: BlobObject[];
 };
 
 /**
@@ -691,11 +741,15 @@ export function assembleThread(
   if (spine.length < 2) return null;
 
   const blocks: string[] = [];
+  const images: BlobObject[] = [];
   let droppedVideo = false;
   for (const post of spine) {
     blocks.push(...postTextMarkdown(post));
-    const embed = embedMarkdown(post);
+    // A document references at most MAX_INLINE_IMAGES blobs; past that, the
+    // rest go the copy route rather than be left unreferenced.
+    const embed = embedMarkdown(post, MAX_INLINE_IMAGES - images.length);
     blocks.push(...embed.blocks);
+    images.push(...embed.blobs);
     droppedVideo = droppedVideo || embed.video;
   }
   if (blocks.length === 0) return null;
@@ -712,6 +766,7 @@ export function assembleThread(
     sourceUrl: bskyPostUrl(spineAuthor(root), root.rkey),
     truncated,
     droppedVideo,
+    images,
   };
 }
 

@@ -111,6 +111,12 @@ export async function resolvePublicationSite(input: {
   return publicationUrl;
 }
 
+/** A write refused with `BlobNotFound`: the record names an image the repo no
+ * longer holds, most likely a thread's picture whose post was deleted after
+ * the import. Retrying can't bring it back, so this fails for good. */
+const IMAGE_MISSING_REASON =
+  "One of this post's images is no longer in your repo, usually because the Bluesky post it came from was deleted. Open the draft, remove the broken image, and schedule it again.";
+
 /** A stored draft, as the two draft-publishing callers read it. */
 export type StoredDraft = {
   id: string;
@@ -326,6 +332,13 @@ export async function publishStoredDraft(input: {
   );
   if (!written.ok) {
     console.error("stored-draft write failed", written);
+    if (written.error === "BlobNotFound")
+      return {
+        ok: false,
+        retry: false,
+        reason: IMAGE_MISSING_REASON,
+        code: "image_missing",
+      };
     return {
       ok: false,
       retry: written.retry,

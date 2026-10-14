@@ -13,6 +13,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
+import { MAX_INLINE_IMAGES } from "../lib/publish";
 import {
   assembleThread,
   discoverAuthorThreads,
@@ -46,6 +47,8 @@ function postView(opts: {
   root?: string;
   facets?: unknown[];
   embed?: unknown;
+  /** The record's own embed — where the image blob refs live. */
+  recordEmbed?: unknown;
 }) {
   const did = opts.did ?? ME;
   return {
@@ -57,6 +60,7 @@ function postView(opts: {
       createdAt: opts.createdAt ?? "2026-02-04T10:00:00.000Z",
       text: opts.text ?? "",
       ...(opts.facets ? { facets: opts.facets } : {}),
+      ...(opts.recordEmbed ? { embed: opts.recordEmbed } : {}),
       ...(opts.parent
         ? {
             reply: {
@@ -709,6 +713,143 @@ describe("embeds", () => {
       "![chart](https://cdn.bsky.app/img/z.jpg)",
       "Quoting [@them.example](https://bsky.app/profile/them.example/post/3m5)",
     ]);
+  });
+});
+
+describe("embedded images — borrowed from the writer's repo, not copied", () => {
+  const CID_A = "bafkreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const CID_B = "bafkreibbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+  const blob = (cid: string, extra: Record<string, unknown> = {}) => ({
+    $type: "blob",
+    ref: { $link: cid },
+    mimeType: "image/jpeg",
+    size: 120_000,
+    ...extra,
+  });
+  const imagePath = (cid: string) =>
+    `/img/${encodeURIComponent(ME)}/${encodeURIComponent(cid)}`;
+  const cdn = (cid: string) =>
+    `https://cdn.bsky.app/img/feed_fullsize/plain/${ME}/${cid}@jpeg`;
+
+  function imagePost(cids: string[], recordImages: unknown[], rkey = "3p1") {
+    return ownPost(
+      postView({
+        rkey,
+        text: "words",
+        embed: {
+          $type: "app.bsky.embed.images#view",
+          images: cids.map((cid, i) => ({
+            fullsize: cdn(cid),
+            alt: `pic ${i}`,
+          })),
+        },
+        recordEmbed: { $type: "app.bsky.embed.images", images: recordImages },
+      }),
+    );
+  }
+
+  it("points the line at the writer's own blob and hands back its ref", () => {
+    const { blocks, blobs } = embedMarkdown(
+      imagePost([CID_A], [{ image: blob(CID_A), alt: "pic 0" }]),
+    );
+    expect(blocks).toEqual([`![pic 0](${imagePath(CID_A)})`]);
+    expect(blobs).toEqual([blob(CID_A)]);
+  });
+
+  it("carries only the four blob fields into the ref", () => {
+    const { blobs } = embedMarkdown(
+      imagePost([CID_A], [{ image: blob(CID_A, { smuggled: "x" }) }]),
+    );
+    expect(blobs).toEqual([blob(CID_A)]);
+  });
+
+  it("falls back to the CDN copy for a ref a document can't reference", () => {
+    // Over the 1 MB blob cap, and a non-raster type: neither may ride in a
+    // document record, so these go the copy route instead.
+    const { blocks, blobs } = embedMarkdown(
+      imagePost(
+        [CID_A, CID_B],
+        [
+          { image: blob(CID_A, { size: 2_000_000 }) },
+          { image: blob(CID_B, { mimeType: "image/svg+xml" }) },
+        ],
+      ),
+    );
+    expect(blocks).toEqual([
+      `![pic 0](${cdn(CID_A)})`,
+      `![pic 1](${cdn(CID_B)})`,
+    ]);
+    expect(blobs).toEqual([]);
+  });
+
+  it("finds the refs under recordWithMedia's media half", () => {
+    const post = ownPost(
+      postView({
+        rkey: "3p2",
+        embed: {
+          $type: "app.bsky.embed.recordWithMedia#view",
+          media: { images: [{ fullsize: cdn(CID_A), alt: "chart" }] },
+          record: { record: {} },
+        },
+        recordEmbed: {
+          $type: "app.bsky.embed.recordWithMedia",
+          media: { images: [{ image: blob(CID_A), alt: "chart" }] },
+          record: { record: { uri: uri(THEM, "3m5"), cid: "c" } },
+        },
+      }),
+    );
+    expect(embedMarkdown(post).blocks).toEqual([
+      `![chart](${imagePath(CID_A)})`,
+    ]);
+  });
+
+  it("borrows no more than it is allowed and sends the rest the copy route", () => {
+    const { blocks, blobs } = embedMarkdown(
+      imagePost(
+        [CID_A, CID_B],
+        [{ image: blob(CID_A) }, { image: blob(CID_B) }],
+      ),
+      1,
+    );
+    expect(blocks).toEqual([
+      `![pic 0](${imagePath(CID_A)})`,
+      `![pic 1](${cdn(CID_B)})`,
+    ]);
+    expect(blobs).toEqual([blob(CID_A)]);
+  });
+
+  it("a whole thread borrows at most MAX_INLINE_IMAGES, in body order", () => {
+    // 13 posts of four images: 52, two past what one document references.
+    const posts = Array.from({ length: 13 }, (_, p) => {
+      const cids = Array.from(
+        { length: 4 },
+        (_, i) => `bafkrei${String(p * 4 + i).padStart(36, "0")}`,
+      );
+      return postView({
+        rkey: `3q${String(p).padStart(2, "0")}`,
+        text: `post ${p}`,
+        parent:
+          p === 0 ? undefined : uri(ME, `3q${String(p - 1).padStart(2, "0")}`),
+        createdAt: `2026-02-04T10:${String(p).padStart(2, "0")}:00.000Z`,
+        embed: { images: cids.map((cid) => ({ fullsize: cdn(cid), alt: "" })) },
+        recordEmbed: { images: cids.map((cid) => ({ image: blob(cid) })) },
+      });
+    });
+    let tree = node(posts[posts.length - 1]);
+    for (let p = posts.length - 2; p >= 0; p--) tree = node(posts[p], [tree]);
+
+    const result = assembleThread(
+      { thread: tree },
+      { rootUri: uri(ME, "3q00"), author: ME },
+    );
+    expect(result?.images).toHaveLength(MAX_INLINE_IMAGES);
+    expect(result?.images[0].ref.$link).toBe(`bafkrei${"0".repeat(36)}`);
+    expect(result?.markdown.match(/\]\(\/img\//g)).toHaveLength(
+      MAX_INLINE_IMAGES,
+    );
+    expect(
+      result?.markdown.match(/\]\(https:\/\/cdn\.bsky\.app/g),
+    ).toHaveLength(2);
   });
 });
 

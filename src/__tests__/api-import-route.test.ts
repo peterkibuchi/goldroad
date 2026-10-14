@@ -479,6 +479,37 @@ describe("/api/import/draft — which import a row came from", () => {
     expect(inserted.originalAt.toISOString()).toBe("2026-02-04T10:00:00.000Z");
   });
 
+  it("keeps a thread's image blob refs on the draft, and only well-formed ones", async () => {
+    const blob = {
+      $type: "blob",
+      ref: { $link: "bafkreiaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+      mimeType: "image/jpeg",
+      size: 120_000,
+    };
+    const res = await callDraft({
+      ...THREAD_PAYLOAD,
+      inlineImages: [blob, { $type: "blob", ref: "nope" }, "junk"],
+    });
+    expect(res.status).toBe(201);
+    // Publishing reads these to reference the blobs instead of copying them.
+    expect(
+      JSON.parse(draftsStore.insertDraft.mock.calls[0][1].inlineImages),
+    ).toEqual([blob]);
+  });
+
+  it("stores no image refs when the client sends none", async () => {
+    expect((await callDraft(THREAD_PAYLOAD)).status).toBe(201);
+    expect(draftsStore.insertDraft.mock.calls[0][1].inlineImages).toBe("");
+  });
+
+  it("refuses more image refs than one document can reference", async () => {
+    const res = await callDraft({
+      ...THREAD_PAYLOAD,
+      inlineImages: Array.from({ length: 51 }, () => ({})),
+    });
+    expect(res.status).toBe(400);
+  });
+
   it("defaults to feed when a client sends no kind (a tab open across a deploy)", async () => {
     await callDraft(DRAFT_PAYLOAD);
     expect(store.insertImportItem.mock.calls[0][1].sourceKind).toBe("feed");
