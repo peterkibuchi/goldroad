@@ -37,7 +37,7 @@ const publishing = vi.hoisted(() => ({
   publishStoredDraft: vi.fn(),
   resolvePublicationSite: vi.fn(),
   findOwnPublication: vi.fn(),
-  writeDocument: vi.fn(),
+  writeDocumentWithoutMissingImages: vi.fn(),
 }));
 vi.mock("~/lib/publish-document", () => publishing);
 
@@ -142,10 +142,14 @@ beforeEach(() => {
     { id: ROW_ID, status: "failed" },
   ]);
   schedules.selectScheduleForDraft.mockResolvedValue([]);
-  publishing.writeDocument.mockResolvedValue({ ok: true });
+  publishing.writeDocumentWithoutMissingImages.mockResolvedValue({
+    written: { ok: true },
+    dropped: 0,
+  });
   publishing.publishStoredDraft.mockResolvedValue({
     ok: true,
     rkey: "3lyk73wxnok2f",
+    imagesDropped: 0,
   });
   // The shared core is mocked here; the interactive publish still calls its
   // site resolution for real, so it needs an answer.
@@ -334,7 +338,7 @@ describe("intent=publish-now", () => {
     });
     publishing.publishStoredDraft.mockImplementation(async () => {
       order.push("publish");
-      return { ok: true, rkey: "3lyk73wxnok2f" };
+      return { ok: true, rkey: "3lyk73wxnok2f", imagesDropped: 0 };
     });
     await call(fields);
     // A row that no longer exists cannot be claimed by a tick a moment later.
@@ -387,6 +391,21 @@ describe("intent=publish-now", () => {
     const res = await call(fields);
     expect(publishing.publishStoredDraft).toHaveBeenCalledTimes(1);
     expect(location(res).searchParams.get("published")).toBe("3lyk73wxnok2f");
+  });
+
+  it("can go ahead without a missing image, and tells the dashboard", async () => {
+    publishing.publishStoredDraft.mockResolvedValue({
+      ok: true,
+      rkey: "3lyk73wxnok2f",
+      imagesDropped: 2,
+    });
+    const res = await call(fields);
+    const input = publishing.publishStoredDraft.mock.calls[0][0] as {
+      missingImageBudget?: number;
+    };
+    // The cron passes none; a live press has the budget nothing else spends.
+    expect(input.missingImageBudget).toBeGreaterThan(0);
+    expect(location(res).searchParams.get("imagesDropped")).toBe("2");
   });
 
   it("surfaces the publish failure's own code", async () => {

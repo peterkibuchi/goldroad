@@ -3,8 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 /**
  * What /write says about an imported draft's pictures before Publish: how many
- * still load from the source, how many one publish can copy, and nothing about
- * blank images on a thread draft, whose pictures already show.
+ * still load from the source, how many one publish can copy, and that a
+ * thread draft's own pictures already show.
  */
 
 const editorDoc = vi.hoisted(() => ({ blocks: [] as unknown[] }));
@@ -103,11 +103,16 @@ describe("/write — an imported draft's pictures", () => {
     expect(screen.queryByText(/One publish copies up to/)).toBeNull();
   });
 
-  it("doesn't call a thread draft's pictures blank — they already show", async () => {
+  it("tells a thread draft its pictures already show", async () => {
     editorDoc.blocks = [];
     const blocks = JSON.stringify([image("/img/did%3Aplc%3Ax/bafkreiabc")]);
     await mount(resumed({ blocksJson: blocks, fromThread: true }));
-    expect(screen.queryByText(/stay\s+blank here/i)).toBeNull();
+    expect(
+      screen.getByText(/pictures from the thread already show/i),
+    ).toBeDefined();
+    expect(
+      screen.queryByText(/Images in this draft are already saved/),
+    ).toBeNull();
   });
 
   it("still warns about blank images on any other resumed draft", async () => {

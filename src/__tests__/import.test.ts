@@ -13,6 +13,7 @@ import {
   fetchImportable,
   fetchImportableImage,
   guidHash,
+  IMAGE_SUBREQUEST_BUDGET,
   ImportError,
   looksLikeHtml,
   MAX_FEED_BYTES,
@@ -21,10 +22,10 @@ import {
   MAX_REDIRECT_HOPS,
   MAX_REHOSTED_IMAGES,
   parseFeedDocument,
-  REHOST_SUBREQUEST_BUDGET,
   readFeedBody,
   rehostBodyImages,
 } from "../lib/import";
+import { MAX_INLINE_IMAGES } from "../lib/publish";
 
 // ---------------------------------------------------------------- SSRF guard
 
@@ -669,6 +670,8 @@ describe("rehostBodyImages", () => {
         maxBytes: 100,
         isAllowedMime: isJpeg,
         imagePath,
+        budget: IMAGE_SUBREQUEST_BUDGET,
+        slots: MAX_INLINE_IMAGES,
         fetchImpl: fakeFetch(routes),
         upload: async (_bytes, mime) => {
           uploaded.push(mime);
@@ -706,6 +709,8 @@ describe("rehostBodyImages", () => {
       maxBytes: 100,
       isAllowedMime: isJpeg,
       imagePath,
+      budget: IMAGE_SUBREQUEST_BUDGET,
+      slots: MAX_INLINE_IMAGES,
       fetchImpl: impl,
       upload: async () => blobFor(CID_1),
     });
@@ -797,6 +802,8 @@ describe("rehostBodyImages", () => {
       maxBytes: 100,
       isAllowedMime: isJpeg,
       imagePath,
+      budget: IMAGE_SUBREQUEST_BUDGET,
+      slots: MAX_INLINE_IMAGES,
       fetchImpl: impl,
       upload: async () => blobFor(CID_1),
     });
@@ -829,6 +836,8 @@ describe("rehostBodyImages", () => {
       maxBytes: 100,
       isAllowedMime: isJpeg,
       imagePath,
+      budget: IMAGE_SUBREQUEST_BUDGET,
+      slots: MAX_INLINE_IMAGES,
       fetchImpl: impl,
       upload: async () => {
         uploads += 1;
@@ -836,12 +845,32 @@ describe("rehostBodyImages", () => {
       },
     });
     expect(impl.calls.length + uploads).toBeLessThanOrEqual(
-      REHOST_SUBREQUEST_BUDGET,
+      IMAGE_SUBREQUEST_BUDGET,
     );
-    // 16 / 5 = 3 whole images; the fourth's hops would leave no room to upload.
-    expect(blobs).toHaveLength(3);
-    expect(uploads).toBe(3);
-    expect(skipped).toBe(7);
+    // 14 / 5 = 2 whole images; the third runs out of room mid-redirect, before
+    // its upload, and nothing after it starts.
+    expect(blobs).toHaveLength(2);
+    expect(uploads).toBe(2);
+    expect(skipped).toBe(8);
+  });
+
+  it("copies no more than the record has slots for, and fetches nothing past them", async () => {
+    // A thread past 50 pictures already uses every slot: a copy would never be
+    // referenced, so never served, where the source URL at least still loads.
+    const { result, uploaded } = run(
+      "![a](https://cdn.example/1.jpg)\n\n![b](https://cdn.example/2.jpg)",
+      {
+        "https://cdn.example/1.jpg": () => jpegBytes(10),
+        "https://cdn.example/2.jpg": () => jpegBytes(10),
+      },
+      { slots: 1 },
+    );
+    const { body, blobs, skipped, spent } = await result;
+    expect(blobs).toEqual([blobFor(CID_1)]);
+    expect(uploaded).toHaveLength(1);
+    expect(skipped).toBe(1);
+    expect(spent).toBe(2);
+    expect(body).toContain("![b](https://cdn.example/2.jpg)");
   });
 
   it("does nothing, and fetches nothing, for a body with no remote images", async () => {
@@ -853,10 +882,12 @@ describe("rehostBodyImages", () => {
       maxBytes: 100,
       isAllowedMime: isJpeg,
       imagePath,
+      budget: IMAGE_SUBREQUEST_BUDGET,
+      slots: MAX_INLINE_IMAGES,
       fetchImpl: impl,
       upload: async () => blobFor(CID_1),
     });
-    expect(result).toEqual({ body, blobs: [], skipped: 0 });
+    expect(result).toEqual({ body, blobs: [], skipped: 0, spent: 0 });
     expect(impl.calls).toEqual([]);
   });
 });

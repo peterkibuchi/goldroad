@@ -67,7 +67,8 @@ const posted = vi.hoisted(() => [] as Posted[]);
  * plus the D1 side effects, so "before"/"after" is assertable across both. */
 const steps = vi.hoisted(() => [] as string[]);
 type Reply = { ok: boolean; status: number; data: Record<string, unknown> };
-const replies = vi.hoisted(() => new Map<string, Reply>());
+/** One reply for every call, or a list answered in order. */
+const replies = vi.hoisted(() => new Map<string, Reply | Reply[]>());
 vi.mock("@atcute/client", () => ({
   Client: class {
     post(nsid: string, options: { input: Record<string, unknown> }) {
@@ -76,8 +77,13 @@ vi.mock("@atcute/client", () => ({
       steps.push(
         typeof collection === "string" ? `${nsid}:${collection}` : nsid,
       );
+      const reply = replies.get(nsid);
       return Promise.resolve(
-        replies.get(nsid) ?? { ok: true, status: 200, data: {} },
+        (Array.isArray(reply) ? reply.shift() : reply) ?? {
+          ok: true,
+          status: 200,
+          data: {},
+        },
       );
     }
   },
@@ -781,7 +787,7 @@ describe("POST /api/publish — intent=document, a post that arrived by import",
     expect(location(res).searchParams.get("imagesKept")).toBe("2");
   });
 
-  it("references a thread's pictures where they already are: nothing fetched, nothing uploaded", async () => {
+  it("references a thread's pictures where they already are, and covers with the first", async () => {
     const fetchSpy = vi.fn(async () => new Response("no", { status: 404 }));
     vi.stubGlobal("fetch", fetchSpy);
     const res = await publish({
@@ -800,11 +806,47 @@ describe("POST /api/publish — intent=document, a post that arrived by import",
     expect(documentRecord().coverImage).toEqual(blob());
   });
 
-  it("says which image is gone when the repo no longer holds one, and keeps the draft", async () => {
+  it("goes out without an image the repo no longer holds, and says so", async () => {
+    // The thread was deleted after the import, taking this picture with it.
+    const gone = "bafkreigoneaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    replies.set("com.atproto.repo.createRecord", [
+      {
+        ok: false,
+        status: 400,
+        data: {
+          error: "BlobNotFound",
+          message: `Could not find blob: ${gone}`,
+        },
+      },
+    ]);
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await publish({
+      ...fields,
+      body: [
+        `![gone](/img/${encodeURIComponent(DID)}/${gone})`,
+        `![kept](/img/${encodeURIComponent(DID)}/${CID})`,
+      ].join("\n\n"),
+      images: JSON.stringify([blob({ ref: { $link: gone } }), blob()]),
+    });
+    quiet.mockRestore();
+
+    expect(location(res).searchParams.get("published")).toBeTruthy();
+    expect(location(res).searchParams.get("imagesDropped")).toBe("1");
+    const writes = posted.filter(
+      (p) => p.options.input.collection === "site.standard.document",
+    );
+    expect(writes).toHaveLength(2);
+    const record = writes[1].options.input.record as Record<string, unknown>;
+    expect(record.goldroadInlineImages).toEqual([blob()]);
+    // The cover was the missing picture; it moves to the next one.
+    expect(record.coverImage).toEqual(blob());
+  });
+
+  it("refuses with a reason when the server names no image the body uses", async () => {
     replies.set("com.atproto.repo.createRecord", {
       ok: false,
       status: 400,
-      data: { error: "BlobNotFound", message: `Could not find blob: ${CID}` },
+      data: { error: "BlobNotFound" },
     });
     const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
     const res = await publish({
@@ -816,6 +858,36 @@ describe("POST /api/publish — intent=document, a post that arrived by import",
     expect(errorFrom(res)).toBe("image_missing");
     expect(location(res).searchParams.get("draft")).toBe(DRAFT_ID);
     expect(drafts.deleteDraft).not.toHaveBeenCalled();
+  });
+
+  it("copies nothing a full record couldn't reference", async () => {
+    // A thread past 50 pictures: the first 50 are borrowed and fill every
+    // slot, so a copy of the 51st would never be referenced or served.
+    const cids = Array.from(
+      { length: 50 },
+      (_, i) => `bafkrei${String(i).padStart(36, "0")}`,
+    );
+    const fetchSpy = vi.fn(
+      async () =>
+        new Response(new Uint8Array(10), {
+          headers: { "content-type": "image/jpeg" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+    const res = await publish({
+      ...fields,
+      body: [
+        ...cids.map((cid) => `![](/img/${encodeURIComponent(DID)}/${cid})`),
+        "![51st](https://cdn.bsky.app/img/feed_fullsize/plain/x/y@jpeg)",
+      ].join("\n\n"),
+      images: JSON.stringify(cids.map((cid) => blob({ ref: { $link: cid } }))),
+    });
+    vi.unstubAllGlobals();
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(callOf("com.atproto.repo.uploadBlob")).toBeUndefined();
+    expect(documentRecord().goldroadInlineImages).toHaveLength(50);
+    expect(location(res).searchParams.get("imagesKept")).toBe("1");
   });
 
   it("says nothing when every image came across", async () => {

@@ -85,7 +85,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   not_editable:
     "That post was written in another app, in a form Goldroad can't edit without losing part of it. Edit it where it was written.",
   image_missing:
-    "One of this post's images is no longer in your repo, usually because the Bluesky post it came from was deleted. It shows as a broken image below. Remove it and publish again.",
+    "One of this post's images is no longer in your repo, so your server refused the post. If it came from a Bluesky post you've since deleted, remove that image and publish again.",
   cover_type: "Covers can be a JPEG, PNG, WebP, AVIF, or GIF image.",
   cover_too_large:
     "That cover is too large even after shrinking — pick an image under 1 MB.",
@@ -1509,11 +1509,11 @@ export function Compose({
             repo, but a PDS only serves a blob some record references — so
             after a reload they stay blank until this draft publishes. Said
             here rather than left to be discovered as breakage. */}
-        {!editing && resumedHasImages && !resumed?.fromThread && (
+        {!editing && resumedHasImages && (
           <p className="mt-4 font-display text-ink-soft text-xs leading-relaxed">
-            Images in this draft are already saved to your repo, but they stay
-            blank here until you publish — that's when your server starts
-            serving them.
+            {resumed?.fromThread
+              ? "Pictures from the thread already show. Any image you added yourself is saved to your repo but stays blank here until you publish, which is when your server starts serving it."
+              : "Images in this draft are already saved to your repo, but they stay blank here until you publish — that's when your server starts serving them."}
           </p>
         )}
         {/* An imported draft's images still live on the source's servers, and
