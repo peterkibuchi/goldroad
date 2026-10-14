@@ -57,10 +57,30 @@ export const READ_CACHE_CONTROL = `public, s-maxage=${READ_CACHE_TTL_SECONDS}, s
  * at `/@…/rss.xml`) and `/p/…` (v0 document URL). */
 const READ_SURFACE_RE = /^\/(@|p\/)/;
 
-/** Whether this request is a GET to a cacheable reading surface. */
+/** The marketing and policy pages. Static apart from the build, served to
+ * everyone alike (the header's sign-in label is corrected on the client, see
+ * ~/components/site-chrome), so they share the reading surfaces' cache: a
+ * cold render costs a Worker invocation and an SSR pass, a hit neither. */
+const MARKETING_PATHS = new Set([
+  "/",
+  "/leaving-substack",
+  "/open",
+  "/privacy",
+  "/terms",
+  "/policies",
+]);
+
+/** On a stored page: the build that rendered it (see serveWithReadCache). */
+const BUILD_HEADER = "x-goldroad-build";
+
+/** Whether this request is a GET to a cacheable reading surface or marketing
+ * page. A marketing URL with a query string is rendered fresh: `/` reads
+ * `?notice=` server-side, and the key below drops the query. */
 export function isCacheableReadRequest(request: Request): boolean {
   if (request.method !== "GET") return false;
-  return READ_SURFACE_RE.test(new URL(request.url).pathname);
+  const url = new URL(request.url);
+  if (MARKETING_PATHS.has(url.pathname)) return url.search === "";
+  return READ_SURFACE_RE.test(url.pathname);
 }
 
 /** The only paths that paginate: a bare `/@handle`, whose "Older posts" link
@@ -111,11 +131,18 @@ function isCacheableResponse(response: Response): boolean {
  * the body to its end, so awaiting it held every byte of a streamed page —
  * the article included — until the last streamed part (the replies) had
  * rendered.
+ *
+ * A stored page carries the `build` that rendered it, and a hit from another
+ * build is rendered afresh. The HTML names that build's hashed scripts and
+ * stylesheet, which a deploy removes: served after one, a cached page loaded
+ * no JavaScript at all (every script a 404) until its TTL ran out. Every
+ * local build is "dev", so a local preview can still show that for a TTL.
  */
 export async function serveWithReadCache(
   request: Request,
   fetchFresh: () => Promise<Response> | Response,
   waitUntil: (promise: Promise<unknown>) => void,
+  build: string,
 ): Promise<Response> {
   const cache = defaultCache();
   if (!cache || !isCacheableReadRequest(request)) {
@@ -124,7 +151,10 @@ export async function serveWithReadCache(
 
   const key = readCacheKey(request);
   const hit = await cache.match(key);
-  if (hit) return hit; // stored copy already carries x-goldroad-cache: HIT
+  // The stored copy already carries x-goldroad-cache: HIT.
+  if (hit?.headers.get(BUILD_HEADER) === build) return hit;
+  // A stale copy's body is never read; release it without waiting on it.
+  void hit?.body?.cancel().catch(() => {});
 
   const fresh = await fetchFresh();
   if (!isCacheableResponse(fresh)) return fresh;
@@ -136,6 +166,7 @@ export async function serveWithReadCache(
   stored.headers.set("cache-control", READ_CACHE_CONTROL);
   const served = stored.clone();
   stored.headers.set("x-goldroad-cache", "HIT");
+  stored.headers.set(BUILD_HEADER, build);
   waitUntil(cache.put(key, stored).catch(() => {}));
   served.headers.set("x-goldroad-cache", "MISS");
   return served;
