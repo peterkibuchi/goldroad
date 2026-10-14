@@ -1,0 +1,6 @@
+# Workers Static Assets response headers. Files under /assets/ carry a content
+# hash in their names, so a given URL never changes: browsers and the edge can
+# keep them for a year without asking again. Everything else in public/ keeps
+# the platform default (revalidate on every use), because its URLs are fixed.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
