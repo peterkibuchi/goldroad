@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const store = vi.hoisted(() => ({
   selectDraftsForExport: vi.fn(),
   selectFollowerSnapshotsForExport: vi.fn(),
+  selectHandleHistoryForExport: vi.fn(),
   selectImportItemsForExport: vi.fn(),
   selectScheduledPostsForExport: vi.fn(),
   countReaderEmailsForDid: vi.fn(),
@@ -74,6 +75,7 @@ beforeEach(() => {
   store.selectFollowerSnapshotsForExport.mockResolvedValue([]);
   store.selectScheduledPostsForExport.mockResolvedValue([]);
   store.countReaderEmailsForDid.mockResolvedValue([]);
+  store.selectHandleHistoryForExport.mockResolvedValue([]);
   atproto.resolveDidIdentity.mockResolvedValue({ handle: null, pds: null });
 });
 
@@ -204,6 +206,25 @@ describe("response shape", () => {
     // The manifest is the writer's plain-language index of what we hold, so it
     // has to name this too — it can't quietly list only the older categories.
     expect(body.manifest).toMatch(/follower/i);
+  });
+
+  it("includes the handles recorded for the account, and says so", async () => {
+    store.selectHandleHistoryForExport.mockResolvedValue([
+      { handle: "writer.example", seenAt: NOW },
+    ]);
+    const res = await call();
+    expect(store.selectHandleHistoryForExport).toHaveBeenCalledWith(
+      expect.anything(),
+      DID,
+    );
+    const body = (await res.json()) as {
+      handleHistory: unknown;
+      manifest: string;
+    };
+    expect(body.handleHistory).toEqual([
+      { handle: "writer.example", recordedAt: NOW.toISOString() },
+    ]);
+    expect(body.manifest).toMatch(/handles/i);
   });
 
   it("includes the scheduled posts we hold, failure reasons and all", async () => {

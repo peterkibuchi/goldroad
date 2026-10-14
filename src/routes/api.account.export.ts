@@ -41,6 +41,7 @@ import {
   countReaderEmailsForDid,
   selectDraftsForExport,
   selectFollowerSnapshotsForExport,
+  selectHandleHistoryForExport,
   selectImportItemsForExport,
   selectScheduledPostsForExport,
 } from "~/lib/rights-store";
@@ -81,6 +82,7 @@ export const Route = createFileRoute("/api/account/export")({
           followerRows,
           scheduleRows,
           readerEmailRows,
+          handleRows,
           { handle, pds },
         ] = await Promise.all([
           selectDraftsForExport(db, did),
@@ -90,6 +92,7 @@ export const Route = createFileRoute("/api/account/export")({
           // Counted, never listed — see ~/lib/rights-store for why an export
           // of your data is not a place to hand you other people's addresses.
           countReaderEmailsForDid(db, did),
+          selectHandleHistoryForExport(db, did),
           resolveDidIdentity(did),
         ]);
         const ident = handle ?? did;
@@ -133,8 +136,10 @@ export const Route = createFileRoute("/api/account/export")({
           account: { did, handle: handle ?? null },
           manifest:
             "Goldroad stores remarkably little for your account: your drafts, " +
-            "import history, scheduled posts and daily follower counts below, " +
-            "plus a record of your sign-in session. One more thing is keyed to " +
+            "import history, scheduled posts, daily follower counts and the " +
+            "handles you've published under (so links made under an old handle " +
+            "still reach you) below, plus a record of your sign-in session. " +
+            "One more thing is keyed to " +
             "your DID and is deliberately NOT reproduced here: the email " +
             "addresses readers have left with your publication (see " +
             "`readerList` for how many). Those addresses are the readers', not " +
@@ -181,6 +186,11 @@ export const Route = createFileRoute("/api/account/export")({
             lastError: row.lastError,
             publishedRkey: row.publishedRkey,
             createdAt: row.createdAt.toISOString(),
+          })),
+          // Handles you published under, kept so old links still reach you.
+          handleHistory: handleRows.map((row) => ({
+            handle: row.handle,
+            recordedAt: row.seenAt.toISOString(),
           })),
           followerHistory: followerRows.map((row) => ({
             day: row.day,

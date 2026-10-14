@@ -38,6 +38,11 @@ const drafts = vi.hoisted(() => ({
   selectDraft: vi.fn(),
   deleteDraft: vi.fn(),
 }));
+const handleHistory = vi.hoisted(() => ({
+  recordWriterHandle: vi.fn(async () => {}),
+}));
+vi.mock("~/lib/handle-history", () => handleHistory);
+
 vi.mock("~/lib/drafts", () => drafts);
 
 const schedules = vi.hoisted(() => ({
@@ -250,6 +255,15 @@ describe("POST /api/publish — intent=document, publishing a new post", () => {
     expect(documentRecord().path).toBe(`/${rkey}`);
     expect(location(res).pathname).toBe("/dashboard");
     expect(location(res).searchParams.get("published")).toBe(rkey);
+  });
+
+  it("records the handle it minted the post's URL with", async () => {
+    await publish();
+    expect(handleHistory.recordWriterHandle).toHaveBeenCalledWith(
+      expect.anything(),
+      DID,
+      "writer.example",
+    );
   });
 
   it("carries the writer's words and subtitle into the record", async () => {

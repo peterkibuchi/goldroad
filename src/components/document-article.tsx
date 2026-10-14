@@ -1,4 +1,4 @@
-import { notFound, useLocation } from "@tanstack/react-router";
+import { notFound, redirect, useLocation } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 
 import { Conversation } from "~/components/conversation";
@@ -38,6 +38,7 @@ import {
   hasVisibleEngagement,
   isWorthShowing,
 } from "~/lib/engagement";
+import { findFormerHandle, formerHandleRedirect } from "~/lib/handle-history";
 import { buildArticleJsonLd, jsonLdScriptContent } from "~/lib/json-ld";
 import { markdownToHtml, renderBodies } from "~/lib/markdown-html";
 import { checkMirror, type MirrorInfo } from "~/lib/mirror";
@@ -107,9 +108,8 @@ export async function loadDocument(identParam: string, rkey: string) {
   // rkey gets interpolated into the page's at:// link tags — reject malformed
   // keys here instead of trusting the PDS's 404.
   if (!RKEY_RE.test(rkey)) throw notFound();
+  const did = isDid(ident) ? ident : await resolveIdent(ident, `/${rkey}`);
   try {
-    const did = isDid(ident) ? ident : await resolveHandleToDid(ident);
-
     // Two D1 reads and one plc.directory fetch, all of which need only the DID
     // and none of which need each other. They used to run one after another,
     // which put a D1 round trip on the critical path twice for no reason. The
@@ -287,6 +287,22 @@ export async function loadDocument(identParam: string, rkey: string) {
   } catch (err) {
     if (err instanceof NotFoundError) throw notFound();
     throw err;
+  }
+}
+
+/**
+ * A handle to its DID for a reader route. A handle that no longer resolves
+ * may be a writer's old one, minted into links before they changed it: those
+ * redirect to the same `path` under the writer's current address.
+ */
+export async function resolveIdent(handle: string, path: string) {
+  try {
+    return await resolveHandleToDid(handle);
+  } catch (err) {
+    if (!(err instanceof NotFoundError)) throw err;
+    const target = await findFormerHandle({ data: { handle } });
+    if (target) throw redirect(formerHandleRedirect(target, path));
+    throw notFound();
   }
 }
 

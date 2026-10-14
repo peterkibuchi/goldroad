@@ -14,6 +14,14 @@ import { env } from "cloudflare:workers";
  * truthy env.DB stubbed, mirroring img-moderation.test.ts) so takedown
  * outcomes are drivable without a live D1.
  */
+const former = vi.hoisted(() => ({
+  target: null as { ident: string; permanent: boolean } | null,
+}));
+vi.mock("~/lib/handle-history", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("~/lib/handle-history")>()),
+  formerHandleTarget: vi.fn(async () => former.target),
+}));
+
 vi.mock("~/lib/moderation", async (importOriginal) => ({
   ...(await importOriginal<typeof import("~/lib/moderation")>()),
   hiddenSubjects: vi.fn(async () => new Set<string>()),
@@ -152,6 +160,7 @@ function mockFetch({
 }
 
 afterEach(() => {
+  former.target = null;
   vi.unstubAllGlobals();
   vi.mocked(hiddenSubjects).mockReset();
   vi.mocked(hiddenSubjects).mockResolvedValue(new Set());
@@ -440,6 +449,19 @@ describe("/@{$handle}/rss.xml — a refused or failing listing", () => {
     (env as any).DB = {};
     vi.mocked(hiddenSubjects).mockResolvedValue(new Set([DID]));
     expect((await call("writer.example")).status).toBe(404);
+  });
+});
+
+describe("/@{$handle}/rss.xml — an old handle", () => {
+  it("301s a feed URL from before the writer changed handle", async () => {
+    mockFetch({ resolveStatus: 400 });
+    // biome-ignore lint/suspicious/noExplicitAny: mutating the test env stub
+    (env as any).DB = {};
+    former.target = { ident: "alice.com", permanent: true };
+    const res = await call("writer.example");
+    expect(res.status).toBe(301);
+    expect(res.headers.get("location")).toBe("/@alice.com/rss.xml");
+    expect(res.headers.get("cache-control")).toBe("public, max-age=86400");
   });
 });
 
