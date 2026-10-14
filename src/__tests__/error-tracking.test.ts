@@ -7,6 +7,7 @@ import {
   captureServerException,
   DEFAULT_POSTHOG_HOST,
   parseStackFrames,
+  safeMessage,
   withExceptionCapture,
 } from "../lib/error-tracking";
 
@@ -189,12 +190,45 @@ describe("captureServerException — gating and delivery", () => {
   });
 });
 
+describe("safeMessage — nothing secret leaves the worker", () => {
+  it("drops a failed query's params line, where session tokens live", () => {
+    const leaked =
+      'Failed query: insert into "oauth_kv" ("key","value") values (?, ?)\nparams: sess:did:plc:abc123,{"access_token":"eyJhbGciOi.eyJzdWIi.c2ln","refresh_token":"' +
+      "r".repeat(40) +
+      '"}';
+    expect(safeMessage(leaked)).toBe(
+      'Failed query: insert into "oauth_kv" ("key","value") values (?, ?)',
+    );
+  });
+
+  it("redacts DIDs, JWTs and long token-like runs on the first line", () => {
+    expect(
+      safeMessage(
+        `restore failed for did:plc:wdbi6uankwl65bj54x2g5eed with eyJhbGciOi.eyJzdWIi.c2ln and ${"a".repeat(40)}`,
+      ),
+    ).toBe("restore failed for did:… with [token] and [redacted]");
+  });
+
+  it("caps the length", () => {
+    expect(safeMessage("x ".repeat(500))).toHaveLength(200);
+  });
+
+  it("is what the event carries", () => {
+    const event = buildExceptionEvent(
+      new Error("boom\nparams: secret"),
+      new Request("https://trygoldroad.com/api/publish"),
+      "phc_test",
+    );
+    expect(event.properties.$exception_list[0].value).toBe("boom");
+  });
+});
+
 describe("captureHandledFailure — degradations reach the tracker too", () => {
   it("sends the same event marked handled, so crashes stay filterable", async () => {
     const fetchFn = okFetch();
     const { ctx, scheduled } = makeCtx();
     const sent = captureHandledFailure(
-      new Error("stats section died"),
+      new Error("session restore failed"),
       REQUEST,
       { apiKey: "phc_key", fetchFn },
       ctx.waitUntil,
@@ -209,7 +243,9 @@ describe("captureHandledFailure — degradations reach the tracker too", () => {
         }[];
       };
     };
-    expect(body.properties.$exception_list[0].value).toBe("stats section died");
+    expect(body.properties.$exception_list[0].value).toBe(
+      "session restore failed",
+    );
     expect(body.properties.$exception_list[0].mechanism.handled).toBe(true);
   });
 

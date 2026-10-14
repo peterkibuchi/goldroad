@@ -4,16 +4,10 @@
  * is a browser SDK; a server SDK is overkill for a single capture call). The
  * send rides `waitUntil`, so reporting never delays or blocks the response.
  *
- * TWO KINDS OF FAILURE, one channel. `withExceptionCapture` reports the
- * UNHANDLED ones at the top of the fetch chain and RETHROWS — the platform's
- * error handling (the 500 the visitor sees, the log line) is exactly what it
- * was before this existed. But this codebase is deliberately built so that
- * almost nothing escapes: a failing upstream degrades to an `unavailable`
- * section or a redirect, never a blank page. Those handled degradations are
- * the failures worth watching, and until they could be reported the tracker
- * saw a healthy service no matter what broke. `captureHandledFailure` reports
- * them with `mechanism.handled: true`, which is what keeps them filterable
- * from real crashes rather than drowning them.
+ * `withExceptionCapture` reports UNHANDLED exceptions at the top of the fetch
+ * chain and rethrows, so the platform's own handling is unchanged.
+ * `captureHandledFailure` reports a failure the code caught and degraded from,
+ * marked `mechanism.handled: true` so it stays filterable from real crashes.
  *
  * Gated on the same key as client analytics (VITE_PUBLIC_POSTHOG_KEY): no
  * key, no capture. Events carry `app_env` (hostname-derived, same convention
@@ -21,12 +15,27 @@
  *
  * Privacy: no user identity — a fixed distinct_id groups all worker
  * exceptions, and only the request path + method are attached (no headers,
- * no cookies, no bodies).
+ * no cookies, no bodies). Messages go through `safeMessage` first: a failed
+ * query's message carries its bound params, which for the OAuth session store
+ * are a writer's tokens and DPoP key.
  */
 import { appEnvForHostname } from "~/lib/posthog";
 import { waitUntil } from "cloudflare:workers";
 
 export const DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com";
+
+const MAX_MESSAGE_CHARS = 200;
+
+/** First line only (drizzle puts `params:` on the next one), with DIDs,
+ * JWTs and long token-like runs redacted, then capped. */
+export function safeMessage(message: string): string {
+  const firstLine = message.split("\n", 1)[0] ?? "";
+  return firstLine
+    .replace(/did:[a-z]+:[A-Za-z0-9._:%-]+/g, "did:…")
+    .replace(/eyJ[\w-]+\.[\w-]+(\.[\w-]+)?/g, "[token]")
+    .replace(/[A-Za-z0-9_\-+/=]{32,}/g, "[redacted]")
+    .slice(0, MAX_MESSAGE_CHARS);
+}
 
 /** Stacks are bounded so a pathological error can't bloat the event. */
 const MAX_STACK_CHARS = 4000;
@@ -106,7 +115,7 @@ export function buildExceptionEvent(
       $exception_list: [
         {
           type: err?.name ?? "Error",
-          value: err ? err.message : String(error),
+          value: safeMessage(err ? err.message : String(error)),
           mechanism: { handled: mechanism.handled === true, synthetic: false },
           ...(frames.length > 0
             ? { stacktrace: { type: "raw" as const, frames } }
@@ -156,8 +165,7 @@ export function captureServerException(
 }
 
 /**
- * The build-time PostHog vars, read the same way the CSP and server.ts read
- * them. Exported so the degradation sites don't each re-plumb the pair.
+ * The build-time PostHog vars, shared by server.ts and captureHandledFailure.
  */
 export const BUILD_TIME_CAPTURE_CONFIG: ExceptionCaptureConfig = {
   apiKey: import.meta.env.VITE_PUBLIC_POSTHOG_KEY || undefined,
@@ -174,7 +182,7 @@ export const BUILD_TIME_CAPTURE_CONFIG: ExceptionCaptureConfig = {
  * decision. Reserved for failures a maintainer would want a date on.
  *
  * `waitUntil` comes from `cloudflare:workers` rather than a handler's
- * ExecutionContext: these sites sit deep inside route handlers where no ctx is
+ * ExecutionContext: callers sit deep inside route handlers where no ctx is
  * in scope, and the send has to outlive the response it degraded. Injectable
  * for tests, like every other seam in this module.
  */
