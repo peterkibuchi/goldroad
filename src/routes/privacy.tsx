@@ -36,7 +36,7 @@ export function PrivacyPage() {
     <LegalLayout
       kicker="Goldroad · Privacy"
       title="Privacy policy"
-      updated="30 July 2026"
+      updated="15 October 2026"
       draft
     >
       <LegalSection heading="The short version">
