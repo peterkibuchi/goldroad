@@ -3,8 +3,12 @@
  *
  * Without the sitekey the component renders nothing and loads nothing — the
  * forms that embed it behave byte-for-byte as before. With it, the Turnstile
- * script is loaded lazily (explicit-render mode, one script tag per page) and
- * the widget drops a hidden `turnstileToken` input into the surrounding form,
+ * script loads only once its form is about to be used: when the form comes
+ * within a screen of the viewport, or something in it takes focus, whichever
+ * is first. Until then the page pays nothing for it, and most visitors to a
+ * page with a form never use the form. The script runs in explicit-render
+ * mode, one tag per page, and the widget drops a hidden `turnstileToken` input
+ * into the surrounding form,
  * so the existing FormData-driven submit handlers pick the token up without
  * new state plumbing. Server side, /api/waitlist and /api/report verify that
  * token when TURNSTILE_SECRET is set (see ~/lib/turnstile).
@@ -94,18 +98,43 @@ export function TurnstileWidget() {
     if (!sitekey || !container) return;
     let widgetId: string | undefined;
     let cancelled = false;
-    void loadTurnstile().then((turnstile) => {
-      if (!turnstile || cancelled) return;
-      widgetId = turnstile.render(container, {
-        sitekey,
-        // Name the auto-injected hidden input after our own field so the
-        // submit handlers read it straight out of FormData.
-        "response-field-name": TURNSTILE_TOKEN_FIELD,
+    let started = false;
+    let observer: IntersectionObserver | null = null;
+    const form = container.closest("form") ?? container;
+    const start = () => {
+      if (started) return;
+      started = true;
+      observer?.disconnect();
+      form.removeEventListener("focusin", start);
+      void loadTurnstile().then((turnstile) => {
+        if (!turnstile || cancelled) return;
+        widgetId = turnstile.render(container, {
+          sitekey,
+          // Name the auto-injected hidden input after our own field so the
+          // submit handlers read it straight out of FormData.
+          "response-field-name": TURNSTILE_TOKEN_FIELD,
+        });
+        if (widgetId !== undefined) activeWidgets.add(widgetId);
       });
-      if (widgetId !== undefined) activeWidgets.add(widgetId);
-    });
+    };
+    // A screen's height of margin: the challenge takes a moment to solve, so
+    // it starts while the reader is still scrolling towards the form.
+    if (typeof IntersectionObserver !== "undefined") {
+      observer = new IntersectionObserver(
+        (entries) => {
+          if (entries.some((entry) => entry.isIntersecting)) start();
+        },
+        { rootMargin: "100% 0px" },
+      );
+      observer.observe(form);
+    }
+    // Focus covers what the observer can't: a form reached by keyboard, and
+    // a browser without IntersectionObserver.
+    form.addEventListener("focusin", start);
     return () => {
       cancelled = true;
+      observer?.disconnect();
+      form.removeEventListener("focusin", start);
       if (widgetId !== undefined) {
         activeWidgets.delete(widgetId);
         window.turnstile?.remove(widgetId);
