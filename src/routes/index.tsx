@@ -384,9 +384,13 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
                   Write the long one here. It goes up on a page you own, and out
                   to the timelines of everyone who follows you.
                 </p>
+                {/* The product is open to anyone with a Bluesky account, so the
+                    way in leads and the list is the path for the undecided.
+                    /home sends a signed-out visitor to the sign-in form and a
+                    signed-in one straight to their publication. */}
                 <div className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3">
-                  <CtaLink href="#join">Join the founding writers</CtaLink>
-                  <QuietLink href="#how">See how it works</QuietLink>
+                  <CtaLink href="/home">Sign in with Bluesky</CtaLink>
+                  <QuietLink href="#join">Join the founding writers</QuietLink>
                 </div>
                 <p className="mt-8 max-w-[52ch] border-rule border-t pt-4 font-display text-ink-soft text-sm leading-normal">
                   Free while we build · your followers stay yours · publishing
@@ -510,8 +514,8 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
                   is the one they caught us shading. Generic "your payment
                   processor" here, because bring-your-own-processor means
                   whichever one serves the writer's country; /leaving-substack
-                  names Stripe, because that reader already holds a Stripe
-                  account. Enforced by marketing-claims.test.ts, which exists
+                  names Stripe, because that is the fee on a Substack
+                  statement. Enforced by marketing-claims.test.ts, which exists
                   because this is the sentence a future edit would trim. */}
               <dd className="mt-2 text-ink-soft text-sm leading-relaxed">
                 When reader payments ship, readers will pay you directly and

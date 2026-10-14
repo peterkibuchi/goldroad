@@ -79,11 +79,28 @@ describe("SiteHeader", () => {
     ).toContain("/write");
   });
 
+  it("marketing: links writers leaving Substack to their page", () => {
+    render(<SiteHeader variant="marketing" />);
+    const link = screen.getByRole("link", { name: "Leaving Substack?" });
+    expect(link.getAttribute("href")).toBe("/leaving-substack");
+    expect(link.getAttribute("aria-current")).toBeNull();
+    expect(link.className).toContain("min-h-11");
+    expect(link.className).not.toMatch(/bg-spot|text-spot/);
+  });
+
+  it("marketing: marks the Substack link current on its own page", () => {
+    render(<SiteHeader current="/leaving-substack" variant="marketing" />);
+    expect(
+      screen
+        .getByRole("link", { name: "Leaving Substack?" })
+        .getAttribute("aria-current"),
+    ).toBe("page");
+  });
+
   it("marketing: keeps the sign-in quiet, not the page's accent", () => {
     render(<SiteHeader variant="marketing" />);
-    // The landing page spends its one accent on the founding-writers form.
-    // Someone who already has an account does not need to be sold to; they
-    // need to find the door.
+    // The page's own primary action carries the accent; a returning writer
+    // only needs to find the door.
     const signIn = screen.getByRole("link", { name: /sign in/i });
     expect(signIn.className).not.toMatch(/bg-spot|text-spot/);
   });
