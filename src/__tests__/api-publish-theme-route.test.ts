@@ -15,6 +15,11 @@ const atproto = vi.hoisted(() => ({
   resolveDidIdentity: vi.fn(),
   listRecords: vi.fn(),
 }));
+const handleHistory = vi.hoisted(() => ({
+  recordWriterHandle: vi.fn(async () => {}),
+}));
+vi.mock("~/lib/handle-history", () => handleHistory);
+
 vi.mock("~/lib/atproto", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/atproto")>()),
   ...atproto,

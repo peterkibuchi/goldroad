@@ -30,6 +30,7 @@ import { hasForeignContent } from "~/lib/document-content";
 import { deleteDraft, selectDraft } from "~/lib/drafts";
 import { isDraftId } from "~/lib/drafts-schema";
 import { captureHandledFailure } from "~/lib/error-tracking";
+import { recordWriterHandle } from "~/lib/handle-history";
 import {
   clampOriginalDate,
   IMAGE_SUBREQUEST_BUDGET,
@@ -176,6 +177,15 @@ function isInsufficientScope(res: { ok: boolean; status: number }): boolean {
   return !res.ok && (res.status === 401 || res.status === 403);
 }
 
+/** Intents that mint a URL from the writer's handle into a record. */
+const MINTS_URLS = new Set([
+  "document",
+  "publish-now",
+  "publication",
+  "migrate",
+  "announce",
+]);
+
 /**
  * The single write path to the user's PDS. ALL record writes (documents,
  * publications, and a reader's own subscriptions, discriminated by the `intent`
@@ -319,27 +329,38 @@ export const Route = createFileRoute("/api/publish")({
           origin: canonicalOrigin(url.origin),
           origins: ownOrigins(url.origin),
         };
-        switch (intent) {
-          case "publication":
-            return savePublication(ctx);
-          case "theme":
-            return saveTheme(ctx);
-          case "delete":
-            return deleteDocument(ctx);
-          case "announce":
-            return announceFromDashboard(ctx);
-          case "migrate":
-            return migratePublication(ctx);
-          case "uploadImage":
-            return uploadInlineImage(ctx);
-          case "subscribe":
-            return subscribeToPublication(ctx);
-          case "unsubscribe":
-            return unsubscribeFromPublication(ctx);
-          case "publish-now":
-            return publishNow(ctx);
-          default:
-            return publishDocument(ctx);
+        try {
+          switch (intent) {
+            case "publication":
+              return await savePublication(ctx);
+            case "theme":
+              return await saveTheme(ctx);
+            case "delete":
+              return await deleteDocument(ctx);
+            case "announce":
+              return await announceFromDashboard(ctx);
+            case "migrate":
+              return await migratePublication(ctx);
+            case "uploadImage":
+              return await uploadInlineImage(ctx);
+            case "subscribe":
+              return await subscribeToPublication(ctx);
+            case "unsubscribe":
+              return await unsubscribeFromPublication(ctx);
+            case "publish-now":
+              return await publishNow(ctx);
+            default:
+              return await publishDocument(ctx);
+          }
+        } finally {
+          // Intents that mint URLs from the handle record it, so those URLs
+          // survive a handle change. After the write, so it never competes
+          // with it; failures are logged, never surfaced.
+          if (MINTS_URLS.has(intent) && env.DB)
+            await recordWriterHandle(drizzle(env.DB), did, handle).catch(
+              (err: unknown) =>
+                console.warn("handle history write failed", err),
+            );
         }
       },
     },

@@ -22,6 +22,11 @@ const store = vi.hoisted(() => ({
   selectDraft: vi.fn(),
   deleteDraft: vi.fn(),
 }));
+const handleHistory = vi.hoisted(() => ({
+  recordWriterHandle: vi.fn(async () => {}),
+}));
+vi.mock("~/lib/handle-history", () => handleHistory);
+
 vi.mock("~/lib/drafts", () => store);
 
 const schedules = vi.hoisted(() => ({

@@ -466,3 +466,21 @@ export const reports = sqliteTable(
       .where(sql`${table.notifiedAt} is null`),
   ],
 );
+
+/**
+ * Handles our writers have published under, so a link minted with an old
+ * handle can redirect to the writer's current one. Keyed by handle: a handle
+ * names one account at a time, and the latest DID recorded with it wins.
+ * `seen_at` is when that pairing was recorded. Only handles that resolved
+ * back to the DID are recorded (see ~/lib/handle-history). Exported and
+ * deleted with the account (~/lib/rights-store).
+ */
+export const handleHistory = sqliteTable(
+  "handle_history",
+  {
+    handle: text("handle").primaryKey(),
+    did: text("did").notNull(),
+    seenAt: integer("seen_at", { mode: "timestamp" }).notNull(),
+  },
+  (table) => [index("handle_history_did_idx").on(table.did)],
+);

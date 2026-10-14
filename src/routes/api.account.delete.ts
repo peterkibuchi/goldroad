@@ -36,6 +36,7 @@ import { isCrossSite } from "~/lib/origin";
 import {
   deleteDraftsForDid,
   deleteFollowerSnapshotsForDid,
+  deleteHandleHistoryForDid,
   deleteImportFetchesForDid,
   deleteImportItemsForDid,
   deleteOAuthSessionForDid,
@@ -87,6 +88,7 @@ export const Route = createFileRoute("/api/account/delete")({
           deleteFollowerSnapshotsForDid(db, did),
           deleteScheduledPostsForDid(db, did),
           deleteReaderEmailsForDid(db, did),
+          deleteHandleHistoryForDid(db, did),
         ]);
 
         // Upstream token revocation is best-effort (same posture as
