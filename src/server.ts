@@ -46,6 +46,7 @@ const entry = createServerEntry({
       request,
       () => handler.fetch(request, opts),
       waitUntil,
+      __BUILD_SHA__,
     );
     // Security-header baseline on HTML documents. Applied after the
     // cache so policy changes take effect on already-cached pages immediately.

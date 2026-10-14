@@ -53,14 +53,22 @@ describe("isCacheableReadRequest", () => {
     expect(isCacheableReadRequest(req("/@awarm.space/rss.xml"))).toBe(true);
   });
 
-  it("never caches the marketing, app, api, or img paths", () => {
+  it("caches the marketing pages, but only without a query string", () => {
+    for (const path of ["/", "/leaving-substack", "/open", "/privacy"]) {
+      expect(isCacheableReadRequest(req(path)), path).toBe(true);
+    }
+    // `/` renders ?notice= on the server, and the cache key drops the query.
+    expect(isCacheableReadRequest(req("/?notice=goodbye"))).toBe(false);
+    expect(isCacheableReadRequest(req("/open?utm_source=x"))).toBe(false);
+  });
+
+  it("never caches the app, api, or img paths", () => {
     for (const path of [
-      "/",
       "/write",
       "/dashboard",
       "/settings",
-      "/privacy",
-      "/policies",
+      "/home",
+      "/report",
       "/api/waitlist",
       "/img/did:plc:x/bafy",
       "/login",
@@ -125,15 +133,22 @@ describe("readCacheKey — normalization", () => {
   });
 });
 
-/** serveWithReadCache with the background store finished before it returns,
- * as it is by the time a real second request arrives. */
+const BUILD = "build-a";
+
+/** serveWithReadCache as one build of the app, with the background store
+ * finished before it returns, as it is by the time a real second request
+ * arrives. */
 async function serve(
   request: Request,
   fetchFresh: () => Promise<Response> | Response,
+  build = BUILD,
 ): Promise<Response> {
   const pending: Promise<unknown>[] = [];
-  const res = await serveWithReadCache(request, fetchFresh, (p) =>
-    pending.push(p),
+  const res = await serveWithReadCache(
+    request,
+    fetchFresh,
+    (p) => pending.push(p),
+    build,
   );
   await Promise.all(pending);
   return res;
@@ -210,6 +225,7 @@ describe("serveWithReadCache — HIT/MISS flow", () => {
         req("/@awarm.space"),
         () => htmlResponse(body),
         (p) => pending.push(p),
+        BUILD,
       ),
       new Promise<"held">((resolve) => setTimeout(resolve, 1_000, "held")),
     ]);
@@ -224,6 +240,18 @@ describe("serveWithReadCache — HIT/MISS flow", () => {
     await Promise.all(pending);
     const stored = cache.store.get("https://trygoldroad.com/@awarm.space");
     expect(await stored?.text()).toContain("<p>replies</p>");
+  });
+
+  it("renders afresh a page a previous build stored", async () => {
+    mockCache();
+    const fetchFresh = vi.fn(async () => htmlResponse());
+    await serve(req("/@awarm.space"), fetchFresh, "build-a");
+    // That page names build-a's hashed scripts, which a deploy removed.
+    const after = await serve(req("/@awarm.space"), fetchFresh, "build-b");
+    expect(after.headers.get("x-goldroad-cache")).toBe("MISS");
+    const again = await serve(req("/@awarm.space"), fetchFresh, "build-b");
+    expect(again.headers.get("x-goldroad-cache")).toBe("HIT");
+    expect(fetchFresh).toHaveBeenCalledTimes(2);
   });
 
   it("never caches a 404 or an upstream flake", async () => {
