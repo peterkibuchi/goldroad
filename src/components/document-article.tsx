@@ -119,9 +119,10 @@ export async function loadDocument(identParam: string, rkey: string) {
     const hiddenPromise = checkHidden({
       data: { did, atUri: recordAtUri(did, "site.standard.document", rkey) },
     });
-    // Mirror lookup (import ledger): a hit swaps the canonical tag for
-    // noindex and adds the "Originally published at …" line below. Null =
-    // native post, adopted mirror, or a flaked read (fail open). The `.catch`
+    // Provenance lookup (import ledger): a feed mirror swaps the canonical
+    // tag for noindex, a thread import keeps it, and both get a provenance
+    // line (~/lib/mirror). Null = native post, adopted mirror, or a flaked
+    // read (fail open). The `.catch`
     // is new with the concurrency: this promise can now outlive an early
     // throw below, and a floating rejection is an unhandled one.
     const mirrorPromise = checkMirror({ data: { did, rkey } }).catch(

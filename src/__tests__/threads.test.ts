@@ -516,6 +516,20 @@ describe("escapeMarkdownText — plain text stays plain", () => {
     expect(escapeMarkdownText("> not a quote")).toBe("\\> not a quote");
     expect(escapeMarkdownText("- not a list")).toBe("\\- not a list");
     expect(escapeMarkdownText("1. not a list")).toBe("1\\. not a list");
+    expect(escapeMarkdownText("1) not a list")).toBe("1\\) not a list");
+  });
+
+  it("still escapes a marker behind leading space, which is trimmed later", () => {
+    expect(escapeMarkdownText(" # not a heading")).toBe(" \\# not a heading");
+    expect(escapeMarkdownText("\u00a0- not a list")).toBe(
+      "\u00a0\\- not a list",
+    );
+  });
+
+  it("keeps tildes and entities literal", () => {
+    // `~~~` would open a code fence that swallows the rest of the thread.
+    expect(escapeMarkdownText("~~~")).toBe("\\~\\~\\~");
+    expect(escapeMarkdownText("&copy;")).toBe("\\&copy;");
   });
 });
 
@@ -556,6 +570,22 @@ describe("embeds", () => {
     );
     expect(blocks).toEqual([
       "![friendship ended with btrfs](https://cdn.bsky.app/img/feed_fullsize/plain/x/y@jpeg)",
+    ]);
+  });
+
+  it("keeps a multi-paragraph alt on one line, so the image survives", () => {
+    const { blocks } = embedMarkdown(
+      withEmbed({
+        images: [
+          {
+            fullsize: "https://cdn.bsky.app/img/x.jpg",
+            alt: "line one\n\nline two",
+          },
+        ],
+      }),
+    );
+    expect(blocks).toEqual([
+      "![line one line two](https://cdn.bsky.app/img/x.jpg)",
     ]);
   });
 
@@ -776,6 +806,34 @@ describe("assembleThread", () => {
         { thread: node(postView({ did: THEM, rkey: "3p1", text: "theirs" })) },
         { rootUri: uri(THEM, "3p1"), author: ME },
       ),
+    ).toBeNull();
+  });
+
+  it("refuses a post that is itself a reply, so only a thread's head imports", () => {
+    // The middle of a chain: second → third, where "second" replies to the
+    // real head. Assembled from here, it would be a second copy of the thread.
+    const middle = {
+      thread: node(
+        postView({
+          rkey: "3n2",
+          text: "second",
+          parent: uri(ME, "3n1"),
+          createdAt: "2026-02-04T10:02:00.000Z",
+        }),
+        [
+          node(
+            postView({
+              rkey: "3n3",
+              text: "third",
+              parent: uri(ME, "3n2"),
+              createdAt: "2026-02-04T10:03:00.000Z",
+            }),
+          ),
+        ],
+      ),
+    };
+    expect(
+      assembleThread(middle, { rootUri: uri(ME, "3n2"), author: ME }),
     ).toBeNull();
   });
 
@@ -1012,6 +1070,8 @@ describe("the AppView reads", () => {
     );
     expect(partial?.unavailable).toBe(false);
     expect(partial?.threads).toHaveLength(1);
+    // A failed later page means the list isn't complete.
+    expect(partial?.truncated).toBe(true);
   });
 
   it("refuses an oversized body rather than parsing it", async () => {

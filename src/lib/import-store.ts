@@ -21,7 +21,7 @@ type DrizzleD1 = ReturnType<typeof drizzle>;
 export type ImportSourceKind = "feed" | "thread";
 
 /** Ledger rows for a set of item hashes — the picker's "already imported"
- * flags. `guidHashes` is capped upstream (items per run ≤ 20). */
+ * flags. `guidHashes` is capped upstream (≤ 50 per call). */
 export function selectImportItems(
   db: DrizzleD1,
   did: string,

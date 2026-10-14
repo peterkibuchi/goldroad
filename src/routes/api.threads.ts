@@ -113,7 +113,8 @@ export const Route = createFileRoute("/api/threads")({
           discovered = await discoverAuthorThreads(did);
           if (!discovered || discovered.unavailable)
             return privateJson({ ok: false, error: "appview_failed" }, 502);
-          if (cache) {
+          // A partial walk isn't cached: the next view should try again.
+          if (cache && !discovered.truncated) {
             const body = new Response(JSON.stringify(discovered), {
               headers: {
                 "content-type": "application/json",

@@ -88,7 +88,6 @@ import {
   type DocumentEngagement,
   getPostsEngagement,
 } from "~/lib/engagement";
-import { MAX_REHOSTED_IMAGES } from "~/lib/import";
 import { readLiveSessionDid } from "~/lib/live-session";
 import { LEGACY_ORIGINS, ownOrigins } from "~/lib/origin";
 import { capture } from "~/lib/posthog";
@@ -292,7 +291,9 @@ export const Route = createFileRoute("/dashboard")({
     // it is parsed and bounded rather than trusted — it renders into a
     // sentence, and a NaN or a negative there is a nonsense the writer reads.
     const kept = Number(search.imagesKept);
-    if (Number.isInteger(kept) && kept > 0 && kept <= MAX_REHOSTED_IMAGES)
+    // Not bounded by MAX_REHOSTED_IMAGES: past that cap, every extra image
+    // stays on the source, so a big thread reports more than the cap.
+    if (Number.isInteger(kept) && kept > 0 && kept < 10_000)
       out.imagesKept = kept;
     if (search.deleted === "1" || search.deleted === 1) out.deleted = true;
     if (search.moved === "1" || search.moved === 1) out.moved = true;
