@@ -12,10 +12,12 @@ import {
   NotFoundError,
   parseAtUri,
   ResponseTooLargeError,
+  refreshReaderPds,
   resolveDidIdentity,
   resolveDidToHandle,
   resolveDidToPds,
   resolveHandleToDid,
+  resolveReaderPds,
   rkeyFromUri,
 } from "../lib/atproto";
 
@@ -489,7 +491,7 @@ describe("reader identity cache", () => {
     );
     for (const handle of ["writer.example", "Writer.Example"]) {
       await expect(resolveHandleToDid(handle)).resolves.toBe(did);
-      await expect(resolveDidToPds(did)).resolves.toBe("https://pds.example");
+      await expect(resolveReaderPds(did)).resolves.toBe("https://pds.example");
     }
     // Two serial round trips on the first page; none on the second, and a
     // differently-cased handle is the same handle.
@@ -502,12 +504,45 @@ describe("reader identity cache", () => {
     const fetchMock = mockFetch(() =>
       up ? Response.json(document) : new Response("", { status: 503 }),
     );
-    await expect(resolveDidToPds(did)).rejects.toBeInstanceOf(NotFoundError);
+    await expect(resolveReaderPds(did)).rejects.toBeInstanceOf(NotFoundError);
     up = true;
     // The outage wasn't remembered, and the answer that followed it was.
     for (let i = 0; i < 2; i++)
-      await expect(resolveDidToPds(did)).resolves.toBe("https://pds.example");
+      await expect(resolveReaderPds(did)).resolves.toBe("https://pds.example");
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the signed-in resolver uncached", async () => {
+    mockCache();
+    const fetchMock = mockFetch(() => Response.json(document));
+    await resolveReaderPds(did);
+    await resolveDidToPds(did);
+    await resolveDidToPds(did);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("swaps in the new PDS when the cached one refused a writer who moved", async () => {
+    mockCache();
+    let endpoint = "https://pds.example";
+    const fetchMock = mockFetch(() =>
+      Response.json({
+        service: [{ ...document.service[0], serviceEndpoint: endpoint }],
+      }),
+    );
+    await expect(resolveReaderPds(did)).resolves.toBe("https://pds.example");
+    // Unchanged: nothing to retry, the refusal stands.
+    await expect(
+      refreshReaderPds(did, "https://pds.example"),
+    ).resolves.toBeNull();
+    endpoint = "https://new-pds.example";
+    await expect(refreshReaderPds(did, "https://pds.example")).resolves.toBe(
+      "https://new-pds.example",
+    );
+    await expect(resolveReaderPds(did)).resolves.toBe(
+      "https://new-pds.example",
+    );
+    // Two refreshes; the reads on either side of them came from the cache.
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("re-checks a cached PDS with the SSRF guard", async () => {
@@ -519,7 +554,7 @@ describe("reader identity cache", () => {
     const fetchMock = mockFetch(() => Response.json(document));
     // Refused and resolved afresh, and the fresh answer replaces it.
     for (let i = 0; i < 2; i++)
-      await expect(resolveDidToPds(did)).resolves.toBe("https://pds.example");
+      await expect(resolveReaderPds(did)).resolves.toBe("https://pds.example");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

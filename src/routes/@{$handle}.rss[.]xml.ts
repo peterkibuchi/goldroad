@@ -7,8 +7,9 @@ import {
   listRecords,
   listRecordsPage,
   NotFoundError,
-  resolveDidToPds,
+  refreshReaderPds,
   resolveHandleToDid,
+  resolveReaderPds,
   rkeyFromUri,
   type StandardDocument,
   type StandardPublication,
@@ -88,7 +89,8 @@ export const Route = createFileRoute("/@{$handle}/rss.xml")({
         if (!isHandle(ident) && !isDid(ident)) return NOT_FOUND();
         try {
           const did = isDid(ident) ? ident : await resolveHandleToDid(ident);
-          const pds = await resolveDidToPds(did);
+          const pds = await resolveReaderPds(did);
+          let refused = false;
           const [pubs, docsPage] = await Promise.all([
             // Oldest publication = the author's original one (page parity).
             listRecords<StandardPublication>(
@@ -104,14 +106,14 @@ export const Route = createFileRoute("/@{$handle}/rss.xml")({
               did,
               "site.standard.document",
               { limit: FEED_ITEMS },
-            ).catch((err: unknown) =>
+            ).catch((err: unknown) => {
               // A refused listing is an empty feed; a failed one (too large,
               // unreachable) is a 503, so readers keep the items they have
               // and retry, instead of being told every post is gone.
-              err instanceof NotFoundError
-                ? { records: [], cursor: null }
-                : null,
-            ),
+              if (!(err instanceof NotFoundError)) return null;
+              refused = true;
+              return { records: [], cursor: null };
+            }),
           ]);
           const publication = pubs?.[0]?.value ?? null;
           // Documents may reference ANY of the author's publications (site =
@@ -156,6 +158,11 @@ export const Route = createFileRoute("/@{$handle}/rss.xml")({
               ]).catch(() => new Set<string>())
             : new Set<string>();
           if (hidden.has(did)) return NOT_FOUND();
+          // A refusal from the cached PDS can mean the writer has since moved:
+          // a 503 keeps readers' items and isn't cached, and the next fetch
+          // reads the new PDS (see refreshReaderPds).
+          if (refused && (await refreshReaderPds(did, pds)))
+            return UNAVAILABLE();
           if (docsPage === null) return UNAVAILABLE();
 
           const visible = entries

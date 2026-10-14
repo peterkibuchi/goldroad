@@ -5,7 +5,7 @@ const DID = "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa";
 
 vi.mock("~/lib/atproto", async (importOriginal) => ({
   ...(await importOriginal<typeof import("~/lib/atproto")>()),
-  resolveDidToPds: vi.fn(async () => "https://pds.example"),
+  resolveReaderPds: vi.fn(async () => "https://pds.example"),
   listRecordsPage: vi.fn(async () => ({ records: [], cursor: null })),
   listRecords: vi.fn(async () => []),
   getRecordEntry: vi.fn(async () => ({

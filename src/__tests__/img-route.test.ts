@@ -164,6 +164,33 @@ describe("/img/$did/$cid — every rejection is a plain 404", () => {
     expect((await call(DID, CID)).status).toBe(404);
   });
 
+  it("asks the new PDS once when the cached one refuses a writer who moved", async () => {
+    const NEW_PDS = "https://new-pds.example";
+    let didDocFetches = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: URL | RequestInfo) => {
+        const url = String(input);
+        if (url.startsWith("https://plc.directory/")) {
+          didDocFetches++;
+          const endpoint = didDocFetches > 1 ? NEW_PDS : PDS;
+          return Response.json({
+            service: [{ ...didDoc.service[0], serviceEndpoint: endpoint }],
+          });
+        }
+        if (url.startsWith(`${NEW_PDS}/xrpc/com.atproto.sync.getBlob`))
+          return new Response(BYTES, {
+            headers: { "content-type": "image/jpeg" },
+          });
+        return new Response("RepoDeactivated", { status: 400 });
+      }),
+    );
+    mockCache();
+    const res = await call(DID, CID);
+    expect(res.status).toBe(200);
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(BYTES);
+  });
+
   it("404s upstream getBlob failures without caching them", async () => {
     mockFetch(() => new Response("BlobNotFound", { status: 400 }));
     const cache = mockCache();

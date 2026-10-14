@@ -1,7 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { drizzle } from "drizzle-orm/d1";
 
-import { assertPublicHttpsUrl, isDid, resolveDidToPds } from "~/lib/atproto";
+import {
+  assertPublicHttpsUrl,
+  isDid,
+  refreshReaderPds,
+  resolveReaderPds,
+} from "~/lib/atproto";
 import {
   isAllowedImageMime,
   isBlobCid,
@@ -87,22 +92,32 @@ export const Route = createFileRoute("/img/$did/$cid")({
         const cached = await cache?.match(cacheUrl);
         if (cached) return cached;
 
-        let blobUrl: URL;
-        try {
-          const pds = await resolveDidToPds(did);
-          const query = new URLSearchParams({ cid, did });
-          // Defense in depth: the PDS origin came from a DID document.
-          blobUrl = assertPublicHttpsUrl(
-            `${pds}/xrpc/com.atproto.sync.getBlob?${query}`,
+        // Defense in depth: the PDS origin came from a DID document. Never
+        // follow redirects — a public PDS host could bounce internal.
+        const getBlob = async (pds: string) =>
+          fetch(
+            assertPublicHttpsUrl(
+              `${pds}/xrpc/com.atproto.sync.getBlob?${new URLSearchParams({ cid, did })}`,
+            ),
+            { redirect: "manual" },
           );
+
+        let pds: string;
+        try {
+          pds = await resolveReaderPds(did);
         } catch {
           return NOT_FOUND();
         }
-
-        // Never follow redirects — a public PDS host could bounce internal.
-        const upstream = await fetch(blobUrl, { redirect: "manual" }).catch(
-          () => null,
-        );
+        let upstream = await getBlob(pds).catch(() => null);
+        // A refusal from the cached PDS can mean the writer has since moved;
+        // ask the new one once (see refreshReaderPds).
+        if (upstream && upstream.status >= 400 && upstream.status < 500) {
+          const moved = await refreshReaderPds(did, pds);
+          if (moved) {
+            await upstream.body?.cancel().catch(() => {});
+            upstream = await getBlob(moved).catch(() => null);
+          }
+        }
         if (!upstream?.ok) {
           await upstream?.body?.cancel().catch(() => {});
           return NOT_FOUND();
