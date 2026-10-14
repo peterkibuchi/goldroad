@@ -19,6 +19,7 @@ import {
   selectWriterSchedule,
   upsertSchedule,
 } from "../lib/scheduled-posts";
+import { sqliteD1 } from "./support/sqlite-d1";
 
 /**
  * The SQL, pinned via .toSQL() without a live D1 — the same way the rest of
@@ -194,9 +195,10 @@ describe("the writer-facing queries are bound to the writer", () => {
     expect(params).toContain(DRAFT_ID);
     // The conflict target is the PARTIAL index — target columns AND the
     // index's own WHERE, so a finished row for the same draft cannot block a
-    // fresh schedule (SQLite matches a partial index only when both agree).
+    // fresh schedule (SQLite matches a partial index only when both agree,
+    // and a bound parameter never agrees with the index's literal).
     expect(sql).toContain(
-      'on conflict ("scheduled_posts"."did", "scheduled_posts"."draft_id") where "scheduled_posts"."status" = ?',
+      `on conflict ("scheduled_posts"."did", "scheduled_posts"."draft_id") where "scheduled_posts"."status" = 'pending'`,
     );
     // A new time gets a full budget of attempts, not the spent one, and no
     // inherited lease or stale error message.
@@ -261,5 +263,66 @@ describe("the terminal writes", () => {
     expect(sql.toLowerCase()).toContain('delete from "scheduled_posts"');
     expect(params).toContain("published");
     expect(sql).toContain('"updated_at" < ?');
+  });
+});
+
+/** Against real SQLite with every migration applied: the partial unique
+ * index only accepts an upsert whose conflict target matches it exactly,
+ * which no `.toSQL()` assertion can see. */
+describe("upsertSchedule against SQLite", () => {
+  it("schedules a draft, then moves the same row when it's rescheduled", async () => {
+    const d1 = sqliteD1();
+    const realDb = drizzle(d1);
+    const later = new Date(NOW.getTime() + 60 * 60 * 1000);
+
+    expect(
+      await upsertSchedule(realDb, {
+        id: ROW_ID,
+        did: DID,
+        draftId: DRAFT_ID,
+        dueAt: NOW,
+      }),
+    ).toEqual([{ id: ROW_ID, dueAt: NOW }]);
+    // A second schedule of the same draft moves the pending row, not a new one.
+    expect(
+      await upsertSchedule(realDb, {
+        id: "another-id",
+        did: DID,
+        draftId: DRAFT_ID,
+        dueAt: later,
+      }),
+    ).toEqual([{ id: ROW_ID, dueAt: later }]);
+    expect(
+      d1.sqlite.prepare("select count(*) as n from scheduled_posts").get(),
+    ).toEqual({ n: 1 });
+  });
+
+  it("lets a draft whose schedule failed be scheduled again", async () => {
+    const d1 = sqliteD1();
+    const realDb = drizzle(d1);
+    await upsertSchedule(realDb, {
+      id: ROW_ID,
+      did: DID,
+      draftId: DRAFT_ID,
+      dueAt: NOW,
+    });
+    await markFailed(realDb, ROW_ID, "refused", NOW);
+    // The index is partial for this: a finished row mustn't block a new one.
+    expect(
+      await upsertSchedule(realDb, {
+        id: "fresh-id",
+        did: DID,
+        draftId: DRAFT_ID,
+        dueAt: NOW,
+      }),
+    ).toEqual([{ id: "fresh-id", dueAt: NOW }]);
+    expect(
+      d1.sqlite
+        .prepare("select id, status from scheduled_posts order by id")
+        .all(),
+    ).toEqual([
+      { id: ROW_ID, status: "failed" },
+      { id: "fresh-id", status: "pending" },
+    ]);
   });
 });
