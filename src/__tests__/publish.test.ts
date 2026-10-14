@@ -16,6 +16,7 @@ import {
   updateDocumentRecord,
   writerDek,
 } from "../lib/publish";
+import { expectLinear, LINEAR_TEST_TIMEOUT_MS } from "./linear-time";
 
 describe("generateTid", () => {
   it("emits 13 chars of base32-sortable alphabet", () => {
@@ -114,24 +115,25 @@ describe("excerpt", () => {
     expect(out).toBe(`${"x".repeat(298)}…`);
   });
 
-  it("stays cheap on hostile degenerate markdown at MAX_BODY_LENGTH", () => {
+  it("stays cheap on hostile degenerate markdown at MAX_BODY_LENGTH", {
+    timeout: LINEAR_TEST_TIMEOUT_MS,
+  }, () => {
     // Bodies are writer-authored and capped at MAX_BODY_LENGTH (100k), but
     // the pre-refactor link/image patterns went quadratic on
     // unmatched-bracket floods even at that size (seconds of CPU on a
     // ~10 ms Workers budget). The shared hardened strip must keep the worst
     // validated input trivial.
-    const hostiles = [
-      "[".repeat(MAX_BODY_LENGTH),
-      "[a](b".repeat(MAX_BODY_LENGTH / 5),
-      "![".repeat(MAX_BODY_LENGTH / 2),
-      "`".repeat(MAX_BODY_LENGTH),
+    // [repeated unit, length in units]; the ratio test compares a quarter of
+    // that length against the whole of it.
+    const hostiles: Array<[string, number]> = [
+      ["[", MAX_BODY_LENGTH],
+      ["[a](b", MAX_BODY_LENGTH / 5],
+      ["![", MAX_BODY_LENGTH / 2],
+      ["`", MAX_BODY_LENGTH],
     ];
-    for (const hostile of hostiles) {
-      const start = performance.now();
-      const out = excerpt(hostile);
-      // Generous CI headroom — a quadratic regression costs seconds, not ms.
-      expect(performance.now() - start).toBeLessThan(250);
-      expect(out.length).toBeLessThanOrEqual(300);
+    for (const [unit, units] of hostiles) {
+      expectLinear(excerpt, (k) => unit.repeat(k), units / 4);
+      expect(excerpt(unit.repeat(units)).length).toBeLessThanOrEqual(300);
     }
   });
 });

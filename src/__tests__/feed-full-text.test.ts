@@ -9,6 +9,7 @@ import {
   renderBodies,
   renderBudget,
 } from "~/lib/markdown-html";
+import { expectLinear, LINEAR_TEST_TIMEOUT_MS } from "./linear-time";
 
 const channel = {
   title: "A publication",
@@ -94,12 +95,18 @@ describe("markdownToHtml — the same rendering the page does", () => {
     expect(html).not.toContain("javascript");
   });
 
-  it("falls back to plain paragraphs for input markdown-it is slow on", () => {
-    for (const hostile of ["[".repeat(50_000), `${"word ".repeat(25_000)}*`]) {
-      const start = performance.now();
-      const html = markdownToHtml(hostile);
-      expect(performance.now() - start).toBeLessThan(100);
-      expect(html.startsWith("<p")).toBe(true);
+  it("falls back to plain paragraphs for input markdown-it is slow on", {
+    timeout: LINEAR_TEST_TIMEOUT_MS,
+  }, () => {
+    // Both sizes of each input are past the fallback's thresholds (bracket
+    // count, then length), so the ratio compares the fallback with itself.
+    const hostiles: Array<[(k: number) => string, number]> = [
+      [(k) => "[".repeat(k), 12_500],
+      [(k) => `${"word ".repeat(k)}*`, 25_000],
+    ];
+    for (const [make, n] of hostiles) {
+      expectLinear(markdownToHtml, make, n);
+      expect(markdownToHtml(make(n)).startsWith("<p")).toBe(true);
     }
     expect(markdownToHtml("a\n\n<b>&</b>")).toContain("&lt;b&gt;&amp;");
   });

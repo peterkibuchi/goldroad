@@ -15,6 +15,7 @@ import {
   updateDocumentRecord,
   writerDek,
 } from "../lib/publish";
+import { expectLinear, LINEAR_TEST_TIMEOUT_MS } from "./linear-time";
 
 const input = {
   title: "Hello Atmosphere",
@@ -358,17 +359,25 @@ describe("plainTextBody: constructs the strip used to leave standing", () => {
     expect(plainTextBody("- [ ] not done\n- [x] done")).toBe("not done\ndone");
   });
 
-  it("stays linear on a hostile flood of the new constructs", () => {
-    const hostiles = [
-      "|".repeat(100_000),
-      "[^".repeat(50_000),
-      "[a][b".repeat(20_000),
-      "|a\\|b|\n".repeat(10_000),
+  it("stays linear on a hostile flood of the new constructs", {
+    timeout: LINEAR_TEST_TIMEOUT_MS,
+  }, () => {
+    // [repeated unit, repeats in the smaller input]; the larger is 4x that,
+    // half the validated body limit. Quadratic work shows at any of these
+    // sizes, and the strip is slow enough per character here that the full
+    // limit would spend most of the test's time budget on a loaded machine.
+    const hostiles: Array<[string, number]> = [
+      ["|", 12_500],
+      ["[^", 6_250],
+      ["[a][b", 2_500],
+      ["|a\\|b|\n", 1_250],
     ];
-    for (const hostile of hostiles) {
-      const start = performance.now();
-      projectBody(hostile, MAX_BODY_LENGTH);
-      expect(performance.now() - start).toBeLessThan(250);
+    for (const [unit, n] of hostiles) {
+      expectLinear(
+        (body) => projectBody(body, MAX_BODY_LENGTH),
+        (k) => unit.repeat(k),
+        n,
+      );
     }
   });
 });
