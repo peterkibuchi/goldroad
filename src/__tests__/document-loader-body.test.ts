@@ -7,6 +7,7 @@ vi.mock("~/lib/atproto", async (importOriginal) => ({
   ...(await importOriginal<typeof import("~/lib/atproto")>()),
   resolveDidToPds: vi.fn(async () => "https://pds.example"),
   listRecordsPage: vi.fn(async () => ({ records: [], cursor: null })),
+  listRecords: vi.fn(async () => []),
   getRecordEntry: vi.fn(async () => ({
     uri: `at://${DID}/site.standard.document/3lyk73wxnok2f`,
     cid: "bafyreiexample",

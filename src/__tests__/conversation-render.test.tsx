@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // Only ReportLink reads the router (for the "report this page" URL); stub the
@@ -188,14 +188,26 @@ describe("Conversation — a thread too big to carry here", () => {
 });
 
 describe("DocumentArticle — a conversation only appears when there is one", () => {
-  it("renders nothing at all for a post with no announcement", () => {
+  // The loader streams the replies (an unawaited promise), so each case lets
+  // the promise settle before asserting: an absence checked while the
+  // boundary is still suspended would pass for the wrong reason.
+  async function renderSettled(
+    conversationPromise?: Promise<PostConversation | null>,
+  ) {
     render(
       <DocumentArticle
-        conversation={null}
+        conversation={conversationPromise}
         doc={baseDoc}
         ident="writer.example"
       />,
     );
+    await act(async () => {
+      await conversationPromise;
+    });
+  }
+
+  it("renders nothing at all for a post with no announcement", async () => {
+    await renderSettled(Promise.resolve(null));
     expect(screen.queryByText("Conversation")).toBeNull();
     // No empty box, no invitation to be first, no mention of Bluesky replies.
     expect(document.body.textContent).not.toMatch(
@@ -203,31 +215,27 @@ describe("DocumentArticle — a conversation only appears when there is one", ()
     );
   });
 
-  it("renders nothing when the conversation prop is simply absent", () => {
-    render(<DocumentArticle doc={baseDoc} ident="writer.example" />);
+  it("renders nothing when the conversation prop is simply absent", async () => {
+    await renderSettled();
     expect(screen.queryByText("Conversation")).toBeNull();
   });
 
-  it("still renders the post in full when replies are missing", () => {
+  it("renders the post in full before the replies arrive", () => {
+    // A promise that never settles: the article must not wait on it.
     render(
       <DocumentArticle
-        conversation={null}
+        conversation={new Promise(() => {})}
         doc={baseDoc}
         ident="writer.example"
       />,
     );
     expect(screen.getByText("Publishing on the open network")).toBeDefined();
     expect(screen.getByText("Full body text here.")).toBeDefined();
+    expect(screen.queryByText("Conversation")).toBeNull();
   });
 
-  it("places the conversation after the writer's words", () => {
-    render(
-      <DocumentArticle
-        conversation={conversation()}
-        doc={baseDoc}
-        ident="writer.example"
-      />,
-    );
+  it("places the conversation after the writer's words", async () => {
+    await renderSettled(Promise.resolve(conversation()));
     const body = screen.getByText("Full body text here.");
     const heading = screen.getByText("Conversation");
     expect(

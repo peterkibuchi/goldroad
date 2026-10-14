@@ -106,10 +106,16 @@ function isCacheableResponse(response: Response): boolean {
  * zero D1 reads) tagged `x-goldroad-cache: HIT`; on a miss the fresh response
  * is stamped with `Cache-Control`, stored, and returned tagged `MISS`.
  * Non-cacheable requests/responses fall straight through to `fetchFresh`.
+ *
+ * The store is handed to `waitUntil` rather than awaited. `cache.put` reads
+ * the body to its end, so awaiting it held every byte of a streamed page —
+ * the article included — until the last streamed part (the replies) had
+ * rendered.
  */
 export async function serveWithReadCache(
   request: Request,
   fetchFresh: () => Promise<Response> | Response,
+  waitUntil: (promise: Promise<unknown>) => void,
 ): Promise<Response> {
   const cache = defaultCache();
   if (!cache || !isCacheableReadRequest(request)) {
@@ -130,7 +136,7 @@ export async function serveWithReadCache(
   stored.headers.set("cache-control", READ_CACHE_CONTROL);
   const served = stored.clone();
   stored.headers.set("x-goldroad-cache", "HIT");
-  await cache.put(key, stored).catch(() => {});
+  waitUntil(cache.put(key, stored).catch(() => {}));
   served.headers.set("x-goldroad-cache", "MISS");
   return served;
 }

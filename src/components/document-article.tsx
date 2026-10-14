@@ -1,5 +1,5 @@
-import { notFound, useLocation } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { Await, notFound, useLocation } from "@tanstack/react-router";
+import { Suspense, useEffect, useState } from "react";
 
 import { Conversation } from "~/components/conversation";
 import { ExternalLink } from "~/components/external-link";
@@ -19,12 +19,14 @@ import {
   getRecordEntry,
   isDid,
   isHandle,
+  listRecords,
   listRecordsPage,
   NotFoundError,
   parseAtUri,
   RKEY_RE,
   resolveDidToPds,
   resolveHandleToDid,
+  rkeyFromUri,
   type StandardDocument,
   type StandardPublication,
 } from "~/lib/atproto";
@@ -62,10 +64,12 @@ type CoverRef = { did: string; cid: string };
  * Both modules already cap their own fetches (5 s in ~/lib/engagement, 3 s in
  * ~/lib/comments). Those ceilings are right for the dashboard's batched reads,
  * where the writer is looking at their own numbers and waiting is the honest
- * answer. They are far too long HERE: these two calls sit in the same
- * `Promise.all` as the PDS reads, so on a cold render against a slow AppView it
- * is the like count — not the writer's words — that decides TTFB, and a
- * link-preview scraper has given up long before 5 s. Both already degrade to
+ * answer. They are far too long HERE: the like count is awaited before the
+ * first byte, and the replies, though streamed to readers, are waited for in
+ * full by crawlers and link-preview scrapers (the router renders the whole
+ * page for bots), so on a cold render against a slow AppView it is the like
+ * count — not the writer's words — that decides TTFB, and a link-preview
+ * scraper has given up long before 5 s. Both already degrade to
  * `null` on every failure including timeout, and each keeps its own 300 s edge
  * cache, so the tighter leash costs a counts row on an unlucky cold render and
  * buys back seconds on the render a stranger's first impression depends on.
@@ -163,6 +167,18 @@ export async function loadDocument(identParam: string, rkey: string) {
       { limit: RELATED_POSTS_LIMIT + 3 },
     ).catch(() => ({ records: [], cursor: null }));
 
+    // The writer's publications, listed alongside the document instead of
+    // fetched after it. Which one the document belongs to is only known once
+    // the document arrives, but writers have one or a few, so a single listing
+    // nearly always holds it: the same one request as the getRecord it
+    // replaces, minus a whole PDS round trip of waiting.
+    const pubsPromise = listRecords<StandardPublication>(
+      pds,
+      did,
+      "site.standard.publication",
+      { limit: 10 },
+    ).catch(() => null);
+
     const entry = await getRecordEntry<StandardDocument>(
       pds,
       did,
@@ -174,17 +190,23 @@ export async function loadDocument(identParam: string, rkey: string) {
     // The document's publication (same-repo at:// site refs only) — backs
     // the standard.site canonical URL (publication.url + document.path), the
     // byline's name/icon, and the end-of-post follow-card's description.
+    // Read directly only when the listing didn't have it (more than ten
+    // publications, or the listing failed).
     const siteRef = typeof doc.site === "string" ? parseAtUri(doc.site) : null;
     const pubPromise =
       siteRef &&
       siteRef.did === did &&
       siteRef.collection === "site.standard.publication"
-        ? getRecordEntry<StandardPublication>(
-            pds,
-            siteRef.did,
-            siteRef.collection,
-            siteRef.rkey,
-          ).catch(() => null)
+        ? pubsPromise.then(
+            (pubs) =>
+              pubs?.find((r) => rkeyFromUri(r.uri) === siteRef.rkey) ??
+              getRecordEntry<StandardPublication>(
+                pds,
+                siteRef.did,
+                siteRef.collection,
+                siteRef.rkey,
+              ).catch(() => null),
+          )
         : Promise.resolve(null);
 
     // Cross-network engagement: announced posts only, cached, and NEVER
@@ -195,14 +217,18 @@ export async function loadDocument(identParam: string, rkey: string) {
       fetcher: budgetedFetch,
     }).catch(() => null);
 
-    // The conversation: replies to the announcement, off the same ref. Runs
-    // concurrently with the PDS reads above (so it costs no serial latency in
-    // the common case) and degrades to null on absolutely everything —
-    // ~/lib/comments already swallows its own failures; this .catch is the
-    // belt to that braces, because nothing about replies may fail this page.
-    // `did` is passed as the ref's expected repo: a bskyPostRef aimed outside
-    // this writer's own repo is not this document's conversation.
-    const conversationPromise = getPostConversation(doc.bskyPostRef, did, {
+    // The conversation: replies to the announcement, off the same ref.
+    // Returned as a promise, NOT awaited: the replies render after the
+    // colophon, far below the fold, so the page streams the article first and
+    // the replies follow in the same response when the AppView answers.
+    // Awaiting them here put a whole AppView round trip (and a thread's worth
+    // of JSON) in front of the first byte. Degrades to null on absolutely
+    // everything — ~/lib/comments already swallows its own failures; this
+    // .catch is the belt to that braces, because nothing about replies may
+    // fail this page. `did` is passed as the ref's expected repo: a
+    // bskyPostRef aimed outside this writer's own repo is not this document's
+    // conversation.
+    const conversation = getPostConversation(doc.bskyPostRef, did, {
       fetcher: budgetedFetch,
     }).catch(() => null);
 
@@ -211,15 +237,13 @@ export async function loadDocument(identParam: string, rkey: string) {
     const body = documentBodyMarkdown(doc);
     const bodyHtmlPromise = renderBodies([body]).then(([html]) => html);
 
-    const [pub, relatedPage, engagement, conversation, mirror, bodyHtml] =
-      await Promise.all([
-        pubPromise,
-        relatedPromise,
-        engagementPromise,
-        conversationPromise,
-        mirrorPromise,
-        bodyHtmlPromise,
-      ]);
+    const [pub, relatedPage, engagement, mirror, bodyHtml] = await Promise.all([
+      pubPromise,
+      relatedPromise,
+      engagementPromise,
+      mirrorPromise,
+      bodyHtmlPromise,
+    ]);
 
     let publicationUrl: string | undefined;
     // What a subscription points at. Minted from the ref we already validated
@@ -582,7 +606,8 @@ export function DocumentArticle({
   mirror?: MirrorInfo | null;
   relatedPosts?: RelatedPost[];
   engagement?: DocumentEngagement | null;
-  conversation?: PostConversation | null;
+  /** Streamed: the loader hands it over unawaited (see loadDocument). */
+  conversation?: Promise<PostConversation | null>;
   /** The body as rendered by the loader, with its reading time; derived from
    * `doc` when absent. */
   bodyHtml?: string;
@@ -840,7 +865,13 @@ export function DocumentArticle({
             posts with at least one readable reply only — a post nobody has
             replied to (or that was never announced) renders nothing here, and
             so does an AppView that was down. No empty state to design. */}
-        {conversation && <Conversation conversation={conversation} />}
+        {conversation && (
+          <Suspense fallback={null}>
+            <Await promise={conversation}>
+              {(replies) => replies && <Conversation conversation={replies} />}
+            </Await>
+          </Suspense>
+        )}
         <aside className="mt-16 border-rule border-t pt-10">
           {relatedPosts && relatedPosts.length > 0 && (
             <div className="mt-10">
