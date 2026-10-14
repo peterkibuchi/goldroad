@@ -15,10 +15,23 @@
  *   the allowlist) loses its href/src, as under react-markdown's urlTransform.
  * - Every other byte is markdown-it's own escaped text. The only markup added
  *   here is constant strings and escaped values.
+ *
+ * Two outputs, one difference: on the reading page (`embeds: true`) a bare
+ * link alone on its own line to a video, song or Bluesky post becomes a
+ * click-to-load preview (~/lib/embeds). The feed keeps it a plain link: feed
+ * readers run no scripts, and the link is what the writer wrote.
  */
 import MarkdownIt, { type StateCore, type Token } from "markdown-it";
 import footnote from "markdown-it-footnote";
 
+import {
+  type Embed,
+  embedLabel,
+  framePath,
+  parseEmbed,
+  playerSize,
+  thumbnailPath,
+} from "~/lib/embeds";
 import { defaultCache } from "~/lib/workers-cache";
 
 const SAFE_PROTOCOL = /^(https?|ircs?|mailto|xmpp)$/i;
@@ -127,6 +140,49 @@ function taskLists(state: StateCore) {
   }
 }
 
+/**
+ * A paragraph that is nothing but one bare link (typed or pasted as a URL,
+ * or an `<…>` autolink) to an embeddable page becomes an `embed` token. Only
+ * at the top level: a link inside a list item or a quote is part of what
+ * surrounds it. And only a bare link: `[watch this](…)` is the writer
+ * choosing words, which stay a link.
+ */
+function embeds(state: StateCore) {
+  if (!(state.env as RenderEnv | undefined)?.embeds) return;
+  const { tokens } = state;
+  for (let i = tokens.length - 3; i >= 0; i--) {
+    const [open, inline, close] = [tokens[i], tokens[i + 1], tokens[i + 2]];
+    if (
+      open.type !== "paragraph_open" ||
+      open.level !== 0 ||
+      inline.type !== "inline" ||
+      close.type !== "paragraph_close"
+    )
+      continue;
+    const children = inline.children ?? [];
+    const link = children[0];
+    if (
+      children.length !== 3 ||
+      link.type !== "link_open" ||
+      (link.markup !== "linkify" && link.markup !== "autolink") ||
+      children[1].type !== "text" ||
+      children[2].type !== "link_close"
+    )
+      continue;
+    const href = String(link.attrGet("href") ?? "");
+    const embed = parseEmbed(href);
+    if (!embed) continue;
+    const token = new state.Token("embed", "figure", 0);
+    token.block = true;
+    token.meta = { embed, href } satisfies EmbedMeta;
+    tokens.splice(i, 3, token);
+  }
+}
+
+type RenderEnv = { embeds?: boolean };
+type EmbedMeta = { embed: Embed; href: string };
+
+md.core.ruler.push("goldroad_embeds", embeds);
 md.core.ruler.push("goldroad_decorate", (state) => {
   taskLists(state);
   decorate(state.tokens);
@@ -135,6 +191,85 @@ md.core.ruler.push("goldroad_decorate", (state) => {
 const rules = md.renderer.rules;
 const escapeHtml = md.utils.escapeHtml;
 const renderToken = md.renderer.renderToken.bind(md.renderer);
+
+const BOXED =
+  "overflow-hidden border border-rule bg-ink/5 transition-colors hover:border-ink";
+const PLAY =
+  "flex items-center justify-center rounded-full bg-ink text-paper transition-transform group-hover:scale-105 motion-reduce:transition-none";
+const EMBED_CLASSES = {
+  figure: "gr-embed mt-6",
+  preview: "gr-embed-preview group relative flex w-full text-ink no-underline",
+  video: `${BOXED} aspect-video`,
+  card: `${BOXED} items-center gap-4 p-4`,
+  quote: "flex-col gap-1 border-ink border-l-2 py-1 pl-6",
+  thumb: "absolute inset-0 h-full w-full object-cover",
+  videoPlay: `${PLAY} relative m-auto h-14 w-14`,
+  cardPlay: `${PLAY} h-11 w-11 shrink-0`,
+  label: "min-w-0 font-display text-sm leading-snug",
+  // A solid chip rather than text over the picture: a thumbnail can be any
+  // colour at all, and the label has to read on every one of them.
+  videoLabel: "absolute bottom-3 left-3 bg-ink px-2.5 py-1 text-paper",
+  muted: "block truncate text-ink-soft text-xs",
+};
+
+const PLAY_ICON =
+  '<svg aria-hidden="true" viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M8 5.5v13l10.5-6.5z"/></svg>';
+
+/**
+ * A click-to-load preview: an ordinary link to the original, which is what it
+ * stays with scripts off (a click then opens the provider's own page), plus
+ * the facts the page's script needs to swap it for a player in place (see
+ * ~/components/prose). The only request it makes before that is for a YouTube
+ * thumbnail, from our own origin.
+ */
+function embedHtml({ embed, href }: EmbedMeta): string {
+  const { provider, kind } = embedLabel(embed);
+  const size = playerSize(embed);
+  const data = [
+    `data-embed-frame="${escapeHtml(framePath(embed))}"`,
+    `data-embed-title="${escapeHtml(`${provider} ${kind.toLowerCase()}`)}"`,
+    "ratio" in size
+      ? `data-embed-ratio="${size.ratio}"`
+      : `data-embed-height="${size.height}"`,
+  ].join(" ");
+  const anchor = (classes: string, inner: string) =>
+    `<a class="${EMBED_CLASSES.preview} ${classes}" href="${escapeHtml(href)}" rel="nofollow noopener noreferrer" ${data}>${inner}</a>`;
+  let inner: string;
+  const thumb = thumbnailPath(embed);
+  if (thumb) {
+    // A picture to show: the video's own frame, with the play button on it.
+    inner = anchor(
+      EMBED_CLASSES.video,
+      `<img class="${EMBED_CLASSES.thumb}" src="${escapeHtml(thumb)}" alt="" loading="lazy"><span class="${EMBED_CLASSES.videoPlay}">${PLAY_ICON}</span><span class="${EMBED_CLASSES.label} ${EMBED_CLASSES.videoLabel}">Play ${kind.toLowerCase()} · ${provider}</span>`,
+    );
+  } else if (embed.provider !== "bluesky") {
+    // Nothing to show without asking the provider, so a title card: an empty
+    // 16:9 box would be a large grey promise of a picture.
+    inner = anchor(
+      EMBED_CLASSES.card,
+      `<span class="${EMBED_CLASSES.cardPlay}">${PLAY_ICON}</span><span class="${EMBED_CLASSES.label}">Play ${kind.toLowerCase()} · ${provider}<span class="${EMBED_CLASSES.muted}">${escapeHtml(displayUrl(href))}</span></span>`,
+    );
+  } else {
+    inner = anchor(
+      EMBED_CLASSES.quote,
+      `<span class="${EMBED_CLASSES.label} font-semibold">A post by @${escapeHtml(embed.actor)}</span><span class="${EMBED_CLASSES.label} text-ink-soft underline decoration-ink/30 underline-offset-2 group-hover:decoration-ink">Show the post from Bluesky</span>`,
+    );
+  }
+  return `<figure class="${EMBED_CLASSES.figure}" data-embed="${embed.provider}">${inner}</figure>
+`;
+}
+
+/** A URL shortened for a label: host and path, no scheme. */
+function displayUrl(href: string): string {
+  try {
+    const url = new URL(href);
+    return `${url.hostname.replace(/^www\./, "")}${url.pathname}`;
+  } catch {
+    return href;
+  }
+}
+
+rules.embed = (tokens, idx) => embedHtml(tokens[idx].meta as EmbedMeta);
 
 rules.task_checkbox = (tokens, idx) =>
   `<input type="checkbox" disabled${(tokens[idx].meta as { checked: boolean }).checked ? " checked" : ""}> `;
@@ -200,22 +335,28 @@ function countBrackets(text: string): number {
  * Returns "" for anything that isn't a non-empty string; callers treat that
  * as "no content".
  */
-export function markdownToHtml(markdown: unknown): string {
+export function markdownToHtml(
+  markdown: unknown,
+  options: RenderEnv = {},
+): string {
   if (typeof markdown !== "string" || markdown.trim() === "") return "";
   if (
     markdown.length > MAX_RENDER_CHARS ||
     countBrackets(markdown) > MAX_BRACKETS
   )
     return plainHtml(markdown);
-  return md.render(markdown).trim();
+  return md.render(markdown, { embeds: options.embeds === true }).trim();
 }
 
 /** Bump on any change to the output (a test pins it), so old renders stop
  * matching. Keys hash the markdown itself, so they never go stale otherwise. */
-export const RENDER_VERSION = 1;
+export const RENDER_VERSION = 2;
 const RENDER_CACHE_CONTROL = "public, max-age=2592000";
 
-async function renderKey(markdown: string): Promise<string | null> {
+async function renderKey(
+  markdown: string,
+  embeds: boolean,
+): Promise<string | null> {
   try {
     const digest = await crypto.subtle.digest(
       "SHA-256",
@@ -224,7 +365,9 @@ async function renderKey(markdown: string): Promise<string | null> {
     const hex = Array.from(new Uint8Array(digest), (b) =>
       b.toString(16).padStart(2, "0"),
     ).join("");
-    return `https://goldroad-render.internal/v${RENDER_VERSION}/${hex}`;
+    // The page and the feed render embeds differently, so never share.
+    const variant = embeds ? "page" : "feed";
+    return `https://goldroad-render.internal/v${RENDER_VERSION}/${variant}/${hex}`;
   } catch {
     return null;
   }
@@ -243,10 +386,14 @@ async function renderKey(markdown: string): Promise<string | null> {
 export async function renderBodies(
   bodies: readonly string[],
   mayRender: (markdown: string) => boolean = () => true,
+  options: RenderEnv = {},
 ): Promise<string[]> {
   const cache = defaultCache();
+  const embeds = options.embeds === true;
   const keys = await Promise.all(
-    bodies.map((body) => (cache && body.trim() ? renderKey(body) : null)),
+    bodies.map((body) =>
+      cache && body.trim() ? renderKey(body, embeds) : null,
+    ),
   );
   const hits = await Promise.all(
     keys.map(async (key) => {
@@ -265,7 +412,7 @@ export async function renderBodies(
     if (!body.trim() || !mayRender(body)) return "";
     let rendered: string;
     try {
-      rendered = markdownToHtml(body);
+      rendered = markdownToHtml(body, { embeds });
     } catch {
       rendered = plainHtml(body);
     }
