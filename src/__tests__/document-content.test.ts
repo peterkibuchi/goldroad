@@ -362,12 +362,15 @@ describe("plainTextBody: constructs the strip used to leave standing", () => {
   it("stays linear on a hostile flood of the new constructs", {
     timeout: LINEAR_TEST_TIMEOUT_MS,
   }, () => {
-    // [repeated unit, repeats in the smaller input]; the larger is 4x that,
-    // at most 50k characters, half the validated body limit. Quadratic work
-    // shows at any of these sizes, and this strip is slow enough per
-    // character that the full limit makes the test slow on a loaded machine.
+    // [repeated unit, repeats in the smaller input]; the larger is 4x that.
+    // The bracket floods stop at 50k characters, half the validated body
+    // limit: this strip is slow enough per character on them that the full
+    // limit makes the test slow on a loaded machine, and quadratic work shows
+    // at that size anyway. The pipe flood is cheap per character, so it runs
+    // at the full limit, where a cheap quadratic still outgrows the linear
+    // part.
     const hostiles: Array<[string, number]> = [
-      ["|", 12_500],
+      ["|", 25_000],
       ["[^", 6_250],
       ["[a][b", 2_500],
       ["|a\\|b|\n", 1_250],
