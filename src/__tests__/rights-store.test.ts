@@ -6,6 +6,7 @@ import { MAX_DRAFTS_PER_USER } from "../lib/drafts-schema";
 import {
   countDraftsForDid,
   countImportItemsForDid,
+  countReaderEmailsForDid,
   deleteDraftsForDid,
   deleteFollowerSnapshotsForDid,
   deleteHandleHistoryForDid,
@@ -18,6 +19,7 @@ import {
   deleteSearchBackfillForDid,
   deleteSearchDocumentsForDid,
   MAX_LEDGER_ROWS_PER_EXPORT,
+  MAX_READER_EMAILS_PER_EXPORT,
   MAX_SNAPSHOT_ROWS_PER_EXPORT,
   selectDraftsForExport,
   selectFollowerSnapshotsForExport,
@@ -187,14 +189,19 @@ describe("account-deletion deletes — DID-scoped, RETURNing so callers can see 
     const { sql, params } = selectReaderEmailsForExport(db, DID).toSQL();
     expect(sql.toLowerCase()).toContain('from "reader_emails"');
     expect(sql).toContain('"writer_did" = ?');
-    expect(params).toEqual([DID]);
+    expect(params).toEqual([DID, MAX_READER_EMAILS_PER_EXPORT]);
     for (const column of ['"email"', '"source"', '"consented_at"'])
       expect(sql).toContain(column);
     expect(sql.toLowerCase()).toMatch(
-      /order by "reader_emails"\."consented_at" asc/,
+      /order by "reader_emails"\."id" asc limit \?/,
     );
-    // Never capped: a truncated list is one the writer can't trust.
-    expect(sql.toLowerCase()).not.toContain("limit");
+  });
+
+  it("countReaderEmailsForDid counts only this publication's list", () => {
+    const { sql, params } = countReaderEmailsForDid(db, DID).toSQL();
+    expect(sql.toLowerCase()).toContain("count(*)");
+    expect(sql).toContain('"writer_did" = ?');
+    expect(params).toEqual([DID]);
   });
 
   it("selectHandleHistoryForExport and deleteHandleHistoryForDid bind the DID", () => {

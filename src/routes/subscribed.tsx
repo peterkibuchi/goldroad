@@ -99,8 +99,8 @@ export function SubscribedView({
               Your address is with {name}.
             </h1>
             <p className="mt-4 max-w-[52ch] text-lg leading-relaxed text-ink-soft">
-              Email sending isn't switched on yet, so nothing will arrive today.
-              When it is, this is the address {name} can write to.
+              Email sending isn't switched on here yet. {name} can download
+              their reader list, so this is the address they can write to.
             </p>
           </>
         )}

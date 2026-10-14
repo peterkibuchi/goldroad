@@ -600,7 +600,7 @@ function SettingsPage() {
         <SettingsSection
           id="delete-account"
           rule="heavy"
-          intro="Deletes your drafts, import history, scheduled posts, follower history, publication address, and sign-in from our servers, permanently. Your published posts and any Bluesky announces stay exactly where they are — they're records in your own repo, not ours."
+          intro="Deletes your drafts, import history, scheduled posts, follower history, publication address, your reader list, and sign-in from our servers, permanently. Download your data first if you want to keep the reader list. Your published posts and any Bluesky announces stay exactly where they are — they're records in your own repo, not ours."
           title="Delete your account"
         >
           <DeleteAccountForm ident={ident} />
