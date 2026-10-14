@@ -29,22 +29,17 @@ import { isDid, resolveDidIdentity } from "~/lib/atproto";
 import { selectDraft } from "~/lib/drafts";
 import { createOAuthClient } from "~/lib/oauth";
 import { CANONICAL_ORIGIN, ownOrigins } from "~/lib/origin";
-import { publishStoredDraft } from "~/lib/publish-document";
-import { readSurfaceWarmUrls, warmReadSurfaces } from "~/lib/read-cache";
+import {
+  publishStoredDraft,
+  readExistingDocument,
+} from "~/lib/publish-document";
 import type {
-  DuePost,
+  ClaimedPost,
   PublishAttempt,
   ScheduledPublisher,
 } from "~/lib/scheduled-posts";
 
 type DrizzleD1 = ReturnType<typeof drizzle>;
-
-/**
- * `ctx.waitUntil`, threaded down from the Worker entry — the only scope that
- * holds an ExecutionContext (src/server.ts). Optional so this module stays
- * callable, and testable, without one; absent, the warm is awaited instead.
- */
-export type WaitUntil = (promise: Promise<unknown>) => void;
 
 /** The sentence a writer reads when their OAuth grant is no longer usable. It
  * names the cause, the consequence, and the one action that fixes it — a
@@ -61,6 +56,9 @@ const READ_FAILED_REASON =
 const PDS_UNREACHABLE_REASON =
   "Goldroad couldn't reach your data server to publish this. It will try again within the hour.";
 
+const UNCONFIRMED_REASON =
+  "Goldroad couldn't check with your data server whether this went out. It will try again within the hour.";
+
 /**
  * Publishes one due post. Returns a verdict; never throws (the pass logs and
  * retries a thrown attempt, but a publisher that reports honestly is what lets
@@ -72,8 +70,7 @@ const PDS_UNREACHABLE_REASON =
  */
 export async function publishDuePost(
   db: DrizzleD1,
-  post: DuePost,
-  waitUntil?: WaitUntil,
+  post: ClaimedPost,
 ): Promise<PublishAttempt> {
   // Our own column, checked anyway: a DID is interpolated into XRPC calls, and
   // the one query that produced this row is the one that isn't DID-scoped.
@@ -104,7 +101,16 @@ export async function publishDuePost(
     console.error("scheduled publish: draft read failed", post.id, err);
     return { ok: false, retry: true, reason: READ_FAILED_REASON };
   }
-  if (!draft) return { ok: false, retry: false, reason: DRAFT_GONE_REASON };
+  const rpc = new Client({ handler: session });
+  if (!draft) {
+    // An earlier attempt may have published and deleted the draft, then died
+    // before the row was cleared. Its reserved key says whether it did.
+    const existing = await readExistingDocument(rpc, post.did, post.rkey);
+    if (existing.state === "exists") return { ok: true, rkey: post.rkey };
+    if (existing.state === "unknown")
+      return { ok: false, retry: true, reason: UNCONFIRMED_REASON };
+    return { ok: false, retry: false, reason: DRAFT_GONE_REASON };
+  }
 
   const { handle, pds } = await resolveDidIdentity(post.did);
   // Without a PDS there is nowhere to write. Worth another hour: identity
@@ -112,7 +118,7 @@ export async function publishDuePost(
   if (!pds) return { ok: false, retry: true, reason: PDS_UNREACHABLE_REASON };
 
   const outcome = await publishStoredDraft({
-    rpc: new Client({ handler: session }),
+    rpc,
     db,
     did: post.did,
     ident: handle ?? post.did,
@@ -120,57 +126,19 @@ export async function publishDuePost(
     origin: CANONICAL_ORIGIN,
     origins: ownOrigins(CANONICAL_ORIGIN),
     draft,
+    rkey: post.rkey,
   });
   if (!outcome.ok)
     return { ok: false, retry: outcome.retry, reason: outcome.reason };
 
-  // Warm the pages this publish just changed — the same delete-then-fetch the
-  // interactive path runs, reached differently because there is no response
-  // here to carry the URLs to the Worker entry (see readSurfaceWarmUrls).
-  //
-  // Without it a scheduled post's archive page and RSS feed stayed stale for
-  // up to READ_CACHE_TTL_SECONDS after going out, which is the whole window in
-  // which anyone is pointed at a freshly published piece.
-  //
-  // SUBREQUEST ARITHMETIC, because this shares one invocation's budget of 50
-  // with every other cron job (~/lib/scheduled): a publish already spends ~4
-  // (token refresh, DID/PDS resolution, publication lookup, createRecord), and
-  // the warm adds 2 (the archive index and the new post's page; `cache.delete`
-  // is not a subrequest). At the per-tick cap of five publishes that takes the
-  // publishing pass from ~20 to ~30, leaving the jobs behind it about 20 —
-  // enough for the report alert and the self-check, and the follower sample
-  // was already the job that gets squeezed on a busy tick and self-heals next
-  // hour. If the budget ever actually bites, MAX_PUBLISHES_PER_TICK is the
-  // dial, not this.
-  //
-  // On `waitUntil` so it never delays the next due post; awaited when there is
-  // no context, which is how the tests see it happen at all.
-  //
-  // The `.catch` is not decoration. The record is ALREADY LIVE in the writer's
-  // repo by this point, and the pass around us treats a thrown publisher as
-  // `retry: true` — so an exception escaping here would have the next tick
-  // publish the same post a second time. A cache that went unwarmed costs one
-  // cold render; a duplicate post costs the writer their own archive.
-  const warm = warmReadSurfaces(
-    readSurfaceWarmUrls({
-      origin: CANONICAL_ORIGIN,
-      ident: handle ?? post.did,
-      rkey: outcome.rkey,
-    }),
-    { origin: CANONICAL_ORIGIN },
-  ).catch((err) => {
-    console.warn("scheduled publish: read-cache warm failed", post.id, err);
-  });
-  if (waitUntil) waitUntil(warm);
-  else await warm;
+  // No read-cache purge here: a cron tick runs in whichever colo Cloudflare
+  // picks, so it would clear a cache readers probably aren't using, and every
+  // cache call counts against the tick's 50 subrequests. Pages catch up within
+  // READ_CACHE_TTL_SECONDS.
   return { ok: true, rkey: outcome.rkey };
 }
 
-/** The publisher the cron pass calls, bound to a database — and to the
- * ExecutionContext's `waitUntil`, when the entry passed one down. */
-export function cronPublisher(
-  db: DrizzleD1,
-  waitUntil?: WaitUntil,
-): ScheduledPublisher {
-  return (post) => publishDuePost(db, post, waitUntil);
+/** The publisher the cron pass calls, bound to a database. */
+export function cronPublisher(db: DrizzleD1): ScheduledPublisher {
+  return (post) => publishDuePost(db, post);
 }

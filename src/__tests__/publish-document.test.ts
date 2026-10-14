@@ -39,9 +39,28 @@ type Posted = { nsid: string; input: Record<string, unknown> };
 /** A stand-in for @atcute/client: records what was posted, answers as told. */
 function fakeRpc(
   answers: Array<{ ok: boolean; status?: number; data?: unknown }> = [],
+  /** What a getRecord finds at the key: the retry check. */
+  existing: "missing" | "unknown" | Record<string, unknown> = "missing",
 ) {
   const posted: Posted[] = [];
+  const got: Array<Record<string, unknown>> = [];
   const rpc = {
+    get(_nsid: string, options: { params: Record<string, unknown> }) {
+      got.push(options.params);
+      if (typeof existing === "object")
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          data: { value: existing, cid: "bafyreiearlier" },
+        });
+      return Promise.resolve({
+        ok: false,
+        status: existing === "missing" ? 400 : 502,
+        data: {
+          error: existing === "missing" ? "RecordNotFound" : "UpstreamFailure",
+        },
+      });
+    },
     post(nsid: string, options: { input: Record<string, unknown> }) {
       posted.push({ nsid, input: options.input });
       const answer = answers.shift() ?? { ok: true, data: {} };
@@ -53,7 +72,7 @@ function fakeRpc(
     },
     // biome-ignore lint/suspicious/noExplicitAny: a narrow stand-in for the client
   } as any;
-  return { rpc, posted };
+  return { rpc, posted, got };
 }
 
 const DRAFT = {
@@ -424,5 +443,77 @@ describe("publishStoredDraft", () => {
     await publishStoredDraft(input(rpc, { pds: null }));
     expect(drafts.deleteDraft).not.toHaveBeenCalled();
     quiet.mockRestore();
+  });
+});
+
+describe("publishStoredDraft with a reserved key (the cron's retries)", () => {
+  const RESERVED = "3lyk73wxnokrs";
+  const refused = () => [
+    { ok: false, status: 500, data: { error: "InternalServerError" } },
+  ];
+  const documentWrites = (posted: Posted[]) =>
+    posted.filter((p) => p.input.collection === "site.standard.document");
+
+  it("publishes under the reserved key", async () => {
+    const { rpc, posted } = fakeRpc();
+    const result = await publishStoredDraft(input(rpc, { rkey: RESERVED }));
+    expect(result).toEqual({ ok: true, rkey: RESERVED });
+    expect(documentWrites(posted)[0].input.rkey).toBe(RESERVED);
+  });
+
+  it("replaces what an earlier attempt wrote there with the current draft", async () => {
+    // That attempt landed but never reported back, and the writer has edited
+    // the draft since. A second record would duplicate the post; counting the
+    // old one as done would drop the edits.
+    const earlier = {
+      $type: "site.standard.document",
+      title: "The long way rond",
+      bskyPostRef: { uri: "at://x/app.bsky.feed.post/1", cid: "bafypost" },
+    };
+    const { rpc, posted, got } = fakeRpc(refused(), earlier);
+    const result = await publishStoredDraft(input(rpc, { rkey: RESERVED }));
+    expect(result).toEqual({ ok: true, rkey: RESERVED });
+    expect(got).toEqual([
+      { repo: DID, collection: "site.standard.document", rkey: RESERVED },
+    ]);
+    const [, put] = documentWrites(posted);
+    expect(put.input).toMatchObject({
+      rkey: RESERVED,
+      swapRecord: "bafyreiearlier",
+      record: {
+        title: "The long way round",
+        // An announce made in between survives the replace.
+        bskyPostRef: earlier.bskyPostRef,
+      },
+    });
+    expect(drafts.deleteDraft).toHaveBeenCalled();
+  });
+
+  it("retries when the data server can't say what's at the key", async () => {
+    // A refusal that is otherwise final: only "couldn't check" makes it worth
+    // another hour.
+    const { rpc } = fakeRpc(
+      [{ ok: false, status: 400, data: { error: "InvalidRequest" } }],
+      "unknown",
+    );
+    const result = await publishStoredDraft(input(rpc, { rkey: RESERVED }));
+    expect(result).toMatchObject({ ok: false, retry: true });
+    expect(drafts.deleteDraft).not.toHaveBeenCalled();
+  });
+
+  it("reports the refusal when nothing is at the reserved key", async () => {
+    const { rpc } = fakeRpc(
+      [{ ok: false, status: 400, data: { error: "InvalidRequest" } }],
+      "missing",
+    );
+    const result = await publishStoredDraft(input(rpc, { rkey: RESERVED }));
+    expect(result).toMatchObject({ ok: false, retry: false });
+  });
+
+  it("never looks for an earlier attempt without a reserved key", async () => {
+    const { rpc, got } = fakeRpc(refused(), { title: "x" });
+    const result = await publishStoredDraft(input(rpc));
+    expect(result).toMatchObject({ ok: false });
+    expect(got).toEqual([]);
   });
 });

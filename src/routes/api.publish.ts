@@ -68,8 +68,12 @@ import {
   findOwnPublication,
   publishStoredDraft,
   resolvePublicationSite,
+  writeDocument,
 } from "~/lib/publish-document";
-import { readSurfaceWarmUrls, withWarmTargets } from "~/lib/read-cache";
+import {
+  purgeLocalReadCache,
+  readSurfaceUrlsForSubject,
+} from "~/lib/read-cache";
 import { dueAtProblem, localToUtcMs } from "~/lib/schedule-time";
 import {
   cancelSchedule,
@@ -128,33 +132,28 @@ function backToDashboard(query: Record<string, string>): Response {
 }
 
 /**
- * Names the reading surfaces a write just changed, so the Worker entry can
- * re-render them on `waitUntil` (~/lib/read-cache → src/server.ts). Attach it to
- * the SUCCESS response of any write that changes what a reader sees.
+ * Drops the reading surfaces a write just changed from this colo's read cache,
+ * then returns the response. Without it an edit, a delete or an announce leaves
+ * the old page served for READ_CACHE_TTL_SECONDS, starting with the writer, who
+ * is redirected straight at it. Other colos expire on the TTL as before.
  *
- * Two reasons, and the second one is not optional:
- *
- * - A writer shares their link within seconds of publishing, and the first thing
- *   to fetch it is a link-preview scraper — Bluesky's card service included. A
- *   cold reading surface is a multi-hop PDS crawl; scrapers give up, and the post
- *   renders as a bare text card, which is the distribution story failing at the
- *   one moment it matters. Warming costs one background subrequest and moves
- *   that fetch onto a cached page.
- * - The read cache holds pages for READ_CACHE_TTL_SECONDS. An edit, a delete or
- *   an announce would otherwise leave the OLD page being served for that long —
- *   starting with the writer, who is redirected straight at it. The warm path
- *   deletes the key before it re-fetches, which is what makes it a refresh
- *   rather than a no-op cache HIT.
- *
- * Which URLs those are is `readSurfaceWarmUrls` (~/lib/read-cache), shared
- * with the cron publisher — which reaches the same warm by a different road,
- * having no response to hang a header on.
+ * There is deliberately no re-render. A fetch of our own hostname from inside
+ * the Worker is routed to the zone's origin, past the Worker, and rendering
+ * in-process would spend this request's CPU budget on a page nobody asked for.
  */
-function warmingReaderPages(
+async function purgingReaderPages(
   response: Response,
-  opts: { origin: string; ident: string; rkey?: string },
-): Response {
-  return withWarmTargets(response, readSurfaceWarmUrls(opts));
+  opts: { origin: string; did: string; ident: string; rkey?: string },
+): Promise<Response> {
+  const subject = opts.rkey
+    ? `at://${opts.did}/site.standard.document/${opts.rkey}`
+    : opts.did;
+  // Every spelling the page can be cached under (handle, DID, encoded DID,
+  // trailing slash, the /p/ form), the same list a takedown purges.
+  await purgeLocalReadCache(
+    readSurfaceUrlsForSubject(opts.origin, subject, opts.ident),
+  );
+  return response;
 }
 
 /**
@@ -585,11 +584,11 @@ async function publishDocument({
       });
     }
     // The writer is being sent straight at the page they just edited, which the
-    // read cache is still holding in its pre-edit form — warm it or they see
+    // read cache is still holding in its pre-edit form — purge it or they see
     // their old words.
-    return warmingReaderPages(
+    return purgingReaderPages(
       redirectTo(`/@${encodeURIComponent(ident)}/${editRkey}`),
-      { origin, ident, rkey: editRkey },
+      { origin, did, ident, rkey: editRkey },
     );
   }
 
@@ -611,7 +610,17 @@ async function publishDocument({
   // publish — name defaults to the handle; editable later in /settings). The
   // same resolution the scheduled and publish-now paths use, so all three
   // attach documents identically (~/lib/publish-document).
-  const rkey = originalAt ? generateTid(originalAt.getTime()) : generateTid();
+  // A scheduled attempt may already have reserved a key and, unknown to us,
+  // written the post there; publishing under it can't make a second copy.
+  const [schedule] = isDraftId(draftId)
+    ? await selectScheduleForDraft(drizzle(env.DB), did, draftId).catch(
+        () => [],
+      )
+    : [];
+  const reservedRkey = schedule?.publishedRkey ?? null;
+  const rkey =
+    reservedRkey ??
+    (originalAt ? generateTid(originalAt.getTime()) : generateTid());
   const site = await resolvePublicationSite({
     rpc,
     did,
@@ -681,18 +690,16 @@ async function publishDocument({
   // top of a body that only just fit.
   if (isOverRecordByteLimit(record)) return reject("too_large");
 
-  const res = await rpc.post("com.atproto.repo.createRecord", {
-    input: {
-      repo: did,
-      collection: "site.standard.document",
-      rkey,
-      record: toRecordInput(record),
-    },
-  });
-  // @atcute/client does not throw on XRPC errors — check ok explicitly.
-  if (!res.ok) {
-    console.error("createRecord failed", res.status, res.data);
-    return reject(`publish_failed:${res.data.error}`);
+  const written = await writeDocument(
+    rpc,
+    did,
+    rkey,
+    toRecordInput(record),
+    reservedRkey !== null,
+  );
+  if (!written.ok) {
+    console.error("document write failed", written);
+    return reject(`publish_failed:${written.error}`);
   }
 
   // Import ledger write-back: record the rkey this item published under —
@@ -725,11 +732,11 @@ async function publishDocument({
   }
 
   // Success lands on the dashboard: the new post on top, a "view it live"
-  // link, and the explicit opt-in "Announce on Bluesky" action. The new page
-  // and the archive index are warmed behind that redirect, so the link the
-  // writer is about to share is already rendered at the edge.
-  return warmingReaderPages(backToDashboard({ published: rkey }), {
+  // link, and the explicit opt-in "Announce on Bluesky" action. The archive
+  // index and feed are purged, so they list the new post.
+  return purgingReaderPages(backToDashboard({ published: rkey }), {
     origin,
+    did,
     ident,
     rkey,
   });
@@ -983,11 +990,14 @@ async function publishNow({
     origin,
     origins,
     draft,
+    // A failed tick's write may have landed; its reserved key finds it.
+    rkey: released?.publishedRkey ?? undefined,
   });
   if (!outcome.ok)
     return backToDashboard({ error: outcome.code, tab: "scheduled" });
-  return warmingReaderPages(backToDashboard({ published: outcome.rkey }), {
+  return purgingReaderPages(backToDashboard({ published: outcome.rkey }), {
     origin,
+    did,
     ident,
     rkey: outcome.rkey,
   });
@@ -1024,10 +1034,11 @@ async function deleteDocument({ rpc, form, did, ident, origin }: WriteContext) {
     console.warn("import ledger cleanup after delete failed", err);
   });
   // A deleted post must stop being readable NOW, not when its cache entry ages
-  // out. The warm pass drops the key first, and the re-fetch then 404s — which
-  // is never stored — so the page is simply gone.
-  return warmingReaderPages(backToDashboard({ deleted: "1" }), {
+  // out, at least in this colo. A 404 is never stored, so the next read
+  // finds it gone.
+  return purgingReaderPages(backToDashboard({ deleted: "1" }), {
     origin,
+    did,
     ident,
     rkey,
   });
@@ -1159,11 +1170,11 @@ async function announceDocument({
 
   const postRkey = rkeyFromUri(res.data.uri);
   // The document now carries a bskyPostRef, which is what unlocks the counts and
-  // the reply thread on the reading surface — and this is the moment the link is
-  // about to be seen by strangers. Re-render it so the first scrape lands warm.
-  return warmingReaderPages(
+  // the reply thread on the reading surface, so the cached page without them
+  // is purged.
+  return purgingReaderPages(
     backToDashboard(postRkey ? { announced: postRkey } : {}),
-    { origin, ident, rkey },
+    { origin, did, ident, rkey },
   );
 }
 

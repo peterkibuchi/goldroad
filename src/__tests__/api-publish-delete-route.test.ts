@@ -134,6 +134,40 @@ describe("POST /api/publish — intent=delete", () => {
     expect(location(res).searchParams.get("deleted")).toBe("1");
   });
 
+  it("drops the deleted post's pages from the read cache before answering", async () => {
+    // In place, not a self-fetch: a fetch of our own hostname from the Worker
+    // goes to the zone's origin, past the Worker.
+    const deleted: string[] = [];
+    const network = vi.fn();
+    vi.stubGlobal("fetch", network);
+    vi.stubGlobal("caches", {
+      default: {
+        delete: async (url: string) => {
+          deleted.push(String(url));
+          return true;
+        },
+      },
+    });
+    try {
+      await remove();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    // Every spelling the page can be cached under, as a takedown purges.
+    const encoded = encodeURIComponent(DID);
+    expect(deleted).toEqual(
+      expect.arrayContaining([
+        "https://trygoldroad.com/@writer.example",
+        "https://trygoldroad.com/@writer.example/",
+        "https://trygoldroad.com/@writer.example/rss.xml",
+        `https://trygoldroad.com/@writer.example/${RKEY}`,
+        `https://trygoldroad.com/p/writer.example/${RKEY}`,
+        `https://trygoldroad.com/@${encoded}/${RKEY}`,
+      ]),
+    );
+    expect(network).not.toHaveBeenCalled();
+  });
+
   it("deletes from the SESSION's repo, never one the form names", async () => {
     // Ownership on this path is the value of `repo` and nothing else, so a form
     // field that reached it would be a delete-anyone's-post bug.
