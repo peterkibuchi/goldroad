@@ -108,20 +108,42 @@ function parseJson<T>(bytes: Uint8Array): T | null {
 }
 
 /**
- * How long a reader route reuses a resolved identity from the edge cache. On a
+ * How long reader routes reuse a resolved identity from the edge cache. On a
  * cold reading page, handle → DID → PDS is two round trips, one after the
- * other, before the first byte of the writer's own repo can be asked for. An
- * hour is the usual atproto resolver default: a handle change or a PDS move
- * shows up within it, and until then the old answer still names the same
- * writer, so the takedown check (keyed on the DID) is unaffected.
+ * other, before the writer's repo can be asked for anything. The takedown
+ * check is keyed on the DID, so no cached answer can get around it.
+ *
+ * A handle is kept for ten minutes: it can pass to another account, and until
+ * the entry expires the page would show the previous holder's posts under it.
+ * A PDS is kept for an hour, the usual atproto resolver default, because a
+ * move is caught sooner than that: a PDS that refuses a writer's repo sends
+ * the reader route back for a fresh answer (see refreshReaderPds).
  */
-export const IDENTITY_CACHE_TTL_SECONDS = 3600;
+export const HANDLE_CACHE_TTL_SECONDS = 600;
+export const PDS_CACHE_TTL_SECONDS = 3600;
+
+const identityCacheUrl = (key: string) =>
+  `https://goldroad-identity.internal/v1/${key}`;
+
+/** Not awaited: the store is local to the data center and nothing reads it
+ * back during this request, so it has no business on the critical path. The
+ * request outlives it, since the page still has its PDS reads ahead of it. */
+function storeIdentity(key: string, value: string, ttlSeconds: number): void {
+  defaultCache()
+    ?.put(
+      identityCacheUrl(key),
+      new Response(value, {
+        headers: { "cache-control": `public, s-maxage=${ttlSeconds}` },
+      }),
+    )
+    .catch(() => {});
+}
 
 /**
- * `resolve()` through the Workers Cache, under a synthetic internal URL. Only
- * successes are stored, and a stored value is re-checked with `accept` on the
- * way out, so a corrupt entry costs a fresh resolution rather than a bad
- * fetch. Without a cache (unit tests) this is just `resolve()`.
+ * `resolve()` through the Workers Cache. Only successes are stored, and a
+ * stored value is re-checked with `accept` on the way out, so a corrupt entry
+ * costs a fresh resolution rather than a bad fetch. Without a cache (unit
+ * tests, the browser) this is just `resolve()`.
  *
  * Budget: a reading page resolves at most one handle and one DID, so this adds
  * four Cache API calls on a cold page (two lookups, two stores) and saves two
@@ -130,32 +152,25 @@ export const IDENTITY_CACHE_TTL_SECONDS = 3600;
  */
 async function cachedIdentity(
   key: string,
+  ttlSeconds: number,
   accept: (value: string) => boolean,
   resolve: () => Promise<string>,
 ): Promise<string> {
-  const cache = defaultCache();
-  const url = `https://goldroad-identity.internal/v1/${key}`;
-  const hit = await cache?.match(url).catch(() => undefined);
+  const hit = await defaultCache()
+    ?.match(identityCacheUrl(key))
+    .catch(() => undefined);
   const cached = await hit?.text().catch(() => null);
   if (cached && accept(cached)) return cached;
   const value = await resolve();
-  await cache
-    ?.put(
-      url,
-      new Response(value, {
-        headers: {
-          "cache-control": `public, s-maxage=${IDENTITY_CACHE_TTL_SECONDS}`,
-        },
-      }),
-    )
-    .catch(() => {});
+  storeIdentity(key, value, ttlSeconds);
   return value;
 }
 
-/** Handle → DID via the AppView, cached for IDENTITY_CACHE_TTL_SECONDS. */
+/** Handle → DID via the AppView, cached for HANDLE_CACHE_TTL_SECONDS. Every
+ * caller is a reader route. */
 export async function resolveHandleToDid(handle: string): Promise<Did> {
   const key = `handle/${encodeURIComponent(handle.toLowerCase())}`;
-  return (await cachedIdentity(key, isDid, () =>
+  return (await cachedIdentity(key, HANDLE_CACHE_TTL_SECONDS, isDid, () =>
     resolveHandleUncached(handle),
   )) as Did;
 }
@@ -245,18 +260,45 @@ export async function resolveDidIdentity(did: string): Promise<DidIdentity> {
   };
 }
 
-/** Resolve a DID to its PDS service endpoint via the DID document, cached for
- * IDENTITY_CACHE_TTL_SECONDS. Throws (unlike resolveDidIdentity) — a reader
- * route needs a NotFoundError to distinguish "no such repo" from a directory
- * that was merely unreachable. Signed-in surfaces use resolveDidIdentity, which
- * stays uncached: a writer who just moved PDS must not publish to the old one. */
+/** Resolve a DID to its PDS service endpoint via the DID document. Throws
+ * (unlike resolveDidIdentity) — a reader route needs a NotFoundError to
+ * distinguish "no such repo" from a directory that was merely unreachable. */
 export async function resolveDidToPds(did: string): Promise<string> {
+  return pdsFromDocument(await fetchDidDocument(did), did);
+}
+
+const pdsKey = (did: string) => `pds/${encodeURIComponent(did)}`;
+
+/** resolveDidToPds for the public reading surfaces, cached for
+ * PDS_CACHE_TTL_SECONDS. Signed-in surfaces keep resolving fresh: a reader or
+ * writer who just moved PDS must not have their own repo read from the old
+ * one. */
+export async function resolveReaderPds(did: string): Promise<string> {
   return cachedIdentity(
-    `pds/${encodeURIComponent(did)}`,
+    pdsKey(did),
+    PDS_CACHE_TTL_SECONDS,
     // The SSRF guard again: a cached endpoint is trusted no more than a fresh one.
     (pds) => orNull(() => assertPublicHttpsUrl(pds).origin) === pds,
-    async () => pdsFromDocument(await fetchDidDocument(did), did),
+    () => resolveDidToPds(did),
   );
+}
+
+/**
+ * For a reader route whose PDS just refused the writer's repo: resolves the DID
+ * afresh and, if it now names a different PDS, stores and returns that one.
+ * Null when nothing changed (or the directory can't be reached), which leaves
+ * the refusal standing. A writer who moved PDS within the cached hour would
+ * otherwise get 404s for the rest of it. On a genuinely missing repo this
+ * costs one DID-document fetch, the same as before anything was cached.
+ */
+export async function refreshReaderPds(
+  did: string,
+  stale: string,
+): Promise<string | null> {
+  const fresh = await resolveDidToPds(did).catch(() => null);
+  if (!fresh || fresh === stale) return null;
+  storeIdentity(pdsKey(did), fresh, PDS_CACHE_TTL_SECONDS);
+  return fresh;
 }
 
 /** Resolve a DID to its declared handle (`alsoKnownAs` at:// entry). UNVERIFIED

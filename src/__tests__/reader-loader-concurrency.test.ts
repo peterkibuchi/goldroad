@@ -57,7 +57,7 @@ const PUB_RKEY = "3lyk73wxpub22";
 const REPLIES = { replies: [], threadUrl: "https://bsky.app/x", hasMore: true };
 
 const gates = vi.hoisted(() => ({
-  /** Opened when resolveDidToPds is entered. */
+  /** Opened when resolveReaderPds is entered. */
   pdsEntered: undefined as ReturnType<typeof makeGate> | undefined,
   /** Opened when listRecordsPage (the "More from…" read) is entered. */
   relatedEntered: undefined as ReturnType<typeof makeGate> | undefined,
@@ -69,6 +69,14 @@ const gates = vi.hoisted(() => ({
   hiddenWhenOpened: false,
   /** Make the DID-document resolution fail. */
   pdsRejects: false,
+  /** Whether the publication listing holds the document's publication. */
+  listing: "has" as "has" | "lacks" | "rejects",
+  /** A PDS that refuses the document (a writer who moved away from it), and
+   * the one a fresh resolution names instead. */
+  refusingPds: null as string | null,
+  movedTo: null as string | null,
+  /** What resolveReaderPds answers. */
+  currentPds: "https://pds.example",
 }));
 
 vi.mock("~/lib/atproto", async (importOriginal) => {
@@ -76,19 +84,21 @@ vi.mock("~/lib/atproto", async (importOriginal) => {
   return {
     ...actual,
     resolveHandleToDid: vi.fn(async () => DID),
-    resolveDidToPds: vi.fn(async () => {
+    resolveReaderPds: vi.fn(async () => {
       gates.pdsEntered?.open();
       if (gates.pdsRejects)
         throw new actual.NotFoundError("directory unreachable");
-      return PDS;
+      return gates.currentPds;
     }),
     // The document read waits for the related-posts read AND the publication
     // listing to be entered, so a loader that still queues either reports
     // "sequential" in the title. A direct publication read (the fallback when
     // the listing misses) answers with a name the listing never carries.
-    getRecordEntry: vi.fn(async (_pds: string, _did: string, collection) => {
+    getRecordEntry: vi.fn(async (pds: string, _did: string, collection) => {
       if (collection === "site.standard.publication")
         return { uri: "", value: { name: "read directly" } };
+      if (pds === gates.refusingPds)
+        throw new actual.NotFoundError("repo not on this PDS");
       const related = (await gates.relatedEntered?.wait()) ?? "opened";
       const pubs = (await gates.pubsEntered?.wait()) ?? "opened";
       const concurrent = related === "opened" && pubs === "opened";
@@ -105,8 +115,16 @@ vi.mock("~/lib/atproto", async (importOriginal) => {
       gates.relatedEntered?.open();
       return { records: [], cursor: null };
     }),
+    // Stands in for the real one, which stores the fresh answer in the cache.
+    refreshReaderPds: vi.fn(async () => {
+      if (gates.movedTo) gates.currentPds = gates.movedTo;
+      return gates.movedTo;
+    }),
     listRecords: vi.fn(async () => {
       gates.pubsEntered?.open();
+      if (gates.listing === "rejects")
+        throw new actual.ListUnavailableError("PDS overloaded");
+      if (gates.listing === "lacks") return [];
       return [
         {
           uri: `at://${DID}/site.standard.publication/3otherpub2222`,
@@ -151,7 +169,12 @@ vi.mock("~/lib/comments", async (importOriginal) => ({
   }),
 }));
 
-import { getRecordEntry } from "~/lib/atproto";
+import {
+  getRecordEntry,
+  listRecords,
+  listRecordsPage,
+  refreshReaderPds,
+} from "~/lib/atproto";
 import { loadDocument } from "../components/document-article";
 
 function reset() {
@@ -161,7 +184,14 @@ function reset() {
   // Released at once unless a test holds it.
   gates.repliesReleased = makeGate();
   gates.repliesReleased.open();
+  gates.listing = "has";
+  gates.refusingPds = null;
+  gates.movedTo = null;
+  gates.currentPds = PDS;
+  vi.mocked(refreshReaderPds).mockClear();
   vi.mocked(getRecordEntry).mockClear();
+  vi.mocked(listRecords).mockClear();
+  vi.mocked(listRecordsPage).mockClear();
   gates.hiddenWhenOpened = false;
   gates.pdsRejects = false;
 }
@@ -185,6 +215,10 @@ describe("reading-surface loader concurrency", () => {
       "the D1 takedown check still waits for its own round trip before the DID document is fetched",
     ).toBe(true);
     expect((thrown as { data?: { hidden?: boolean } }).data?.hidden).toBe(true);
+    // Nothing of a hidden subject's is fetched, the new listing included.
+    expect(getRecordEntry).not.toHaveBeenCalled();
+    expect(listRecords).not.toHaveBeenCalled();
+    expect(listRecordsPage).not.toHaveBeenCalled();
   });
 
   it("reads the record and the related-posts page against the PDS together", async () => {
@@ -210,6 +244,40 @@ describe("reading-surface loader concurrency", () => {
     ).toBe("concurrent");
     expect(data.publicationName).toBe("From the listing");
     expect(getRecordEntry).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads the publication directly when the listing doesn't have it", async () => {
+    for (const listing of ["lacks", "rejects"] as const) {
+      reset();
+      gates.listing = listing;
+      const data = await loadDocument("writer.example", RKEY);
+      expect(data.publicationName, listing).toBe("read directly");
+      expect(getRecordEntry).toHaveBeenCalledTimes(2);
+    }
+  });
+
+  it("reads again from the new PDS when the cached one refuses", async () => {
+    reset();
+    // A writer who moved: the cached PDS refuses, a fresh resolution names the
+    // new one, and the post loads from there.
+    gates.refusingPds = PDS;
+    gates.movedTo = "https://new-pds.example";
+    const data = await loadDocument("writer.example", RKEY);
+    expect(data.doc.title).toBe("concurrent");
+    expect(refreshReaderPds).toHaveBeenCalledWith(DID, PDS);
+  });
+
+  it("serves the 404 when the refusal stands", async () => {
+    reset();
+    gates.refusingPds = PDS;
+    let thrown: unknown;
+    try {
+      await loadDocument("writer.example", RKEY);
+    } catch (err) {
+      thrown = err;
+    }
+    expect(isNotFound(thrown)).toBe(true);
+    expect(refreshReaderPds).toHaveBeenCalledTimes(1);
   });
 
   it("returns the article without waiting for the replies", async () => {

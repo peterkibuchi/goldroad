@@ -16,6 +16,7 @@ import {
   setEdition,
 } from "~/lib/appearance";
 import {
+  type Did,
   getRecordEntry,
   isDid,
   isHandle,
@@ -24,8 +25,9 @@ import {
   NotFoundError,
   parseAtUri,
   RKEY_RE,
-  resolveDidToPds,
+  refreshReaderPds,
   resolveHandleToDid,
+  resolveReaderPds,
   rkeyFromUri,
   type StandardDocument,
   type StandardPublication,
@@ -98,7 +100,11 @@ const budgetedFetch: typeof fetch = (input, init) =>
  * Content comes straight from the writer's PDS: the loader renders the body
  * once to sanitized HTML (~/lib/markdown-html), cached on the server.
  */
-export async function loadDocument(identParam: string, rkey: string) {
+export async function loadDocument(
+  identParam: string,
+  rkey: string,
+  retried = false,
+) {
   let ident: string;
   try {
     // A lone "%" in the path throws URIError — a malformed address is a
@@ -111,8 +117,11 @@ export async function loadDocument(identParam: string, rkey: string) {
   // rkey gets interpolated into the page's at:// link tags — reject malformed
   // keys here instead of trusting the PDS's 404.
   if (!RKEY_RE.test(rkey)) throw notFound();
+  // Kept outside the try for the moved-PDS retry in the catch below.
+  let did: Did | undefined;
+  let pdsRead: string | undefined;
   try {
-    const did = isDid(ident) ? ident : await resolveHandleToDid(ident);
+    did = isDid(ident) ? ident : await resolveHandleToDid(ident);
 
     // Two D1 reads and one plc.directory fetch, all of which need only the DID
     // and none of which need each other. They used to run one after another,
@@ -137,7 +146,7 @@ export async function loadDocument(identParam: string, rkey: string) {
     // directory means the generic 404 instead of the takedown notice — a
     // regression in exactly the path that matters most. The error is held and
     // re-thrown below, unchanged, once the check has had its say.
-    const pdsPromise = resolveDidToPds(did).catch((err: unknown) => ({
+    const pdsPromise = resolveReaderPds(did).catch((err: unknown) => ({
       pdsError: err,
     }));
 
@@ -151,6 +160,7 @@ export async function loadDocument(identParam: string, rkey: string) {
     const resolvedPds = await pdsPromise;
     if (typeof resolvedPds !== "string") throw resolvedPds.pdsError;
     const pds = resolvedPds;
+    pdsRead = pds;
 
     // "More from @handle" — same-writer only: a small extra page of the
     // writer's own document records, the same call shape the archive page
@@ -170,8 +180,10 @@ export async function loadDocument(identParam: string, rkey: string) {
     // The writer's publications, listed alongside the document instead of
     // fetched after it. Which one the document belongs to is only known once
     // the document arrives, but writers have one or a few, so a single listing
-    // nearly always holds it: the same one request as the getRecord it
-    // replaces, minus a whole PDS round trip of waiting.
+    // nearly always holds it: one request, like the getRecord it replaces,
+    // minus a whole PDS round trip of waiting. It is spent for nothing on a
+    // document with no publication in this repo, and a writer with more than
+    // ten pays for the direct read as well.
     const pubsPromise = listRecords<StandardPublication>(
       pds,
       did,
@@ -309,7 +321,12 @@ export async function loadDocument(identParam: string, rkey: string) {
       }),
     };
   } catch (err) {
-    if (err instanceof NotFoundError) throw notFound();
+    if (err instanceof NotFoundError) {
+      // The cached PDS refused: the writer may have moved since it was stored.
+      if (!retried && did && pdsRead && (await refreshReaderPds(did, pdsRead)))
+        return loadDocument(identParam, rkey, true);
+      throw notFound();
+    }
     throw err;
   }
 }

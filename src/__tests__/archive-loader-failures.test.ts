@@ -7,7 +7,8 @@ const DID = "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa";
 
 vi.mock("~/lib/atproto", async (importOriginal) => ({
   ...(await importOriginal<typeof import("~/lib/atproto")>()),
-  resolveDidToPds: vi.fn(async () => "https://pds.example"),
+  resolveReaderPds: vi.fn(async () => "https://pds.example"),
+  refreshReaderPds: vi.fn(async () => null),
   listRecords: vi.fn(async () => []),
   listRecordsPage: vi.fn(),
 }));
@@ -57,6 +58,25 @@ describe("archive loader — how a failed listing is classified", () => {
     const data = await load();
     expect(data.postsError).toBeNull();
     expect(options.headers({ loaderData: data })).toBeUndefined();
+  });
+
+  it("keeps a refusal out of the cache when the writer has moved PDS", async () => {
+    vi.mocked(atproto.listRecordsPage).mockRejectedValue(
+      new atproto.NotFoundError("400"),
+    );
+    vi.mocked(atproto.refreshReaderPds).mockResolvedValueOnce(
+      "https://new-pds.example",
+    );
+    const data = await load();
+    // This render read the old PDS; the next reads the new one, and an empty
+    // archive mustn't stand in for it in the edge cache meanwhile.
+    expect(atproto.refreshReaderPds).toHaveBeenCalledWith(
+      DID,
+      "https://pds.example",
+    );
+    expect(options.headers({ loaderData: data })).toEqual({
+      "cache-control": "no-store",
+    });
   });
 
   it("reports an unreachable PDS, and keeps the page out of the cache and the index", async () => {

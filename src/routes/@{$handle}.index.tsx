@@ -23,8 +23,9 @@ import {
   listRecordsPage,
   NotFoundError,
   ResponseTooLargeError,
-  resolveDidToPds,
+  refreshReaderPds,
   resolveHandleToDid,
+  resolveReaderPds,
   rkeyFromUri,
   type StandardDocument,
   type StandardPublication,
@@ -65,7 +66,7 @@ export const Route = createFileRoute("/@{$handle}/")({
       // NOT a `Promise.all`: that would reject with whichever settled first, so
       // a hidden author on an unreachable directory would get the generic 404
       // instead of the takedown notice. The error waits its turn instead.
-      const pdsPromise = resolveDidToPds(did).catch((err: unknown) => ({
+      const pdsPromise = resolveReaderPds(did).catch((err: unknown) => ({
         pdsError: err,
       }));
       // Author-level takedown: a hidden DID stops
@@ -94,13 +95,21 @@ export const Route = createFileRoute("/@{$handle}/")({
           // A PDS that refuses the listing has nothing to show. Anything else
           // is a failure the page must say out loud, not an empty archive.
           err instanceof NotFoundError
-            ? { records: [], cursor: null }
+            ? ("refused" as const)
             : err instanceof ResponseTooLargeError
               ? ("too_large" as const)
               : ("unavailable" as const),
         ),
       ]);
-      const postsError = typeof docsPage === "string" ? docsPage : null;
+      // A refusal from the cached PDS can mean the writer has since moved.
+      // This render stays empty, but uncached, and the next one reads the
+      // new PDS (see refreshReaderPds).
+      const moved =
+        docsPage === "refused" && (await refreshReaderPds(did, pds)) !== null;
+      const postsError =
+        docsPage === "too_large" || docsPage === "unavailable"
+          ? docsPage
+          : null;
       const docs = typeof docsPage === "string" ? [] : docsPage.records;
       const publication = pubs?.[0]?.value ?? null;
       // The record's AT-URI backs the standard.site publication link tag.
@@ -162,7 +171,8 @@ export const Route = createFileRoute("/@{$handle}/")({
         postsError,
         // Transient failures must not sit in the edge cache for five minutes.
         // "Too large" is no more likely to clear next request, so it caches.
-        transientFailure: postsError === "unavailable" || pubs === null,
+        transientFailure:
+          postsError === "unavailable" || pubs === null || moved,
       };
     } catch (err) {
       if (err instanceof NotFoundError) throw notFound();

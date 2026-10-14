@@ -404,15 +404,23 @@ describe("/@{$handle}/rss.xml — a failed listing", () => {
 });
 
 describe("/@{$handle}/rss.xml — a refused or failing listing", () => {
-  function stubListing(status: number) {
+  /** `movedTo`: the PDS the DID document names from its second fetch on. */
+  function stubListing(status: number, movedTo?: string) {
+    let didDocFetches = 0;
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: URL | RequestInfo) => {
         const url = String(input);
         if (url.startsWith("https://public.api.bsky.app/xrpc/"))
           return new Response(JSON.stringify({ did: DID }));
-        if (url.startsWith("https://plc.directory/"))
+        if (url.startsWith("https://plc.directory/")) {
+          didDocFetches++;
+          if (movedTo && didDocFetches > 1)
+            return Response.json({
+              service: [{ ...didDoc.service[0], serviceEndpoint: movedTo }],
+            });
           return new Response(JSON.stringify(didDoc));
+        }
         const collection = new URL(url).searchParams.get("collection");
         if (collection === "site.standard.publication")
           return new Response(JSON.stringify({ records: [] }));
@@ -425,6 +433,15 @@ describe("/@{$handle}/rss.xml — a refused or failing listing", () => {
     stubListing(400);
     const res = await call("writer.example");
     expect(res.status).toBe(200);
+  });
+
+  it("answers 503, not an empty feed, when the writer has moved PDS", async () => {
+    // The old PDS refuses; the DID now names another. Readers keep their
+    // items and the next fetch reads the new PDS.
+    stubListing(400, "https://new-pds.example");
+    const res = await call("writer.example");
+    expect(res.status).toBe(503);
+    expect(res.headers.get("cache-control")).toBe("no-store");
   });
 
   it("answers 503 with a retry hint when the PDS is down", async () => {
