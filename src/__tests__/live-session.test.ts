@@ -1,128 +1,87 @@
+// @vitest-environment node
 /**
  * A signed cookie is not the same thing as a live session.
  *
- * The cookie is a self-contained bearer token with a 30-day ceiling, so
- * verifying it proves only that we issued it and that it isn't ancient. Signing
- * out drops the server-side session row; before this gate existed, a copy of
- * the cookie taken beforehand kept working against every endpoint that reads
- * the writer's own data — including account export and account deletion, which
- * are exactly what someone reaches for when they think a device was exposed.
+ * Verifying the cookie proves only that we issued it and that it isn't
+ * ancient. Signing out drops the server-side session row; before this gate
+ * existed, a copy of the cookie taken beforehand kept working against every
+ * endpoint that reads the writer's own data — including account export and
+ * account deletion, which are exactly what someone reaches for when they think
+ * a device was exposed. The sign-out/sign-in and expiry cases are in
+ * session-lifecycle.test.ts.
  */
-import { describe, expect, it } from "vitest";
+import { drizzle } from "drizzle-orm/d1";
+import { describe, expect, it, vi } from "vitest";
 
-import { hasLiveSession, readLiveSessionDid } from "../lib/live-session";
+import { oauthKv } from "../db/schema";
+import { readLiveSessionDid } from "../lib/live-session";
 import { signSession } from "../lib/session";
+import { sqliteD1 } from "./support/sqlite-d1";
 
 const DID = "did:plc:abcdefghijklmnopqrstuvwx";
+const SID = "the-rows-sid";
 const SECRET = "vitest-fake-cookie-secret";
 
-/** drizzle's `eq()` builds an opaque SQL node, so rather than assume its shape
- * we walk it for the bound key — the one string that looks like a session key. */
-function boundSessionKey(
-  node: unknown,
-  seen = new Set<unknown>(),
-): string | undefined {
-  if (typeof node === "string")
-    return node.startsWith("sess:") ? node : undefined;
-  if (node === null || typeof node !== "object" || seen.has(node)) return;
-  seen.add(node);
-  for (const value of Object.values(node as Record<string, unknown>)) {
-    const found = boundSessionKey(value, seen);
-    if (found) return found;
-  }
-  return undefined;
+async function dbWithSession(did = DID) {
+  const d1 = sqliteD1();
+  const db = drizzle(d1);
+  await db.insert(oauthKv).values({
+    k: `sess:${did}`,
+    v: "{}",
+    sid: SID,
+    expiresAt: Date.now() + 60_000,
+  });
+  return { d1, db };
 }
 
-/** A stand-in for the one indexed read `hasLiveSession` performs: `.get()`
- * resolves to the row when the key is present, `undefined` when it isn't. */
-function dbWithKeys(keys: string[]) {
-  let requested: string | undefined;
-  const chain = {
-    select: () => chain,
-    from: () => chain,
-    where: (cond: unknown) => {
-      requested = boundSessionKey(cond);
-      return chain;
-    },
-    get: async () =>
-      requested && keys.includes(requested) ? { k: requested } : undefined,
-  };
-  return chain as unknown as Parameters<typeof hasLiveSession>[0];
-}
-
-async function cookieRequest(did = DID): Promise<Request> {
+async function cookieRequest(did = DID, secret = SECRET): Promise<Request> {
   return new Request("https://example.test/api/drafts", {
-    headers: { cookie: `gr_session=${await signSession(did, SECRET)}` },
+    headers: { cookie: `gr_session=${await signSession(did, SID, secret)}` },
   });
 }
 
 describe("readLiveSessionDid", () => {
   it("accepts a valid cookie whose session row is still there", async () => {
-    const did = await readLiveSessionDid(
-      await cookieRequest(),
-      SECRET,
-      dbWithKeys([`sess:${DID}`]),
+    const { db } = await dbWithSession();
+    expect(await readLiveSessionDid(await cookieRequest(), SECRET, db)).toBe(
+      DID,
     );
-    expect(did).toBe(DID);
   });
 
   it("refuses a still-valid cookie once the session has been signed out", async () => {
-    // Same cookie, same signature, still inside its 30 days — the only thing
-    // that changed is that the session row is gone. That must be enough.
-    const did = await readLiveSessionDid(
-      await cookieRequest(),
-      SECRET,
-      dbWithKeys([]),
-    );
-    expect(did).toBeNull();
+    const { db } = await dbWithSession();
+    await db.delete(oauthKv);
+    expect(
+      await readLiveSessionDid(await cookieRequest(), SECRET, db),
+    ).toBeNull();
   });
 
   it("refuses a request with no cookie without touching the database", async () => {
-    let touched = false;
-    const db = {
-      select: () => {
-        touched = true;
-        return db;
-      },
-      from: () => db,
-      where: () => db,
-      get: async () => undefined,
-    } as unknown as Parameters<typeof hasLiveSession>[0];
-
-    const did = await readLiveSessionDid(
-      new Request("https://example.test/api/drafts"),
-      SECRET,
-      db,
-    );
-    expect(did).toBeNull();
-    expect(touched).toBe(false);
+    const { d1, db } = await dbWithSession();
+    const prepare = vi.spyOn(d1, "prepare");
+    expect(
+      await readLiveSessionDid(
+        new Request("https://example.test/api/drafts"),
+        SECRET,
+        db,
+      ),
+    ).toBeNull();
+    expect(prepare).not.toHaveBeenCalled();
   });
 
   it("refuses a cookie signed with a different secret", async () => {
-    const request = new Request("https://example.test/api/drafts", {
-      headers: { cookie: `gr_session=${await signSession(DID, "other")}` },
-    });
+    const { db } = await dbWithSession();
     expect(
-      await readLiveSessionDid(request, SECRET, dbWithKeys([`sess:${DID}`])),
+      await readLiveSessionDid(await cookieRequest(DID, "other"), SECRET, db),
     ).toBeNull();
   });
 
   it("looks the session up under its own DID, never another writer's", async () => {
-    // A live session for someone else must not authenticate this cookie.
-    const other = "did:plc:zzzzzzzzzzzzzzzzzzzzzzzz";
+    // A live session for someone else, with the same sid, must not
+    // authenticate this cookie.
+    const { db } = await dbWithSession("did:plc:zzzzzzzzzzzzzzzzzzzzzzzz");
     expect(
-      await readLiveSessionDid(
-        await cookieRequest(),
-        SECRET,
-        dbWithKeys([`sess:${other}`]),
-      ),
+      await readLiveSessionDid(await cookieRequest(), SECRET, db),
     ).toBeNull();
-  });
-});
-
-describe("hasLiveSession", () => {
-  it("is true only when the exact session key exists", async () => {
-    expect(await hasLiveSession(dbWithKeys([`sess:${DID}`]), DID)).toBe(true);
-    expect(await hasLiveSession(dbWithKeys([]), DID)).toBe(false);
   });
 });

@@ -71,7 +71,7 @@ async function upload(
   if (file) form.set("file", file);
   const headers: Record<string, string> = {};
   if (opts.authed !== false)
-    headers.cookie = `gr_session=${await signSession(DID, SECRET)}`;
+    headers.cookie = `gr_session=${await signSession(DID, "test-sid", SECRET)}`;
   if (opts.origin) headers.origin = opts.origin;
   return POST({
     request: new Request("http://127.0.0.1:3000/api/publish", {

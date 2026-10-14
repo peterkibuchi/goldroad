@@ -14,17 +14,21 @@ import {
 // secret scanners (GitGuardian) even when fake. Never use a real key in tests.
 const SECRET = "test-cookie-secret-0123456789-not-a-real-key";
 const DID = "did:plc:ukp7pzzht32uigg6bg4vxr5t";
+const SID = "row-session-id";
 
 describe("session token", () => {
-  it("round-trips a DID through the signed {did, iat} payload", async () => {
-    const token = await signSession(DID, SECRET);
+  it("round-trips a DID and session id through the signed payload", async () => {
+    const token = await signSession(DID, SID, SECRET);
     // Format is now `base64url(json).base64url(hmac)` — exactly one separator.
     expect(token.split(".")).toHaveLength(2);
-    expect(await verifySessionToken(token, SECRET)).toBe(DID);
+    expect(await verifySessionToken(token, SECRET)).toEqual({
+      did: DID,
+      sid: SID,
+    });
   });
 
   it("rejects a tampered payload (the DID is inside the signed payload)", async () => {
-    const token = await signSession(DID, SECRET);
+    const token = await signSession(DID, SID, SECRET);
     const [payload, sig] = token.split(".");
     // Flip a payload char: the signature no longer matches.
     const forged = `${payload.slice(0, -1)}${payload.endsWith("A") ? "B" : "A"}.${sig}`;
@@ -32,7 +36,7 @@ describe("session token", () => {
   });
 
   it("rejects a tampered signature", async () => {
-    const token = await signSession(DID, SECRET);
+    const token = await signSession(DID, SID, SECRET);
     // Flip the signature's FIRST char, never its last: the final base64url
     // char of a 32-byte HMAC carries only 2 significant bits, so a last-char
     // flip (e.g. B→A) can decode to the SAME bytes and legitimately verify —
@@ -46,7 +50,7 @@ describe("session token", () => {
   });
 
   it("rejects a token signed with a different secret", async () => {
-    const token = await signSession(DID, "another-secret");
+    const token = await signSession(DID, SID, "another-secret");
     expect(await verifySessionToken(token, SECRET)).toBeNull();
   });
 
@@ -64,24 +68,30 @@ describe("session token", () => {
 
   it("handles did:web DIDs containing dots", async () => {
     const didWeb = "did:web:example.com";
-    const token = await signSession(didWeb, SECRET);
-    expect(await verifySessionToken(token, SECRET)).toBe(didWeb);
+    const token = await signSession(didWeb, SID, SECRET);
+    expect(await verifySessionToken(token, SECRET)).toEqual({
+      did: didWeb,
+      sid: SID,
+    });
   });
 
   it("throws when the secret is missing", async () => {
-    await expect(signSession(DID, "")).rejects.toThrow("COOKIE_SECRET");
+    await expect(signSession(DID, SID, "")).rejects.toThrow("COOKIE_SECRET");
   });
 
   it("accepts a token within the 30-day TTL", async () => {
     const t0 = 1_700_000_000_000;
-    const token = await signSession(DID, SECRET, t0);
+    const token = await signSession(DID, SID, SECRET, t0);
     const day = 24 * 60 * 60 * 1000;
-    expect(await verifySessionToken(token, SECRET, t0 + 29 * day)).toBe(DID);
+    expect(await verifySessionToken(token, SECRET, t0 + 29 * day)).toEqual({
+      did: DID,
+      sid: SID,
+    });
   });
 
   it("rejects a token past the 30-day TTL (leaked-cookie replay window)", async () => {
     const t0 = 1_700_000_000_000;
-    const token = await signSession(DID, SECRET, t0);
+    const token = await signSession(DID, SID, SECRET, t0);
     const day = 24 * 60 * 60 * 1000;
     expect(await verifySessionToken(token, SECRET, t0 + 31 * day)).toBeNull();
   });
@@ -89,7 +99,7 @@ describe("session token", () => {
   it("rejects a future-dated token beyond clock skew", async () => {
     const t0 = 1_700_000_000_000;
     // Issued 10 min in the "future" relative to the verify clock.
-    const token = await signSession(DID, SECRET, t0 + 10 * 60 * 1000);
+    const token = await signSession(DID, SID, SECRET, t0 + 10 * 60 * 1000);
     expect(await verifySessionToken(token, SECRET, t0)).toBeNull();
   });
 
@@ -123,9 +133,43 @@ describe("session token", () => {
   });
 });
 
+describe("session token without a session id", () => {
+  it("is refused, so cookies from before session ids sign in again", async () => {
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(SECRET),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"],
+    );
+    const toB64 = (bytes: Uint8Array) =>
+      btoa(String.fromCharCode(...bytes))
+        .replaceAll("+", "-")
+        .replaceAll("/", "_")
+        .replace(/=+$/, "");
+    for (const body of [
+      { did: DID, iat: Date.now() },
+      { did: DID, sid: "", iat: Date.now() },
+    ]) {
+      const payload = toB64(new TextEncoder().encode(JSON.stringify(body)));
+      const sig = await crypto.subtle.sign(
+        "HMAC",
+        key,
+        new TextEncoder().encode(payload),
+      );
+      expect(
+        await verifySessionToken(
+          `${payload}.${toB64(new Uint8Array(sig))}`,
+          SECRET,
+        ),
+      ).toBeNull();
+    }
+  });
+});
+
 describe("session cookie", () => {
   it("reads a valid cookie from a request", async () => {
-    const token = await signSession(DID, SECRET);
+    const token = await signSession(DID, SID, SECRET);
     const request = new Request("https://goldroad.example/write", {
       headers: { cookie: `other=1; gr_session=${token}; theme=dark` },
     });

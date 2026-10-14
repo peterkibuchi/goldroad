@@ -53,7 +53,7 @@ const DID = "did:plc:fake2222222222writer2222";
 const SECRET = "vitest-fake-cookie-secret"; // mirrors mocks/cloudflare-workers
 
 async function sessionCookie(): Promise<string> {
-  return `gr_session=${await signSession(DID, SECRET)}`;
+  return `gr_session=${await signSession(DID, "test-sid", SECRET)}`;
 }
 
 async function call(authed = true, crossSite = false): Promise<Response> {
