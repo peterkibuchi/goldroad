@@ -75,10 +75,10 @@ jobs:
             exit 1
           fi
 
-      - name: Install age
+      - name: Install age and sqlite3
         run: |
           sudo apt-get update
-          sudo apt-get install -y age
+          sudo apt-get install -y age sqlite3
 
       # --env production is load-bearing. The top-level wrangler config carries a
       # PLACEHOLDER database_id (it exists so a self-hoster can point the repo at
@@ -117,6 +117,16 @@ jobs:
           # INSERTs, not just schema — a data-less export is not a backup.
           grep -q "INSERT INTO" "$DUMP" || {
             echo "::error::dump contains no rows"; exit 1; }
+          # And it has to load. The export is assembled from parts (see
+          # scripts/d1-export.sh), so restore it into a scratch database and
+          # run the search index's own consistency check over the rebuild.
+          RESTORED=$(mktemp)
+          sqlite3 -bail "$RESTORED" < "$DUMP" || {
+            shred -u "$RESTORED"; echo "::error::dump does not restore"; exit 1; }
+          sqlite3 -bail "$RESTORED" \
+            "INSERT INTO post_search(post_search) VALUES('integrity-check');" || {
+            shred -u "$RESTORED"; echo "::error::restored search index is inconsistent"; exit 1; }
+          shred -u "$RESTORED"
           echo "BACKUP_BYTES=${BYTES}" >> "$GITHUB_ENV"
           echo "Verified ${BYTES} bytes."
 

@@ -139,6 +139,24 @@ describe("archive search — the results", () => {
     ).toBeDefined();
   });
 
+  it("says the posts didn't load, rather than that nothing matched", () => {
+    render(
+      <PublicationView
+        iconPath={null}
+        ident="writer.example"
+        nextCursor={null}
+        posts={[]}
+        postsError="unavailable"
+        publication={null}
+        search={{ ...full([]), scope: "titles" }}
+      />,
+    );
+    expect(
+      screen.getByText(/posts couldn't be loaded right now/),
+    ).toBeDefined();
+    expect(screen.queryByText(/Try fewer or different words/)).toBeNull();
+  });
+
   it("doesn't say it for a full-text search", () => {
     view(full([]));
     expect(screen.queryByText(/Searched the titles/)).toBeNull();
@@ -191,9 +209,13 @@ describe("archive search — the results", () => {
 
 describe("what a typed query becomes", () => {
   it("quotes every word, so nothing typed is FTS5 syntax", () => {
-    expect(toMatchExpression('slow "garden" NOT title:x*')).toBe(
-      '"slow"* "garden"* "not"* "title"* "x"*',
+    expect(toMatchExpression('slow "garden" NOT title:xy*')).toBe(
+      '"slow"* "garden"* "not"* "title"* "xy"*',
     );
+  });
+
+  it("matches a single character exactly, not as every word it starts", () => {
+    expect(toMatchExpression("a garden")).toBe('"a" "garden"*');
   });
 
   it("keeps letters and digits in any script, and drops the rest", () => {

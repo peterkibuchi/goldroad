@@ -108,6 +108,17 @@ describe("archive search — loader", () => {
     expect(found.hits.map((h) => h.rkey).sort()).toEqual(["3ma", "3mb"]);
   });
 
+  it("can't be made to show a fake highlight from another server's title", async () => {
+    vi.mocked(search.searchPublication).mockResolvedValue({ ready: false });
+    vi.mocked(atproto.listRecordsPage).mockResolvedValue({
+      records: [doc("3ma", "slow \u0002fake\u0003 title")],
+      cursor: null,
+    });
+    const data = await load({ q: "slow" });
+    const [hit] = (data.search as { hits: { title: string }[] }).hits;
+    expect(hit.title).toBe("slow fake title");
+  });
+
   it("never asks the index when nobody searched", async () => {
     const data = await load({});
     expect(search.searchPublication).not.toHaveBeenCalled();

@@ -26,15 +26,17 @@ export function normalizeQuery(raw: unknown): string {
  * stray quote into a query error and a pasted `NOT` into a different search.
  * So the query is cut into words (letters and digits, in any script) and each
  * one is quoted, which makes every word a plain term. Every word must appear
- * (FTS5's implicit AND), and each matches as a prefix, so "softw" finds
- * "software" and a half-typed last word still finds something.
+ * (FTS5's implicit AND), and each of two or more characters matches as a
+ * prefix, so "softw" finds "software" and a half-typed last word still finds
+ * something. A single character matches only itself: as a prefix it would be
+ * every word that starts with it.
  */
 export function toMatchExpression(query: string): string | null {
   const words = query.toLowerCase().match(/[\p{L}\p{N}]+/gu);
   if (!words) return null;
   return [...new Set(words)]
     .slice(0, MAX_QUERY_TERMS)
-    .map((word) => `"${word}"*`)
+    .map((word) => ([...word].length > 1 ? `"${word}"*` : `"${word}"`))
     .join(" ");
 }
 

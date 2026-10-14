@@ -6,9 +6,14 @@
  * WHAT IS INDEXED: the documents this app writes, as it writes them (publish,
  * edit, delete, in ~/routes/api.publish and ~/lib/publish-document), plus a
  * one-off backfill of each writer's existing posts (/api/search/backfill).
- * A document carrying content we can't round-trip (another app's format) is
- * left out, the same line the editor draws: we don't see that app's edits, so
- * an index of it would go stale without anyone knowing.
+ * A document in another app's format, which the archive lists too, is
+ * indexed by title and summary only: its body is that app's to render, and
+ * the title is what the archive's old filter found it by.
+ *
+ * KNOWN GAP: a change made in another app after the backfill (a Goldroad post
+ * deleted with a repo tool, a Leaflet post retitled) isn't seen until the post
+ * is next written here. Every Goldroad path keeps the index current; a
+ * periodic re-walk would close the rest, and isn't built.
  *
  * OTHER AUTHORS ARE NOT INDEXED, AT ALL. Their archives render here, but
  * indexing them would mean reading a whole repo on a stranger's say-so (one
@@ -61,8 +66,8 @@ type SearchableRecord = {
 };
 
 /**
- * What a document contributes to the index, or null when it shouldn't be in
- * it (another app's content, or no title to show in a result).
+ * What a document contributes to the index, or null when it has no title to
+ * show in a result. Another app's content contributes its title and summary.
  *
  * The body is the record's own `textContent` when it carries markpub content,
  * because that is the plaintext the publish path already produced. Anything
@@ -70,10 +75,10 @@ type SearchableRecord = {
  * plaintext here, so markup never turns into search terms.
  */
 export function searchableText(record: SearchableRecord) {
-  if (hasForeignContent(record)) return null;
   if (typeof record.title !== "string" || !record.title.trim()) return null;
-  const body =
-    record.content != null && typeof record.textContent === "string"
+  const body = hasForeignContent(record)
+    ? ""
+    : record.content != null && typeof record.textContent === "string"
       ? record.textContent
       : plainTextBody(documentBodyMarkdown(record), MAX_BODY_LENGTH);
   return {
@@ -88,21 +93,36 @@ export function searchableText(record: SearchableRecord) {
   };
 }
 
-/** The statement that puts one document in the index, replacing what was
- * there. The triggers on `search_documents` keep FTS5 in step. */
+/**
+ * The writer as one FTS5 token: "o" and the DID's UTF-8 bytes in hex. Letters
+ * and digits only, so the tokenizer can't split it, and hex, so two DIDs can
+ * never share one.
+ */
+export function ownerToken(did: string): string {
+  return `o${[...new TextEncoder().encode(did)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
+/** The statement that puts one document in the index. The triggers on
+ * `search_documents` keep FTS5 in step. `replace: false` is the backfill's:
+ * it never overwrites a row a publish or edit wrote since its page was read. */
 function upsertStatement(
   db: DrizzleD1,
   did: string,
   rkey: string,
   text: NonNullable<ReturnType<typeof searchableText>>,
+  replace = true,
 ) {
-  return db
+  const insert = db
     .insert(searchDocuments)
-    .values({ did, rkey, ...text })
-    .onConflictDoUpdate({
-      target: [searchDocuments.did, searchDocuments.rkey],
-      set: text,
-    });
+    .values({ did, rkey, owner: ownerToken(did), ...text });
+  return replace
+    ? insert.onConflictDoUpdate({
+        target: [searchDocuments.did, searchDocuments.rkey],
+        set: text,
+      })
+    : insert.onConflictDoNothing();
 }
 
 function deleteStatement(db: DrizzleD1, did: string, rkey: string) {
@@ -151,8 +171,12 @@ export type DocumentPage = {
 /**
  * One step of a writer's backfill: the next page of their documents into the
  * index, and the cursor saved so the next call carries on. Idempotent, so two
- * tabs running it at once only repeat work. `done` once a page comes back
- * without a cursor, and from then on search answers from the index.
+ * tabs running it at once only repeat work, and a tab finishing second can't
+ * undo the first one's completion. `done` once a page comes back without a
+ * cursor, and from then on search answers from the index.
+ *
+ * Rows already in the index are left alone: the publish and edit paths wrote
+ * them, and may have done so after this page was read.
  */
 export async function backfillStep(
   db: DrizzleD1,
@@ -174,7 +198,7 @@ export async function backfillStep(
     const at = parseAtUri(record.uri);
     const text = searchableText(record.value);
     return at?.did === did && at.collection === "site.standard.document" && text
-      ? [upsertStatement(db, did, at.rkey, text)]
+      ? [upsertStatement(db, did, at.rkey, text, false)]
       : [];
   });
   const progress = {
@@ -186,7 +210,13 @@ export async function backfillStep(
     db
       .insert(searchBackfills)
       .values({ did, ...progress })
-      .onConflictDoUpdate({ target: searchBackfills.did, set: progress }),
+      .onConflictDoUpdate({
+        target: searchBackfills.did,
+        set: {
+          ...progress,
+          completedAt: sql`coalesce(${searchBackfills.completedAt}, excluded.completed_at)`,
+        },
+      }),
     ...upserts,
   ]);
   return { done: page.cursor === null, indexed: upserts.length };
@@ -202,25 +232,33 @@ export type SearchHit = {
   publishedAt: string | null;
 };
 
-/** The ranked matches for one writer. Title matches weigh most, then the
- * summary, then the body. One more row than is shown, to know there are
- * more. */
+/**
+ * The ranked matches for one writer. Title matches weigh most, then the
+ * summary, then the body. One more row than is shown, to know there are more.
+ *
+ * The owner token goes into the MATCH rather than a WHERE on the join: that
+ * way FTS5 intersects the query with this writer's postings, and only their
+ * matches are ever joined, so a search costs rows read in proportion to one
+ * writer's archive, not everyone's. The query words are confined to the text
+ * columns, so none of them can match an owner token.
+ */
 export async function searchPosts(
   db: DrizzleD1,
   did: string,
   match: string,
   limit: number = SEARCH_RESULT_LIMIT,
 ): Promise<SearchHit[]> {
+  const scoped = `owner:"${ownerToken(did)}" AND {title description body}: (${match})`;
   return db.all<SearchHit>(sql`
     select d.rkey as rkey,
-      highlight(post_search, 0, char(2), char(3)) as title,
-      snippet(post_search, 2, char(2), char(3), '…', 24) as snippet,
+      highlight(post_search, 1, char(2), char(3)) as title,
+      snippet(post_search, 3, char(2), char(3), '…', 24) as snippet,
       d.description as description,
       d.published_at as publishedAt
     from post_search
     join search_documents d on d.id = post_search.rowid
-    where post_search match ${match} and d.did = ${did}
-    order by bm25(post_search, 10.0, 4.0, 1.0)
+    where post_search match ${scoped} and d.did = ${did}
+    order by bm25(post_search, 0.0, 10.0, 4.0, 1.0)
     limit ${limit + 1}`);
 }
 
@@ -256,11 +294,12 @@ export async function runPublicationSearch(
   try {
     if (!(await isSearchReady(db, did))) return { ready: false };
     const found = await searchPosts(db, did, match);
-    // Record-level takedowns. An author-level one never gets this far: the
-    // loader has already answered 404.
+    // Takedowns. The author's DID is checked here too, not left to the
+    // archive loader: this is a server function, callable on its own.
     const uri = (hit: SearchHit) =>
       recordAtUri(did, "site.standard.document", hit.rkey);
-    const hidden = await hiddenSubjects(db, found.map(uri));
+    const hidden = await hiddenSubjects(db, [did, ...found.map(uri)]);
+    if (hidden.has(did)) return { ready: true, hits: [], more: false };
     return {
       ready: true,
       hits: found

@@ -437,7 +437,7 @@ export const reports = sqliteTable(
  * export a database with a virtual table, so the backup exports every ordinary
  * table and skips the index. Everything the index holds is in this table, so a
  * restore rebuilds it with one statement (docs/BACKUPS.md). The index's column
- * names have to match `title`, `description` and `body` here.
+ * names have to match `owner`, `title`, `description` and `body` here.
  *
  * Only Goldroad writers' own documents are indexed (see ~/lib/search for why
  * other authors' are not), written on publish, edit and delete and backfilled
@@ -449,6 +449,10 @@ export const searchDocuments = sqliteTable(
     id: integer("id").primaryKey({ autoIncrement: true }),
     did: text("did").notNull(),
     rkey: text("rkey").notNull(),
+    /** The writer as ONE index token (~/lib/search's ownerToken). A search
+     * matches it alongside the query, so the index narrows to one writer's
+     * posts itself instead of matching everyone's and filtering after. */
+    owner: text("owner").notNull(),
     title: text("title").notNull(),
     description: text("description").notNull().default(""),
     body: text("body").notNull().default(""),

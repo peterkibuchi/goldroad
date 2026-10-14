@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "c2e5bc87-bf1b-49d8-b6ab-be3f40fe3d0d",
+  "id": "bc4d4a77-501a-407e-a165-cca1e4732369",
   "prevId": "d9a910f6-093e-4c0e-bc01-f4754dd709f0",
   "tables": {
     "backup_runs": {
@@ -656,6 +656,13 @@
         },
         "rkey": {
           "name": "rkey",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "owner": {
+          "name": "owner",
           "type": "text",
           "primaryKey": false,
           "notNull": true,

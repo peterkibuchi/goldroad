@@ -84,6 +84,18 @@ describe("/api/search/backfill", () => {
     expect(await (await call()).json()).toMatchObject({ ok: true, done: true });
   });
 
+  it("doesn't call a refusal halfway through the walk the end of it", async () => {
+    vi.mocked(atproto.listRecordsPage)
+      .mockResolvedValueOnce({ records: [doc("3ma")], cursor: "c1" })
+      .mockRejectedValueOnce(new atproto.NotFoundError("403"));
+    await call();
+    const quiet = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const res = await call();
+    quiet.mockRestore();
+    expect(res.status).toBe(502);
+    expect(await isSearchReady(drizzle(env.DB as D1Database), ME)).toBe(false);
+  });
+
   it("says so, and saves nothing, when the server can't be read", async () => {
     vi.mocked(atproto.listRecordsPage).mockRejectedValue(
       new atproto.ListUnavailableError("503"),

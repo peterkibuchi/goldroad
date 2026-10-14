@@ -39,6 +39,7 @@ import {
   MAX_QUERY_LENGTH,
   normalizeQuery,
   snippetParts,
+  withoutHitMarkers,
 } from "~/lib/search-query";
 import { type BasicTheme, parseTheme } from "~/lib/theme";
 import { cn } from "~/lib/utils";
@@ -180,11 +181,13 @@ export const Route = createFileRoute("/@{$handle}/")({
               q,
               scope: "titles",
               more: false,
+              // Another server's text, so stripped of the markers the results
+              // render as highlights, exactly as the indexer strips its own.
               hits: filterPostsByQuery(posts, q).map((post) => ({
                 rkey: post.rkey,
-                title: post.title,
+                title: withoutHitMarkers(post.title),
                 snippet: "",
-                description: post.description ?? "",
+                description: withoutHitMarkers(post.description ?? ""),
                 publishedAt: post.publishedAt,
               })),
             };
@@ -536,6 +539,16 @@ export function PublicationView({
 }) {
   const groups = groupPostsByMonth(posts);
   const archiveHref = `/@${encodeURIComponent(ident)}`;
+  // Said wherever the listing was needed and didn't come: on the archive, and
+  // on a title search, which filters that same listing. "No posts match" over
+  // a list that never loaded would be a false answer.
+  const listingFailed = postsError ? (
+    <Notice tone="alert">
+      {postsError === "too_large"
+        ? `@${ident}'s posts couldn't be loaded: their data server's list of recent posts is larger than this page can read.`
+        : `@${ident}'s posts couldn't be loaded right now — their data server didn't answer with a list we could read. Try again in a moment.`}
+    </Notice>
+  ) : null;
 
   return (
     // The writer's surface, not ours: their theme applies here, our dark-mode
@@ -647,7 +660,9 @@ export function PublicationView({
                 recent posts.
               </p>
             )}
-            {search.hits.length > 0 ? (
+            {search.scope === "titles" && listingFailed ? (
+              listingFailed
+            ) : search.hits.length > 0 ? (
               <ul>
                 {search.hits.map((hit) => (
                   <SearchRow hit={hit} ident={ident} key={hit.rkey} />
@@ -696,12 +711,8 @@ export function PublicationView({
               </ul>
             </Fragment>
           ))
-        ) : postsError ? (
-          <Notice tone="alert">
-            {postsError === "too_large"
-              ? `@${ident}'s posts couldn't be loaded: their data server's list of recent posts is larger than this page can read.`
-              : `@${ident}'s posts couldn't be loaded right now — their data server didn't answer with a list we could read. Try again in a moment.`}
-          </Notice>
+        ) : listingFailed ? (
+          listingFailed
         ) : (
           <p className="mt-8 text-ink-soft text-lg italic leading-relaxed">
             Nothing published yet — when @{ident} starts writing, posts will
