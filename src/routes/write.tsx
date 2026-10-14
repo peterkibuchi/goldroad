@@ -107,9 +107,9 @@ type Draft = {
   /** The writer's own subtitle, or "" when the record's description is just
    * the generated body excerpt (see writerDek). */
   dek: string;
-  /** The body as markdown, ready to load into the editor: the record's content
-   * union when it carries ours, else its textContent (markdown-shaped on every
-   * record published before the union existed). Named for what it holds — this
+  /** The body as markdown, ready to load into the editor: the record's markpub
+   * markdown when it has some, else its textContent (markdown-shaped on older
+   * records). Named for what it holds — this
    * is what the editor parses, and a plaintext projection here would silently
    * strip a writer's formatting the first time they opened an old post. */
   markdown: string;

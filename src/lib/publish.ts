@@ -4,15 +4,9 @@
  * shapes from @atcute/standard-site. Those stay the primary surface, and the
  * bar for adding to them is high: NSIDs are permanent, unrenameable public API.
  *
- * Exactly one of ours appears here, `pub.goldroad.content.markdown`, as an
- * entry in the document's open `content` union — the field the lexicon
- * declares for extension, holding the format its `textContent` explicitly
- * asks not to hold. See ~/lib/document-content for the reasoning and
- * `lexicons/` for the schema.
- *
- * The other non-standard field, the inline-image blob list, is deliberately
- * NOT an NSID: it's a storage requirement rather than a content format, so it
- * stays a plain namespaced property. See DocumentRecord below.
+ * The body's markdown goes in the document's open `content` union as
+ * `at.markpub.markdown` (see ~/lib/document-content). The inline-image blob
+ * list is a plain namespaced property; see DocumentRecord below.
  */
 import type * as SiteStandardDocument from "@atcute/standard-site/types/document";
 import type * as SiteStandardPublication from "@atcute/standard-site/types/publication";
@@ -143,7 +137,7 @@ export const MAX_INLINE_IMAGES = 50;
  * on every subsequent one). So a body image whose CID the record never names
  * would 404 forever, and one dropped from an edit is correctly reclaimed.
  *
- * A plain namespaced field, deliberately not an invented `pub.goldroad.*` NSID:
+ * A plain namespaced field, deliberately not an invented NSID of our own:
  * NSIDs are permanent public API (see AGENTS.md) and this is a storage
  * requirement, not a content format. Other apps ignore it; `textContent` stays
  * the universally readable representation, and `/img/<did>/<cid>` names both
@@ -151,12 +145,8 @@ export const MAX_INLINE_IMAGES = 50;
  */
 export interface DocumentRecord
   extends Omit<SiteStandardDocument.Main, "content"> {
-  /**
-   * Our entry in the lexicon's open `content` union. Typed as exactly our own
-   * shape rather than as the union at large because it is the only thing we
-   * ever write here — a record carrying someone else's union is refused before
-   * a builder sees it (see updateDocumentRecord).
-   */
+  /** The only `content` we write. A record carrying anything we can't
+   * round-trip is refused before a builder sees it (see updateDocumentRecord). */
   content?: MarkdownContent;
   goldroadInlineImages?: InlineImageBlob[];
 }
@@ -377,7 +367,7 @@ export function writerDek(doc: {
   if (!description) return "";
   // Compared against an excerpt of the MARKDOWN body, which is what the
   // description was generated from. Reading textContent directly would
-  // compare against the plaintext projection on post-mint records and hand
+  // compare against the plaintext projection on markpub records and hand
   // the writer a machine-written excerpt in a field labelled as theirs.
   const body = documentBodyMarkdown(doc).replace(/\r\n/g, "\n").trim();
   return description === excerpt(body) ? "" : description;
@@ -385,12 +375,10 @@ export function writerDek(doc: {
 
 /**
  * Builds a site.standard.document record. The body is written twice, on
- * purpose: the markdown into the `content` union (our lexicon, lossless, what
- * our own reader and editor read) and its plaintext projection into
- * `textContent` (what the lexicon specifies that field holds, and what every
- * reader that doesn't know our union reads). Neither is optional — a record
- * with only the union would be unreadable to the rest of the network, and one
- * with only the projection is the lossy state this pair replaced.
+ * purpose: the markdown into the `content` union (lossless, what our reader
+ * and editor read) and its plaintext projection into `textContent` (what the
+ * lexicon specifies that field holds, and what every reader that doesn't know
+ * markpub reads).
  */
 export function buildDocumentRecord(input: DocumentInput): DocumentRecord {
   const { title, body } = validateTitleAndBody(input.title, input.body);
@@ -482,13 +470,8 @@ export function documentRecordByteLength(input: {
  * Refuses documents carrying a FOREIGN content union (e.g. Leaflet's
  * pub.leaflet.content): we would update the plaintext while readers keep
  * rendering the stale rich content — silent corruption. Those documents are
- * editable in the app that owns their content format.
- *
- * Our own union is not foreign, and a document carrying it is fully editable —
- * that is the whole point of having minted it. The check used to be
- * `content != null`, which was correct only while we never wrote the field;
- * left as-is it would have made every post we published unopenable the moment
- * we started.
+ * editable in the app that owns their content format. Inline markpub
+ * markdown, whoever wrote it, is ours to edit.
  */
 export function updateDocumentRecord(
   existing: StandardDocument,

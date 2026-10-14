@@ -232,13 +232,13 @@ describe("foldImageFigures", () => {
       body: '<figure><img src="/img/did/cid" alt="A cat"><figcaption>On the wall.</figcaption></figure>',
     });
     // The folded markdown is the body, so it goes to the content union.
-    expect(record.content?.markdown).toBe(
+    expect(record.content?.text.markdown).toBe(
       "![A cat](/img/did/cid)\n\n*On the wall.*",
     );
     // And the plaintext projection carries the words without the markup —
     // still no raw HTML, which is what this test is really guarding.
     expect(record.textContent).toBe("A cat\n\nOn the wall.");
-    for (const field of [record.content?.markdown, record.textContent]) {
+    for (const field of [record.content?.text.markdown, record.textContent]) {
       expect(field).not.toContain("<figure");
       expect(field).not.toContain("<img");
     }

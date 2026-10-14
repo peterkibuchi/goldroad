@@ -99,9 +99,9 @@ pnpm check && pnpm typecheck && pnpm test                # the gate; keep it gre
 - Server/core: **AGPL-3.0-only** ([LICENSE](LICENSE)). Anyone running Goldroad as a
   service for other people — this project included — owes those people the source of
   the exact version they're using.
-- Lexicons: **CC0** ([`lexicons/`](lexicons/)). Almost everything we write uses the
-  shared `site.standard.*` vocabulary; the one schema of our own carries a document's
-  markdown, which that vocabulary has no field for.
+- Lexicons, if we ever publish one: **CC0**. Today everything we write uses shared
+  vocabularies: `site.standard.*`, with a document's markdown in its `content` union as
+  `at.markpub.markdown`.
 - Client SDK, when one exists: **MIT**, so native clients can build on it without the
   copyleft. There isn't one yet.
 

@@ -572,10 +572,8 @@ export function DocumentArticle({
   engagement?: DocumentEngagement | null;
   conversation?: PostConversation | null;
 }) {
-  // Our content union when the record carries one, else textContent — which on
-  // pre-mint and third-party records is markdown-shaped and has always been
-  // rendered through <Prose>. Every already-published post keeps rendering
-  // identically; new ones gain the formatting textContent can no longer hold.
+  // markpub markdown when the record carries it, else textContent, which on
+  // older records is often markdown-shaped and renders through <Prose> too.
   const body = documentBodyMarkdown(doc);
   const date = formatDate(doc.publishedAt);
   const updated = formatDate(doc.updatedAt);
