@@ -13,8 +13,12 @@ const store = vi.hoisted(() => ({
   selectImportItemsForExport: vi.fn(),
   selectScheduledPostsForExport: vi.fn(),
   selectReaderEmailsForExport: vi.fn(),
+  countReaderEmailsForDid: vi.fn(),
 }));
-vi.mock("~/lib/rights-store", () => store);
+vi.mock("~/lib/rights-store", () => ({
+  ...store,
+  MAX_READER_EMAILS_PER_EXPORT: 1000,
+}));
 
 const atproto = vi.hoisted(() => ({
   resolveDidIdentity: vi.fn(),
@@ -74,6 +78,7 @@ beforeEach(() => {
   store.selectFollowerSnapshotsForExport.mockResolvedValue([]);
   store.selectScheduledPostsForExport.mockResolvedValue([]);
   store.selectReaderEmailsForExport.mockResolvedValue([]);
+  store.countReaderEmailsForDid.mockResolvedValue([{ n: 0 }]);
   atproto.resolveDidIdentity.mockResolvedValue({ handle: null, pds: null });
 });
 
@@ -327,11 +332,14 @@ describe("response shape", () => {
         consentedAt: new Date("2026-09-02T11:30:00.000Z"),
       },
     ]);
+    store.countReaderEmailsForDid.mockResolvedValue([{ n: 2 }]);
     const res = await call();
     const body = (await res.json()) as {
       manifest: string;
       readerList: {
         count: number;
+        truncated: boolean;
+        note: string;
         readers: { email: string; source: string; consentedAt: string }[];
       };
     };
@@ -353,15 +361,43 @@ describe("response shape", () => {
         consentedAt: "2026-09-02T11:30:00.000Z",
       },
     ]);
+    expect(body.readerList.truncated).toBe(false);
     expect(body.manifest).toMatch(/yours to control/i);
     expect(body.manifest).toMatch(/on your behalf/i);
+    // Nothing confirms an address, and the writer has to know that.
+    expect(body.manifest).toMatch(/nobody confirms these addresses/i);
+    expect(body.readerList.note).toMatch(/^Unconfirmed/);
+  });
+
+  it("says when a padded list was cut, and gives the true total", async () => {
+    store.selectReaderEmailsForExport.mockResolvedValue([
+      { email: "a@example.com", source: "post", consentedAt: new Date(0) },
+    ]);
+    store.countReaderEmailsForDid.mockResolvedValue([{ n: 5000 }]);
+    const body = (await (await call()).json()) as {
+      readerList: { count: number; truncated: boolean };
+    };
+    expect(body.readerList).toMatchObject({ count: 5000, truncated: true });
+  });
+
+  it("exports a row with an unreadable date rather than failing", async () => {
+    store.selectReaderEmailsForExport.mockResolvedValue([
+      { email: "a@example.com", source: "post", consentedAt: new Date(NaN) },
+    ]);
+    store.countReaderEmailsForDid.mockResolvedValue([{ n: 1 }]);
+    const res = await call();
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      readerList: { readers: { consentedAt: string | null }[] };
+    };
+    expect(body.readerList.readers[0].consentedAt).toBeNull();
   });
 
   it("no longer claims the file is everything keyed to the DID", async () => {
     const res = await call();
     const { manifest } = (await res.json()) as { manifest: string };
     expect(manifest).not.toMatch(/that is everything we hold keyed to your/i);
-    // It names the omission instead, and what happens to it on deletion.
+    // It names the reader list instead, and what happens to it on deletion.
     expect(manifest).toMatch(/readerList/);
     expect(manifest).toMatch(/deleted along with everything else/i);
   });

@@ -43,11 +43,11 @@ export function PrivacyPage() {
     >
       <LegalSection heading="The short version">
         <p>
-          Goldroad is built so your writing, your subscriber list, and your
-          identity live in your own account on the open network — not locked in
-          our database. We collect almost nothing, we don't use tracking
-          cookies, and we never sell or rent your data. This page spells out the
-          detail.
+          Goldroad is built so your writing and your identity live in your own
+          account on the open network, and your reader list is yours to download
+          — not locked in our database. We collect almost nothing, we don't use
+          tracking cookies, and we never sell or rent your data. This page
+          spells out the detail.
         </p>
       </LegalSection>
 
@@ -78,6 +78,7 @@ export function PrivacyPage() {
         <LegalList
           items={[
             "Consent — for adding you to the waitlist and later emailing you.",
+            "Consent — the reader's, given to the writer whose publication they left their address with. The writer decides how the list is used; we hold it for them.",
             "Legitimate interests — for security, abuse prevention, and privacy-respecting analytics that keep the service working.",
           ]}
         />
@@ -87,24 +88,24 @@ export function PrivacyPage() {
         <p>
           If you've connected a Bluesky account, Settings → Your data lets you
           download everything we hold under that account — your drafts, import
-          history, follower history, sign-in session and the addresses readers
-          have left with your publication — and delete all of it yourself,
-          immediately, no waiting on us. (Deleting your account never touches
-          what you've published: those posts live in your own data repo, not
-          ours.)
+          history, scheduled posts, follower history, sign-in session and the
+          addresses readers have left with your publication — and delete all of
+          it yourself, immediately, no waiting on us. (Deleting your account
+          never touches what you've published: those posts live in your own data
+          repo, not ours.)
         </p>
         <p className="mt-3">
           One thing those buttons can't reach: an email you typed into the
           waitlist form, left on an abuse report, or left with a publication you
           read. Those are stored on their own — by the address, plus (for a
-          publication) the writer you left it with. We identify accounts by DID
-          and never ask for or receive your email address, so there is genuinely
-          nothing in our database that could tell us a given account and a given
-          email are the same person — which also means an export can't include
-          it and account deletion can't remove it. Email {privacy} from or
-          naming that address and we'll delete it by hand, whether or not you
-          also have an account here. (An address left with a publication is also
-          in that writer's own download, because the list is theirs.)
+          publication) the writer you left it with, whose own download includes
+          it. We identify accounts by DID and never ask for or receive your
+          email address, so there is genuinely nothing in our database that
+          could tell us a given account and a given email are the same person —
+          which also means an export can't include it and account deletion can't
+          remove it. Email {privacy} from or naming that address and we'll
+          delete it by hand, whether or not you also have an account here. We
+          can't reach a copy a writer has already downloaded, so ask them too.
         </p>
         <p className="mt-3">
           Wherever you live — including under the EU/UK GDPR — you can ask to

@@ -22,12 +22,13 @@ const validateSearch = Route.options.validateSearch as (
 ) => { to?: string; failed?: true };
 
 describe("/subscribed — the confirmation", () => {
-  it("names the publication and says nothing will arrive yet", () => {
+  it("names the publication, and says the writer can download the list", () => {
     const { container } = render(<SubscribedView to="writer.example" />);
     const text = container.textContent ?? "";
     expect(text).toContain("@writer.example");
     expect(text).toMatch(/isn't switched on/i);
-    expect(text).toMatch(/nothing will arrive/i);
+    // The writer can download the list, so the reader is told who has it.
+    expect(text).toMatch(/can download their reader list/i);
   });
 
   it("promises no date and offers no invite", () => {

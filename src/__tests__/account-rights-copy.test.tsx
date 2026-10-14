@@ -145,7 +145,7 @@ describe("privacy policy — retention", () => {
 });
 
 describe("settings — what the download contains", () => {
-  it("names every table the export reads, reader addresses included", () => {
+  it("names what the download contains, reader addresses included", () => {
     // The intro says "That's everything keyed to your account", so a table it
     // leaves out makes the sentence false.
     const source = readFileSync(
@@ -165,5 +165,15 @@ describe("settings — what the download contains", () => {
       /sign-in session/,
     ])
       expect(intro?.[0]).toMatch(item);
+  });
+
+  it("warns that deleting the account deletes the reader list", () => {
+    const source = readFileSync(
+      join(import.meta.dirname, "..", "routes", "settings.tsx"),
+      "utf8",
+    ).replace(/\s+/g, " ");
+    const intro = source.match(/intro="Deletes your drafts[^"]*"/)?.[0];
+    expect(intro).toMatch(/your reader list/);
+    expect(intro).toMatch(/download your data first/i);
   });
 });
