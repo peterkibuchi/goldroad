@@ -21,6 +21,26 @@ const baseDoc = {
   publishedAt: "2026-01-05T00:00:00.000Z",
 };
 
+describe("DocumentArticle — body", () => {
+  it("renders another app's at.markpub.markdown body as markdown", () => {
+    render(
+      <DocumentArticle
+        doc={{
+          ...baseDoc,
+          textContent: "Plain projection.",
+          content: {
+            $type: "at.markpub.markdown",
+            text: { markdown: "Some **bold** words." },
+          },
+        }}
+        ident="writer.example"
+      />,
+    );
+    expect(screen.getByText("bold").tagName).toBe("STRONG");
+    expect(screen.queryByText("Plain projection.")).toBeNull();
+  });
+});
+
 describe("DocumentArticle — title block (title -> dek -> byline)", () => {
   it("always shows the dek line when document.description is set", () => {
     render(

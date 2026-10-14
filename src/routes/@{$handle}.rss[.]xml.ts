@@ -146,10 +146,7 @@ export const Route = createFileRoute("/@{$handle}/rss.xml")({
             )
             .map((e) => {
               const doc = e.value;
-              // One read of the body per item, from the content union when the
-              // record has ours and from textContent otherwise — the feed must
-              // carry the same markdown the page renders, for every generation
-              // of record.
+              // The same body the page renders (see documentBodyMarkdown).
               const body = documentBodyMarkdown(doc);
               // Canonical composed URL (publication.url + document.path —
               // page parity); when composition fails (foreign publication

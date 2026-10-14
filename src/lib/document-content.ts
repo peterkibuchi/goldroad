@@ -34,34 +34,44 @@ export function markdownContent(markdown: string): MarkdownContent {
   };
 }
 
-/** The inline markdown of a markpub entry, or null when `content` isn't one.
- * Records arrive from arbitrary PDSes, so the payload is checked, not just the
- * `$type`. */
-function markpubText(
-  content: unknown,
-): { markdown: string; textBlob?: unknown } | null {
+type MarkpubEntry = {
+  text: { markdown: string; textBlob?: unknown; [key: string]: unknown };
+  [key: string]: unknown;
+};
+
+/** `content` as a markpub entry, or null when it isn't one. Records arrive
+ * from arbitrary PDSes, so the payload is checked, not just the `$type`. */
+function markpubEntry(content: unknown): MarkpubEntry | null {
   if (typeof content !== "object" || content === null) return null;
-  const { $type, text } = content as { $type?: unknown; text?: unknown };
-  if ($type !== MARKDOWN_CONTENT_TYPE) return null;
+  const entry = content as { $type?: unknown; text?: unknown };
+  if (entry.$type !== MARKDOWN_CONTENT_TYPE) return null;
+  const text = entry.text as { markdown?: unknown } | null | undefined;
   if (typeof text !== "object" || text === null) return null;
-  const { markdown, textBlob } = text as {
-    markdown?: unknown;
-    textBlob?: unknown;
-  };
-  return typeof markdown === "string" ? { markdown, textBlob } : null;
+  return typeof text.markdown === "string" ? (entry as MarkpubEntry) : null;
 }
+
+/** Optional markpub fields an edit here would drop or invalidate: front
+ * matter, renderer extensions, and facets/lenses indexed into the old text. */
+const UNKEPT_FIELDS = ["frontMatter", "extensions"] as const;
+const UNKEPT_TEXT_FIELDS = ["facets", "lenses"] as const;
+
+const hasItems = (value: unknown) => Array.isArray(value) && value.length > 0;
 
 /**
  * Whether a document is off-limits to our editor: any `content` we can't
  * round-trip. That covers other formats (Leaflet's `pub.leaflet.content`), a
- * malformed markpub entry, and a markpub entry whose body lives in `textBlob`,
- * where `text.markdown` is only a preview. Saving over any of these would
- * replace a body we never read.
+ * malformed markpub entry, one whose body lives in `textBlob` (the inline
+ * markdown is then only a preview), and one carrying fields an edit would
+ * drop. Saving over any of these would replace what we never read.
  */
 export function hasForeignContent(doc: { content?: unknown }): boolean {
   if (doc.content == null) return false;
-  const text = markpubText(doc.content);
-  return text === null || text.textBlob != null;
+  const entry = markpubEntry(doc.content);
+  if (!entry || entry.text.textBlob != null) return true;
+  return (
+    UNKEPT_FIELDS.some((key) => hasItems(entry[key])) ||
+    UNKEPT_TEXT_FIELDS.some((key) => hasItems(entry.text[key]))
+  );
 }
 
 /**
@@ -70,14 +80,17 @@ export function hasForeignContent(doc: { content?: unknown }): boolean {
  * without a union (older ones keep markdown in `textContent`) and other
  * formats, whose `textContent` is plaintext and renders as such.
  *
- * A markpub `textBlob` is not fetched; its required inline `markdown` (the
- * preview) is what renders.
+ * A markpub `textBlob` is not fetched. Its inline markdown is only a preview,
+ * so the full plaintext in `textContent` wins when there is one.
  */
 export function documentBodyMarkdown(doc: {
   content?: unknown;
   textContent?: unknown;
 }): string {
-  const text = markpubText(doc.content);
-  if (text) return text.markdown;
-  return typeof doc.textContent === "string" ? doc.textContent : "";
+  const entry = markpubEntry(doc.content);
+  const textContent =
+    typeof doc.textContent === "string" ? doc.textContent : "";
+  if (!entry) return textContent;
+  if (entry.text.textBlob != null && textContent.trim()) return textContent;
+  return entry.text.markdown;
 }

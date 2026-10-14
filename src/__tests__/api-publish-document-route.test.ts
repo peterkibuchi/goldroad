@@ -256,6 +256,11 @@ describe("POST /api/publish — intent=document, publishing a new post", () => {
     expect(record.$type).toBe("site.standard.document");
     expect(record.title).toBe("The long way round");
     expect(record.textContent).toBe("Some words.");
+    expect(record.content).toEqual({
+      $type: "at.markpub.markdown",
+      text: { $type: "at.markpub.text", markdown: "Some words." },
+      flavor: "gfm",
+    });
     expect(record.description).toBe("A subtitle they wrote.");
     expect(typeof record.publishedAt).toBe("string");
   });
@@ -478,6 +483,45 @@ describe("POST /api/publish — intent=document, editing a published post", () =
     expect(record.publishedAt).toBe("2026-07-01T09:00:00.000Z");
     expect(typeof record.updatedAt).toBe("string");
     expect(record.textContent).toBe("Some words.");
+  });
+
+  const withContent = (content: unknown) =>
+    atproto.getRecordEntry.mockResolvedValue({
+      uri: `at://${DID}/site.standard.document/${EDIT_RKEY}`,
+      cid: "bafyreimarkpub",
+      value: {
+        $type: "site.standard.document",
+        title: "Markdown elsewhere",
+        site: PUB_URI,
+        path: `/${EDIT_RKEY}`,
+        content,
+      },
+    });
+
+  it("edits a document carrying markpub markdown, rewriting it", async () => {
+    withContent({
+      $type: "at.markpub.markdown",
+      text: { markdown: "Older **words**." },
+      renderingRules: "markdown-it",
+    });
+    await edit();
+    const record = callOf("com.atproto.repo.putRecord")?.options.input
+      .record as Record<string, unknown>;
+    expect(record.content).toEqual({
+      $type: "at.markpub.markdown",
+      text: { $type: "at.markpub.text", markdown: "Some words." },
+      flavor: "gfm",
+    });
+  });
+
+  it("refuses markpub whose body lives in a blob", async () => {
+    withContent({
+      $type: "at.markpub.markdown",
+      text: { markdown: "A preview…", textBlob: { $type: "blob" } },
+    });
+    const res = await edit();
+    expect(posted).toHaveLength(0);
+    expect(errorFrom(res)).toBe("not_editable");
   });
 
   it("refuses to edit a document whose content another app owns", async () => {

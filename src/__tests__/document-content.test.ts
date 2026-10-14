@@ -71,17 +71,16 @@ describe("editability: markpub is editable, foreign is not", () => {
   };
 
   it("edits a document carrying markpub markdown, whoever wrote it", () => {
-    // Another app's spelling: no `$type` on `text`, `flavor` in the wrong
-    // place, a renderer we don't use. Inline markdown is all editing needs.
+    // Another app's record: commonmark, a renderer we don't use, and a
+    // `text` without `$type`. Nothing here is lost by rewriting it.
     const theirs = {
       ...existing,
       content: {
         $type: "at.markpub.markdown",
-        text: {
-          markdown: "The **original** body.",
-          flavor: "commonmark",
-          renderingRules: "markdown-it",
-        },
+        flavor: "commonmark",
+        renderingRules: "markdown-it",
+        extensions: [],
+        text: { markdown: "The **original** body." },
       },
       textContent: "The original body.",
     };
@@ -104,16 +103,21 @@ describe("editability: markpub is editable, foreign is not", () => {
   });
 
   it("treats markpub it can't round-trip as foreign", () => {
-    // No inline markdown string is nothing we can render; a textBlob means
-    // the inline markdown is only a preview. Editing either would publish
-    // over a body we never read.
+    // Fields an edit would drop, no inline markdown at all, or a textBlob
+    // (the inline markdown is then only a preview). Saving would publish over
+    // something we never read.
     const blob = {
       $type: "blob",
       ref: { $link: "bafkreiexample" },
       mimeType: "text/markdown",
       size: 200_000,
     };
+    const text = { markdown: "Body" };
     for (const content of [
+      { $type: MARKDOWN_CONTENT_TYPE, text, frontMatter: [{ title: "x" }] },
+      { $type: MARKDOWN_CONTENT_TYPE, text, extensions: ["LaTeX"] },
+      { $type: MARKDOWN_CONTENT_TYPE, text: { ...text, facets: [{}] } },
+      { $type: MARKDOWN_CONTENT_TYPE, text: { ...text, lenses: [{}] } },
       { $type: MARKDOWN_CONTENT_TYPE },
       { $type: MARKDOWN_CONTENT_TYPE, markdown: "flat, not under text" },
       { $type: MARKDOWN_CONTENT_TYPE, text: "a string" },
@@ -151,24 +155,28 @@ describe("documentBodyMarkdown: where the body is read from", () => {
     ).toBe("From the **union**.");
   });
 
-  it("reads another app's markpub record, and a textBlob one's preview", () => {
+  it("reads another app's markpub record", () => {
     expect(
       documentBodyMarkdown({
         content: {
           $type: "at.markpub.markdown",
-          text: { markdown: "# Theirs", flavor: "gfm" },
+          flavor: "commonmark",
+          text: { markdown: "# Theirs" },
         },
         textContent: "Theirs",
       }),
     ).toBe("# Theirs");
+  });
+
+  it("prefers the full textContent over a textBlob record's preview", () => {
+    const content = {
+      $type: "at.markpub.markdown",
+      text: { markdown: "Preview…", textBlob: { $type: "blob" } },
+    };
     expect(
-      documentBodyMarkdown({
-        content: {
-          $type: "at.markpub.markdown",
-          text: { markdown: "Preview…", textBlob: { $type: "blob" } },
-        },
-      }),
-    ).toBe("Preview…");
+      documentBodyMarkdown({ content, textContent: "The whole piece." }),
+    ).toBe("The whole piece.");
+    expect(documentBodyMarkdown({ content })).toBe("Preview…");
   });
 
   it("union-less records read from textContent, which is markdown there", () => {
@@ -203,7 +211,7 @@ describe("documentBodyMarkdown: where the body is read from", () => {
     expect(writerDek(published)).toBe("");
   });
 
-  it("keeps a hand-written subtitle recognisable on a post-mint record", () => {
+  it("keeps a hand-written subtitle recognisable on a markpub record", () => {
     const published = buildDocumentRecord({ ...input, dek: "A real subtitle" });
     expect(writerDek(published)).toBe("A real subtitle");
   });
