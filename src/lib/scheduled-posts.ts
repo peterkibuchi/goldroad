@@ -19,6 +19,10 @@
  *      worst outcome this feature has; a row that says why is the whole point.
  *   3. Nothing retries forever (MAX_PUBLISH_ATTEMPTS) and nothing is stranded
  *      by a tick that died holding a lease (`releaseStaleClaims`).
+ *   4. A retry can't publish twice. The first claim reserves the record key
+ *      the post will be written under, and every later attempt reuses it, so
+ *      an attempt that landed but never reported back is found, not repeated.
+ *      A published post's row is deleted.
  *
  * SHAPE, as in ~/lib/follower-snapshots: everything is either a drizzle query
  * builder (awaitable, and verifiable via `.toSQL()` without a live D1) or a
@@ -76,15 +80,12 @@ export const STALE_CLAIM_MS = 2 * 60 * 60 * 1000;
  * quota. */
 export const MAX_SCHEDULES_PER_WRITER = 100;
 
-/** How long a published row is kept before pruning. Well past any retry
- * window, so a row can never be pruned while a tick could still act on it,
- * and long enough to answer "did last week's post actually go out?". */
-export const PUBLISHED_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
-
-export type ScheduledStatus = "pending" | "published" | "failed";
-
 /** A due row as the cron reads it — identity only, no content. */
 export type DuePost = { id: string; did: string; draftId: string };
+
+/** A claimed row: the record key the publish must use, reserved by its first
+ * claim and the same on every retry. */
+export type ClaimedPost = DuePost & { rkey: string };
 
 /**
  * Posts due to publish: pending, unclaimed, and past their time. Oldest first,
@@ -146,12 +147,19 @@ export function selectDuePosts(
  * again — not lost words, and not a published-twice post. It is narrowed, it is
  * not gone, and the next person to read this should not think it was missed.
  */
-export function claimDuePost(db: DrizzleD1, id: string, now: Date) {
+export function claimDuePost(
+  db: DrizzleD1,
+  id: string,
+  now: Date,
+  rkey: string,
+) {
   return db
     .update(scheduledPosts)
     .set({
       claimedAt: now,
       attempts: sql`${scheduledPosts.attempts} + 1`,
+      // The key is reserved once; a retry gets the first attempt's back.
+      publishedRkey: sql`coalesce(${scheduledPosts.publishedRkey}, ${rkey})`,
       updatedAt: now,
     })
     .where(
@@ -161,29 +169,18 @@ export function claimDuePost(db: DrizzleD1, id: string, now: Date) {
         isNull(scheduledPosts.claimedAt),
       ),
     )
-    .returning({ id: scheduledPosts.id, attempts: scheduledPosts.attempts });
+    .returning({
+      id: scheduledPosts.id,
+      attempts: scheduledPosts.attempts,
+      rkey: scheduledPosts.publishedRkey,
+    });
 }
 
-/** The post went out: terminal, with the rkey it landed under. The lease is
- * cleared and the status is what stops any later tick from publishing it
- * again. */
-export function markPublished(
-  db: DrizzleD1,
-  id: string,
-  publishedRkey: string,
-  now: Date,
-) {
-  return db
-    .update(scheduledPosts)
-    .set({
-      status: "published",
-      publishedRkey,
-      claimedAt: null,
-      lastError: null,
-      updatedAt: now,
-    })
-    .where(eq(scheduledPosts.id, id))
-    .returning({ id: scheduledPosts.id });
+/** The post went out: the row is done. Usually `publishStoredDraft` has
+ * already deleted it; this covers the case where that best-effort delete
+ * didn't land, so the row can't be claimed again. */
+export function deletePublishedSchedule(db: DrizzleD1, id: string) {
+  return db.delete(scheduledPosts).where(eq(scheduledPosts.id, id));
 }
 
 /** It failed for good: terminal, with the reason the writer reads in the posts
@@ -237,19 +234,6 @@ export function releaseStaleClaims(db: DrizzleD1, before: Date, now: Date) {
     .returning({ id: scheduledPosts.id });
 }
 
-/** Drop published rows past their retention window, so the table stays the
- * size of the work in front of it. */
-export function prunePublished(db: DrizzleD1, before: Date) {
-  return db
-    .delete(scheduledPosts)
-    .where(
-      and(
-        eq(scheduledPosts.status, "published"),
-        lt(scheduledPosts.updatedAt, before),
-      ),
-    );
-}
-
 // ---------------------------------------------------------------------------
 // Writer-facing queries. Every one pairs its keys with the session DID.
 // ---------------------------------------------------------------------------
@@ -279,6 +263,8 @@ export function upsertSchedule(
       // Must equal the partial index's predicate literally (~/db/schema): a
       // bound `status = ?` never matches it, and SQLite refuses the upsert.
       targetWhere: sql`${scheduledPosts.status} = 'pending'`,
+      // `published_rkey` is left alone: an earlier attempt may have landed
+      // under it, so the rescheduled post has to be written there too.
       set: {
         dueAt: row.dueAt,
         attempts: 0,
@@ -386,6 +372,7 @@ export function selectScheduleForDraft(
       status: scheduledPosts.status,
       dueAt: scheduledPosts.dueAt,
       claimedAt: scheduledPosts.claimedAt,
+      publishedRkey: scheduledPosts.publishedRkey,
     })
     .from(scheduledPosts)
     .where(
@@ -420,7 +407,11 @@ export function deleteUnclaimedSchedulesForDraft(
         isNull(scheduledPosts.claimedAt),
       ),
     )
-    .returning({ id: scheduledPosts.id, status: scheduledPosts.status });
+    .returning({
+      id: scheduledPosts.id,
+      status: scheduledPosts.status,
+      publishedRkey: scheduledPosts.publishedRkey,
+    });
 }
 
 /**
@@ -451,14 +442,18 @@ export function deleteSchedulesForDraft(
 export type ScheduledPostStore = {
   /** Rows past due, unclaimed, capped. */
   due(now: Date, limit: number): Promise<DuePost[]>;
-  /** Take the lease. Resolves to the new attempt count, or null if another
+  /** Take the lease, reserving `rkey` unless an earlier claim already did.
+   * Resolves to the new attempt count and the reserved key, or null if another
    * caller already had it. */
-  claim(id: string, now: Date): Promise<number | null>;
-  published(id: string, rkey: string, now: Date): Promise<unknown>;
+  claim(
+    id: string,
+    now: Date,
+    rkey: string,
+  ): Promise<{ attempts: number; rkey: string } | null>;
+  published(id: string): Promise<unknown>;
   failed(id: string, reason: string, now: Date): Promise<unknown>;
   retry(id: string, reason: string, now: Date): Promise<unknown>;
   releaseStale(before: Date, now: Date): Promise<Array<{ id: string }>>;
-  prune(before: Date): Promise<unknown>;
 };
 
 export function d1ScheduledPostStore(db: DrizzleD1): ScheduledPostStore {
@@ -466,12 +461,16 @@ export function d1ScheduledPostStore(db: DrizzleD1): ScheduledPostStore {
     due(now, limit) {
       return selectDuePosts(db, now, limit);
     },
-    async claim(id, now) {
-      const [row] = await claimDuePost(db, id, now);
-      return row ? row.attempts : null;
+    async claim(id, now, rkey) {
+      const [row] = await claimDuePost(db, id, now, rkey);
+      if (!row) return null;
+      // coalesce() with a non-null key can't return null; a row without one
+      // would publish under a key no retry could find.
+      if (!row.rkey) throw new Error("claimed row has no record key");
+      return { attempts: row.attempts, rkey: row.rkey };
     },
-    published(id, rkey, now) {
-      return markPublished(db, id, rkey, now);
+    published(id) {
+      return deletePublishedSchedule(db, id);
     },
     failed(id, reason, now) {
       return markFailed(db, id, reason, now);
@@ -481,9 +480,6 @@ export function d1ScheduledPostStore(db: DrizzleD1): ScheduledPostStore {
     },
     releaseStale(before, now) {
       return releaseStaleClaims(db, before, now);
-    },
-    prune(before) {
-      return prunePublished(db, before);
     },
   };
 }
@@ -500,7 +496,7 @@ export type PublishAttempt =
   | { ok: true; rkey: string }
   | { ok: false; retry: boolean; reason: string };
 
-export type ScheduledPublisher = (post: DuePost) => Promise<PublishAttempt>;
+export type ScheduledPublisher = (post: ClaimedPost) => Promise<PublishAttempt>;
 
 export type SchedulePassResult = {
   /** Rows this tick claimed and worked on. */
@@ -520,7 +516,6 @@ export type SchedulePassResult = {
   /** True when there were more due posts than the cap allowed. Reported, never
    * swallowed: the log line has to say a queue was left behind. */
   capped: boolean;
-  pruned: boolean;
 };
 
 /**
@@ -544,12 +539,15 @@ const THREW_REASON =
 export async function runScheduledPublishPass(opts: {
   store: ScheduledPostStore;
   publish: ScheduledPublisher;
+  /** A fresh record key, reserved by a row's first claim. */
+  mintRkey: () => string;
   now?: number;
   cap?: number;
 }): Promise<SchedulePassResult> {
   const {
     store,
     publish,
+    mintRkey,
     now: nowMs = Date.now(),
     cap = MAX_PUBLISHES_PER_TICK,
   } = opts;
@@ -563,7 +561,6 @@ export async function runScheduledPublishPass(opts: {
     errored: 0,
     releasedStale: 0,
     capped: false,
-    pruned: false,
   };
 
   // Abandoned leases first, so a row a dead tick was holding is eligible in
@@ -593,23 +590,24 @@ export async function runScheduledPublishPass(opts: {
       // that can reject, and a rejection inside the loop would skip every
       // remaining due post for an hour. One broken row must cost one row.
       try {
-        const attempts = await store.claim(post.id, now);
+        const claim = await store.claim(post.id, now, mintRkey());
         // Another tick got there first. Not an error — this is the claim doing
         // exactly what it exists for.
-        if (attempts === null) {
+        if (claim === null) {
           result.contended++;
           continue;
         }
+        const { attempts } = claim;
         result.attempted++;
         let attempt: PublishAttempt;
         try {
-          attempt = await publish(post);
+          attempt = await publish({ ...post, rkey: claim.rkey });
         } catch (err) {
           console.error("scheduled publish threw", post.id, err);
           attempt = { ok: false, retry: true, reason: THREW_REASON };
         }
         if (attempt.ok) {
-          await store.published(post.id, attempt.rkey, now);
+          await store.published(post.id);
           result.published++;
           continue;
         }
@@ -645,13 +643,5 @@ export async function runScheduledPublishPass(opts: {
     console.error("scheduled publish pass failed", err);
   }
 
-  // Independent of the publishing above: a bad hour is no reason to let
-  // finished rows accumulate.
-  try {
-    await store.prune(new Date(nowMs - PUBLISHED_RETENTION_MS));
-    result.pruned = true;
-  } catch (err) {
-    console.error("scheduled posts prune failed", err);
-  }
   return result;
 }

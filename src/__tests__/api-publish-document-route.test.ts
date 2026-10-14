@@ -207,6 +207,8 @@ beforeEach(() => {
     steps.push("deleteSchedulesForDraft");
     return [];
   });
+  // Not scheduled unless a test says otherwise.
+  schedules.selectScheduleForDraft.mockResolvedValue([]);
   // No import provenance unless a test says otherwise.
   ledger.selectImportItemByDraft.mockResolvedValue([]);
   ledger.setPublishedRkey.mockResolvedValue([]);
@@ -631,6 +633,19 @@ describe("POST /api/publish — intent=document, the draft the post came from", 
       DID,
       DRAFT_ID,
     );
+  });
+
+  it("publishes under a key a scheduled attempt already reserved", async () => {
+    // That attempt may have landed without reporting back; a fresh key would
+    // put the post in the archive twice.
+    schedules.selectScheduleForDraft.mockResolvedValue([
+      { id: "row", status: "pending", publishedRkey: "3lyk73wxnokrs" },
+    ]);
+    await publish(fields);
+    expect(
+      callOf("com.atproto.repo.createRecord", "site.standard.document")?.options
+        .input.rkey,
+    ).toBe("3lyk73wxnokrs");
   });
 
   it("LEAVES THE DRAFT ALONE when the publish failed", async () => {

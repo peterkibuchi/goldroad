@@ -24,7 +24,9 @@ import {
  *    "pending" for a week;
  *  - a publisher that throws is a bug in the publisher, not a verdict on the
  *    post, so the row survives to try again;
- *  - a lease nobody is holding is handed back rather than stranding the post.
+ *  - a lease nobody is holding is handed back rather than stranding the post;
+ *  - a retry publishes under the key the first claim reserved, so it finds an
+ *    attempt that landed instead of publishing again.
  */
 
 const NOW = Date.parse("2026-08-04T09:00:00.000Z");
@@ -35,16 +37,16 @@ type Row = {
   draftId: string;
   attempts: number;
   claimed: boolean;
+  rkey: string | null;
 };
 
 /** A store over plain objects, recording the terminal writes. */
 function fakeStore(rows: Row[]) {
   const calls = {
-    published: [] as Array<{ id: string; rkey: string }>,
+    published: [] as string[],
     failed: [] as Array<{ id: string; reason: string }>,
     retried: [] as Array<{ id: string; reason: string }>,
     releasedStale: 0,
-    pruned: [] as Date[],
     dueLimits: [] as number[],
   };
   const store: ScheduledPostStore = {
@@ -55,15 +57,16 @@ function fakeStore(rows: Row[]) {
         .slice(0, limit)
         .map(({ id, did, draftId }) => ({ id, did, draftId }));
     },
-    async claim(id) {
+    async claim(id, _now, rkey) {
       const row = rows.find((r) => r.id === id);
       if (!row || row.claimed) return null;
       row.claimed = true;
       row.attempts += 1;
-      return row.attempts;
+      row.rkey ??= rkey;
+      return { attempts: row.attempts, rkey: row.rkey };
     },
-    async published(id, rkey) {
-      calls.published.push({ id, rkey });
+    async published(id) {
+      calls.published.push(id);
       return undefined;
     },
     async failed(id, reason) {
@@ -78,10 +81,6 @@ function fakeStore(rows: Row[]) {
       calls.releasedStale += 1;
       return [];
     },
-    async prune(before) {
-      calls.pruned.push(before);
-      return undefined;
-    },
   };
   return { store, calls };
 }
@@ -93,8 +92,13 @@ function row(id: string, attempts = 0): Row {
     draftId: `draft-${id}`,
     attempts,
     claimed: false,
+    rkey: null,
   };
 }
+
+/** Mints distinct keys, so a test can tell a reserved key from a fresh one. */
+let minted = 0;
+const mintRkey = () => `3lyk73wxnok${(minted++).toString().padStart(2, "0")}`;
 
 const published: PublishAttempt = { ok: true, rkey: "3lyk73wxnok2f" };
 
@@ -112,9 +116,14 @@ describe("the claim comes before the work", () => {
   it("publishes only rows it won the claim for", async () => {
     const { store, calls } = fakeStore([row("a")]);
     const publish = vi.fn(async () => published);
-    const result = await runScheduledPublishPass({ store, publish, now: NOW });
+    const result = await runScheduledPublishPass({
+      mintRkey,
+      store,
+      publish,
+      now: NOW,
+    });
     expect(publish).toHaveBeenCalledTimes(1);
-    expect(calls.published).toEqual([{ id: "a", rkey: "3lyk73wxnok2f" }]);
+    expect(calls.published).toEqual(["a"]);
     expect(result.attempted).toBe(1);
     expect(result.published).toBe(1);
   });
@@ -128,7 +137,12 @@ describe("the claim comes before the work", () => {
       return null;
     };
     const publish = vi.fn(async () => published);
-    const result = await runScheduledPublishPass({ store, publish, now: NOW });
+    const result = await runScheduledPublishPass({
+      mintRkey,
+      store,
+      publish,
+      now: NOW,
+    });
     expect(publish).not.toHaveBeenCalled();
     expect(result.contended).toBe(1);
     expect(result.attempted).toBe(0);
@@ -139,8 +153,18 @@ describe("the claim comes before the work", () => {
   it("never publishes the same row twice within a tick", async () => {
     const { store } = fakeStore([row("a")]);
     const publish = vi.fn(async () => published);
-    await runScheduledPublishPass({ store, publish, now: NOW });
-    await runScheduledPublishPass({ store, publish, now: NOW });
+    await runScheduledPublishPass({
+      mintRkey,
+      store,
+      publish,
+      now: NOW,
+    });
+    await runScheduledPublishPass({
+      mintRkey,
+      store,
+      publish,
+      now: NOW,
+    });
     // The row is claimed after the first pass, so the second sees nothing.
     expect(publish).toHaveBeenCalledTimes(1);
   });
@@ -159,6 +183,7 @@ describe("the per-tick cap is bounded AND reported", () => {
     ]);
     const publish = vi.fn(async () => published);
     const result = await runScheduledPublishPass({
+      mintRkey,
       store,
       publish,
       now: NOW,
@@ -171,6 +196,7 @@ describe("the per-tick cap is bounded AND reported", () => {
   it("says a queue was left behind — in the result AND in the log", async () => {
     const { store } = fakeStore([row("a"), row("b"), row("c")]);
     const result = await runScheduledPublishPass({
+      mintRkey,
       store,
       publish: async () => published,
       now: NOW,
@@ -185,6 +211,7 @@ describe("the per-tick cap is bounded AND reported", () => {
   it("does not claim a cap when the queue exactly fits", async () => {
     const { store } = fakeStore([row("a"), row("b")]);
     const result = await runScheduledPublishPass({
+      mintRkey,
       store,
       publish: async () => published,
       now: NOW,
@@ -196,6 +223,7 @@ describe("the per-tick cap is bounded AND reported", () => {
   it("asks for one more than the cap, so 'is there a queue' is read, not guessed", async () => {
     const { store, calls } = fakeStore([row("a")]);
     await runScheduledPublishPass({
+      mintRkey,
       store,
       publish: async () => published,
       now: NOW,
@@ -208,6 +236,7 @@ describe("the per-tick cap is bounded AND reported", () => {
     expect(MAX_PUBLISHES_PER_TICK).toBe(5);
     const { store, calls } = fakeStore([row("a")]);
     await runScheduledPublishPass({
+      mintRkey,
       store,
       publish: async () => published,
       now: NOW,
@@ -226,6 +255,7 @@ describe("retries end", () => {
   it("hands a transient failure back to the next tick, with its reason recorded", async () => {
     const { store, calls } = fakeStore([row("a")]);
     const result = await runScheduledPublishPass({
+      mintRkey,
       store,
       publish: async () => transient,
       now: NOW,
@@ -239,6 +269,7 @@ describe("retries end", () => {
     // Two attempts already spent; this claim makes it the third.
     const { store, calls } = fakeStore([row("a", MAX_PUBLISH_ATTEMPTS - 1)]);
     const result = await runScheduledPublishPass({
+      mintRkey,
       store,
       publish: async () => transient,
       now: NOW,
@@ -256,6 +287,7 @@ describe("retries end", () => {
     const rows = [row("a")];
     const { store } = fakeStore(rows);
     await runScheduledPublishPass({
+      mintRkey,
       store,
       publish: async () => {
         throw new Error("isolate evicted");
@@ -273,6 +305,7 @@ describe("retries end", () => {
       reason: "Goldroad couldn't use your connection to your data server.",
     };
     const result = await runScheduledPublishPass({
+      mintRkey,
       store,
       publish: async () => revoked,
       now: NOW,
@@ -286,6 +319,7 @@ describe("retries end", () => {
   it("retries a publisher that THREW rather than failing the post on a bug", async () => {
     const { store, calls } = fakeStore([row("a")]);
     const result = await runScheduledPublishPass({
+      mintRkey,
       store,
       publish: async () => {
         throw new Error("boom");
@@ -314,6 +348,7 @@ describe("nothing is stranded, and nothing accumulates", () => {
       return due(now, limit);
     };
     await runScheduledPublishPass({
+      mintRkey,
       store,
       publish: async () => published,
       now: NOW,
@@ -326,33 +361,19 @@ describe("nothing is stranded, and nothing accumulates", () => {
     // loop, skipping every remaining due post for an hour.
     const { store, calls } = fakeStore([row("a"), row("b"), row("c")]);
     const published = store.published;
-    store.published = async (id, rkey, now) => {
+    store.published = async (id) => {
       if (id === "a") throw new Error("d1 write failed");
-      return published(id, rkey, now);
+      return published(id);
     };
     const result = await runScheduledPublishPass({
+      mintRkey,
       store,
       publish: async () => ({ ok: true, rkey: "3lyk73wxnok2f" }),
       now: NOW,
     });
     expect(result.errored).toBe(1);
-    expect(calls.published.map((p) => p.id)).toEqual(["b", "c"]);
+    expect(calls.published).toEqual(["b", "c"]);
     expect(result.published).toBe(2);
-  });
-
-  it("prunes finished rows even when the publishing half fell over", async () => {
-    const { store, calls } = fakeStore([row("a")]);
-    store.due = async () => {
-      throw new Error("d1 down");
-    };
-    const result = await runScheduledPublishPass({
-      store,
-      publish: async () => published,
-      now: NOW,
-    });
-    expect(calls.pruned).toHaveLength(1);
-    expect(result.pruned).toBe(true);
-    expect(result.attempted).toBe(0);
   });
 
   it("survives a store that fails every call, and reports honestly", async () => {
@@ -375,11 +396,9 @@ describe("nothing is stranded, and nothing accumulates", () => {
       releaseStale: async () => {
         throw new Error("nope");
       },
-      prune: async () => {
-        throw new Error("nope");
-      },
     };
     const result = await runScheduledPublishPass({
+      mintRkey,
       store: broken,
       publish: async () => published,
       now: NOW,
@@ -388,7 +407,34 @@ describe("nothing is stranded, and nothing accumulates", () => {
       attempted: 0,
       published: 0,
       failed: 0,
-      pruned: false,
     });
+  });
+});
+
+describe("a retry can't publish twice", () => {
+  it("hands the publisher the key the claim reserved", async () => {
+    const { store } = fakeStore([row("a")]);
+    const publish = vi.fn(async () => published);
+    await runScheduledPublishPass({ mintRkey, store, publish, now: NOW });
+    expect(publish).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "a", rkey: expect.any(String) }),
+    );
+  });
+
+  it("gives every retry of a row the first attempt's key", async () => {
+    const rows = [row("a")];
+    const { store } = fakeStore(rows);
+    const keys: string[] = [];
+    const publish = async (post: { rkey: string }) => {
+      keys.push(post.rkey);
+      // The write landed but the answer was lost: from here, a timeout.
+      throw new Error("timed out");
+    };
+    for (let tick = 0; tick < 2; tick++) {
+      await runScheduledPublishPass({ mintRkey, store, publish, now: NOW });
+      rows[0].claimed = false; // released for the next tick
+    }
+    expect(keys).toHaveLength(2);
+    expect(keys[1]).toBe(keys[0]);
   });
 });

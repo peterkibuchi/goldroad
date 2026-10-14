@@ -225,12 +225,11 @@ export const importItems = sqliteTable(
  * once at the write door (~/lib/schedule-time) and never stored. A stored
  * offset is a stored guess about a future DST rule.
  *
- * `status` is 'pending' | 'published' | 'failed'. Cancelling DELETES the row
- * (nothing due, nothing shown, nothing to garbage-collect), so there is no
- * fourth state. A 'published' row is kept as the double-publish guard — the
- * claim below plus a terminal status is what makes a retried or overlapping
- * tick unable to publish the same draft twice — and pruned once it is old
- * enough to be past the reach of any retry.
+ * `status` is 'pending' or 'failed' ('published' is no longer written).
+ * Cancelling or publishing DELETES the row, so nothing is left to
+ * garbage-collect. The claim plus the reserved `published_rkey` is what keeps a
+ * retried or overlapping tick from publishing the same draft twice
+ * (~/lib/scheduled-posts).
  *
  * `attempts` and `last_error` are the honesty columns. A cron firing hours
  * after the writer walked away can fail for reasons they must be able to read
@@ -261,7 +260,8 @@ export const scheduledPosts = sqliteTable(
     /** A sentence the WRITER reads, not a stack trace (see `failureReason`). */
     lastError: text("last_error"),
     claimedAt: integer("claimed_at", { mode: "timestamp_ms" }),
-    /** The rkey the post published under — set with status = 'published'. */
+    /** The record key reserved by the first claim; every retry, and a
+     * "publish now", writes under it. */
     publishedRkey: text("published_rkey"),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .notNull()
@@ -320,7 +320,7 @@ export const importFetches = sqliteTable(
  * Daily follower-count samples, one row per writer per UTC day.
  *
  * Bluesky's AppView answers "how many followers does this account have RIGHT
- * NOW" (app.bsky.actor.getProfile → followersCount) and nothing else: there is
+ * NOW" (app.bsky.actor.getProfiles → followersCount) and nothing else: there is
  * no history endpoint, so a follower chart cannot be reconstructed after the
  * fact. History that wasn't sampled is simply gone. That's why this table is
  * filled by the hourly cron from the day it ships, ahead of anything that
@@ -342,7 +342,7 @@ export const followerSnapshots = sqliteTable(
     did: text("did").notNull(),
     day: text("day").notNull(),
     followers: integer("followers").notNull(),
-    /** Free in the same getProfile response, so it's recorded while we're
+    /** Free in the same getProfiles response, so it's recorded while we're
      * there; null when the response didn't carry a usable number. */
     posts: integer("posts"),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
