@@ -10,6 +10,7 @@ describe("buildArticleJsonLd", () => {
       publishedAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
       authorName: "writer.example",
+      authorUrl: "https://trygoldroad.com/@writer.example",
       publisherName: "The Long Way",
       url: "https://trygoldroad.com/@writer.example/3abc2345678df",
       imageUrl: null,
@@ -23,26 +24,61 @@ describe("buildArticleJsonLd", () => {
       publisher: { "@type": "Organization", name: "The Long Way" },
       url: "https://trygoldroad.com/@writer.example/3abc2345678df",
     });
-    // Unmodified since publish (same timestamp) — no dateModified claim.
-    expect(jsonLd.dateModified).toBeUndefined();
+    // Never edited: last modified when it was published.
+    expect(jsonLd.dateModified).toBe("2026-01-01T00:00:00.000Z");
     expect(jsonLd.image).toBeUndefined();
   });
 
-  it("includes dateModified only when it differs from datePublished", () => {
+  it("carries the edit date when there is one", () => {
     const jsonLd = buildArticleJsonLd({
       headline: "Edited",
       publishedAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-05T00:00:00.000Z",
       authorName: "writer.example",
+      authorUrl: "https://trygoldroad.com/@writer.example",
       publisherName: "writer.example",
     });
     expect(jsonLd.dateModified).toBe("2026-01-05T00:00:00.000Z");
+  });
+
+  it("links the author and the publication to their homes", () => {
+    const jsonLd = buildArticleJsonLd({
+      headline: "Linked",
+      description: "The dek.",
+      authorName: "writer.example",
+      authorUrl: "https://trygoldroad.com/@writer.example",
+      authorSameAs: ["https://bsky.app/profile/writer.example"],
+      publisherName: "The Long Way",
+      publisherUrl: "https://trygoldroad.com/@writer.example",
+      publisherLogoUrl: "https://trygoldroad.com/img/did%3Aplc%3Ax/bafkreiicon",
+      url: "https://trygoldroad.com/@writer.example/3abc2345678df",
+    });
+    expect(jsonLd).toMatchObject({
+      description: "The dek.",
+      author: {
+        "@type": "Person",
+        name: "writer.example",
+        url: "https://trygoldroad.com/@writer.example",
+        sameAs: ["https://bsky.app/profile/writer.example"],
+      },
+      publisher: {
+        "@type": "Organization",
+        name: "The Long Way",
+        url: "https://trygoldroad.com/@writer.example",
+        logo: {
+          "@type": "ImageObject",
+          url: "https://trygoldroad.com/img/did%3Aplc%3Ax/bafkreiicon",
+        },
+      },
+      mainEntityOfPage: "https://trygoldroad.com/@writer.example/3abc2345678df",
+    });
   });
 
   it("falls back the publisher to the author's handle when no publication name is known", () => {
     const jsonLd = buildArticleJsonLd({
       headline: "No publication record",
       authorName: "writer.example",
+      authorUrl: "https://trygoldroad.com/@writer.example",
       publisherName: "writer.example",
     });
     expect(jsonLd.publisher).toEqual({
@@ -55,6 +91,7 @@ describe("buildArticleJsonLd", () => {
     const jsonLd = buildArticleJsonLd({
       headline: "With a cover",
       authorName: "writer.example",
+      authorUrl: "https://trygoldroad.com/@writer.example",
       publisherName: "writer.example",
       imageUrl: "https://trygoldroad.com/img/did%3Aplc%3Afake/bafkreicover",
     });
@@ -69,6 +106,7 @@ describe("jsonLdScriptContent — rendered <script> tag safety", () => {
     const jsonLd = buildArticleJsonLd({
       headline: "Hello Atmosphere",
       authorName: "writer.example",
+      authorUrl: "https://trygoldroad.com/@writer.example",
       publisherName: "The Long Way",
     });
     const script = document.createElement("script");
@@ -95,6 +133,7 @@ describe("jsonLdScriptContent — rendered <script> tag safety", () => {
     const jsonLd = buildArticleJsonLd({
       headline: hostileHeadline,
       authorName: "writer.example",
+      authorUrl: "https://trygoldroad.com/@writer.example",
       publisherName: "writer.example",
     });
     const raw = jsonLdScriptContent(jsonLd);

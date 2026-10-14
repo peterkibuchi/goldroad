@@ -3,43 +3,74 @@
  * fields only — never invent a claim the record doesn't carry.
  */
 
+type Organization = {
+  "@type": "Organization";
+  name: string;
+  url?: string;
+  logo?: { "@type": "ImageObject"; url: string };
+};
+
 export type ArticleJsonLd = {
   "@context": "https://schema.org";
   "@type": "Article";
   headline: string;
+  description?: string;
   datePublished?: string;
   dateModified?: string;
-  author: { "@type": "Person"; name: string };
-  publisher: { "@type": "Organization"; name: string };
+  author: { "@type": "Person"; name: string; url: string; sameAs?: string[] };
+  publisher: Organization;
   url?: string;
+  mainEntityOfPage?: string;
   image?: string;
 };
 
 export function buildArticleJsonLd(input: {
   headline: string;
+  description?: string | null;
   publishedAt?: string | null;
   updatedAt?: string | null;
   /** The writer's handle — every document has one; there's no display-name
    * field on the record, so the handle IS the byline. */
   authorName: string;
+  /** The writer's home on the web: their publication's own URL when the record
+   * names one, else their page here. */
+  authorUrl: string;
+  /** Other pages that are the same person (their Bluesky profile). */
+  authorSameAs?: string[];
   /** Publication name when known, else falls back to the author's handle
    * (mirrors the footer's own "More from …" fallback). */
   publisherName: string;
+  publisherUrl?: string | null;
+  /** The publication's icon, absolute, when it has one. */
+  publisherLogoUrl?: string | null;
   url?: string | null;
   imageUrl?: string | null;
 }): ArticleJsonLd {
+  const publisher: Organization = {
+    "@type": "Organization",
+    name: input.publisherName,
+  };
+  if (input.publisherUrl) publisher.url = input.publisherUrl;
+  if (input.publisherLogoUrl)
+    publisher.logo = { "@type": "ImageObject", url: input.publisherLogoUrl };
   const jsonLd: ArticleJsonLd = {
     "@context": "https://schema.org",
     "@type": "Article",
     headline: input.headline,
-    author: { "@type": "Person", name: input.authorName },
-    publisher: { "@type": "Organization", name: input.publisherName },
+    author: { "@type": "Person", name: input.authorName, url: input.authorUrl },
+    publisher,
   };
+  if (input.authorSameAs?.length) jsonLd.author.sameAs = input.authorSameAs;
+  if (input.description) jsonLd.description = input.description;
   if (input.publishedAt) jsonLd.datePublished = input.publishedAt;
-  if (input.updatedAt && input.updatedAt !== input.publishedAt) {
-    jsonLd.dateModified = input.updatedAt;
+  // Always alongside datePublished, as search engines ask: a post never
+  // edited was last modified when it was published.
+  const modified = input.updatedAt || input.publishedAt;
+  if (modified) jsonLd.dateModified = modified;
+  if (input.url) {
+    jsonLd.url = input.url;
+    jsonLd.mainEntityOfPage = input.url;
   }
-  if (input.url) jsonLd.url = input.url;
   if (input.imageUrl) jsonLd.image = input.imageUrl;
   return jsonLd;
 }

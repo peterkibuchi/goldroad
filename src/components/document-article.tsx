@@ -54,6 +54,7 @@ import {
   type RelatedPost,
   selectRelatedPosts,
 } from "~/lib/related-posts";
+import { DEFAULT_OG_IMAGE } from "~/lib/social-card";
 import { type BasicTheme, parseTheme } from "~/lib/theme";
 
 /** A validated cover/icon image reference, serveable through /img/$did/$cid. */
@@ -351,12 +352,23 @@ export function documentHead(
         cover?: CoverRef | null;
         mirror?: MirrorInfo | null;
         publicationName?: string | null;
+        publicationUrl?: string | null;
+        publicationIcon?: CoverRef | null;
       }
     | undefined,
 ) {
   if (!loaderData) return { meta: [{ title: "Not found" }] };
-  const { doc, ident, atUri, canonicalUrl, cover, mirror, publicationName } =
-    loaderData;
+  const {
+    doc,
+    ident,
+    atUri,
+    canonicalUrl,
+    cover,
+    mirror,
+    publicationName,
+    publicationUrl,
+    publicationIcon,
+  } = loaderData;
   const title = `${doc.title ?? "Untitled"} — ${ident}`;
   const imageUrl = cover
     ? `${CANONICAL_ORIGIN}${blobImagePath(cover.did, cover.cid)}`
@@ -367,6 +379,11 @@ export function documentHead(
   // and could never verify against a domain the writer doesn't control.
   // The at:// link tags stay: they're record discovery, not SEO.
   const isMirror = mirror != null;
+  // The writer's home: their publication's own URL (absolute https only, it
+  // is the record's word), else their page here.
+  const writerHome = publicationUrl?.startsWith("https://")
+    ? publicationUrl
+    : `${CANONICAL_ORIGIN}/@${encodeURIComponent(ident)}`;
   return {
     meta: [
       { title },
@@ -428,12 +445,21 @@ export function documentHead(
         children: jsonLdScriptContent(
           buildArticleJsonLd({
             headline: doc.title ?? "Untitled",
+            description: doc.description,
             publishedAt: doc.publishedAt,
             updatedAt: doc.updatedAt,
             authorName: ident,
+            authorUrl: writerHome,
+            authorSameAs: [bskyProfileUrl(ident)],
             publisherName: publicationName ?? ident,
+            publisherUrl: writerHome,
+            publisherLogoUrl: publicationIcon
+              ? `${CANONICAL_ORIGIN}${blobImagePath(publicationIcon.did, publicationIcon.cid)}`
+              : null,
             url: canonicalUrl,
-            imageUrl,
+            // The same picture og:image falls back to, so a consumer reading
+            // either sees one card.
+            imageUrl: imageUrl ?? DEFAULT_OG_IMAGE,
           }),
         ),
       },
