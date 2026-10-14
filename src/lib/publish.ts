@@ -286,9 +286,9 @@ function imageMarkdown(alt: string, src: string): string {
  *
  * BlockNote exports a CAPTIONED image as that raw HTML rather than as
  * `![alt](src)` (uncaptioned images export as markdown). Reader surfaces
- * render markdown with no rehype-raw — raw HTML is dropped, deliberately and
- * permanently — so storing the export verbatim would make every captioned
- * image invisible to readers while looking perfectly fine in the editor.
+ * never render raw HTML as markup (~/lib/markdown-html escapes it), so storing
+ * the export verbatim would show readers tags instead of the picture while it
+ * looked perfectly fine in the editor.
  * Folding it here, on the way into the record, keeps the picture and turns
  * the caption into the italic line underneath that it already looks like.
  *

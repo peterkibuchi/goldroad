@@ -45,7 +45,7 @@ export function escapeXml(value: string): string {
 /** Hard bound on the default markdown-stripping scan window. Feed
  * `textContent` arrives from arbitrary PDSes with NO size cap, and the regex
  * passes in stripMarkdown must never run over megabytes (the Workers CPU
- * budget is ~10 ms/invocation, and a feed strips up to 50 records). 2 KB of
+ * budget is ~10 ms/invocation, and a feed strips up to 20 records). 2 KB of
  * source comfortably yields a ~300-char excerpt even after heavy markup
  * stripping. */
 const EXCERPT_SCAN_CHARS = 2048;
@@ -324,9 +324,9 @@ const MAX_VALUE_CHARS = 2048;
 
 /**
  * The same bound for `<content:encoded>`, which carries whole posts rather
- * than titles and so needs its own number. 256 KB is far above any real essay
- * (a 10,000-word piece rendered to HTML is well under 100 KB) and still bounds
- * what one hostile record can make us escape and serialize.
+ * than titles and so needs its own number. 256 KB bounds what one hostile
+ * record can make us escape and serialize; the feed route's own content
+ * budget is smaller, so a real post is never cut here.
  *
  * Truncation is silent here, deliberately: the alternative is appending a
  * marker into somebody's post, and a feed item is not the place to editorialize

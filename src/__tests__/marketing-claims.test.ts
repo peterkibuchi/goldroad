@@ -80,7 +80,7 @@ const FALSE_CLAIMS: ReadonlyArray<{ phrase: string; why: string }> = [
   },
   {
     phrase: "Full-text RSS",
-    why: "the feed renders markdown at request time, and a 10 ms CPU budget only covers short posts — full text needs HTML rendered once at publish, not per request (corrected 2026-08-01)",
+    why: "the feed carries full text within per-request CPU budgets, and a cold cache or a long backlog still falls back to excerpts, so it can't be promised for every post (corrected 2026-08-01, reason updated 2026-10-14)",
   },
   {
     phrase: "carrying the whole post, not an excerpt",

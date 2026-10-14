@@ -1,11 +1,13 @@
 // @vitest-environment node
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { rssFeedXml } from "~/lib/feed";
 import {
-  MARKDOWN_PARSE_BUDGET_CHARS,
-  markdownBudget,
+  FEED_RENDER_BUDGET_CHARS,
   markdownToHtml,
+  RENDER_VERSION,
+  renderBodies,
+  renderBudget,
 } from "~/lib/markdown-html";
 
 const channel = {
@@ -27,33 +29,90 @@ describe("markdownToHtml — the same rendering the page does", () => {
     const html = markdownToHtml(
       "# Title\n\nBody with **bold**, *italic* and [a link](https://example.com).\n\n- one\n- two\n\n> Quoted\n",
     );
-    expect(html).toContain("<h1>Title</h1>");
+    expect(html).toMatch(/<h2 class="[^"]*">Title<\/h2>/);
     expect(html).toContain("<strong>bold</strong>");
     expect(html).toContain("<em>italic</em>");
-    expect(html).toContain('<a href="https://example.com">a link</a>');
-    expect(html).toContain("<li>one</li>");
-    expect(html).toContain("<blockquote>");
+    expect(html).toMatch(/<a href="https:\/\/example.com"[^>]*>a link<\/a>/);
+    expect(html).toMatch(/<li[^>]*>one<\/li>/);
+    expect(html).toContain("<blockquote");
   });
 
   it("renders GFM, because the reader page does", () => {
-    // The feed and the page share a plugin list on purpose; a table that works
-    // on one and not the other is the drift this guards.
     expect(markdownToHtml("| a | b |\n| - | - |\n| 1 | 2 |\n")).toContain(
-      "<table>",
+      "<table",
     );
   });
 
-  it("drops raw HTML rather than passing it through", () => {
-    // Same call the reader makes by refusing rehype-raw. The markdown came off
-    // a stranger's PDS; a <script> in a post body must never reach a feed
-    // reader as markup.
+  it("escapes raw HTML into text rather than passing it through", () => {
+    // The markdown came off a stranger's PDS; a <script> in a post body must
+    // never reach a page or a feed reader as markup.
     const html = markdownToHtml(
       "Before\n\n<script>alert(1)</script>\n\n<img src=x onerror=alert(1)>\n\nAfter",
     );
-    expect(html).not.toContain("<script>");
-    expect(html).not.toContain("onerror");
+    expect(html).not.toContain("<script");
+    expect(html).not.toContain("<img");
+    expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
     expect(html).toContain("Before");
     expect(html).toContain("After");
+  });
+
+  it("refuses unsafe link and image URLs, however they're spelled", () => {
+    for (const url of [
+      "javascript:alert(1)",
+      "JaVaScRiPt:alert(1)",
+      "java&#115;cript:alert(1)",
+      "<java\tscript:alert(1)>",
+      "vbscript:msgbox(1)",
+      "data:text/html,<script>alert(1)</script>",
+      "data:image/svg+xml,<svg onload=alert(1)>",
+      "data:image/png;base64,AAAA",
+      "intent://x#Intent;end",
+      "ms-msdt:/id",
+      "tel:123",
+    ]) {
+      const html = markdownToHtml(`[a](${url}) ![b](${url}) <${url}>`);
+      expect(html).not.toMatch(/(href|src)="(?!#)/);
+    }
+  });
+
+  it("keeps safe links and images, and marks writer links nofollow", () => {
+    const html = markdownToHtml(
+      "[a](https://x.example) [m](mailto:a@x.example) [r](/@writer/3abc) ![i](/img/did/cid)",
+    );
+    expect(html).toContain('href="https://x.example"');
+    expect(html).toContain('href="mailto:a@x.example"');
+    expect(html).toContain('href="/@writer/3abc"');
+    expect(html).toContain('src="/img/did/cid"');
+    expect(html).toContain('loading="lazy"');
+    expect(html).toContain('rel="nofollow noopener noreferrer"');
+  });
+
+  it("keeps the text of a link it won't follow", () => {
+    const html = markdownToHtml("[click me](javascript:alert(1))");
+    expect(html).toMatch(/<a [^>]*>click me<\/a>/);
+    expect(html).not.toContain("href");
+    expect(html).not.toContain("javascript");
+  });
+
+  it("falls back to plain paragraphs for input markdown-it is slow on", () => {
+    for (const hostile of ["[".repeat(50_000), `${"word ".repeat(25_000)}*`]) {
+      const start = performance.now();
+      const html = markdownToHtml(hostile);
+      expect(performance.now() - start).toBeLessThan(100);
+      expect(html.startsWith("<p")).toBe(true);
+    }
+    expect(markdownToHtml("a\n\n<b>&</b>")).toContain("&lt;b&gt;&amp;");
+  });
+
+  it("renders GFM task lists as disabled checkboxes", () => {
+    const html = markdownToHtml("- [ ] todo\n- [x] done");
+    expect(html).toContain('<input type="checkbox" disabled> todo');
+    expect(html).toContain('<input type="checkbox" disabled checked> done');
+  });
+
+  it("escapes a fence's language into its class", () => {
+    const html = markdownToHtml('```js"><script>\nx\n```');
+    expect(html).not.toContain("<script");
   });
 
   it("treats absent, blank and non-string content as no content", () => {
@@ -112,68 +171,126 @@ describe("content:encoded in the feed", () => {
   });
 });
 
-/**
- * The parse-side bound — the one the old test above was mistakenly credited
- * with. What matters is how much markdown is HANDED TO the parser across one
- * request, because that is the CPU cost and it is paid before any output exists
- * to measure. A Workers free-tier invocation gets 10 ms; a 50-record feed page
- * of full-text rendering measures ~3 s.
- */
-describe("markdownBudget — how much one request may parse", () => {
-  it("renders while the budget covers the next document, then stops", () => {
-    const budget = markdownBudget(1_000);
-    expect(budget.render("word ".repeat(120))).toContain("<p>"); // 600 chars
-    expect(budget.remaining).toBe(400);
-    // 600 more would exceed 1,000 — refused whole rather than truncated.
-    expect(budget.render("word ".repeat(120))).toBe("");
-    expect(budget.remaining).toBe(400);
-    // A shorter one still fits: the budget tracks characters, not calls.
-    expect(budget.render("word ".repeat(20))).toContain("<p>");
+/** An in-memory stand-in for `caches.default`. */
+function fakeCache() {
+  const store = new Map<string, string>();
+  const cache = {
+    match: vi.fn(async (key: string) =>
+      store.has(key) ? new Response(store.get(key)) : undefined,
+    ),
+    put: vi.fn(async (key: string, response: Response) => {
+      store.set(key, await response.text());
+    }),
+  };
+  vi.stubGlobal("caches", { default: cache });
+  return { cache, store };
+}
+
+describe("renderBodies — a body renders once, then comes from the cache", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("serves a second request for the same markdown from the cache", async () => {
+    const { cache, store } = fakeCache();
+    const [first] = await renderBodies(["Some **bold**."]);
+    expect(first).toContain("<strong>bold</strong>");
+    expect(cache.put).toHaveBeenCalledTimes(1);
+    // Overwrite the stored entry: getting it back proves the second answer
+    // came from the cache, not a fresh render.
+    const [key] = [...store.keys()];
+    store.set(key, "<p>cached</p>");
+    expect(await renderBodies(["Some **bold**."])).toEqual(["<p>cached</p>"]);
+    expect(cache.put).toHaveBeenCalledTimes(1);
   });
 
-  it("refuses a document larger than the whole budget outright", () => {
-    const budget = markdownBudget(1_000);
-    // Never partially rendered: cutting markdown mid-document emits a dangling
-    // emphasis run or half a code fence, and the parse is already paid.
-    expect(budget.render("x".repeat(5_000))).toBe("");
-    expect(budget.remaining).toBe(1_000);
+  it("keys by the markdown itself, so different bodies never share", async () => {
+    fakeCache();
+    await renderBodies(["Mine."]);
+    expect(await renderBodies(["Theirs."])).toEqual([
+      expect.stringContaining("Theirs."),
+    ]);
   });
 
-  it("bounds a full 50-record feed page to the budget, not 50× it", () => {
-    const budget = markdownBudget(MARKDOWN_PARSE_BUDGET_CHARS);
-    const post = "word ".repeat(4_000); // 20,000 chars, a realistic long essay
-    const rendered = Array.from({ length: 50 }, () => budget.render(post));
-    // The measured cost of doing this unbounded is ~3,000 ms of CPU against a
-    // 10 ms limit — a 1102, not a slow feed.
-    expect(budget.remaining).toBe(MARKDOWN_PARSE_BUDGET_CHARS);
-    expect(rendered.every((html) => html === "")).toBe(true);
+  it("renders anyway when the cache itself fails", async () => {
+    vi.stubGlobal("caches", {
+      default: {
+        match: async () => {
+          throw new Error("cache down");
+        },
+        put: async () => {
+          throw new Error("cache down");
+        },
+      },
+    });
+    expect(await renderBodies(["Body."])).toEqual([
+      expect.stringContaining("Body."),
+    ]);
   });
 
-  it("spends the budget on the items it is given first", () => {
-    const budget = markdownBudget(6_000);
-    const short = "word ".repeat(400); // 2,000 chars
-    const first = budget.render(short);
-    const second = budget.render(short);
-    const third = budget.render(short);
-    const fourth = budget.render(short);
-    // Three fit, the fourth doesn't. The route sorts newest-first before
-    // spending, so "first" means the posts a reader actually sees.
-    expect([first, second, third].every((h) => h.includes("<p>"))).toBe(true);
-    expect(fourth).toBe("");
+  it("returns '' for a miss the caller declines, and caches nothing", async () => {
+    const { cache } = fakeCache();
+    expect(await renderBodies(["Body."], () => false)).toEqual([""]);
+    expect(cache.put).not.toHaveBeenCalled();
   });
 
-  // Pinned in both directions, because the number is derived from a
-  // measurement and a well-meaning "let's serve more" would silently
-  // reintroduce a 1102. See the table on the constant.
-  it("keeps the shipped budget where the measurement put it", () => {
-    expect(MARKDOWN_PARSE_BUDGET_CHARS).toBe(2_000);
+  it("spends the budget on misses in the order given, and skips empty bodies", async () => {
+    const { store } = fakeCache();
+    await renderBodies(["Older, already cached."]);
+    const asked: string[] = [];
+    const html = await renderBodies(
+      ["", "Newest.", "Older, already cached.", "Oldest."],
+      (markdown) => {
+        asked.push(markdown);
+        return asked.length === 1;
+      },
+    );
+    // Only misses with text reach the budget, newest first.
+    expect(asked).toEqual(["Newest.", "Oldest."]);
+    expect(html[0]).toBe("");
+    expect(html[1]).toContain("Newest.");
+    expect(html[2]).toContain("Older, already cached.");
+    expect(html[3]).toBe("");
+    expect(store.size).toBe(2);
+  });
+});
+
+/** Any change to the output must bump RENDER_VERSION, or 30-day-old cached
+ * renders keep serving the previous markup. Update both together. */
+it("pins the renderer's output to RENDER_VERSION", async () => {
+  const fixture =
+    "# H\n\n*a* **b** ~~c~~ `d` [e](https://e.example) ![f](/img/x/y)\n\n- [x] g\n\n> h\n\n```js\ni\n```\n\n| j | k |\n| - | -: |\n| 1 | 2 |\n\nl[^1]\n\n[^1]: m";
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(markdownToHtml(fixture)),
+  );
+  const hash = Buffer.from(digest).toString("hex").slice(0, 16);
+  expect({ RENDER_VERSION, hash }).toEqual({
+    RENDER_VERSION: 1,
+    hash: "2aa45ce6a1269f0c",
+  });
+});
+
+describe("renderBudget — how much one feed request renders on cache misses", () => {
+  it("always renders the first post, however long", () => {
+    const mayRender = renderBudget(1_000);
+    expect(mayRender("x".repeat(30_000))).toBe(true);
+    expect(mayRender("x")).toBe(false);
   });
 
-  it("charges nothing for records with no text", () => {
-    const budget = markdownBudget(1_000);
-    expect(budget.render(undefined)).toBe("");
-    expect(budget.render("")).toBe("");
-    expect(budget.render("   ")).toBe("");
-    expect(budget.remaining).toBe(1_000);
+  it("then renders while the budget covers the next post", () => {
+    const mayRender = renderBudget(1_000);
+    expect(mayRender("x".repeat(600))).toBe(true);
+    expect(mayRender("x".repeat(600))).toBe(false);
+    // A shorter one still fits: the budget counts characters, not calls.
+    expect(mayRender("x".repeat(300))).toBe(true);
+  });
+
+  it("covers a typical feed page of full posts", () => {
+    // Five 3,000-character posts: the newest feed items a reader opens first.
+    const mayRender = renderBudget();
+    const post = "x".repeat(3_000);
+    expect(Array.from({ length: 5 }, () => mayRender(post))).toEqual(
+      Array(5).fill(true),
+    );
+    expect(FEED_RENDER_BUDGET_CHARS).toBe(15_000);
   });
 });

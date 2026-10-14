@@ -39,6 +39,18 @@ describe("DocumentArticle — body", () => {
     expect(screen.getByText("bold").tagName).toBe("STRONG");
     expect(screen.queryByText("Plain projection.")).toBeNull();
   });
+
+  it("places the loader's rendered HTML instead of rendering again", () => {
+    render(
+      <DocumentArticle
+        doc={{ ...baseDoc, textContent: "Unrendered source." }}
+        bodyHtml="<p>Rendered by the loader.</p>"
+        ident="writer.example"
+      />,
+    );
+    expect(screen.getByText("Rendered by the loader.")).toBeDefined();
+    expect(screen.queryByText("Unrendered source.")).toBeNull();
+  });
 });
 
 describe("DocumentArticle — title block (title -> dek -> byline)", () => {

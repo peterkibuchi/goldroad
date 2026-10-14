@@ -6,7 +6,13 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { Prose } from "../components/prose";
+import { markdownToHtml } from "#/lib/markdown-html";
+import { Prose as ProseHtml } from "../components/prose";
+
+/** The page's pipeline: the loader renders, Prose places the HTML. */
+const Prose = ({ markdown }: { markdown: string }) => (
+  <ProseHtml html={markdownToHtml(markdown)} />
+);
 
 describe("Prose", () => {
   it("renders markdown structure", () => {
@@ -58,7 +64,7 @@ describe("Prose", () => {
     expect(container.textContent).toContain("safe text");
   });
 
-  it("strips javascript: URLs via react-markdown's default urlTransform", () => {
+  it("never links a javascript: URL", () => {
     const { container } = render(
       <Prose markdown={"[click](javascript:alert(1))"} />,
     );
