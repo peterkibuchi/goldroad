@@ -51,7 +51,10 @@ import { defaultCache } from "~/lib/workers-cache";
  * doc above before touching it. */
 export const READ_CACHE_TTL_SECONDS = 300;
 const STALE_WHILE_REVALIDATE_SECONDS = 60;
-export const READ_CACHE_CONTROL = `public, s-maxage=${READ_CACHE_TTL_SECONDS}, stale-while-revalidate=${STALE_WHILE_REVALIDATE_SECONDS}`;
+/** Browsers revalidate every time (`max-age=0`). A browser-held copy would
+ * outlive a takedown and keep pointing at the previous deploy's hashed
+ * assets, which no longer exist. The edge keeps its copy for s-maxage. */
+export const READ_CACHE_CONTROL = `public, max-age=0, s-maxage=${READ_CACHE_TTL_SECONDS}, stale-while-revalidate=${STALE_WHILE_REVALIDATE_SECONDS}`;
 
 /** Paths whose GET responses are safe to serve to any visitor:
  * `/@…` (publication page, composed document, and the publication RSS feed
