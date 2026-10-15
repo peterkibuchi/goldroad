@@ -357,6 +357,7 @@ describe("READ_CACHE_TTL_SECONDS — the raised window", () => {
     // number ever climbs again, that argument has to be re-made.
     expect(READ_CACHE_TTL_SECONDS).toBe(300);
     expect(READ_CACHE_CONTROL).toContain("s-maxage=300");
+    expect(READ_CACHE_CONTROL).toContain("max-age=0,");
   });
 });
 
