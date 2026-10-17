@@ -36,6 +36,7 @@ import { isCrossSite } from "~/lib/origin";
 import {
   deleteDraftsForDid,
   deleteFollowerSnapshotsForDid,
+  deleteHostedPublicationForDid,
   deleteImportFetchesForDid,
   deleteImportItemsForDid,
   deleteOAuthSessionForDid,
@@ -85,6 +86,7 @@ export const Route = createFileRoute("/api/account/delete")({
           deleteImportItemsForDid(db, did),
           deleteImportFetchesForDid(db, did),
           deleteFollowerSnapshotsForDid(db, did),
+          deleteHostedPublicationForDid(db, did),
           deleteScheduledPostsForDid(db, did),
           deleteReaderEmailsForDid(db, did),
         ]);

@@ -57,7 +57,7 @@ describe("DeleteAccountForm — the highest-stakes confirm on the page", () => {
     // Every category of row we hold is named, so the dialog can't quietly
     // fall out of date with what account deletion actually removes.
     expect(dialog.textContent).toContain(
-      "drafts, import history, follower history, and sign-in",
+      "drafts, import history, scheduled posts, follower history, publication address, and sign-in",
     );
     expect(dialog.textContent).toContain(
       "does NOT delete anything you've published",

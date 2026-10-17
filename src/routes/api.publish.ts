@@ -29,6 +29,7 @@ import { hasForeignContent } from "~/lib/document-content";
 import { deleteDraft, selectDraft } from "~/lib/drafts";
 import { isDraftId } from "~/lib/drafts-schema";
 import { captureHandledFailure } from "~/lib/error-tracking";
+import { noteHostedPublication } from "~/lib/hosted-publications";
 import { clampOriginalDate, rehostBodyImages } from "~/lib/import";
 import {
   adoptMirror,
@@ -707,6 +708,8 @@ async function publishDocument({
     console.error("document write failed", written);
     return reject(`publish_failed:${written.error}`);
   }
+  // The sitemap's list of publications hosted here; best-effort, never fails.
+  await noteHostedPublication(drizzle(env.DB), did, ident, site);
 
   // Import ledger write-back: record the rkey this item published under —
   // that row is what makes the reader page a "mirror" (noindex + provenance)
