@@ -15,10 +15,12 @@ import {
   deleteReaderEmailsForDid,
   deleteScheduledPostsForDid,
   MAX_LEDGER_ROWS_PER_EXPORT,
+  MAX_READER_EMAILS_PER_EXPORT,
   MAX_SNAPSHOT_ROWS_PER_EXPORT,
   selectDraftsForExport,
   selectFollowerSnapshotsForExport,
   selectImportItemsForExport,
+  selectReaderEmailsForExport,
   selectScheduledPostsForExport,
 } from "../lib/rights-store";
 
@@ -142,8 +144,8 @@ describe("account-deletion deletes — DID-scoped, RETURNing so callers can see 
    * `reader_emails` is keyed by `writer_did`, and for as long as it existed
    * neither half of this store knew about it: a deleted account went on
    * holding a list of other people's email addresses, unreachable by anyone.
-   * It is deleted, and — unlike every other table here — deliberately not
-   * exported; the addresses are the readers'.
+   * Both halves reach it now: the writer controls the list, so it is exported
+   * to them and deleted with their account.
    */
   it("deleteReaderEmailsForDid deletes only this publication's rows", () => {
     const { sql, params } = deleteReaderEmailsForDid(db, DID).toSQL();
@@ -155,15 +157,23 @@ describe("account-deletion deletes — DID-scoped, RETURNing so callers can see 
     expect(params).not.toContain(OTHER_DID);
   });
 
-  it("countReaderEmailsForDid counts only this publication's rows", () => {
-    const { sql, params } = countReaderEmailsForDid(db, DID).toSQL();
+  it("selectReaderEmailsForExport reads only this publication's list, with provenance", () => {
+    const { sql, params } = selectReaderEmailsForExport(db, DID).toSQL();
     expect(sql.toLowerCase()).toContain('from "reader_emails"');
-    expect(sql).toContain('"writer_did"');
-    expect(params).toContain(DID);
-    expect(params).not.toContain(OTHER_DID);
-    // A count, never the addresses: the export must not be able to select one
-    // even by accident.
-    expect(sql.toLowerCase()).not.toContain('"email"');
+    expect(sql).toContain('"writer_did" = ?');
+    expect(params).toEqual([DID, MAX_READER_EMAILS_PER_EXPORT]);
+    for (const column of ['"email"', '"source"', '"consented_at"'])
+      expect(sql).toContain(column);
+    expect(sql.toLowerCase()).toMatch(
+      /order by "reader_emails"\."id" asc limit \?/,
+    );
+  });
+
+  it("countReaderEmailsForDid counts only this publication's list", () => {
+    const { sql, params } = countReaderEmailsForDid(db, DID).toSQL();
+    expect(sql.toLowerCase()).toContain("count(*)");
+    expect(sql).toContain('"writer_did" = ?');
+    expect(params).toEqual([DID]);
   });
 
   it("deleteOAuthSessionForDid targets the exact sess:<did> key, not a prefix scan", () => {

@@ -12,9 +12,13 @@ const store = vi.hoisted(() => ({
   selectFollowerSnapshotsForExport: vi.fn(),
   selectImportItemsForExport: vi.fn(),
   selectScheduledPostsForExport: vi.fn(),
+  selectReaderEmailsForExport: vi.fn(),
   countReaderEmailsForDid: vi.fn(),
 }));
-vi.mock("~/lib/rights-store", () => store);
+vi.mock("~/lib/rights-store", () => ({
+  ...store,
+  MAX_READER_EMAILS_PER_EXPORT: 1000,
+}));
 
 const atproto = vi.hoisted(() => ({
   resolveDidIdentity: vi.fn(),
@@ -73,7 +77,8 @@ beforeEach(() => {
   store.selectImportItemsForExport.mockResolvedValue([]);
   store.selectFollowerSnapshotsForExport.mockResolvedValue([]);
   store.selectScheduledPostsForExport.mockResolvedValue([]);
-  store.countReaderEmailsForDid.mockResolvedValue([]);
+  store.selectReaderEmailsForExport.mockResolvedValue([]);
+  store.countReaderEmailsForDid.mockResolvedValue([{ n: 0 }]);
   atproto.resolveDidIdentity.mockResolvedValue({ handle: null, pds: null });
 });
 
@@ -310,43 +315,89 @@ describe("response shape", () => {
   });
 
   /**
-   * `reader_emails` IS keyed by the writer's DID, so the old manifest's "that
-   * is everything we hold keyed to your DID" was simply false the day the
-   * table shipped. The remedy is not to start exporting the addresses: those
-   * are the readers' personal data, left with a publication, and a
-   * subject-access download is not a lawful route to a list of other people's
-   * email addresses. So the export reports the COUNT and says what it is
-   * withholding and why.
+   * The writer controls their publication's reader list and Goldroad holds it
+   * for them, so the export is where they get it: every address, where it was
+   * left, and when.
    */
-  it("reports how many readers left an address, and no addresses at all", async () => {
-    store.countReaderEmailsForDid.mockResolvedValue([
-      { id: 1 },
-      { id: 2 },
-      { id: 3 },
+  it("hands the writer their reader list, with where and when each was left", async () => {
+    store.selectReaderEmailsForExport.mockResolvedValue([
+      {
+        email: "first@example.com",
+        source: "post",
+        consentedAt: new Date("2026-09-01T10:00:00.000Z"),
+      },
+      {
+        email: "second@example.com",
+        source: "publication",
+        consentedAt: new Date("2026-09-02T11:30:00.000Z"),
+      },
     ]);
+    store.countReaderEmailsForDid.mockResolvedValue([{ n: 2 }]);
     const res = await call();
-    const raw = await res.text();
-    const body = JSON.parse(raw) as {
+    const body = (await res.json()) as {
       manifest: string;
-      readerList: { count: number; addressesIncluded: boolean; note: string };
+      readerList: {
+        count: number;
+        truncated: boolean;
+        note: string;
+        readers: { email: string; source: string; consentedAt: string }[];
+      };
     };
 
-    expect(store.countReaderEmailsForDid).toHaveBeenCalledWith(
+    expect(store.selectReaderEmailsForExport).toHaveBeenCalledWith(
       expect.anything(),
       DID,
     );
-    expect(body.readerList.count).toBe(3);
-    expect(body.readerList.addressesIncluded).toBe(false);
-    expect(body.readerList.note).toMatch(/not exported/i);
-    // Nothing that looks like an address anywhere in the payload.
-    expect(raw).not.toMatch(/@(?!trygoldroad\.com)[a-z0-9.-]+\.[a-z]{2,}/i);
+    expect(body.readerList.count).toBe(2);
+    expect(body.readerList.readers).toEqual([
+      {
+        email: "first@example.com",
+        source: "post",
+        consentedAt: "2026-09-01T10:00:00.000Z",
+      },
+      {
+        email: "second@example.com",
+        source: "publication",
+        consentedAt: "2026-09-02T11:30:00.000Z",
+      },
+    ]);
+    expect(body.readerList.truncated).toBe(false);
+    expect(body.manifest).toMatch(/yours to control/i);
+    expect(body.manifest).toMatch(/on your behalf/i);
+    // Nothing confirms an address, and the writer has to know that.
+    expect(body.manifest).toMatch(/nobody confirms these addresses/i);
+    expect(body.readerList.note).toMatch(/^Unconfirmed/);
+  });
+
+  it("says when a padded list was cut, and gives the true total", async () => {
+    store.selectReaderEmailsForExport.mockResolvedValue([
+      { email: "a@example.com", source: "post", consentedAt: new Date(0) },
+    ]);
+    store.countReaderEmailsForDid.mockResolvedValue([{ n: 5000 }]);
+    const body = (await (await call()).json()) as {
+      readerList: { count: number; truncated: boolean };
+    };
+    expect(body.readerList).toMatchObject({ count: 5000, truncated: true });
+  });
+
+  it("exports a row with an unreadable date rather than failing", async () => {
+    store.selectReaderEmailsForExport.mockResolvedValue([
+      { email: "a@example.com", source: "post", consentedAt: new Date(NaN) },
+    ]);
+    store.countReaderEmailsForDid.mockResolvedValue([{ n: 1 }]);
+    const res = await call();
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      readerList: { readers: { consentedAt: string | null }[] };
+    };
+    expect(body.readerList.readers[0].consentedAt).toBeNull();
   });
 
   it("no longer claims the file is everything keyed to the DID", async () => {
     const res = await call();
     const { manifest } = (await res.json()) as { manifest: string };
     expect(manifest).not.toMatch(/that is everything we hold keyed to your/i);
-    // It names the omission instead, and what happens to it on deletion.
+    // It names the reader list instead, and what happens to it on deletion.
     expect(manifest).toMatch(/readerList/);
     expect(manifest).toMatch(/deleted along with everything else/i);
   });
