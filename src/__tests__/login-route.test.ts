@@ -136,6 +136,7 @@ describe("/login — designed failure redirects", () => {
   it("still starts the OAuth flow for a valid handle, @ and whitespace stripped", async () => {
     authorize.mockResolvedValue({
       url: new URL("https://pds.example/authorize?request_uri=fake"),
+      stateId: "state-from-the-library",
     });
     const res = await post({
       handle: " @writer.bsky.social ",
@@ -145,12 +146,38 @@ describe("/login — designed failure redirects", () => {
     expect(res.headers.get("location")).toBe(
       "https://pds.example/authorize?request_uri=fake",
     );
+    // The flow is bound to this browser: the callback only accepts this state
+    // from a request carrying this cookie.
+    const cookie = res.headers.get("set-cookie") ?? "";
+    expect(cookie).toMatch(/^gr_oauth_state=state-from-the-library;/);
+    expect(cookie).toContain("HttpOnly");
+    expect(cookie).toContain("SameSite=Lax");
+    expect(cookie).toContain("Path=/oauth/callback");
+    expect(cookie).toMatch(/Max-Age=600\b/);
     expect(authorize).toHaveBeenCalledWith(
       expect.objectContaining({
         target: { type: "account", identifier: "writer.bsky.social" },
         state: { returnTo: "/dashboard" },
       }),
     );
+  });
+
+  it("won't start a sign-in for another site's form", async () => {
+    // A cross-site POST could pick the attacker's own account and plant the
+    // state cookie, which the callback would then accept.
+    const body = new FormData();
+    body.append("handle", "attacker.example");
+    const res = await handlers.POST({
+      request: new Request("http://127.0.0.1:3000/login", {
+        method: "POST",
+        body,
+        headers: { origin: "https://evil.example" },
+      }),
+    });
+    expect(res.status).toBe(303);
+    expect(res.headers.get("location")).toBe("/write");
+    expect(res.headers.get("set-cookie")).toBeNull();
+    expect(authorize).not.toHaveBeenCalled();
   });
 
   it("keeps rejecting a non-form POST body with a plain 400", async () => {

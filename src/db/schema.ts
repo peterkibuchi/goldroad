@@ -12,12 +12,15 @@ import {
  * D1, not Workers KV: KV's eventual consistency can lose the authorize→callback
  * roundtrip (~10s) across colos. Keys are prefixed ("sess:", "state:");
  * values are plain JSON (StoredSession / StoredState from @atcute/oauth-node-client).
- * `expiresAt` is a unix-ms timestamp; null means no expiry (sessions).
+ * `expiresAt` is a unix-ms timestamp (states: 10 minutes; sessions: sliding,
+ * see ~/lib/live-session). `sid` is set on session rows only: the random id
+ * every session cookie for this row carries.
  */
 export const oauthKv = sqliteTable("oauth_kv", {
   k: text("k").primaryKey(),
   v: text("v").notNull(),
   expiresAt: integer("expires_at"),
+  sid: text("sid"),
 });
 
 export const waitlist = sqliteTable("waitlist", {
