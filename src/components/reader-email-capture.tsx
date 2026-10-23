@@ -147,7 +147,8 @@ export function ReaderEmailCapture({
             {name} has your address.
           </p>
           <p className={cn(FINE_PRINT, "mt-2")}>
-            Sending isn't switched on yet, so nothing will arrive today.{" "}
+            Sending isn't switched on here yet, but {name} can download their
+            reader list and write to you.{" "}
             <a className={PRIVACY_LINK} href="/privacy">
               How it's held
             </a>
@@ -208,8 +209,8 @@ export function ReaderEmailCapture({
           {/* Anti-bot challenge — renders only when the sitekey env var is set. */}
           <TurnstileWidget />
           <p className={FINE_PRINT}>
-            Sending isn't switched on here yet — leave your address and {name}{" "}
-            can write to you once it is.{" "}
+            Sending isn't switched on here yet. Your address goes to {name}, who
+            can download their reader list and write to you.{" "}
             <a className={PRIVACY_LINK} href="/privacy">
               How it's held
             </a>

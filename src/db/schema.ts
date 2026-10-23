@@ -57,7 +57,8 @@ export const waitlist = sqliteTable("waitlist", {
  *
  * NOTHING SENDS YET. Email delivery is not built, and the copy on the capture
  * surface says so as a flat fact rather than promising a date. Until it ships
- * these rows are held, disclosed on /privacy, and removable on request.
+ * these rows are held, disclosed on /privacy, in the writer's export, and
+ * removable on request.
  */
 export const readerEmails = sqliteTable(
   "reader_emails",
@@ -74,7 +75,7 @@ export const readerEmails = sqliteTable(
   },
   // Writer first: it is both halves of the idempotency key AND the prefix every
   // read will use (one writer's list), so the same index serves the duplicate
-  // check today and the writer-facing export when sending ships.
+  // check and the writer's export.
   (table) => [
     uniqueIndex("reader_emails_writer_email_idx").on(
       table.writerDid,

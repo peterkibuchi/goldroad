@@ -36,16 +36,16 @@ export function PrivacyPage() {
     <LegalLayout
       kicker="Goldroad · Privacy"
       title="Privacy policy"
-      updated="30 July 2026"
+      updated="14 October 2026"
       draft
     >
       <LegalSection heading="The short version">
         <p>
-          Goldroad is built so your writing, your subscriber list, and your
-          identity live in your own account on the open network — not locked in
-          our database. We collect almost nothing, we don't use tracking
-          cookies, and we never sell or rent your data. This page spells out the
-          detail.
+          Goldroad is built so your writing and your identity live in your own
+          account on the open network, and your reader list is yours to download
+          — not locked in our database. We collect almost nothing, we don't use
+          tracking cookies, and we never sell or rent your data. This page
+          spells out the detail.
         </p>
       </LegalSection>
 
@@ -53,7 +53,7 @@ export function PrivacyPage() {
         <LegalList
           items={[
             "Waitlist email — only if you enter it. It's stored in our database to tell you when Goldroad opens, and nowhere else.",
-            "Reader email — if you leave your address with a publication you're reading, we store the address, which publication it was, and when. It's held for that writer until email sending opens or you ask us to delete it.",
+            "Reader email — if you leave your address with a publication you're reading, we store the address, which publication it was, and when. It's held for that writer until email sending opens or you ask us to delete it. The writer is in charge of their publication's list and can download it; we hold it on their behalf.",
             "Abuse reports — if you use the report form we store the URL you reported and the note you wrote, plus your email if you chose to leave one, so a human can triage it and follow up with you. So that reports don't sit unread, the URL and the note are also sent to the private channel we use for operational alerts; your email is never included in that.",
             "Product analytics via PostHog, running cookieless (in-memory): no cookies, no localStorage, no cross-site tracking, and no consent banner needed. Events carry which environment they came from, never your email or personal details.",
             "Sign-in details: when you connect a Bluesky / atproto account, we act on your decentralized identifier (DID). Access tokens stay on our server; we never see or store your password.",
@@ -76,6 +76,7 @@ export function PrivacyPage() {
         <LegalList
           items={[
             "Consent — for adding you to the waitlist and later emailing you.",
+            "Consent — the reader's, given to the writer whose publication they left their address with. The writer decides how the list is used; we hold it for them.",
             "Legitimate interests — for security, abuse prevention, and privacy-respecting analytics that keep the service working.",
           ]}
         />
@@ -85,22 +86,24 @@ export function PrivacyPage() {
         <p>
           If you've connected a Bluesky account, Settings → Your data lets you
           download everything we hold under that account — your drafts, import
-          history, follower history and sign-in session — and delete all of it
-          yourself, immediately, no waiting on us. (Deleting your account never
-          touches what you've published: those posts live in your own data repo,
-          not ours.)
+          history, scheduled posts, follower history, sign-in session and the
+          addresses readers have left with your publication — and delete all of
+          it yourself, immediately, no waiting on us. (Deleting your account
+          never touches what you've published: those posts live in your own data
+          repo, not ours.)
         </p>
         <p className="mt-3">
           One thing those buttons can't reach: an email you typed into the
           waitlist form, left on an abuse report, or left with a publication you
           read. Those are stored on their own — by the address, plus (for a
-          publication) the writer you left it with. We identify accounts by DID
-          and never ask for or receive your email address, so there is genuinely
-          nothing in our database that could tell us a given account and a given
-          email are the same person — which also means an export can't include
-          it and account deletion can't remove it. Email {privacy} from or
-          naming that address and we'll delete it by hand, whether or not you
-          also have an account here.
+          publication) the writer you left it with, whose own download includes
+          it. We identify accounts by DID and never ask for or receive your
+          email address, so there is genuinely nothing in our database that
+          could tell us a given account and a given email are the same person —
+          which also means an export can't include it and account deletion can't
+          remove it. Email {privacy} from or naming that address and we'll
+          delete it by hand, whether or not you also have an account here. We
+          can't reach a copy a writer has already downloaded, so ask them too.
         </p>
         <p className="mt-3">
           Wherever you live — including under the EU/UK GDPR — you can ask to
@@ -116,7 +119,7 @@ export function PrivacyPage() {
             "Abuse reports: the report, and any email left with it, kept while we may still need it for moderation and appeals, then discarded — or sooner if you ask. The alert copy described above lives in that channel's own history, so removing a report here doesn't reach back into it.",
             "Analytics: aggregated, not tied to your identity.",
             "Drafts and import history: kept until you delete them (Settings → Your data) or delete your account, which removes both immediately.",
-            "Reader emails left with a publication: kept for that writer until email sending opens or the address is deleted on request — and deleted immediately, in full, if that writer deletes their Goldroad account. They are never included in a writer's data export: the addresses belong to the readers who left them, not to the publication, so a writer's download reports only how many there are.",
+            "Reader emails left with a publication: kept for that writer until email sending opens or the address is deleted on request — and deleted immediately, in full, if that writer deletes their Goldroad account. The writer's data export includes them, with where and when each was left: the writer controls their publication's list, and Goldroad processes it on their behalf.",
             "Follower counts: while you have an account we record your public Bluesky follower count once a day, so you can see your own growth over time — Bluesky only reports today's number, and the past can't be recovered later. It's in your data export, and deleting your account deletes it.",
             "Sign-in sessions: kept until you sign out, delete your account, or the session expires.",
             "Server logs: short-lived (days), then discarded.",

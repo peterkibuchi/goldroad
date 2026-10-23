@@ -19,17 +19,11 @@
  * which is exactly what happened to `reader_emails`, keyed by `writer_did`
  * and missed by both halves for as long as it existed.
  *
- * READER EMAILS ARE THE ONE ASYMMETRIC CASE, and the asymmetry is the point.
- * The rows are keyed to the writer's DID, so deletion reaches them and must:
- * a closed account cannot go on holding other people's addresses. The EXPORT
- * does not include them. They are a list of third parties' email addresses,
- * given to a publication rather than to its owner's data file, and handing
- * them over on a button press would be a disclosure of other people's
- * personal data dressed up as the writer's own subject-access right. The
- * export names the COUNT — which is a fact about the writer's publication —
- * and says plainly that the addresses go when the account goes. When sending
- * ships, a writer-facing subscriber list is a deliberate feature with its own
- * consent story, not a side effect of this file.
+ * READER EMAILS: the writer is the controller of their publication's reader
+ * list, and Goldroad processes it on their behalf. So the export hands the
+ * writer the addresses, with where and when each was left, and deleting the
+ * account deletes them: a closed account cannot go on holding other people's
+ * addresses.
  *
  * DELIBERATELY UNREACHABLE FROM HERE: `waitlist` and `reports` also hold an
  * email a writer may have typed, and neither can ever be covered by these
@@ -45,7 +39,7 @@
  * on request is the honest remedy; if a verified-email link ever exists, this
  * is the note to come back to.
  */
-import { asc, desc, eq } from "drizzle-orm";
+import { asc, count, desc, eq } from "drizzle-orm";
 import type { drizzle } from "drizzle-orm/d1";
 
 import {
@@ -161,17 +155,33 @@ export function selectScheduledPostsForExport(db: DrizzleD1, did: string) {
     .limit(MAX_LEDGER_ROWS_PER_EXPORT);
 }
 
+/** Reader addresses per export. The list is unconfirmed (anyone can type an
+ * address into the form), so a padded list must not push the whole export
+ * past the CPU limit. Past the cap the export says so and gives the total. */
+export const MAX_READER_EMAILS_PER_EXPORT = 1000;
+
 /**
- * How many readers have left an address with this writer's publication.
- *
- * The only thing about `reader_emails` the export reports, and deliberately so
- * — the count is a fact about the writer's own publication, while the
- * addresses belong to the readers who typed them. See the note at the top of
- * this file.
+ * The addresses readers have left with this writer's publication, oldest
+ * first (ids are assigned in insertion order), with the surface each was left
+ * on and when.
  */
+export function selectReaderEmailsForExport(db: DrizzleD1, did: string) {
+  return db
+    .select({
+      email: readerEmails.email,
+      source: readerEmails.source,
+      consentedAt: readerEmails.consentedAt,
+    })
+    .from(readerEmails)
+    .where(eq(readerEmails.writerDid, did))
+    .orderBy(asc(readerEmails.id))
+    .limit(MAX_READER_EMAILS_PER_EXPORT);
+}
+
+/** How many addresses readers have left with this writer's publication. */
 export function countReaderEmailsForDid(db: DrizzleD1, did: string) {
   return db
-    .select({ id: readerEmails.id })
+    .select({ n: count() })
     .from(readerEmails)
     .where(eq(readerEmails.writerDid, did));
 }

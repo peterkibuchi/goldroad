@@ -280,7 +280,9 @@ describe("ReaderEmailCapture — with JavaScript", () => {
     fill("Reader@Example.com");
     fireEvent.submit(form());
 
-    expect(await screen.findByText(/nothing will arrive today/i)).toBeDefined();
+    expect(
+      await screen.findByText(/can download their\s+reader list/i),
+    ).toBeDefined();
     const [url, init] = fetcher.mock.calls[0] as unknown as [
       string,
       RequestInit,
@@ -301,7 +303,9 @@ describe("ReaderEmailCapture — with JavaScript", () => {
     fill("reader@example.com");
     fireEvent.submit(form());
 
-    const confirmation = await screen.findByText(/nothing will arrive today/i);
+    const confirmation = await screen.findByText(
+      /can download their\s+reader list/i,
+    );
     expect(confirmation).toBeDefined();
     // Announced too: the form it replaced was what the reader was looking at.
     expect(document.querySelector('[role="status"]')?.textContent).toMatch(
@@ -314,7 +318,7 @@ describe("ReaderEmailCapture — with JavaScript", () => {
     renderCapture();
     fill("reader@example.com");
     fireEvent.submit(form());
-    await screen.findByText(/nothing will arrive today/i);
+    await screen.findByText(/can download their\s+reader list/i);
     expect(document.querySelector("dialog")).toBeNull();
   });
 
@@ -339,7 +343,7 @@ describe("ReaderEmailCapture — with JavaScript", () => {
     renderCapture();
     fill("reader@example.com");
     fireEvent.submit(form());
-    await screen.findByText(/nothing will arrive today/i);
+    await screen.findByText(/can download their\s+reader list/i);
     expect(fetcher.mock.calls.every(([url]) => url === "/api/subscribe")).toBe(
       true,
     );

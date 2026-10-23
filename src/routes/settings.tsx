@@ -567,7 +567,7 @@ function SettingsPage() {
 
         <SettingsSection
           id="your-data"
-          intro="Goldroad stores remarkably little for your account: drafts, your import history, your daily follower count, and your sign-in session. That's everything keyed to your account. What you've published lives in your own data repo, not here, so nothing below touches it."
+          intro="Goldroad stores remarkably little for your account: drafts, your import history, scheduled posts, your daily follower count, the addresses readers have left with your publication, and your sign-in session. That's everything keyed to your account. What you've published lives in your own data repo, not here, so nothing below touches it."
           title="Your data"
         >
           <p className="font-display text-ink-soft text-sm">
@@ -600,7 +600,7 @@ function SettingsPage() {
         <SettingsSection
           id="delete-account"
           rule="heavy"
-          intro="Deletes your drafts, import history, follower history, and sign-in from our servers, permanently. Your published posts and any Bluesky announces stay exactly where they are — they're records in your own repo, not ours."
+          intro="Deletes your drafts, import history, scheduled posts, follower history, your reader list, and sign-in from our servers, permanently. Download your data first if you want to keep the reader list. Your published posts and any Bluesky announces stay exactly where they are — they're records in your own repo, not ours."
           title="Delete your account"
         >
           <DeleteAccountForm ident={ident} />
