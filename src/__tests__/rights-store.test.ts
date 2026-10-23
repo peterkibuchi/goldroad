@@ -9,6 +9,7 @@ import {
   countReaderEmailsForDid,
   deleteDraftsForDid,
   deleteFollowerSnapshotsForDid,
+  deleteHostedPublicationForDid,
   deleteImportFetchesForDid,
   deleteImportItemsForDid,
   deleteOAuthSessionForDid,
@@ -18,6 +19,7 @@ import {
   MAX_SNAPSHOT_ROWS_PER_EXPORT,
   selectDraftsForExport,
   selectFollowerSnapshotsForExport,
+  selectHostedPublicationForExport,
   selectImportItemsForExport,
   selectScheduledPostsForExport,
 } from "../lib/rights-store";
@@ -127,6 +129,19 @@ describe("account-deletion deletes — DID-scoped, RETURNing so callers can see 
     expectDidBound(sql, params);
     expect(sql.toLowerCase()).toContain('delete from "follower_snapshots"');
     expect(sql.toLowerCase()).toContain("returning");
+  });
+
+  it("deleteHostedPublicationForDid removes only the caller's sitemap listing", () => {
+    const { sql, params } = deleteHostedPublicationForDid(db, DID).toSQL();
+    expectDidBound(sql, params);
+    expect(sql.toLowerCase()).toContain('delete from "hosted_publications"');
+    expect(sql.toLowerCase()).toContain("returning");
+  });
+
+  it("selectHostedPublicationForExport reads only the caller's listing", () => {
+    const { sql, params } = selectHostedPublicationForExport(db, DID).toSQL();
+    expectDidBound(sql, params);
+    expect(sql).toContain('"hosted_publications"');
   });
 
   it("deleteScheduledPostsForDid removes queued publishing work, not just records", () => {

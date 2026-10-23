@@ -19,6 +19,7 @@ import type { drizzle } from "drizzle-orm/d1";
 
 import { type Did, listRecords, type StandardPublication } from "~/lib/atproto";
 import { deleteDraft } from "~/lib/drafts";
+import { noteHostedPublication } from "~/lib/hosted-publications";
 import { setPublishedRkey } from "~/lib/import-store";
 import {
   buildDocumentRecord,
@@ -336,6 +337,8 @@ export async function publishStoredDraft(input: {
     };
   }
 
+  // The sitemap's list of publications hosted here; best-effort, never fails.
+  await noteHostedPublication(db, did, ident, site);
   // Import ledger write-back: an imported draft's row records the rkey it
   // published under, which is what makes the reader page treat it as a mirror
   // and what keeps a re-import refusing it as a duplicate.

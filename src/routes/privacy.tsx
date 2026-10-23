@@ -36,7 +36,7 @@ export function PrivacyPage() {
     <LegalLayout
       kicker="Goldroad · Privacy"
       title="Privacy policy"
-      updated="30 July 2026"
+      updated="15 October 2026"
       draft
     >
       <LegalSection heading="The short version">
@@ -85,10 +85,10 @@ export function PrivacyPage() {
         <p>
           If you've connected a Bluesky account, Settings → Your data lets you
           download everything we hold under that account — your drafts, import
-          history, follower history and sign-in session — and delete all of it
-          yourself, immediately, no waiting on us. (Deleting your account never
-          touches what you've published: those posts live in your own data repo,
-          not ours.)
+          history, follower history, publication address and sign-in session —
+          and delete all of it yourself, immediately, no waiting on us.
+          (Deleting your account never touches what you've published: those
+          posts live in your own data repo, not ours.)
         </p>
         <p className="mt-3">
           One thing those buttons can't reach: an email you typed into the
@@ -118,6 +118,7 @@ export function PrivacyPage() {
             "Drafts and import history: kept until you delete them (Settings → Your data) or delete your account, which removes both immediately.",
             "Reader emails left with a publication: kept for that writer until email sending opens or the address is deleted on request — and deleted immediately, in full, if that writer deletes their Goldroad account. They are never included in a writer's data export: the addresses belong to the readers who left them, not to the publication, so a writer's download reports only how many there are.",
             "Follower counts: while you have an account we record your public Bluesky follower count once a day, so you can see your own growth over time — Bluesky only reports today's number, and the past can't be recovered later. It's in your data export, and deleting your account deletes it.",
+            "Your publication's address: when you publish, we note the address of your publication page and when you last published, so our sitemap can point search engines at it. It's in your data export, and deleting your account deletes it.",
             "Sign-in sessions: kept until you sign out, delete your account, or the session expires.",
             "Server logs: short-lived (days), then discarded.",
           ]}

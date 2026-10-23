@@ -25,6 +25,9 @@ vi.mock("~/lib/import-store", () => ledger);
 const schedules = vi.hoisted(() => ({ deleteSchedulesForDraft: vi.fn() }));
 vi.mock("~/lib/scheduled-posts", () => schedules);
 
+const hosted = vi.hoisted(() => ({ noteHostedPublication: vi.fn() }));
+vi.mock("~/lib/hosted-publications", () => hosted);
+
 import {
   findOwnPublication,
   publishStoredDraft,
@@ -121,6 +124,8 @@ beforeEach(() => {
   ledger.setPublishedRkey.mockResolvedValue([]);
   schedules.deleteSchedulesForDraft.mockReset();
   schedules.deleteSchedulesForDraft.mockResolvedValue([]);
+  hosted.noteHostedPublication.mockReset();
+  hosted.noteHostedPublication.mockResolvedValue(undefined);
 });
 
 describe("resolvePublicationSite", () => {
@@ -432,6 +437,27 @@ describe("publishStoredDraft", () => {
     if (result.ok) throw new Error("expected a failure");
     expect(result.retry).toBe(false);
     expect(result.reason).toMatch(/refused/i);
+    quiet.mockRestore();
+  });
+
+  it("notes the publication for the sitemap once the post is live", async () => {
+    const { rpc } = fakeRpc();
+    await publishStoredDraft(input(rpc));
+    expect(hosted.noteHostedPublication).toHaveBeenCalledWith(
+      expect.anything(),
+      DID,
+      "writer.example",
+      PUB_URI,
+    );
+  });
+
+  it("notes nothing for a post that didn't land", async () => {
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { rpc } = fakeRpc([
+      { ok: false, status: 400, data: { error: "InvalidRequest" } },
+    ]);
+    await publishStoredDraft(input(rpc));
+    expect(hosted.noteHostedPublication).not.toHaveBeenCalled();
     quiet.mockRestore();
   });
 
