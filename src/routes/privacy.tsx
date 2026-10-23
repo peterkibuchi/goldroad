@@ -36,7 +36,7 @@ export function PrivacyPage() {
     <LegalLayout
       kicker="Goldroad · Privacy"
       title="Privacy policy"
-      updated="30 July 2026"
+      updated="14 October 2026"
       draft
     >
       <LegalSection heading="The short version">
@@ -56,7 +56,7 @@ export function PrivacyPage() {
             "Reader email — if you leave your address with a publication you're reading, we store the address, which publication it was, and when. It's held for that writer until email sending opens or you ask us to delete it.",
             "Abuse reports — if you use the report form we store the URL you reported and the note you wrote, plus your email if you chose to leave one, so a human can triage it and follow up with you. So that reports don't sit unread, the URL and the note are also sent to the private channel we use for operational alerts; your email is never included in that.",
             "Product analytics via PostHog, running cookieless (in-memory): no cookies, no localStorage, no cross-site tracking, and no consent banner needed. Events carry which environment they came from, never your email or personal details.",
-            "Sign-in details: when you connect a Bluesky / atproto account, we act on your decentralized identifier (DID). Access tokens stay on our server; we never see or store your password.",
+            "Sign-in details: when you connect a Bluesky / atproto account, we act on your decentralized identifier (DID). Access tokens stay on our server; we never see or store your password. Your browser holds a session cookie naming your DID and a random session id, plus one that says only that someone is signed in, so our cached pages can show the right link. While a sign-in is in progress, a third cookie, gone within 10 minutes, ties it to the browser that started it.",
             "Standard server logs (via Cloudflare) — request metadata like IP and user agent, kept briefly for security and debugging.",
           ]}
         />
@@ -118,7 +118,7 @@ export function PrivacyPage() {
             "Drafts and import history: kept until you delete them (Settings → Your data) or delete your account, which removes both immediately.",
             "Reader emails left with a publication: kept for that writer until email sending opens or the address is deleted on request — and deleted immediately, in full, if that writer deletes their Goldroad account. They are never included in a writer's data export: the addresses belong to the readers who left them, not to the publication, so a writer's download reports only how many there are.",
             "Follower counts: while you have an account we record your public Bluesky follower count once a day, so you can see your own growth over time — Bluesky only reports today's number, and the past can't be recovered later. It's in your data export, and deleting your account deletes it.",
-            "Sign-in sessions: kept until you sign out, delete your account, or the session expires.",
+            "Sign-in sessions: deleted when you sign out (which ends it in every browser you're signed in on) or delete your account, and automatically after 30 days without use. A post you've scheduled keeps the session at least until 30 days after it's due, because that's what publishes it.",
             "Server logs: short-lived (days), then discarded.",
           ]}
         />

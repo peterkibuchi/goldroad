@@ -34,12 +34,14 @@ import {
   type Store,
   type StoredState,
 } from "@atcute/oauth-node-client";
-import { eq, like } from "drizzle-orm";
+import { and, eq, gt, isNull, like, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 
 import { oauthKv } from "~/db/schema";
+import { sessionExpiryFloor } from "~/lib/live-session";
 import { SCOPES } from "~/lib/oauth-scopes";
 import { canonicalOrigin, isLoopbackOrigin } from "~/lib/origin";
+import { newSessionId } from "~/lib/session";
 import { env } from "cloudflare:workers";
 
 type DrizzleD1 = ReturnType<typeof drizzle>;
@@ -91,6 +93,59 @@ class D1Store<V> implements Store<string, V> {
   }
 }
 
+/**
+ * The session store. The library writes here at sign-in and on every token
+ * refresh. Each write slides the expiry forward (never back, never short of
+ * `sessionExpiryFloor`). The sid is minted only when the row is created, or
+ * replaces one that has lapsed, so a refresh or a second browser's sign-in
+ * keeps every live cookie valid.
+ *
+ * Only the sign-in callback's store may create a row. Every other write is a
+ * token refresh, and a refresh that finishes after a sign-out deleted the row
+ * must not put a live refresh token back.
+ */
+export class D1SessionStore<V> extends D1Store<V> {
+  constructor(
+    private readonly sessionDb: DrizzleD1,
+    private readonly signIn = false,
+  ) {
+    super(sessionDb, "sess:");
+  }
+
+  override async set(key: string, value: V): Promise<void> {
+    const now = Date.now();
+    const k = `sess:${key}`;
+    const v = JSON.stringify(value);
+    const floor = sessionExpiryFloor(sql`${key}`, now);
+    if (!this.signIn) {
+      await this.sessionDb
+        .update(oauthKv)
+        .set({
+          v,
+          expiresAt: sql`max(coalesce(${oauthKv.expiresAt}, 0), ${floor})`,
+        })
+        .where(
+          and(
+            eq(oauthKv.k, k),
+            or(isNull(oauthKv.expiresAt), gt(oauthKv.expiresAt, now)),
+          ),
+        );
+      return;
+    }
+    await this.sessionDb
+      .insert(oauthKv)
+      .values({ k, v, expiresAt: floor, sid: newSessionId() })
+      .onConflictDoUpdate({
+        target: oauthKv.k,
+        set: {
+          v: sql`excluded.v`,
+          sid: sql`case when ${oauthKv.sid} is null or ${oauthKv.expiresAt} <= ${now} then excluded.sid else ${oauthKv.sid} end`,
+          expiresAt: sql`max(coalesce(${oauthKv.expiresAt}, 0), excluded.expires_at)`,
+        },
+      });
+  }
+}
+
 // Stateless resolver config; safe to share across requests within an isolate.
 const actorResolver = new LocalActorResolver({
   handleResolver: new CompositeHandleResolver({
@@ -114,19 +169,26 @@ const actorResolver = new LocalActorResolver({
  * `new URL(request.url).origin`). Non-loopback origins are canonicalized to
  * CANONICAL_ORIGIN so the client identity is hostname-independent.
  *
+ * `signIn` is for the OAuth callback alone: it is the only client whose
+ * session writes may create a session row (see D1SessionStore).
+ *
  * KNOWN LIMITATION: a sign-in started from a versioned preview hostname
  * (*-goldroad.kibuchi.workers.dev) redirects back to the CANONICAL redirect
- * URI — the flow completes on production, not on the preview. Accepted:
+ * URI, where the browser-binding cookie set on the preview host isn't sent,
+ * so it fails as signin_failed. Accepted:
  * interactive OAuth is testable in local dev (loopback client) and in
  * production; per-preview OAuth identities were rejected (each preview would
  * demand its own PDS consent and fracture sessions, for no benefit at our
  * team size). Preview URLs exist to review UI, not auth flows.
  */
-export function createOAuthClient(requestOrigin: string): OAuthClient {
+export function createOAuthClient(
+  requestOrigin: string,
+  { signIn = false }: { signIn?: boolean } = {},
+): OAuthClient {
   const origin = canonicalOrigin(requestOrigin);
   const db = drizzle(env.DB);
   const stores: OAuthClientStores = {
-    sessions: new D1Store(db, "sess:"),
+    sessions: new D1SessionStore(db, signIn),
     states: new D1Store<StoredState>(db, "state:", (s) => s.expiresAt),
     // dpopNonces/asMetadata/prMetadata: in-memory defaults are fine (best-effort caches).
   };

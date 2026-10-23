@@ -68,7 +68,9 @@ async function call(
       headers: {
         "content-type": "application/json",
         ...(authed
-          ? { cookie: `gr_session=${await signSession(DID, SECRET)}` }
+          ? {
+              cookie: `gr_session=${await signSession(DID, "test-sid", SECRET)}`,
+            }
           : {}),
         ...(origin ? { origin } : {}),
       },

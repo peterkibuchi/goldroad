@@ -1,15 +1,14 @@
 /**
- * Session cookie: `payload.signature` where payload = base64url(JSON{did,iat})
- * and signature = base64url(HMAC-SHA256(payload, secret)). The signature covers
- * the issued-at, so a token is only valid for MAX_AGE_SECONDS from issue — a
- * leaked cookie is no longer replayable forever. The cookie still
- * carries ONLY the DID (+ its issue time); OAuth tokens and DPoP keys stay in
- * the D1-backed session store. WebCrypto only — must run on workerd.
+ * Session cookie: `payload.signature` where payload =
+ * base64url(JSON{did,sid,iat}) and signature = base64url(HMAC-SHA256(payload,
+ * secret)). The signature covers the issued-at, so a token is only valid for
+ * MAX_AGE_SECONDS from issue. `sid` names the server-side session row it was
+ * issued against (see ~/lib/live-session): a new row after sign-out gets a new
+ * sid, so a cookie from before can't come back to life. OAuth tokens and DPoP
+ * keys stay in D1. WebCrypto only — must run on workerd.
  *
- * NOTE (backward-incompatible, deliberate): this replaces the old `did.HMAC`
- * format. Old cookies fail signature/shape verification and are treated as
- * signed-out — everyone re-logs in once. We've done a forced re-login before;
- * the security win is worth it.
+ * Cookies without a sid (the older `{did,iat}` and `did.HMAC` formats) fail
+ * verification and read as signed-out, so everyone signs in again once.
  */
 
 const COOKIE_NAME = "gr_session";
@@ -21,7 +20,10 @@ const CLOCK_SKEW_MS = 60_000;
 
 const encoder = new TextEncoder();
 
-type SessionPayload = { did: string; iat: number };
+type SessionPayload = { did: string; sid: string; iat: number };
+
+/** What a verified cookie proves: who, and which session row it belongs to. */
+export type SessionCookie = { did: string; sid: string };
 
 function isSessionPayload(value: unknown): value is SessionPayload {
   return (
@@ -29,6 +31,8 @@ function isSessionPayload(value: unknown): value is SessionPayload {
     value !== null &&
     typeof (value as SessionPayload).did === "string" &&
     (value as SessionPayload).did.startsWith("did:") &&
+    typeof (value as SessionPayload).sid === "string" &&
+    (value as SessionPayload).sid !== "" &&
     typeof (value as SessionPayload).iat === "number" &&
     Number.isFinite((value as SessionPayload).iat)
   );
@@ -65,16 +69,22 @@ function importHmacKey(
   );
 }
 
-/** Signs a DID + issue time into a session token: `base64url(json).base64url(hmac)`.
- * `nowMs` is injectable for tests; defaults to the wall clock. */
+/** A fresh session id: 128 random bits, base64url. */
+export function newSessionId(): string {
+  return toBase64Url(crypto.getRandomValues(new Uint8Array(16)));
+}
+
+/** Signs a DID, session id and issue time into a session token:
+ * `base64url(json).base64url(hmac)`. `nowMs` is injectable for tests. */
 export async function signSession(
   did: string,
+  sid: string,
   secret: string,
   nowMs: number = Date.now(),
 ): Promise<string> {
   const payload = toBase64Url(
     encoder.encode(
-      JSON.stringify({ did, iat: nowMs } satisfies SessionPayload),
+      JSON.stringify({ did, sid, iat: nowMs } satisfies SessionPayload),
     ),
   );
   const key = await importHmacKey(secret, "sign");
@@ -83,17 +93,17 @@ export async function signSession(
 }
 
 /**
- * Verifies a session token and its freshness; returns the DID or null.
+ * Verifies a session token and its freshness; returns `{did, sid}` or null.
  * Signature check is timing-safe (crypto.subtle.verify). Rejects when: the
  * shape is wrong, the signature doesn't match, the payload isn't a valid
- * {did, iat}, the issue time is in the future (beyond clock skew), or the token
- * is older than MAX_AGE_SECONDS. `nowMs` is injectable for tests.
+ * {did, sid, iat}, the issue time is in the future (beyond clock skew), or the
+ * token is older than MAX_AGE_SECONDS. `nowMs` is injectable for tests.
  */
 export async function verifySessionToken(
   token: string,
   secret: string,
   nowMs: number = Date.now(),
-): Promise<string | null> {
+): Promise<SessionCookie | null> {
   const sep = token.lastIndexOf(".");
   if (sep <= 0 || sep === token.length - 1) return null;
   const payload = token.slice(0, sep);
@@ -121,23 +131,37 @@ export async function verifySessionToken(
   if (!isSessionPayload(parsed)) return null;
   const age = nowMs - parsed.iat;
   if (age < -CLOCK_SKEW_MS || age > MAX_AGE_MS) return null;
-  return parsed.did;
+  return { did: parsed.did, sid: parsed.sid };
 }
 
-/** Reads and verifies the session cookie from a request; returns the DID or null. */
-export async function readSessionDid(
-  request: Request,
-  secret: string,
-): Promise<string | null> {
+/** The named cookie's value from a request, or null. */
+export function readCookie(request: Request, name: string): string | null {
   const header = request.headers.get("cookie");
   if (!header) return null;
   for (const part of header.split(";")) {
     const eq = part.indexOf("=");
     if (eq === -1) continue;
-    if (part.slice(0, eq).trim() !== COOKIE_NAME) continue;
-    return verifySessionToken(part.slice(eq + 1).trim(), secret);
+    if (part.slice(0, eq).trim() === name) return part.slice(eq + 1).trim();
   }
   return null;
+}
+
+/** Reads and verifies the session cookie. Signature and age only — callers
+ * that touch a writer's data want `readLiveSessionDid` (~/lib/live-session). */
+export async function readSession(
+  request: Request,
+  secret: string,
+): Promise<SessionCookie | null> {
+  const token = readCookie(request, COOKIE_NAME);
+  return token === null ? null : verifySessionToken(token, secret);
+}
+
+/** `readSession`'s DID alone. */
+export async function readSessionDid(
+  request: Request,
+  secret: string,
+): Promise<string | null> {
+  return (await readSession(request, secret))?.did ?? null;
 }
 
 /** Set-Cookie value establishing a session. `secure` should be true on https origins. */
@@ -170,6 +194,23 @@ export function sessionHintClearCookie(secure: boolean): string {
  * behind, which would show a signed-out visitor a signed-in label. */
 export function clearSessionCookies(secure: boolean): string[] {
   return [sessionClearCookie(secure), sessionHintClearCookie(secure)];
+}
+
+/**
+ * Binds an OAuth sign-in to the browser that started it. /login stores the
+ * flow's state id here; /oauth/callback refuses a state this browser didn't
+ * start, so a callback link minted for someone else's account can't sign this
+ * browser in. Scoped to the callback path and to the state's own 10 minutes.
+ */
+export const OAUTH_STATE_COOKIE = "gr_oauth_state";
+const OAUTH_STATE_MAX_AGE_SECONDS = 600;
+
+export function oauthStateSetCookie(stateId: string, secure: boolean): string {
+  return `${OAUTH_STATE_COOKIE}=${stateId}; HttpOnly;${secure ? " Secure;" : ""} SameSite=Lax; Path=/oauth/callback; Max-Age=${OAUTH_STATE_MAX_AGE_SECONDS}`;
+}
+
+export function oauthStateClearCookie(secure: boolean): string {
+  return `${OAUTH_STATE_COOKIE}=; HttpOnly;${secure ? " Secure;" : ""} SameSite=Lax; Path=/oauth/callback; Max-Age=0`;
 }
 
 /** Set-Cookie value clearing the session. */

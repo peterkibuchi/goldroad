@@ -36,7 +36,11 @@ import {
   selectImportItemByDraft,
   setPublishedRkey,
 } from "~/lib/import-store";
-import { readLiveSessionDid } from "~/lib/live-session";
+import {
+  extendSessionRow,
+  readLiveSessionDid,
+  SESSION_IDLE_MS,
+} from "~/lib/live-session";
 import { createOAuthClient } from "~/lib/oauth";
 import {
   CANONICAL_ORIGIN,
@@ -383,6 +387,9 @@ async function scheduleDraft(form: FormData, did: string): Promise<Response> {
   if (!draft.title.trim()) return backToDraft(draftId, "missing_title");
 
   try {
+    // The cron publishes with this session, so it has to outlive the due time
+    // even if the writer doesn't come back before then.
+    await extendSessionRow(db, did, dueAt + SESSION_IDLE_MS);
     await upsertSchedule(db, {
       id: crypto.randomUUID(),
       did,
