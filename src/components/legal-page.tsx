@@ -28,14 +28,14 @@ export function LegalLayout({
         id={MAIN_CONTENT_ID}
         tabIndex={-1}
       >
-        <p className="font-display font-semibold text-ink-soft text-sm uppercase tracking-[0.12em]">
+        <p className="font-display text-sm font-semibold tracking-[0.12em] text-ink-soft uppercase">
           {kicker}
         </p>
-        <h1 className="mt-3 text-balance font-black font-display text-3xl text-ink tracking-tight md:text-4xl">
+        <h1 className="mt-3 font-display text-3xl font-black tracking-tight text-balance text-ink md:text-4xl">
           {title}
         </h1>
         {updated && (
-          <p className="mt-3 font-display text-ink-soft text-sm">
+          <p className="mt-3 font-display text-sm text-ink-soft">
             Last updated {updated}
           </p>
         )}
@@ -49,7 +49,7 @@ export function LegalLayout({
             replace it.
           </p>
         )}
-        <div className="mt-8 font-body text-ink leading-relaxed">
+        <div className="mt-8 font-body leading-relaxed text-ink">
           {children}
         </div>
       </main>
@@ -66,7 +66,7 @@ export function LegalSection({
 }) {
   return (
     <section className="mt-10 first:mt-0">
-      <h2 className="font-bold font-display text-ink text-xl tracking-tight">
+      <h2 className="font-display text-xl font-bold tracking-tight text-ink">
         {heading}
       </h2>
       <div className="mt-3 space-y-3 text-ink-soft">{children}</div>

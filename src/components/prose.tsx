@@ -41,7 +41,7 @@ export function Prose({ html }: { html: string }) {
     // biome-ignore lint/a11y/useKeyWithClickEvents: delegation — the targets are links, which take Enter themselves
     // biome-ignore lint/a11y/noStaticElementInteractions: same: the handler only acts on the embed links inside
     <div
-      className="gr-prose wrap-anywhere text-[1.0625rem] leading-[1.7]"
+      className="gr-prose text-[1.0625rem] leading-[1.7] wrap-anywhere"
       // biome-ignore lint/security/noDangerouslySetInnerHtml: markdownToHtml escapes raw HTML and filters URLs
       dangerouslySetInnerHTML={{ __html: html }}
       onClick={loadEmbed}

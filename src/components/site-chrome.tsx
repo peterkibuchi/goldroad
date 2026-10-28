@@ -82,7 +82,7 @@ function Wordmark({
 }) {
   return (
     <a
-      className="inline-flex min-h-11 items-center gap-2 font-black font-display text-ink text-lg tracking-tight"
+      className="inline-flex min-h-11 items-center gap-2 font-display text-lg font-black tracking-tight text-ink"
       href={href}
     >
       <span>
@@ -93,7 +93,7 @@ function Wordmark({
         // at GA — releases keep flowing through the same channels regardless.
         // 11.2px is the floor for the chip convention: 9.6px uppercase sits
         // under every platform's legibility guidance, tracking or no tracking.
-        <span className="border border-ink-soft px-1.5 py-0.5 font-semibold text-[0.7rem] text-ink-soft uppercase tracking-[0.12em]">
+        <span className="border border-ink-soft px-1.5 py-0.5 text-[0.7rem] font-semibold tracking-[0.12em] text-ink-soft uppercase">
           beta
         </span>
       )}
@@ -105,7 +105,7 @@ function Wordmark({
  * (below) instead — see AppShell. */
 export function SiteHeader(props: MarketingHeaderProps) {
   return (
-    <header className="border-ink border-b-3 border-double">
+    <header className="border-b-3 border-double border-ink">
       {/* First focusable thing on every marketing and signed-out page — the
           masthead is rendered before the content on all of them. */}
       <SkipToContent />
@@ -116,12 +116,12 @@ export function SiteHeader(props: MarketingHeaderProps) {
           // deck under the wordmark, in the same order they're tabbed through.
           // Quiet links, not buttons: the page's accent belongs to its own
           // primary action, and a returning writer only needs the door.
-          <div className="flex w-full items-center gap-5 border-rule border-t sm:ml-auto sm:w-auto sm:border-t-0">
+          <div className="flex w-full items-center gap-5 border-t border-rule sm:ml-auto sm:w-auto sm:border-t-0">
             <a
               aria-current={
                 props.current === "/leaving-substack" ? "page" : undefined
               }
-              className="inline-flex min-h-11 items-center font-display font-semibold text-ink-soft text-sm underline underline-offset-4 transition-colors hover:text-ink aria-[current=page]:text-ink aria-[current=page]:no-underline"
+              className="inline-flex min-h-11 items-center font-display text-sm font-semibold text-ink-soft underline underline-offset-4 transition-colors hover:text-ink aria-[current=page]:text-ink aria-[current=page]:no-underline"
               href="/leaving-substack"
             >
               Leaving Substack?
@@ -175,7 +175,7 @@ function MarketingSignIn() {
     <a
       // A quiet link that is still a real target: on every marketing page but
       // the homepage it is the only way in, and it was a 20px-tall run of text.
-      className="inline-flex min-h-11 items-center font-display font-semibold text-ink-soft text-sm underline underline-offset-4 transition-colors hover:text-ink"
+      className="inline-flex min-h-11 items-center font-display text-sm font-semibold text-ink-soft underline underline-offset-4 transition-colors hover:text-ink"
       href={signedIn ? "/home" : "/write?returnTo=%2Fhome"}
     >
       {signedIn ? "Your publication" : "Sign in"}
@@ -210,7 +210,7 @@ function AppearanceToggle() {
       // 44px both ways. "Dark" is 34px of text, so the width comes from
       // padding, and the negative margin keeps the header's own gap rhythm
       // rather than letting the hit area push its neighbours around.
-      className="-mx-2 inline-flex min-h-11 cursor-pointer items-center px-2 font-display text-ink-soft text-sm transition-colors hover:text-ink"
+      className="-mx-2 inline-flex min-h-11 cursor-pointer items-center px-2 font-display text-sm text-ink-soft transition-colors hover:text-ink"
       onClick={toggle}
       type="button"
     >
@@ -314,7 +314,7 @@ function FooterLink({ label, href, external }: FooterLink) {
  * the links, and the promise the product is named for. */
 function FooterBand({ links }: { links?: ReadonlyArray<FooterLink> }) {
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-wrap items-baseline justify-between gap-x-6 gap-y-2 px-6 py-5 font-display text-ink-soft text-xs md:px-16">
+    <div className="mx-auto flex w-full max-w-5xl flex-wrap items-baseline justify-between gap-x-6 gap-y-2 px-6 py-5 font-display text-xs text-ink-soft md:px-16">
       {/* A copyright line the product can actually stand behind: Goldroad's own
           marks and marketing are reserved; the SOFTWARE is AGPL and the
           WRITING belongs to whoever wrote it. Saying "all rights reserved"
@@ -353,13 +353,13 @@ export function SiteFooter({
 } = {}) {
   if (variant === "app") {
     return (
-      <footer className="border-rule border-t">
+      <footer className="border-t border-rule">
         <FooterBand links={COMPACT_LINKS} />
       </footer>
     );
   }
   return (
-    <footer className="border-ink border-t-3 border-double">
+    <footer className="border-t-3 border-double border-ink">
       <div className="mx-auto w-full max-w-5xl px-6 pt-10 pb-2 md:px-16">
         <div className="grid grid-cols-2 gap-x-8 gap-y-8 sm:grid-cols-3">
           {FOOTER_COLUMNS.map(({ heading, links }) => (
@@ -368,7 +368,7 @@ export function SiteFooter({
                   carries the group name for assistive tech, and three <h2>s
                   in the footer would sit as peers of the page's own sections
                   in the heading outline. */}
-              <p className="font-bold font-display text-ink text-xs uppercase tracking-[0.14em]">
+              <p className="font-display text-xs font-bold tracking-[0.14em] text-ink uppercase">
                 {heading}
               </p>
               <nav
@@ -376,7 +376,7 @@ export function SiteFooter({
                 // No row gap at base: the links' own 44px height supplies the
                 // rhythm there, and 8px on top of it would space three short
                 // columns like a page of body text.
-                className="mt-3 flex flex-col items-start font-display text-ink-soft text-sm sm:gap-y-2"
+                className="mt-3 flex flex-col items-start font-display text-sm text-ink-soft sm:gap-y-2"
               >
                 {links.map((link) => (
                   <FooterLink key={link.href} {...link} />
@@ -388,7 +388,7 @@ export function SiteFooter({
       </div>
       {/* Hairline between the decks: the columns are structure, the closing
           line is a signature — they shouldn't read as one block. */}
-      <div className="mt-8 border-rule border-t">
+      <div className="mt-8 border-t border-rule">
         <FooterBand />
       </div>
     </footer>
@@ -462,7 +462,7 @@ function RailLink({
       className={cn(
         // Rows are full-bleed inside a scrollable nav, so the focus ring is
         // inset — an outset one would be clipped by the scroll container.
-        "flex min-h-11 items-center gap-3 border-transparent border-l-2 px-4 py-2 font-display text-sm transition-colors focus-visible:-outline-offset-2",
+        "flex min-h-11 items-center gap-3 border-l-2 border-transparent px-4 py-2 font-display text-sm transition-colors focus-visible:-outline-offset-2",
         isActive
           ? "border-ink bg-ink/5 font-bold text-ink"
           : "text-ink-soft hover:bg-ink/5 hover:text-ink",
@@ -503,7 +503,7 @@ function RailLink({
 function RailPrimaryAction() {
   return (
     <a
-      className="flex min-h-11 w-full items-center justify-center gap-2 bg-spot px-4 font-bold font-display text-base text-paper transition-colors hover:bg-ink"
+      className="flex min-h-11 w-full items-center justify-center gap-2 bg-spot px-4 font-display text-base font-bold text-paper transition-colors hover:bg-ink"
       href={NEW_POST.href}
     >
       <NEW_POST.Icon
@@ -523,12 +523,12 @@ function RailPrimaryAction() {
  * "unavailable" message instead. */
 function SoonRow({ label, Icon }: { label: string; Icon: NavIcon }) {
   return (
-    <span className="flex min-h-11 items-center gap-3 border-transparent border-l-2 px-4 py-2 font-display text-ink-soft text-sm">
+    <span className="flex min-h-11 items-center gap-3 border-l-2 border-transparent px-4 py-2 font-display text-sm text-ink-soft">
       <Icon aria-hidden="true" className="shrink-0" size={19} stroke={1.75} />
       {label}
       {/* Same hairline chip as the wordmark's phase label — one chip
           convention in this chrome, not two. */}
-      <span className="ml-auto border border-ink-soft px-1.5 py-0.5 font-semibold text-[0.7rem] uppercase tracking-[0.12em]">
+      <span className="ml-auto border border-ink-soft px-1.5 py-0.5 text-[0.7rem] font-semibold tracking-[0.12em] uppercase">
         Soon
       </span>
     </span>
@@ -546,11 +546,11 @@ function initialOf(ident: string): string {
  * and sign out. */
 function RailIdentity({ ident }: { ident: string }) {
   return (
-    <div className="mt-auto flex shrink-0 items-center gap-2.5 border-rule border-t px-4 py-3">
+    <div className="mt-auto flex shrink-0 items-center gap-2.5 border-t border-rule px-4 py-3">
       {/* Square, not a circle: this register carries no rounded corners. */}
       <span
         aria-hidden="true"
-        className="flex size-7 shrink-0 items-center justify-center bg-ink font-bold font-display text-paper text-xs"
+        className="flex size-7 shrink-0 items-center justify-center bg-ink font-display text-xs font-bold text-paper"
       >
         {initialOf(ident)}
       </span>
@@ -558,7 +558,7 @@ function RailIdentity({ ident }: { ident: string }) {
         {/* Long handles truncate; the title carries the full one, since a
             clipped handle is the one thing a writer needs to read in full. */}
         <span
-          className="block truncate font-display font-semibold text-ink text-sm"
+          className="block truncate font-display text-sm font-semibold text-ink"
           title={ident}
         >
           {ident}
@@ -570,14 +570,14 @@ function RailIdentity({ ident }: { ident: string }) {
             own height doesn't move. */}
         <div className="flex gap-3">
           <a
-            className="-my-2 inline-flex min-h-11 items-center font-display text-ink-soft text-xs underline underline-offset-2 transition-colors hover:text-ink"
+            className="-my-2 inline-flex min-h-11 items-center font-display text-xs text-ink-soft underline underline-offset-2 transition-colors hover:text-ink"
             href={`/@${encodeURIComponent(ident)}`}
           >
             Public page
           </a>
           <form action="/logout" method="post">
             <button
-              className="-my-2 inline-flex min-h-11 cursor-pointer items-center font-display text-ink-soft text-xs underline underline-offset-2 transition-colors hover:text-ink"
+              className="-my-2 inline-flex min-h-11 cursor-pointer items-center font-display text-xs text-ink-soft underline underline-offset-2 transition-colors hover:text-ink"
               type="submit"
             >
               Sign out
@@ -601,7 +601,7 @@ function WriterRail({
     // viewport tall, so the rail holds still while the page scrolls past it.
     // `dvh` keeps the identity cluster on the visible edge on mobile browsers
     // whose toolbars make `vh` lie.
-    <aside className="sticky top-0 hidden h-dvh w-56 shrink-0 flex-col border-ink border-r-3 border-double md:flex">
+    <aside className="sticky top-0 hidden h-dvh w-56 shrink-0 flex-col border-r-3 border-double border-ink md:flex">
       <div className="shrink-0 px-4 pt-4 pb-2">
         {/* The wordmark still goes home — but it's no longer the only way
             there: Home is a nav row now. */}
@@ -628,7 +628,7 @@ function WriterRail({
         ))}
         {/* A hairline separates what a writer can do now from what's coming,
             so the inert rows never read as live destinations that failed. */}
-        <div className="mt-2 border-rule border-t pt-2">
+        <div className="mt-2 border-t border-rule pt-2">
           {SOON_NAV.map(({ label, Icon }) => (
             <SoonRow Icon={Icon} key={label} label={label} />
           ))}
@@ -644,11 +644,11 @@ function WriterRail({
  * carries at its foot on desktop. */
 function WriterTopStrip({ ident }: { ident: string }) {
   return (
-    <div className="flex items-center justify-between border-ink border-b-3 border-double px-4 py-2 md:hidden">
+    <div className="flex items-center justify-between border-b-3 border-double border-ink px-4 py-2 md:hidden">
       <Wordmark href="/home" showBeta={false} />
       {/* Touch surface: these two get full-height hit areas, even though the
           text stays small. */}
-      <div className="flex items-center gap-3 font-display text-ink-soft text-xs">
+      <div className="flex items-center gap-3 font-display text-xs text-ink-soft">
         <a
           className="inline-flex min-h-11 items-center underline underline-offset-2 transition-colors hover:text-ink"
           href={`/@${encodeURIComponent(ident)}`}
@@ -684,7 +684,7 @@ function WriterTabBar({ active }: { active?: WriterNavItem }) {
     <nav
       aria-label="Writer"
       // Safe-area padding keeps the tabs clear of a phone's home indicator.
-      className="fixed inset-x-0 bottom-0 z-10 flex border-ink border-t-3 border-double bg-paper pb-[env(safe-area-inset-bottom)] md:hidden"
+      className="fixed inset-x-0 bottom-0 z-10 flex border-t-3 border-double border-ink bg-paper pb-[env(safe-area-inset-bottom)] md:hidden"
     >
       {MOBILE_TABS.map(({ item, href, label, Icon }) => {
         const isAction = item === null;
@@ -699,7 +699,7 @@ function WriterTabBar({ active }: { active?: WriterNavItem }) {
               // 12px, not 10.88px: at 320 each tab is 64px wide and the longest
               // label ("Settings") measures 49px at 12px, so the smaller size
               // bought nothing and cost legibility in the app's primary nav.
-              "flex min-h-11 flex-1 flex-col items-center gap-0.5 border-transparent border-t-2 px-1 py-2 font-display font-semibold text-xs focus-visible:-outline-offset-2",
+              "flex min-h-11 flex-1 flex-col items-center gap-0.5 border-t-2 border-transparent px-1 py-2 font-display text-xs font-semibold focus-visible:-outline-offset-2",
               isAction && "bg-spot font-bold text-paper",
               !isAction &&
                 (isActive ? "border-ink font-bold text-ink" : "text-ink-soft"),

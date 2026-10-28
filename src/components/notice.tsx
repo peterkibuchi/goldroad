@@ -15,8 +15,8 @@ export function Notice({
     <div
       className={
         tone === "alert"
-          ? "mt-6 border border-spot px-4 py-3 font-display text-sm text-spot leading-relaxed"
-          : "mt-6 border border-ink px-4 py-3 font-display text-ink text-sm leading-relaxed"
+          ? "mt-6 border border-spot px-4 py-3 font-display text-sm leading-relaxed text-spot"
+          : "mt-6 border border-ink px-4 py-3 font-display text-sm leading-relaxed text-ink"
       }
       role={tone === "alert" ? "alert" : "status"}
     >

@@ -84,10 +84,10 @@ export function SubscribedView({
       <main className="mx-auto max-w-[42rem] px-6 py-24">
         {failed ? (
           <>
-            <h1 className="text-balance font-bold font-display text-3xl leading-[1.15]">
+            <h1 className="font-display text-3xl leading-[1.15] font-bold text-balance">
               Nothing was saved.
             </h1>
-            <p className="mt-4 max-w-[52ch] text-ink-soft text-lg leading-relaxed">
+            <p className="mt-4 max-w-[52ch] text-lg leading-relaxed text-ink-soft">
               The address may have a typo — or the spam check needs JavaScript
               switched on, which is the one thing this form can't do without.
               Your address is not with {name}.
@@ -95,10 +95,10 @@ export function SubscribedView({
           </>
         ) : (
           <>
-            <h1 className="text-balance font-bold font-display text-3xl leading-[1.15]">
+            <h1 className="font-display text-3xl leading-[1.15] font-bold text-balance">
               Your address is with {name}.
             </h1>
-            <p className="mt-4 max-w-[52ch] text-ink-soft text-lg leading-relaxed">
+            <p className="mt-4 max-w-[52ch] text-lg leading-relaxed text-ink-soft">
               Email sending isn't switched on yet, so nothing will arrive today.
               When it is, this is the address {name} can write to.
             </p>

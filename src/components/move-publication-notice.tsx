@@ -11,7 +11,7 @@ export function MovePublicationNotice({
 }) {
   return (
     <div
-      className="mt-6 border border-ink px-4 py-3 font-display text-ink text-sm"
+      className="mt-6 border border-ink px-4 py-3 font-display text-sm text-ink"
       role="status"
     >
       <p>

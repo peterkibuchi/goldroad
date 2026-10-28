@@ -111,7 +111,7 @@ function SortHeader({
       <button
         aria-label={`Sort by ${label}`}
         className={cn(
-          "inline-flex min-h-9 cursor-pointer items-center gap-1 font-display font-semibold text-xs uppercase tracking-[0.06em] transition-colors focus-visible:-outline-offset-2",
+          "inline-flex min-h-9 cursor-pointer items-center gap-1 font-display text-xs font-semibold tracking-[0.06em] uppercase transition-colors focus-visible:-outline-offset-2",
           isActive ? "text-ink" : "text-ink-soft hover:text-ink",
         )}
         onClick={() => onSort(columnKey)}
@@ -163,7 +163,7 @@ export function PostTable({
     <section aria-labelledby="table-heading" className="mt-10">
       <SectionHeading
         action={
-          <label className="flex items-center gap-2 font-display text-ink-soft text-xs sm:hidden">
+          <label className="flex items-center gap-2 font-display text-xs text-ink-soft sm:hidden">
             Sort by
             {/* 16px, not 12px: iOS Safari zooms the whole page in when a
                 focused control computes under 16px and never zooms back out.
@@ -207,7 +207,7 @@ export function PostTable({
       {/* Desktop: a real table, so a screen reader gets row/column semantics. */}
       <table className="mt-2 hidden w-full font-display sm:table">
         <thead>
-          <tr className="border-ink border-b">
+          <tr className="border-b border-ink">
             <SortHeader
               columnKey="title"
               direction={direction}
@@ -259,17 +259,17 @@ export function PostTable({
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr className="border-rule border-b align-top" key={row.rkey}>
+            <tr className="border-b border-rule align-top" key={row.rkey}>
               <th
                 className="max-w-0 py-3 pr-4 text-left font-normal"
                 scope="row"
               >
                 <a className={LINK_CLASS} href={postHref(row.rkey)}>
-                  <span className="font-semibold text-ink text-sm">
+                  <span className="text-sm font-semibold text-ink">
                     {row.title}
                   </span>
                 </a>
-                <span className="mt-0.5 block text-ink-soft text-xs">
+                <span className="mt-0.5 block text-xs text-ink-soft">
                   {row.date}
                   {!row.editable && (
                     <span>{row.date ? " · " : ""}Written in another app</span>
@@ -312,7 +312,7 @@ export function PostTable({
               <td className="py-3 pl-3 text-right">
                 {row.announced && (
                   <ExternalLink
-                    className={`whitespace-nowrap text-xs ${LINK_CLASS}`}
+                    className={`text-xs whitespace-nowrap ${LINK_CLASS}`}
                     href={bskyPostUrl(
                       row.announced.did,
                       row.announced.postRkey,
@@ -328,15 +328,15 @@ export function PostTable({
       </table>
 
       {/* Below 640px: stacked blocks, metrics as a wrapping label/value list. */}
-      <ul className="mt-2 border-ink border-t sm:hidden">
+      <ul className="mt-2 border-t border-ink sm:hidden">
         {rows.map((row) => (
-          <li className="border-rule border-b py-3" key={row.rkey}>
+          <li className="border-b border-rule py-3" key={row.rkey}>
             <a className={LINK_CLASS} href={postHref(row.rkey)}>
-              <span className="font-semibold text-ink text-sm">
+              <span className="text-sm font-semibold text-ink">
                 {row.title}
               </span>
             </a>
-            <p className="mt-0.5 font-display text-ink-soft text-xs">
+            <p className="mt-0.5 font-display text-xs text-ink-soft">
               {row.date}
               {!row.editable && (
                 <span>{row.date ? " · " : ""}Written in another app</span>
@@ -356,7 +356,7 @@ export function PostTable({
                   className="whitespace-nowrap text-ink tabular-nums"
                   key={label}
                 >
-                  <span className="text-ink-soft text-xs">{label} </span>
+                  <span className="text-xs text-ink-soft">{label} </span>
                   {loading ? (
                     <SkeletonBar className="inline-block h-3 w-8 align-middle" />
                   ) : (

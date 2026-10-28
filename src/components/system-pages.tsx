@@ -17,20 +17,20 @@ export function NotFoundPage() {
         id={MAIN_CONTENT_ID}
         tabIndex={-1}
       >
-        <p className="font-black font-display text-7xl text-ink tracking-tight md:text-8xl">
+        <p className="font-display text-7xl font-black tracking-tight text-ink md:text-8xl">
           404<span className="text-spot">.</span>
         </p>
-        <h1 className="mt-6 text-balance font-black font-display text-2xl text-ink tracking-tight md:text-3xl">
+        <h1 className="mt-6 font-display text-2xl font-black tracking-tight text-balance text-ink md:text-3xl">
           There's nothing at this address.
         </h1>
-        <p className="mt-4 max-w-[52ch] text-ink-soft text-lg">
+        <p className="mt-4 max-w-[52ch] text-lg text-ink-soft">
           The address may be mistyped, or whatever lived here has moved on.
           Nothing is lost — everything published on Goldroad stays in its
           writer's own archive.
         </p>
         <p className="mt-8">
           <a
-            className="inline-flex min-h-11 items-center bg-ink px-6 font-bold font-display text-base text-paper transition-colors hover:bg-spot"
+            className="inline-flex min-h-11 items-center bg-ink px-6 font-display text-base font-bold text-paper transition-colors hover:bg-spot"
             href="/"
           >
             Go to the front page
@@ -49,16 +49,16 @@ export function ErrorPage({ error }: { error: unknown }) {
         id={MAIN_CONTENT_ID}
         tabIndex={-1}
       >
-        <h1 className="text-balance font-black font-display text-3xl text-ink tracking-tight md:text-4xl">
+        <h1 className="font-display text-3xl font-black tracking-tight text-balance text-ink md:text-4xl">
           Something went wrong.
         </h1>
-        <p className="mt-4 max-w-[52ch] text-ink-soft text-lg">
+        <p className="mt-4 max-w-[52ch] text-lg text-ink-soft">
           This page failed to load on our side. Your writing is safe in your own
           data repo, not lost — try again in a moment.
         </p>
         <div className="mt-8 flex flex-wrap items-center gap-4">
           <button
-            className="inline-flex min-h-11 cursor-pointer items-center bg-ink px-6 font-bold font-display text-base text-paper transition-colors hover:bg-spot"
+            className="inline-flex min-h-11 cursor-pointer items-center bg-ink px-6 font-display text-base font-bold text-paper transition-colors hover:bg-spot"
             onClick={() => {
               // A full reload re-runs the failed loader from scratch — honest
               // recovery for transient PDS/network failures.
@@ -69,14 +69,14 @@ export function ErrorPage({ error }: { error: unknown }) {
             Try again
           </button>
           <a
-            className="inline-flex min-h-11 items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
+            className="inline-flex min-h-11 items-center font-display text-sm text-ink-soft underline underline-offset-2 transition-colors hover:text-ink"
             href="/"
           >
             Go to the front page
           </a>
         </div>
         {import.meta.env.DEV && (
-          <pre className="mt-10 overflow-x-auto border border-rule p-4 font-mono text-ink-soft text-xs">
+          <pre className="mt-10 overflow-x-auto border border-rule p-4 font-mono text-xs text-ink-soft">
             {error instanceof Error ? error.message : String(error)}
           </pre>
         )}

@@ -29,7 +29,7 @@ export function RegMark({ className }: { className?: string }) {
 /** Section eyebrow — the page's scarce spot color, used small. */
 export function Kicker({ children }: { children: React.ReactNode }) {
   return (
-    <p className="font-display font-semibold text-spot text-xs uppercase tracking-[0.14em]">
+    <p className="font-display text-xs font-semibold tracking-[0.14em] text-spot uppercase">
       {children}
     </p>
   );
@@ -44,7 +44,7 @@ export function CtaLink({
   return (
     <a
       className={cn(
-        "inline-flex min-h-11 items-center justify-center bg-spot px-6 py-2.5 font-bold font-display text-base text-paper transition-colors hover:bg-ink",
+        "inline-flex min-h-11 items-center justify-center bg-spot px-6 py-2.5 font-display text-base font-bold text-paper transition-colors hover:bg-ink",
         className,
       )}
       {...props}
@@ -63,7 +63,7 @@ export function QuietLink({
   return (
     <a
       className={cn(
-        "inline-flex min-h-11 items-center font-display font-semibold text-ink text-sm underline decoration-2 underline-offset-4 transition-colors hover:text-spot",
+        "inline-flex min-h-11 items-center font-display text-sm font-semibold text-ink underline decoration-2 underline-offset-4 transition-colors hover:text-spot",
         className,
       )}
       {...props}
@@ -87,7 +87,7 @@ export function MarketingSection({
   return (
     <section
       className={cn(
-        divider && "border-ink border-t-3 border-double",
+        divider && "border-t-3 border-double border-ink",
         className,
       )}
       {...props}

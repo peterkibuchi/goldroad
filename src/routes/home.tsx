@@ -193,10 +193,10 @@ function IdentityLine({
         />
       )}
       <div className="min-w-0">
-        <h1 className="text-balance font-black font-display text-2xl text-ink tracking-tight sm:text-3xl">
+        <h1 className="font-display text-2xl font-black tracking-tight text-balance text-ink sm:text-3xl">
           {publicationName ?? `@${ident}`}
         </h1>
-        <p className="mt-1 font-display text-ink-soft text-sm">
+        <p className="mt-1 font-display text-sm text-ink-soft">
           {publicationName && <span className="mr-1">@{ident}</span>}
           <a
             className="underline underline-offset-2 transition-colors hover:text-ink"
@@ -215,10 +215,10 @@ function IdentityLine({
 function HeadlineNumber({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <p className="font-black font-display text-2xl text-ink tabular-nums tracking-tight sm:text-3xl">
+      <p className="font-display text-2xl font-black tracking-tight text-ink tabular-nums sm:text-3xl">
         {value}
       </p>
-      <p className="mt-1 font-display font-semibold text-ink-soft text-xs uppercase tracking-[0.08em]">
+      <p className="mt-1 font-display text-xs font-semibold tracking-[0.08em] text-ink-soft uppercase">
         {label}
       </p>
     </div>
@@ -253,7 +253,7 @@ function HeadlineNumbers({
   return (
     <section
       aria-label="Your numbers"
-      className="mt-8 border-ink border-t-2 pt-5"
+      className="mt-8 border-t-2 border-ink pt-5"
     >
       <div className="flex flex-wrap gap-x-8 gap-y-5">
         <HeadlineNumber
@@ -270,7 +270,7 @@ function HeadlineNumbers({
           />
         )}
       </div>
-      <p className="mt-3 font-display text-ink-soft text-xs">
+      <p className="mt-3 font-display text-xs text-ink-soft">
         View counts are approximate — privacy-respecting analytics miss some
         readers.
         {published && !published.countComplete && (
@@ -306,14 +306,14 @@ function NextAction({ drafts }: { drafts: DraftRow[] | null }) {
     <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2">
       {resume ? (
         <a
-          className="inline-flex min-h-11 max-w-full items-center bg-ink px-5 font-bold font-display text-base text-paper transition-colors hover:bg-spot"
+          className="inline-flex min-h-11 max-w-full items-center bg-ink px-5 font-display text-base font-bold text-paper transition-colors hover:bg-spot"
           href={`/write?draft=${encodeURIComponent(resume.id)}`}
         >
           <span className="truncate">Resume "{draftName(resume)}"</span>
         </a>
       ) : (
         <a
-          className="inline-flex min-h-11 items-center bg-ink px-5 font-bold font-display text-base text-paper transition-colors hover:bg-spot"
+          className="inline-flex min-h-11 items-center bg-ink px-5 font-display text-base font-bold text-paper transition-colors hover:bg-spot"
           href="/write"
         >
           Start writing
@@ -321,14 +321,14 @@ function NextAction({ drafts }: { drafts: DraftRow[] | null }) {
       )}
       {resume && (
         <a
-          className="inline-flex min-h-9 items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
+          className="inline-flex min-h-9 items-center font-display text-sm text-ink-soft underline underline-offset-2 transition-colors hover:text-ink"
           href="/write"
         >
           Start something new
         </a>
       )}
       <a
-        className="inline-flex min-h-9 items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
+        className="inline-flex min-h-9 items-center font-display text-sm text-ink-soft underline underline-offset-2 transition-colors hover:text-ink"
         href="/import"
       >
         Import your writing
@@ -356,7 +356,7 @@ function LatestPost({
   return (
     <section aria-labelledby="latest-heading" className="mt-10">
       <p
-        className="border-rule border-b pb-2 font-display font-semibold text-ink-soft text-xs uppercase tracking-[0.08em]"
+        className="border-b border-rule pb-2 font-display text-xs font-semibold tracking-[0.08em] text-ink-soft uppercase"
         id="latest-heading"
       >
         Published most recently
@@ -365,17 +365,17 @@ function LatestPost({
         <PostThumb coverPath={row.coverPath} title={row.title} />
         <div className="min-w-0 flex-1">
           <a
-            className="font-semibold text-ink text-lg leading-snug hover:underline hover:underline-offset-4"
+            className="text-lg leading-snug font-semibold text-ink hover:underline hover:underline-offset-4"
             href={href}
           >
             {row.title}
           </a>
           {row.description && (
-            <p className="mt-1 line-clamp-2 text-ink-soft text-sm leading-relaxed">
+            <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-ink-soft">
               {row.description}
             </p>
           )}
-          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-display text-ink-soft text-xs">
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-display text-xs text-ink-soft">
             <span>
               {date && (
                 <time dateTime={row.publishedAt ?? undefined}>{date}</time>
@@ -388,20 +388,20 @@ function LatestPost({
           <div className="mt-2 flex flex-wrap items-center gap-x-4">
             {row.editable && (
               <a
-                className="-my-2 inline-flex min-h-9 items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
+                className="-my-2 inline-flex min-h-9 items-center font-display text-sm text-ink-soft underline underline-offset-2 transition-colors hover:text-ink"
                 href={`/write?edit=${encodeURIComponent(row.rkey)}`}
               >
                 Edit
               </a>
             )}
             <ExternalLink
-              className="-my-2 inline-flex min-h-9 items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
+              className="-my-2 inline-flex min-h-9 items-center font-display text-sm text-ink-soft underline underline-offset-2 transition-colors hover:text-ink"
               href={href}
             >
               View it live
             </ExternalLink>
             <a
-              className="-my-2 inline-flex min-h-9 items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
+              className="-my-2 inline-flex min-h-9 items-center font-display text-sm text-ink-soft underline underline-offset-2 transition-colors hover:text-ink"
               href="/dashboard"
             >
               All posts →
@@ -420,7 +420,7 @@ function DraftShortlist({ drafts }: { drafts: DraftRow[] }) {
   return (
     <section aria-labelledby="drafts-heading" className="mt-10">
       <p
-        className="border-rule border-b pb-2 font-display font-semibold text-ink-soft text-xs uppercase tracking-[0.08em]"
+        className="border-b border-rule pb-2 font-display text-xs font-semibold tracking-[0.08em] text-ink-soft uppercase"
         id="drafts-heading"
       >
         In progress · only you can see these
@@ -430,24 +430,24 @@ function DraftShortlist({ drafts }: { drafts: DraftRow[] }) {
           const date = formatDate(draft.updatedAt);
           return (
             <li
-              className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-rule border-b py-4"
+              className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-rule py-4"
               key={draft.id}
             >
               <span className="min-w-0">
                 <a
-                  className="font-semibold text-ink leading-snug hover:underline hover:underline-offset-4"
+                  className="leading-snug font-semibold text-ink hover:underline hover:underline-offset-4"
                   href={`/write?draft=${encodeURIComponent(draft.id)}`}
                 >
                   {draftName(draft)}
                 </a>
                 {date && (
-                  <span className="ml-3 font-display text-ink-soft text-sm">
+                  <span className="ml-3 font-display text-sm text-ink-soft">
                     Edited <time dateTime={draft.updatedAt}>{date}</time>
                   </span>
                 )}
               </span>
               <a
-                className="-my-2 inline-flex min-h-9 items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
+                className="-my-2 inline-flex min-h-9 items-center font-display text-sm text-ink-soft underline underline-offset-2 transition-colors hover:text-ink"
                 href={`/write?draft=${encodeURIComponent(draft.id)}`}
               >
                 Resume
@@ -459,7 +459,7 @@ function DraftShortlist({ drafts }: { drafts: DraftRow[] }) {
       {drafts.length > shown.length && (
         <p className="mt-4">
           <a
-            className="font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
+            className="font-display text-sm text-ink-soft underline underline-offset-2 transition-colors hover:text-ink"
             href="/dashboard?tab=drafts"
           >
             All {drafts.length} drafts →
@@ -475,15 +475,15 @@ function DraftShortlist({ drafts }: { drafts: DraftRow[] }) {
 function FirstRun() {
   return (
     <div className="mt-10 border-2 border-ink p-8">
-      <h2 className="font-black font-display text-ink text-xl tracking-tight">
+      <h2 className="font-display text-xl font-black tracking-tight text-ink">
         Your publication starts with one post.
       </h2>
-      <p className="mt-3 text-ink-soft leading-relaxed">
+      <p className="mt-3 leading-relaxed text-ink-soft">
         Whatever you publish goes straight into your own data repo and appears
         on your public page. Announce it and your Bluesky followers see it as a
         card linking back to you — no cold start, no list to build first.
       </p>
-      <p className="mt-4 font-display text-ink-soft text-sm">
+      <p className="mt-4 font-display text-sm text-ink-soft">
         Already writing somewhere else?{" "}
         <a
           className="underline underline-offset-2 transition-colors hover:text-ink"

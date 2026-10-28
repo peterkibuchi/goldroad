@@ -140,11 +140,11 @@ function StarterPalettes({
 }) {
   return (
     <fieldset aria-describedby="palettes-help">
-      <legend className="font-display text-ink-soft text-xs uppercase tracking-wide">
+      <legend className="font-display text-xs tracking-wide text-ink-soft uppercase">
         Starter palettes
       </legend>
       <p
-        className="mt-2 font-display text-ink-soft text-xs leading-relaxed"
+        className="mt-2 font-display text-xs leading-relaxed text-ink-soft"
         id="palettes-help"
       >
         Pick one to fill the four colours below, then change anything you like.
@@ -170,7 +170,7 @@ function StarterPalettes({
                 type="radio"
                 value={palette.id}
               />
-              <span className="min-w-0 font-display text-ink text-xs">
+              <span className="min-w-0 font-display text-xs text-ink">
                 {palette.name}
               </span>
             </span>
@@ -201,16 +201,16 @@ function ThemePreview({
       style={themeStyle(theme)}
     >
       <div className="bg-paper px-5 py-6 font-body text-ink">
-        <p className="font-display font-semibold text-[0.7rem] text-ink uppercase tracking-[0.14em]">
+        <p className="font-display text-[0.7rem] font-semibold tracking-[0.14em] text-ink uppercase">
           {publicationName}
         </p>
-        <h3 className="mt-3 text-balance font-semibold text-2xl leading-[1.15]">
+        <h3 className="mt-3 text-2xl leading-[1.15] font-semibold text-balance">
           The morning the presses stopped
         </h3>
-        <p className="mt-2 font-display text-ink-soft text-xs">
+        <p className="mt-2 font-display text-xs text-ink-soft">
           July 31, 2026 · 4 min read
         </p>
-        <div className="gr-prose mt-4 border-rule border-t pt-4 text-[0.95rem] leading-[1.65]">
+        <div className="gr-prose mt-4 border-t border-rule pt-4 text-[0.95rem] leading-[1.65]">
           <p>
             Body text on your background, at the size a reader gets it. A{" "}
             {/* A real anchor, because the accent reaches links through a CSS
@@ -295,13 +295,13 @@ export function ThemeEditor({
               />
               <div className="min-w-0">
                 <label
-                  className="font-bold font-display text-ink text-sm"
+                  className="font-display text-sm font-bold text-ink"
                   htmlFor={field}
                 >
                   {LABELS[field].name}
                 </label>
                 <p
-                  className="font-display text-ink-soft text-xs leading-relaxed"
+                  className="font-display text-xs leading-relaxed text-ink-soft"
                   id={`${field}-help`}
                 >
                   {LABELS[field].help}{" "}
@@ -312,7 +312,7 @@ export function ThemeEditor({
           ))}
         </fieldset>
         <div>
-          <p className="mb-2 font-display text-ink-soft text-xs uppercase tracking-wide">
+          <p className="mb-2 font-display text-xs tracking-wide text-ink-soft uppercase">
             Preview
           </p>
           {previewTheme && (
@@ -338,7 +338,7 @@ export function ThemeEditor({
       <div aria-live="polite" className="[&:not(:empty)]:mt-8">
         {warnings.map((warning) => (
           <p
-            className="border border-ink px-4 py-3 font-display text-ink text-sm leading-relaxed [&+&]:mt-3"
+            className="border border-ink px-4 py-3 font-display text-sm leading-relaxed text-ink [&+&]:mt-3"
             key={warning.id}
           >
             {warning.message}
@@ -352,7 +352,7 @@ export function ThemeEditor({
             preview painted in the WRITER'S accent, and two unrelated reds side
             by side look like a rendering fault. */}
         <button
-          className="min-h-11 cursor-pointer bg-ink px-8 py-2.5 font-bold font-display text-base text-paper transition-colors hover:bg-spot disabled:cursor-default disabled:opacity-40"
+          className="min-h-11 cursor-pointer bg-ink px-8 py-2.5 font-display text-base font-bold text-paper transition-colors hover:bg-spot disabled:cursor-default disabled:opacity-40"
           disabled={disabled}
           type="submit"
         >
@@ -362,7 +362,7 @@ export function ThemeEditor({
             `basicTheme` rather than writing our palette into the writer's
             repo — reverting should leave no trace that a theme was ever set. */}
         <button
-          className="-my-2 inline-flex min-h-11 cursor-pointer items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink disabled:cursor-default disabled:opacity-40"
+          className="-my-2 inline-flex min-h-11 cursor-pointer items-center font-display text-sm text-ink-soft underline underline-offset-2 transition-colors hover:text-ink disabled:cursor-default disabled:opacity-40"
           disabled={disabled}
           name="reset"
           type="submit"

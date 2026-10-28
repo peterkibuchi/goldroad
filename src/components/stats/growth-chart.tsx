@@ -76,7 +76,7 @@ function SeriesToggle({
 function PlotSkeleton() {
   return (
     <LoadingRegion label="Loading the chart…">
-      <div className="mt-4 h-56 border-rule border-b sm:h-64">
+      <div className="mt-4 h-56 border-b border-rule sm:h-64">
         <SkeletonBar className="mt-16 h-px w-full" />
         <SkeletonBar className="mt-14 h-px w-full" />
         <SkeletonBar className="mt-14 h-px w-full" />
@@ -90,7 +90,7 @@ function PlotSkeleton() {
 function EarlyPanel({ children }: { children: React.ReactNode }) {
   return (
     <div className="mt-4 border border-rule px-4 py-6 sm:px-6">
-      <p className="max-w-[46ch] font-display text-ink text-sm leading-relaxed">
+      <p className="max-w-[46ch] font-display text-sm leading-relaxed text-ink">
         {children}
       </p>
     </div>
@@ -108,22 +108,22 @@ function DataTable({
 }) {
   return (
     <details className="mt-3">
-      <summary className="inline-flex min-h-9 cursor-pointer items-center font-display text-ink-soft text-xs underline underline-offset-2 transition-colors hover:text-ink">
+      <summary className="inline-flex min-h-9 cursor-pointer items-center font-display text-xs text-ink-soft underline underline-offset-2 transition-colors hover:text-ink">
         View as table
       </summary>
       <div className="mt-2 max-h-72 overflow-y-auto border border-rule">
         <table className="w-full font-display text-sm">
           <caption className="sr-only">{caption}</caption>
           <thead>
-            <tr className="border-ink border-b">
+            <tr className="border-b border-ink">
               <th
-                className="px-3 py-2 text-left font-semibold text-ink-soft text-xs uppercase tracking-[0.06em]"
+                className="px-3 py-2 text-left text-xs font-semibold tracking-[0.06em] text-ink-soft uppercase"
                 scope="col"
               >
                 Day
               </th>
               <th
-                className="px-3 py-2 text-right font-semibold text-ink-soft text-xs uppercase tracking-[0.06em]"
+                className="px-3 py-2 text-right text-xs font-semibold tracking-[0.06em] text-ink-soft uppercase"
                 scope="col"
               >
                 {valueLabel}
@@ -132,7 +132,7 @@ function DataTable({
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr className="border-rule border-b last:border-0" key={row.day}>
+              <tr className="border-b border-rule last:border-0" key={row.day}>
                 <th
                   className="px-3 py-1.5 text-left font-normal text-ink-soft"
                   scope="row"

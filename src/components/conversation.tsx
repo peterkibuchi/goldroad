@@ -32,10 +32,10 @@ export function Conversation({
   return (
     <section
       aria-labelledby="conversation-heading"
-      className="mt-16 border-rule border-t pt-10"
+      className="mt-16 border-t border-rule pt-10"
     >
       <h2
-        className="font-display font-semibold text-ink-soft text-xs uppercase tracking-wide"
+        className="font-display text-xs font-semibold tracking-wide text-ink-soft uppercase"
         id="conversation-heading"
       >
         Conversation
@@ -44,7 +44,7 @@ export function Conversation({
           replies came from, and that we are not the ones moderating them. With
           no rows to introduce, the same sentence would promise replies that
           aren't below it, so the empty state says the true thing instead. */}
-      <p className="mt-2 font-display text-ink-soft/80 text-xs">
+      <p className="mt-2 font-display text-xs text-ink-soft/80">
         {replies.length > 0
           ? "Replies from Bluesky, where this post was shared. Bluesky moderates them, not Goldroad."
           : "This post's conversation is on Bluesky, where it was shared."}
@@ -78,8 +78,8 @@ export function Conversation({
 
 function ReplyRow({ reply }: { reply: Reply }) {
   return (
-    <li className="border-rule border-t py-5 first:border-t-0">
-      <p className="font-display text-ink-soft text-sm">
+    <li className="border-t border-rule py-5 first:border-t-0">
+      <p className="font-display text-sm text-ink-soft">
         <span className="font-semibold text-ink">
           {reply.authorName ?? `@${reply.authorHandle}`}
         </span>
@@ -95,10 +95,10 @@ function ReplyRow({ reply }: { reply: Reply }) {
       {/* `wrap-anywhere` for the same reason the writer's prose has it: reply
           text is arbitrary third-party content, and an unbroken URL in it was
           reaching the right gutter at 320. */}
-      <p className="wrap-anywhere mt-2 whitespace-pre-line text-base text-ink leading-relaxed">
+      <p className="mt-2 text-base leading-relaxed wrap-anywhere whitespace-pre-line text-ink">
         {reply.text}
       </p>
-      <p className="mt-2 font-display text-ink-soft text-xs">
+      <p className="mt-2 font-display text-xs text-ink-soft">
         <ExternalLink
           className="transition-colors hover:text-ink"
           href={reply.url}

@@ -843,7 +843,7 @@ function ImportPage() {
         id={MAIN_CONTENT_ID}
         tabIndex={-1}
       >
-        <h1 className="font-black font-display text-3xl text-ink tracking-tight">
+        <h1 className="font-display text-3xl font-black tracking-tight text-ink">
           Import your writing
         </h1>
         <p className="mt-2 text-ink-soft">
@@ -853,7 +853,7 @@ function ImportPage() {
           original until you say otherwise.
         </p>
         <noscript>
-          <p className="mt-6 border border-ink px-4 py-3 font-display text-ink text-sm">
+          <p className="mt-6 border border-ink px-4 py-3 font-display text-sm text-ink">
             Importing converts your posts in the browser, so it needs
             JavaScript.
           </p>
@@ -925,12 +925,12 @@ export function SourcePicker({
         }}
       >
         <label
-          className="font-bold font-display text-ink text-sm"
+          className="font-display text-sm font-bold text-ink"
           htmlFor="feed-url"
         >
           Paste your publication's address (or its RSS feed)
         </label>
-        <p className="mt-1 font-display text-ink-soft text-sm">
+        <p className="mt-1 font-display text-sm text-ink-soft">
           Ghost, Medium, WordPress, beehiiv — anywhere with a feed. Feeds carry
           your most recent posts.
         </p>
@@ -948,7 +948,7 @@ export function SourcePicker({
           {/* Ink, not spot: the rail's "New post" carries this surface's one
               accent moment (docs/DESIGN.md). */}
           <button
-            className="min-h-11 cursor-pointer bg-ink px-6 py-2.5 font-bold font-display text-base text-paper transition-colors hover:bg-spot disabled:cursor-default disabled:opacity-40"
+            className="min-h-11 cursor-pointer bg-ink px-6 py-2.5 font-display text-base font-bold text-paper transition-colors hover:bg-spot disabled:cursor-default disabled:opacity-40"
             disabled={busy !== null}
             type="submit"
           >
@@ -974,19 +974,19 @@ export function SourcePicker({
 
       <section aria-labelledby="substack-export" className="mt-10">
         <h2
-          className="border-rule border-t pt-6 font-bold font-display text-ink text-sm"
+          className="border-t border-rule pt-6 font-display text-sm font-bold text-ink"
           id="substack-export"
         >
           Or upload your export
         </h2>
-        <p className="mt-1 font-display text-ink-soft text-sm">
+        <p className="mt-1 font-display text-sm text-ink-soft">
           Substack (Settings → Exports), Medium, Ghost (Settings → Advanced →
           Import/export), or WordPress (Tools → Export) — upload the export file
           and it's read right here in your browser, never uploaded. It carries
           your whole archive, not just recent posts.
         </p>
         <label
-          className="mt-3 block font-display text-ink-soft text-sm"
+          className="mt-3 block font-display text-sm text-ink-soft"
           htmlFor="pub-host"
         >
           Your publication's address{" "}
@@ -1007,7 +1007,7 @@ export function SourcePicker({
         {reading ? (
           <div
             aria-live="polite"
-            className="mt-4 border border-ink border-dashed px-6 py-8 font-display text-ink text-sm"
+            className="mt-4 border border-dashed border-ink px-6 py-8 font-display text-sm text-ink"
             role="status"
           >
             {busy === "reading"
@@ -1033,7 +1033,7 @@ export function SourcePicker({
             }}
           >
             <label
-              className="inline-flex min-h-11 cursor-pointer items-center bg-ink px-6 font-bold font-display text-base text-paper transition-colors hover:bg-spot"
+              className="inline-flex min-h-11 cursor-pointer items-center bg-ink px-6 font-display text-base font-bold text-paper transition-colors hover:bg-spot"
               htmlFor="export-file"
             >
               Choose your export file
@@ -1049,7 +1049,7 @@ export function SourcePicker({
                 type="file"
               />
             </label>
-            <p className="mt-3 font-display text-ink-soft text-sm">
+            <p className="mt-3 font-display text-sm text-ink-soft">
               or drag it here — zip up to 50 MB, JSON/XML up to 30 MB
             </p>
           </div>
@@ -1061,7 +1061,7 @@ export function SourcePicker({
 
 function Badge({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-block border border-ink-soft px-1.5 py-0.5 font-display font-semibold text-[0.7rem] text-ink-soft uppercase tracking-[0.08em]">
+    <span className="inline-block border border-ink-soft px-1.5 py-0.5 font-display text-[0.7rem] font-semibold tracking-[0.08em] text-ink-soft uppercase">
       {children}
     </span>
   );
@@ -1101,7 +1101,7 @@ function PickList({
   return (
     <section aria-labelledby="picker-heading" className="mt-8">
       <h2
-        className="border-rule border-b pb-2 font-display font-semibold text-ink-soft text-xs uppercase tracking-[0.08em]"
+        className="border-b border-rule pb-2 font-display text-xs font-semibold tracking-[0.08em] text-ink-soft uppercase"
         id="picker-heading"
       >
         {data.feed.title ? `${data.feed.title} · ` : ""}
@@ -1116,21 +1116,21 @@ function PickList({
         {previews === 1 ? "flagged as a preview" : "flagged as previews"}
       </h2>
       {!isFile && data.items.length >= 20 && (
-        <p className="mt-2 font-display text-ink-soft text-sm">
+        <p className="mt-2 font-display text-sm text-ink-soft">
           Feeds carry a recent window, not the archive — writers on Substack,
           Ghost, Medium, or WordPress can go back and upload their export to
           bring everything.
         </p>
       )}
       {isFile && data.file && data.file.truncated > 0 && (
-        <p className="mt-2 font-display text-ink-soft text-sm">
+        <p className="mt-2 font-display text-sm text-ink-soft">
           Your archive holds {data.totalItems} posts — one upload reads the
           first {data.items.length}. For the rest, export the remaining posts on
           their own and upload that.
         </p>
       )}
       {isFile && skippedNotice && (
-        <p className="mt-2 font-display text-ink-soft text-sm">
+        <p className="mt-2 font-display text-sm text-ink-soft">
           {skippedNotice} — never imported as posts.
         </p>
       )}
@@ -1143,7 +1143,7 @@ function PickList({
         </Notice>
       )}
       {isFile && data.file?.withoutProvenance && (
-        <p className="mt-2 font-display text-ink-soft text-sm">
+        <p className="mt-2 font-display text-sm text-ink-soft">
           No publication address given, so these import as plain drafts — no
           link back to the originals. Go back and add it if you want each draft
           to keep one.
@@ -1155,7 +1155,7 @@ function PickList({
           post are links. Said here, before the import, because the moment it
           matters is months later when the writer deletes the old account and
           wonders where the illustrations went. */}
-      <p className="mt-2 font-display text-ink-soft text-sm">
+      <p className="mt-2 font-display text-sm text-ink-soft">
         Pictures inside your posts stay linked to where they're hosted today —
         only cover images are copied across. If you later delete the account
         you're importing from, those pictures stop loading. Keep it up, or
@@ -1174,7 +1174,7 @@ function PickList({
           const date = formatDate(item.publishedAt ?? undefined);
           return (
             <li
-              className="flex flex-wrap items-center gap-x-3 gap-y-1 border-rule border-b py-3"
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-rule py-3"
               key={item.guidHash}
             >
               <label className="flex min-h-9 flex-1 cursor-pointer items-center gap-3">
@@ -1184,11 +1184,11 @@ function PickList({
                   onChange={() => onToggle(item.guidHash)}
                   type="checkbox"
                 />
-                <span className="font-semibold text-ink leading-snug">
+                <span className="leading-snug font-semibold text-ink">
                   {item.title.trim() || "(untitled)"}
                 </span>
               </label>
-              <span className="flex items-center gap-x-3 font-display text-ink-soft text-sm">
+              <span className="flex items-center gap-x-3 font-display text-sm text-ink-soft">
                 {date && (
                   <time dateTime={item.publishedAt ?? undefined}>{date}</time>
                 )}
@@ -1212,7 +1212,7 @@ function PickList({
       <div className="mt-6 flex flex-wrap items-center gap-4">
         {/* Ink, not spot — same rule, same reason as the step before it. */}
         <button
-          className="min-h-11 cursor-pointer bg-ink px-6 py-2.5 font-bold font-display text-base text-paper transition-colors hover:bg-spot disabled:cursor-default disabled:opacity-40"
+          className="min-h-11 cursor-pointer bg-ink px-6 py-2.5 font-display text-base font-bold text-paper transition-colors hover:bg-spot disabled:cursor-default disabled:opacity-40"
           disabled={count === 0}
           onClick={onImport}
           type="button"
@@ -1220,14 +1220,14 @@ function PickList({
           Import {count} to drafts
         </button>
         <button
-          className="min-h-9 cursor-pointer font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
+          className="min-h-9 cursor-pointer font-display text-sm text-ink-soft underline underline-offset-2 transition-colors hover:text-ink"
           onClick={onBack}
           type="button"
         >
           {isFile ? "Start over" : "Try a different address"}
         </button>
       </div>
-      <p className="mt-3 font-display text-ink-soft text-xs">
+      <p className="mt-3 font-display text-xs text-ink-soft">
         {isFile
           ? "Flagged posts look too short to be complete — often a paywalled stub in the export. They import exactly as they are when you check them."
           : "Previews hold only what the feed shared — paywalled posts arrive as excerpts, flagged so nothing partial slips out as if it were whole."}
@@ -1261,7 +1261,7 @@ function ProgressList({
   return (
     <section aria-labelledby="progress-heading" className="mt-8">
       <h2
-        className="border-rule border-b pb-2 font-display font-semibold text-ink-soft text-xs uppercase tracking-[0.08em]"
+        className="border-b border-rule pb-2 font-display text-xs font-semibold tracking-[0.08em] text-ink-soft uppercase"
         id="progress-heading"
       >
         {done
@@ -1273,10 +1273,10 @@ function ProgressList({
           const s = status[item.guidHash] ?? { kind: "pending" };
           return (
             <li
-              className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-rule border-b py-3"
+              className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-rule py-3"
               key={item.guidHash}
             >
-              <span className="font-semibold text-ink leading-snug">
+              <span className="leading-snug font-semibold text-ink">
                 {item.title.trim() || "(untitled)"}
               </span>
               {s.kind === "saving" || s.kind === "pending" ? (
@@ -1286,7 +1286,7 @@ function ProgressList({
                   role="status"
                 />
               ) : (
-                <span className="font-display text-ink-soft text-sm">
+                <span className="font-display text-sm text-ink-soft">
                   {s.kind === "saved"
                     ? "Saved to drafts"
                     : s.kind === "skipped"
@@ -1300,14 +1300,14 @@ function ProgressList({
       </ul>
       {done && (
         <div className="mt-6">
-          <p className="text-ink-soft leading-relaxed">
+          <p className="leading-relaxed text-ink-soft">
             {saved} {saved === 1 ? "draft" : "drafts"} saved
             {skipped > 0 ? `, ${skipped} skipped` : ""}.{" "}
             {sourceHost ? `${sourceHost} hasn't changed — ` : ""}publish the
             ones you want, whenever you want.
           </p>
           <a
-            className="mt-4 inline-flex min-h-11 items-center bg-ink px-6 font-bold font-display text-base text-paper transition-colors hover:bg-spot"
+            className="mt-4 inline-flex min-h-11 items-center bg-ink px-6 font-display text-base font-bold text-paper transition-colors hover:bg-spot"
             href="/dashboard"
           >
             Review your drafts
