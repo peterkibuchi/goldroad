@@ -60,8 +60,8 @@ export function EmbedPreview({ url }: { url: string }) {
         <span className="block font-semibold text-ink">
           {provider} {kind.toLowerCase()}
         </span>
-        <span className="block truncate text-ink-soft text-xs">{url}</span>
-        <span className="mt-1 block text-ink-soft text-xs">
+        <span className="block truncate text-xs text-ink-soft">{url}</span>
+        <span className="mt-1 block text-xs text-ink-soft">
           {embed.provider === "bluesky"
             ? "Readers see a preview, and the post loads when they open it."
             : "Readers see a preview, and it plays when they press play."}
@@ -77,23 +77,39 @@ export const editorSchema = BlockNoteSchema.create({
 
 export type EditorWithEmbeds = typeof editorSchema.BlockNoteEditor;
 
-/**
- * The URL a line holds, if the line is nothing else: one unstyled run of
- * text, which is what a bare link alone on its line parses to. The same rule
- * the renderer applies, so the editor never shows a player the page won't. A
- * URL in code or bold, or a link the writer wrote out, is formatting they
- * chose, and stays as it is.
- */
-function soleUrl(content: unknown): string | null {
+type Inline = {
+  type?: string;
+  text?: string;
+  href?: string;
+  content?: unknown;
+  styles?: Record<string, unknown>;
+};
+
+/** The text of a lone unstyled run, or null. */
+function plainText(content: unknown): string | null {
   if (!Array.isArray(content) || content.length !== 1) return null;
-  const [only] = content as {
-    type?: string;
-    text?: string;
-    styles?: Record<string, unknown>;
-  }[];
+  const [only] = content as Inline[];
   if (only.type !== "text" || Object.keys(only.styles ?? {}).length > 0)
     return null;
   return only.text?.trim() || null;
+}
+
+/**
+ * The URL a line holds, if the line is nothing else: a bare link alone on
+ * its line. BlockNote parses one as a link whose text is its own URL (before
+ * 0.56, as one unstyled run of text), and writes either back as the bare URL.
+ * The same rule the renderer applies, so the editor never shows a player the
+ * page won't. A URL in code or bold, or a link with words of the writer's
+ * choosing, is formatting they chose, and stays as it is.
+ */
+function soleUrl(content: unknown): string | null {
+  const text = plainText(content);
+  if (text) return text;
+  if (!Array.isArray(content) || content.length !== 1) return null;
+  const [only] = content as Inline[];
+  if (only.type !== "link") return null;
+  const label = plainText(only.content);
+  return label && label === only.href ? label : null;
 }
 
 /**
