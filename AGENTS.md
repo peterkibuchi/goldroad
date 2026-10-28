@@ -66,9 +66,6 @@ Package manager: **pnpm**. Path alias: `~/*` → `src/*` (see tsconfig).
 | DB migrations | `pnpm db:generate` → `pnpm db:migrate` (local) → `pnpm db:migrate:staging` → `pnpm db:migrate:prod`. **Apply before the deploy that needs the table**, and note every hosted d1 command carries `--env` — the top-level binding is a self-hosting placeholder, so a command without it fails on a nonexistent database. `db:migrate:selfhost` omits `--env` on purpose and is for self-hosters only |
 | CF types after wrangler.jsonc changes | `pnpm cf:types` |
 
-**Before every commit:** `pnpm gate` must pass.
-Keep tests green.
-
 ## Licensing — IMPORTANT
 
 - Server/core: **AGPL-3.0-only** (root `LICENSE`). Lexicons (when published): **CC0**.
@@ -109,7 +106,7 @@ Keep tests green.
 
 ## Verification & review
 
-- **Every change runs the fast gate** — `pnpm gate` — and PRs land green; run
+- **Every commit passes the fast gate** — `pnpm gate` — and PRs land green; run
   `pnpm build` once before opening the PR (CI builds it anyway). Report actual
   command output, not assertions. UI work includes a screenshot at meaningful
   checkpoints, not for every edit — verification effort stays proportional to
