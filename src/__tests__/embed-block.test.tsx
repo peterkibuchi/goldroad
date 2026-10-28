@@ -59,6 +59,15 @@ describe("the embed block", () => {
     expect((blocks[1] as { props: { url: string } }).props.url).toBe(URL_);
   });
 
+  it("comes back from an <…> autolink as an embed, as the page plays it", () => {
+    const instance = editor();
+    const blocks = withEmbedBlocks(
+      instance.tryParseMarkdownToBlocks(`<${URL_}>`),
+    );
+    expect(blocks.map((b) => b.type)).toEqual(["embed"]);
+    expect((blocks[0] as { props: { url: string } }).props.url).toBe(URL_);
+  });
+
   it("leaves a link that has company, or isn't a provider's, as it was", () => {
     const instance = editor();
     for (const md of [
