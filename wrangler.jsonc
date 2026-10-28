@@ -85,7 +85,8 @@
     "production": {
       "name": "goldroad",
       "workers_dev": true,
-      "preview_urls": true,
+      // Off: each version would get a public URL on the production D1. PR previews are staging's.
+      "preview_urls": false,
       // Both hostnames are routed on purpose. `www` resolves at the edge
       // already, so without a route here Cloudflare matched nothing and served
       // its own 404 — the request never reached the Worker, and every shared
