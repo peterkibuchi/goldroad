@@ -73,7 +73,7 @@ function ChartContainer({
           // Retokened to this project's ink-on-paper palette, the same way the
           // editor's shadcn internals are: charts here are one register, so the
           // tokens belong in the primitive rather than in every chart.
-          "flex aspect-video justify-center font-display text-xs [&_.recharts-cartesian-axis-tick_text]:fill-ink-soft [&_.recharts-cartesian-grid_line[stroke='#ccc']]:stroke-rule [&_.recharts-curve.recharts-tooltip-cursor]:stroke-ink [&_.recharts-dot[stroke='#fff']]:stroke-transparent [&_.recharts-layer]:outline-hidden [&_.recharts-polar-grid_[stroke='#ccc']]:stroke-ink [&_.recharts-radial-bar-background-sector]:fill-rule [&_.recharts-rectangle.recharts-tooltip-cursor]:fill-rule [&_.recharts-reference-line_[stroke='#ccc']]:stroke-ink [&_.recharts-sector[stroke='#fff']]:stroke-transparent [&_.recharts-sector]:outline-hidden [&_.recharts-surface]:outline-hidden",
+          "flex aspect-video justify-center font-display text-xs [&_.recharts-cartesian-axis-tick_text]:fill-ink-soft [&_.recharts-cartesian-grid_line[stroke='#ccc']]:stroke-rule [&_.recharts-curve.recharts-tooltip-cursor]:stroke-ink [&_.recharts-dot[stroke='#fff']]:stroke-transparent [&_.recharts-layer]:outline-hidden [&_.recharts-polar-grid_[stroke='#ccc']]:stroke-ink [&_.recharts-radial-bar-background-sector]:fill-rule [&_.recharts-rectangle.recharts-tooltip-cursor]:fill-rule [&_.recharts-reference-line_[stroke='#ccc']]:stroke-ink [&_.recharts-sector]:outline-hidden [&_.recharts-sector[stroke='#fff']]:stroke-transparent [&_.recharts-surface]:outline-hidden",
           className,
         )}
         {...props}
@@ -205,7 +205,7 @@ function ChartTooltipContent({
       className={cn(
         // Radius 0, a hairline ink rule, no elevation — print doesn't round
         // corners or float panels.
-        "grid min-w-32 items-start gap-1.5 border border-ink bg-paper px-2.5 py-1.5 font-display text-ink text-xs",
+        "grid min-w-32 items-start gap-1.5 border border-ink bg-paper px-2.5 py-1.5 font-display text-xs text-ink",
         className,
       )}
     >
@@ -270,7 +270,7 @@ function ChartTooltipContent({
                         </span>
                       </div>
                       {item.value != null && (
-                        <span className="font-bold font-display text-ink tabular-nums">
+                        <span className="font-display font-bold text-ink tabular-nums">
                           {typeof item.value === "number"
                             ? item.value.toLocaleString()
                             : String(item.value)}

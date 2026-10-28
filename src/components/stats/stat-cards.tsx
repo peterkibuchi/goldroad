@@ -29,7 +29,7 @@ function Card({
 }) {
   return (
     <div className="bg-paper px-4 py-4 sm:px-5 sm:py-5">
-      <h3 className="font-display font-semibold text-ink-soft text-xs uppercase tracking-[0.08em]">
+      <h3 className="font-display text-xs font-semibold tracking-[0.08em] text-ink-soft uppercase">
         {label}
       </h3>
       {children}
@@ -41,7 +41,7 @@ function Card({
  * the digits dance. */
 function Value({ children }: { children: React.ReactNode }) {
   return (
-    <p className="mt-2 font-black font-display text-3xl text-ink tabular-nums tracking-tight">
+    <p className="mt-2 font-display text-3xl font-black tracking-tight text-ink tabular-nums">
       {children}
     </p>
   );
@@ -49,7 +49,7 @@ function Value({ children }: { children: React.ReactNode }) {
 
 function Sub({ children }: { children: React.ReactNode }) {
   return (
-    <p className="mt-1 font-display text-ink-soft text-xs leading-relaxed">
+    <p className="mt-1 font-display text-xs leading-relaxed text-ink-soft">
       {children}
     </p>
   );
@@ -237,7 +237,7 @@ export function StatCards({
           <>
             {/* A title, not a number — so this card's value is a link, clamped
                 so a long headline can't make the cell taller than its siblings. */}
-            <p className="mt-2 font-bold font-display text-base text-ink leading-snug">
+            <p className="mt-2 font-display text-base leading-snug font-bold text-ink">
               <a className={LINK_CLASS} href={postHref(topPost.rkey)}>
                 <span className="line-clamp-2">{topPost.title}</span>
               </a>

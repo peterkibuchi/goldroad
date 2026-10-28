@@ -354,10 +354,10 @@ export function SignIn({
       id={MAIN_CONTENT_ID}
       tabIndex={-1}
     >
-      <h1 className="font-black font-display text-3xl text-ink tracking-tight">
+      <h1 className="font-display text-3xl font-black tracking-tight text-ink">
         Sign in to write
       </h1>
-      <p className="mt-3 font-body text-ink-soft leading-relaxed">
+      <p className="mt-3 font-body leading-relaxed text-ink-soft">
         Goldroad publishes from your own account — sign in with your Bluesky (or
         any atproto) handle.
       </p>
@@ -368,7 +368,7 @@ export function SignIn({
         method="post"
       >
         <label
-          className="font-bold font-display text-ink text-sm"
+          className="font-display text-sm font-bold text-ink"
           htmlFor="handle"
         >
           Your handle
@@ -385,17 +385,17 @@ export function SignIn({
         />
         <input name="returnTo" type="hidden" value={returnTo} />
         <button
-          className="min-h-11 cursor-pointer bg-spot px-6 py-2.5 font-bold font-display text-base text-paper transition-colors hover:bg-ink"
+          className="min-h-11 cursor-pointer bg-spot px-6 py-2.5 font-display text-base font-bold text-paper transition-colors hover:bg-ink"
           type="submit"
         >
           Continue
         </button>
-        <p className="mt-1 font-display text-ink-soft text-xs leading-relaxed">
+        <p className="mt-1 font-display text-xs leading-relaxed text-ink-soft">
           Goldroad never sees your password — you approve access on your own
           server, and you can revoke it there anytime.
         </p>
       </form>
-      <p className="mt-6 font-display text-ink-soft text-sm">
+      <p className="mt-6 font-display text-sm text-ink-soft">
         New to Bluesky?{" "}
         <ExternalLink
           className="underline underline-offset-2 transition-colors hover:text-ink"
@@ -512,7 +512,7 @@ function CoverPicker({
       {preview ? (
         // Direct sibling of the input: keyboard focus on the (visually
         // hidden) file input outlines the whole preview block.
-        <div className="peer-focus-visible:outline-2 peer-focus-visible:outline-spot peer-focus-visible:outline-offset-2">
+        <div className="peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-spot">
           <img
             alt="Cover preview"
             className="aspect-video w-full bg-ink/5 object-cover"
@@ -533,7 +533,7 @@ function CoverPicker({
         </div>
       ) : (
         <label
-          className="flex min-h-11 w-full cursor-pointer flex-wrap items-center justify-center gap-x-2 border border-rule border-dashed px-4 py-2 text-center font-display text-ink-soft text-sm transition-colors hover:border-ink hover:text-ink peer-focus-visible:outline-2 peer-focus-visible:outline-spot peer-focus-visible:outline-offset-2"
+          className="flex min-h-11 w-full cursor-pointer flex-wrap items-center justify-center gap-x-2 border border-dashed border-rule px-4 py-2 text-center font-display text-sm text-ink-soft transition-colors peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-spot hover:border-ink hover:text-ink"
           htmlFor="cover"
         >
           Add a cover image
@@ -577,7 +577,7 @@ export function SaveIndicator({ state }: { state: SaveState }) {
   return (
     <p
       aria-live="polite"
-      className="mb-2 min-h-4 text-right font-display text-ink-soft text-xs leading-4"
+      className="mb-2 min-h-4 text-right font-display text-xs leading-4 text-ink-soft"
       role="status"
     >
       {SAVE_INDICATOR_TEXT[state]}
@@ -614,7 +614,7 @@ function SubtitleField({
       </label>
       <textarea
         aria-describedby="dek-help"
-        className="field-sizing-content mt-4 w-full resize-none overflow-hidden rounded-none border-0 border-transparent border-b-2 bg-paper px-1 py-1 font-body text-ink-soft text-xl italic leading-relaxed placeholder:text-ink-soft/50 focus-visible:border-spot focus-visible:outline-none"
+        className="mt-4 field-sizing-content w-full resize-none overflow-hidden rounded-none border-0 border-b-2 border-transparent bg-paper px-1 py-1 font-body text-xl leading-relaxed text-ink-soft italic placeholder:text-ink-soft/50 focus-visible:border-spot focus-visible:outline-none"
         defaultValue={defaultValue}
         id="dek"
         maxLength={MAX_DEK_LENGTH}
@@ -628,7 +628,7 @@ function SubtitleField({
         rows={1}
       />
       <p
-        className="mt-2 px-1 font-display text-ink-soft text-xs leading-relaxed"
+        className="mt-2 px-1 font-display text-xs leading-relaxed text-ink-soft"
         id="dek-help"
       >
         {long
@@ -735,9 +735,9 @@ export function SchedulePanel({
     : "Publishes at the time you pick — Goldroad checks for due posts every hour, so it goes out within the hour after it. Times are in your own time zone.";
 
   return (
-    <div className="mt-6 border-rule border-t pt-6">
+    <div className="mt-6 border-t border-rule pt-6">
       {existing && (
-        <p className="font-display text-ink text-sm leading-relaxed">
+        <p className="font-display text-sm leading-relaxed text-ink">
           <span className="font-bold">Scheduled</span> for{" "}
           <ScheduledTime iso={existing.dueAt} />. You can keep editing — this
           publishes whatever is saved when it goes out.
@@ -752,7 +752,7 @@ export function SchedulePanel({
         <input name="dueTzOffset" ref={offsetRef} type="hidden" />
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <label
-            className="font-display text-ink-soft text-sm"
+            className="font-display text-sm text-ink-soft"
             htmlFor="dueAtLocal"
           >
             {existing ? "Change the time" : "Schedule for later"}
@@ -771,7 +771,7 @@ export function SchedulePanel({
             value={localValue}
           />
           <button
-            className="min-h-11 cursor-pointer border-2 border-ink px-5 font-bold font-display text-ink text-sm transition-colors hover:bg-ink hover:text-paper disabled:cursor-default disabled:opacity-40"
+            className="min-h-11 cursor-pointer border-2 border-ink px-5 font-display text-sm font-bold text-ink transition-colors hover:bg-ink hover:text-paper disabled:cursor-default disabled:opacity-40"
             disabled={disabled || busy}
             onClick={() => void handleSchedule()}
             type="button"
@@ -789,7 +789,7 @@ export function SchedulePanel({
               writer back to the piece they were editing. */}
           <input name="draftId" type="hidden" value={draftId ?? ""} />
           <button
-            className="-my-2 inline-flex min-h-9 cursor-pointer items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-spot"
+            className="-my-2 inline-flex min-h-9 cursor-pointer items-center font-display text-sm text-ink-soft underline underline-offset-2 transition-colors hover:text-spot"
             type="submit"
           >
             Cancel the schedule
@@ -798,12 +798,12 @@ export function SchedulePanel({
       )}
       <p
         aria-live="polite"
-        className="mt-2 font-display text-ink-soft text-xs leading-relaxed"
+        className="mt-2 font-display text-xs leading-relaxed text-ink-soft"
       >
         {busy ? "Saving your draft…" : zoneNote}
       </p>
       {/* Stated where the decision is made, not discovered afterwards. */}
-      <p className="mt-1 font-display text-ink-soft text-xs leading-relaxed">
+      <p className="mt-1 font-display text-xs leading-relaxed text-ink-soft">
         A scheduled post publishes its words, not a cover image — add a cover by
         editing the post once it's out, or press Publish instead.
       </p>
@@ -1372,18 +1372,18 @@ export function Compose({
           <input name="handle" type="hidden" value={reconnectHandle} />
           <input name="returnTo" type="hidden" value="/write" />
           <button
-            className="cursor-pointer font-display font-semibold text-ink text-sm underline underline-offset-2"
+            className="cursor-pointer font-display text-sm font-semibold text-ink underline underline-offset-2"
             type="submit"
           >
             Re-connect your account
           </button>{" "}
-          <span className="font-display text-ink-soft text-sm">
+          <span className="font-display text-sm text-ink-soft">
             — you'll approve the new permission on your own server.
           </span>
         </form>
       )}
       <noscript>
-        <p className="mb-6 border border-ink px-4 py-3 font-display text-ink text-sm">
+        <p className="mb-6 border border-ink px-4 py-3 font-display text-sm text-ink">
           The editor needs JavaScript. Enable it to write on Goldroad.
         </p>
       </noscript>
@@ -1415,12 +1415,12 @@ export function Compose({
               search engines index this page as the post's home. */}
           {editing && draft.mirror && (
             <div className="mb-6 border border-rule px-4 py-3">
-              <p className="font-display text-ink-soft text-sm leading-relaxed">
+              <p className="font-display text-sm leading-relaxed text-ink-soft">
                 This post is a mirror — readers see a note pointing to the
                 original{mirrorHost ? ` at ${mirrorHost}` : ""}, and search
                 engines are told to index the original, not this copy.
               </p>
-              <label className="mt-2 flex min-h-9 cursor-pointer items-center gap-2 font-display text-ink text-sm">
+              <label className="mt-2 flex min-h-9 cursor-pointer items-center gap-2 font-display text-sm text-ink">
                 <input name="adoptOriginal" type="checkbox" value="1" />
                 Make this the Goldroad original — remove the note and let this
                 page be indexed
@@ -1452,7 +1452,7 @@ export function Compose({
               behaves like one line of writing — no newlines in a title, and no
               accidental publish. */}
           <textarea
-            className="field-sizing-content w-full resize-none overflow-hidden rounded-none border-0 border-transparent border-b-2 bg-paper px-1 py-1 font-body font-semibold text-4xl text-ink leading-[1.1] placeholder:text-ink-soft/40 focus-visible:border-spot focus-visible:outline-none md:text-5xl"
+            className="field-sizing-content w-full resize-none overflow-hidden rounded-none border-0 border-b-2 border-transparent bg-paper px-1 py-1 font-body text-4xl leading-[1.1] font-semibold text-ink placeholder:text-ink-soft/40 focus-visible:border-spot focus-visible:outline-none md:text-5xl"
             defaultValue={draft?.title ?? resumed?.title ?? ""}
             id="title"
             name="title"
@@ -1469,7 +1469,7 @@ export function Compose({
             onChange={handleDraftChange}
           />
         </form>
-        <div className="mt-8 min-h-[26rem] border-rule border-t pt-8 text-lg">
+        <div className="mt-8 min-h-[26rem] border-t border-rule pt-8 text-lg">
           <ClientOnly fallback={<EditorFallback />}>
             <Suspense fallback={<EditorFallback />}>
               <Editor
@@ -1492,7 +1492,7 @@ export function Compose({
             after a reload they stay blank until this draft publishes. Said
             here rather than left to be discovered as breakage. */}
         {!editing && resumedHasImages && (
-          <p className="mt-4 font-display text-ink-soft text-xs leading-relaxed">
+          <p className="mt-4 font-display text-xs leading-relaxed text-ink-soft">
             Images in this draft are already saved to your repo, but they stay
             blank here until you publish — that's when your server starts
             serving them.
@@ -1502,7 +1502,7 @@ export function Compose({
             publishing copies them into the writer's repo. That spends their
             quota, so it is said BEFORE the button, not discovered after. */}
         {!editing && resumed?.imported && remoteImages > 0 && (
-          <p className="mt-4 font-display text-ink-soft text-xs leading-relaxed">
+          <p className="mt-4 font-display text-xs leading-relaxed text-ink-soft">
             {remoteImages === 1
               ? "This post has one image still hosted by the site you imported from. Publishing saves a copy to your own repo — it counts against your storage there — so the post keeps working if the original disappears."
               : `This post has ${remoteImages} images still hosted by the site you imported from. Publishing saves copies to your own repo — they count against your storage there — so the post keeps working if the originals disappear.`}
@@ -1512,7 +1512,7 @@ export function Compose({
             person who can write it is the person who chose the picture. A
             count, not a block: it's the writer's call. */}
         {missingAlt > 0 && (
-          <p className="mt-4 font-display text-ink-soft text-xs leading-relaxed">
+          <p className="mt-4 font-display text-xs leading-relaxed text-ink-soft">
             {missingAlt === 1
               ? "One image has no alt text — select it and use “Edit alt text” to describe it for readers who can't see it."
               : `${missingAlt} images have no alt text — select each one and use “Edit alt text” to describe it for readers who can't see it.`}
@@ -1525,16 +1525,16 @@ export function Compose({
             moment on every signed-in surface (docs/DESIGN.md, and
             `RailPrimaryAction` in ~/components/site-chrome), so this is the
             page's primary button without being the page's accent. */}
-        <div className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-3 border-rule border-t pt-6">
+        <div className="mt-10 flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-rule pt-6">
           <button
-            className="min-h-11 cursor-pointer bg-ink px-8 py-2.5 font-bold font-display text-base text-paper transition-colors hover:bg-spot disabled:cursor-default disabled:opacity-40"
+            className="min-h-11 cursor-pointer bg-ink px-8 py-2.5 font-display text-base font-bold text-paper transition-colors hover:bg-spot disabled:cursor-default disabled:opacity-40"
             disabled={!editor || coverBusy || submitting}
             form="publish-form"
             type="submit"
           >
             {submitting ? primaryBusyLabel : primaryLabel}
           </button>
-          <p className="font-display text-ink-soft text-xs leading-relaxed">
+          <p className="font-display text-xs leading-relaxed text-ink-soft">
             {editing
               ? "Saves the changes to the post in your own data repo."
               : "Goes live on your public page the moment you press it, and saves to your own data repo — the account behind your handle. It's yours; Goldroad just holds the pen."}

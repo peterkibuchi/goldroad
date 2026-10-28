@@ -581,7 +581,7 @@ function EngagementRow({ engagement }: { engagement: DocumentEngagement }) {
   const reposts = (counts.repostCount ?? 0) + (counts.quoteCount ?? 0);
   const showReposts = isWorthShowing(reposts);
   return (
-    <div className="mb-10 flex items-center gap-6 border-rule border-b pb-6 font-display text-ink-soft text-sm">
+    <div className="mb-10 flex items-center gap-6 border-b border-rule pb-6 font-display text-sm text-ink-soft">
       {isWorthShowing(counts.likeCount) && (
         <span
           className="inline-flex items-center gap-1.5"
@@ -716,7 +716,7 @@ export function DocumentArticle({
             disappears and the WRITER'S identity dominates — this is the second
             half of that sentence, finally executed. */}
           {(publicationName || publicationIcon) && (
-            <div className="mb-12 border-rule border-b pb-4">
+            <div className="mb-12 border-b border-rule pb-4">
               <a
                 className="inline-flex items-center gap-2.5 transition-colors hover:text-ink"
                 href={publicationHref}
@@ -731,13 +731,13 @@ export function DocumentArticle({
                     )}
                   />
                 )}
-                <span className="font-display font-semibold text-[0.85rem] text-ink uppercase tracking-[0.14em]">
+                <span className="font-display text-[0.85rem] font-semibold tracking-[0.14em] text-ink uppercase">
                   {publicationName ?? `@${ident}`}
                 </span>
               </a>
             </div>
           )}
-          <header className="mb-10 border-rule border-b pb-8">
+          <header className="mb-10 border-b border-rule pb-8">
             {/* THE HEADER IS FURNITURE; THE PIECE IS PROSE. Two faces, and the
               line between them is the point.
 
@@ -762,7 +762,7 @@ export function DocumentArticle({
               Negative tracking because display bold at 32px sets loose,
               especially in the all-caps titles older texts carry. Well inside
               the -0.04em floor. */}
-            <h1 className="text-balance font-bold font-display text-[2rem] text-ink leading-[1.15] tracking-[-0.02em]">
+            <h1 className="font-display text-[2rem] leading-[1.15] font-bold tracking-[-0.02em] text-balance text-ink">
               {doc.title ?? "Untitled"}
             </h1>
             {/* The dek belongs to the header block, not to the prose, so it
@@ -783,7 +783,7 @@ export function DocumentArticle({
               already the measure; capping inside it just breaks the left-edge
               alignment the header depends on. */}
             {dek && (
-              <p className="mt-4 font-display text-[0.9375rem] text-ink-soft leading-[1.55]">
+              <p className="mt-4 font-display text-[0.9375rem] leading-[1.55] text-ink-soft">
                 {dek}
               </p>
             )}
@@ -814,7 +814,7 @@ export function DocumentArticle({
               lives elsewhere and this page says so, visibly — the honest
               half of "keep your Substack". Calm register, no ornament. */}
             {mirror && mirrorHost && mirror.sourceUrl && (
-              <p className="mt-2 font-display text-ink-soft text-sm">
+              <p className="mt-2 font-display text-sm text-ink-soft">
                 Originally published at{" "}
                 <ExternalLink
                   className="underline underline-offset-2 transition-colors hover:text-ink"
@@ -834,7 +834,7 @@ export function DocumentArticle({
           {html !== "" ? (
             <Prose html={html} />
           ) : (
-            <p className="font-display text-ink-soft text-sm">
+            <p className="font-display text-sm text-ink-soft">
               This document keeps its full text elsewhere
               {doc.site?.startsWith("https://") ? (
                 <>
@@ -857,7 +857,7 @@ export function DocumentArticle({
             This is the reading surface's ONE capture moment and it belongs to
             the writer, not to us; the email field lands here and nowhere else on
             a post. No sticky bar, no modal, no second ask. */}
-          <aside className="mt-14 border-ink border-t pt-8">
+          <aside className="mt-14 border-t border-ink pt-8">
             <div className="flex items-start gap-4">
               {publicationIcon && (
                 <img
@@ -867,11 +867,11 @@ export function DocumentArticle({
                 />
               )}
               <div className="min-w-0">
-                <p className="font-bold font-display text-ink text-lg leading-tight">
+                <p className="font-display text-lg leading-tight font-bold text-ink">
                   {publicationName ?? `@${ident}`}
                 </p>
                 {publicationDescription && (
-                  <p className="mt-2 text-base text-ink-soft leading-relaxed">
+                  <p className="mt-2 text-base leading-relaxed text-ink-soft">
                     {publicationDescription}
                   </p>
                 )}
@@ -925,10 +925,10 @@ export function DocumentArticle({
               </Await>
             </Suspense>
           )}
-          <aside className="mt-16 border-rule border-t pt-10">
+          <aside className="mt-16 border-t border-rule pt-10">
             {relatedPosts && relatedPosts.length > 0 && (
               <div className="mt-10">
-                <p className="font-display font-semibold text-ink-soft text-xs uppercase tracking-wide">
+                <p className="font-display text-xs font-semibold tracking-wide text-ink-soft uppercase">
                   More from {publicationName ?? `@${ident}`}
                 </p>
                 <ul>
@@ -936,17 +936,17 @@ export function DocumentArticle({
                     const postDate = formatDate(post.publishedAt ?? undefined);
                     return (
                       <li
-                        className="border-rule border-t py-4 first:border-t-0"
+                        className="border-t border-rule py-4 first:border-t-0"
                         key={post.rkey}
                       >
                         <a
-                          className="font-semibold text-ink leading-snug hover:underline hover:underline-offset-4"
+                          className="leading-snug font-semibold text-ink hover:underline hover:underline-offset-4"
                           href={`${publicationHref}/${encodeURIComponent(post.rkey)}`}
                         >
                           {post.title}
                         </a>
                         {postDate && (
-                          <p className="mt-1 font-display text-ink-soft text-xs uppercase tracking-wide">
+                          <p className="mt-1 font-display text-xs tracking-wide text-ink-soft uppercase">
                             <time dateTime={post.publishedAt ?? undefined}>
                               {postDate}
                             </time>
@@ -965,7 +965,7 @@ export function DocumentArticle({
             volume. Never a band, never a badge. The line is also the only
             surface a reader who might become a writer ever meets us on, so it
             points at /open rather than at a pitch. */}
-          <footer className="mt-10 border-rule border-t pt-6">
+          <footer className="mt-10 border-t border-rule pt-6">
             {/* Deliberately NOT a copyright notice.
               Copyright is automatic under Berne — a notice grants nothing, and
               "All rights reserved" has been legally inert since the last Buenos
@@ -975,10 +975,10 @@ export function DocumentArticle({
               "all rights reserved" on it. Their byline above already carries
               the attribution, which is the part that does real work.
               When writers can declare a licence, this line shows THEIR choice. */}
-            <p className="font-display text-ink-soft/80 text-xs">
+            <p className="font-display text-xs text-ink-soft/80">
               {copyrightYear} · {publicationName ?? `@${ident}`}
             </p>
-            <p className="mt-1 font-display text-ink-soft/80 text-xs">
+            <p className="mt-1 font-display text-xs text-ink-soft/80">
               <a
                 className="transition-colors hover:text-ink"
                 href={`${CANONICAL_ORIGIN}/open`}
@@ -1018,17 +1018,17 @@ export function DocumentNotFound({ data }: { data?: unknown } = {}) {
   return (
     <div className="min-h-screen bg-paper font-body text-ink">
       <main className="mx-auto max-w-[42rem] px-6 py-24">
-        <p className="font-display font-semibold text-ink-soft text-sm">
+        <p className="font-display text-sm font-semibold text-ink-soft">
           Nothing at this address
         </p>
-        <h1 className="mt-3 text-balance font-semibold text-3xl leading-[1.15]">
+        <h1 className="mt-3 text-3xl leading-[1.15] font-semibold text-balance">
           This page isn't published.
         </h1>
-        <p className="mt-4 max-w-[52ch] text-ink-soft text-lg leading-relaxed">
+        <p className="mt-4 max-w-[52ch] text-lg leading-relaxed text-ink-soft">
           The handle may be misspelled, or the writer may have taken this post
           down — their archive, their call.
         </p>
-        <p className="mt-8 font-display text-ink-soft text-sm">
+        <p className="mt-8 font-display text-sm text-ink-soft">
           <a
             className="underline underline-offset-2 transition-colors hover:text-ink"
             href="/"
@@ -1050,13 +1050,13 @@ export function ContentUnavailable() {
   return (
     <div className="min-h-screen bg-paper font-body text-ink">
       <main className="mx-auto max-w-[42rem] px-6 py-24">
-        <p className="font-display font-semibold text-ink-soft text-sm">
+        <p className="font-display text-sm font-semibold text-ink-soft">
           Unavailable
         </p>
-        <h1 className="mt-3 text-balance font-semibold text-3xl leading-[1.15]">
+        <h1 className="mt-3 text-3xl leading-[1.15] font-semibold text-balance">
           This content is unavailable.
         </h1>
-        <p className="mt-4 max-w-[52ch] text-ink-soft text-lg leading-relaxed">
+        <p className="mt-4 max-w-[52ch] text-lg leading-relaxed text-ink-soft">
           Goldroad isn't serving this page. If you believe that's a mistake, our{" "}
           <a
             className="underline underline-offset-2 transition-colors hover:text-ink"
@@ -1067,7 +1067,7 @@ export function ContentUnavailable() {
           explain how to reach us. The underlying record, if it still exists,
           lives in its author's own repo on the open network.
         </p>
-        <p className="mt-8 font-display text-ink-soft text-sm">
+        <p className="mt-8 font-display text-sm text-ink-soft">
           <a
             className="underline underline-offset-2 transition-colors hover:text-ink"
             href="/"

@@ -54,7 +54,7 @@ const SECURITY_URL = `${OPEN_LINKS.repo}/blob/main/SECURITY.md`;
  * single accent on the link to the source and nowhere else. */
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="font-display font-semibold text-ink-soft text-xs uppercase tracking-[0.14em]">
+    <p className="font-display text-xs font-semibold tracking-[0.14em] text-ink-soft uppercase">
       {children}
     </p>
   );
@@ -62,7 +62,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
-    <h2 className="mt-4 max-w-[24ch] text-balance font-black font-display text-3xl text-ink leading-tight tracking-tight md:text-4xl">
+    <h2 className="mt-4 max-w-[24ch] font-display text-3xl leading-tight font-black tracking-tight text-balance text-ink md:text-4xl">
       {children}
     </h2>
   );
@@ -84,10 +84,10 @@ export function OpenPage() {
           <RegMark className="absolute top-6 right-6 size-5 text-ink opacity-75" />
           <div className="mx-auto w-full max-w-5xl px-6 pt-14 pb-16 md:px-16 md:pt-20 md:pb-20">
             <SectionLabel>Open source</SectionLabel>
-            <h1 className="mt-5 max-w-[18ch] text-balance font-black font-display text-4xl text-ink leading-[1.05] tracking-tight md:text-6xl">
+            <h1 className="mt-5 max-w-[18ch] font-display text-4xl leading-[1.05] font-black tracking-tight text-balance text-ink md:text-6xl">
               Your writing is yours. So is the software.
             </h1>
-            <p className="mt-6 max-w-[54ch] text-pretty font-body text-ink-soft text-lg italic md:text-xl">
+            <p className="mt-6 max-w-[54ch] font-body text-lg text-pretty text-ink-soft italic md:text-xl">
               Goldroad publishes your work into an account you own on the open
               network, and the code that does it is public under a licence
               designed to keep it public. Every promise on this site is one you
@@ -103,13 +103,13 @@ export function OpenPage() {
                 <span className="sr-only"> (opens in new tab)</span>
               </CtaLink>
               <ExternalLink
-                className="inline-flex min-h-11 items-center font-display font-semibold text-ink text-sm underline decoration-2 underline-offset-4 transition-colors hover:text-spot"
+                className="inline-flex min-h-11 items-center font-display text-sm font-semibold text-ink underline decoration-2 underline-offset-4 transition-colors hover:text-spot"
                 href={OPEN_LINKS.license}
               >
                 Read the licence
               </ExternalLink>
             </div>
-            <p className="mt-8 max-w-[56ch] border-rule border-t pt-4 font-display text-ink-soft text-sm leading-normal">
+            <p className="mt-8 max-w-[56ch] border-t border-rule pt-4 font-display text-sm leading-normal text-ink-soft">
               AGPL-3.0-only · contributions by DCO, no CLA · built on the AT
               Protocol.
             </p>
@@ -127,9 +127,9 @@ export function OpenPage() {
             — the whole of it, not a hollowed-out core with the useful parts
             held back. Three things follow, and you can hold us to all three.
           </p>
-          <ul className="mt-6 max-w-[58ch] space-y-4 text-ink-soft text-lg leading-relaxed">
-            <li className="border-rule border-l-2 pl-4">
-              <strong className="font-bold font-display text-base text-ink uppercase tracking-[0.06em]">
+          <ul className="mt-6 max-w-[58ch] space-y-4 text-lg leading-relaxed text-ink-soft">
+            <li className="border-l-2 border-rule pl-4">
+              <strong className="font-display text-base font-bold tracking-[0.06em] text-ink uppercase">
                 Read it
               </strong>
               <span className="mt-1 block">
@@ -137,8 +137,8 @@ export function OpenPage() {
                 parts that handle your identity and your drafts.
               </span>
             </li>
-            <li className="border-rule border-l-2 pl-4">
-              <strong className="font-bold font-display text-base text-ink uppercase tracking-[0.06em]">
+            <li className="border-l-2 border-rule pl-4">
+              <strong className="font-display text-base font-bold tracking-[0.06em] text-ink uppercase">
                 Run it
               </strong>
               <span className="mt-1 block">
@@ -146,8 +146,8 @@ export function OpenPage() {
                 anyone.
               </span>
             </li>
-            <li className="border-rule border-l-2 pl-4">
-              <strong className="font-bold font-display text-base text-ink uppercase tracking-[0.06em]">
+            <li className="border-l-2 border-rule pl-4">
+              <strong className="font-display text-base font-bold tracking-[0.06em] text-ink uppercase">
                 Get the source of what's running
               </strong>
               <span className="mt-1 block">
@@ -276,7 +276,7 @@ export function OpenPage() {
           </p>
           <nav
             aria-label="Project links"
-            className="mt-6 flex flex-wrap gap-x-6 gap-y-2 font-display text-ink-soft text-sm"
+            className="mt-6 flex flex-wrap gap-x-6 gap-y-2 font-display text-sm text-ink-soft"
           >
             <ExternalLink className={INLINE_LINK} href={OPEN_LINKS.repo}>
               Source on GitHub

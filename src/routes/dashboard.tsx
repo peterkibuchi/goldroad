@@ -429,13 +429,13 @@ export function DeletePostForm({
           role="alertdialog"
         >
           <h2
-            className="font-black font-display text-ink text-xl tracking-tight"
+            className="font-display text-xl font-black tracking-tight text-ink"
             id={`delete-title-${rkey}`}
           >
             Delete "{title}"?
           </h2>
           <p
-            className="mt-3 text-ink-soft leading-relaxed"
+            className="mt-3 leading-relaxed text-ink-soft"
             id={`delete-desc-${rkey}`}
           >
             This deletes the post from your repo — it can't be undone. Your
@@ -455,7 +455,7 @@ export function DeletePostForm({
           </p>
           <div className="mt-6 flex flex-wrap items-center gap-4">
             <button
-              className="min-h-11 cursor-pointer bg-spot px-6 font-bold font-display text-base text-paper transition-colors hover:bg-ink"
+              className="min-h-11 cursor-pointer bg-spot px-6 font-display text-base font-bold text-paper transition-colors hover:bg-ink"
               onClick={() => {
                 approvedRef.current = true;
                 dialogRef.current?.close();
@@ -469,7 +469,7 @@ export function DeletePostForm({
               Delete the post
             </button>
             <button
-              className="min-h-11 cursor-pointer font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
+              className="min-h-11 cursor-pointer font-display text-sm text-ink-soft underline underline-offset-2 transition-colors hover:text-ink"
               onClick={() => dialogRef.current?.close()}
               ref={cancelRef}
               type="button"
@@ -553,7 +553,7 @@ function SectionRule({
 }) {
   return (
     <p
-      className="border-rule border-b pb-2 font-display font-semibold text-ink-soft text-xs uppercase tracking-[0.08em]"
+      className="border-b border-rule pb-2 font-display text-xs font-semibold tracking-[0.08em] text-ink-soft uppercase"
       id={id}
     >
       {children}
@@ -780,7 +780,7 @@ export function PostsManager({
     <>
       {/* Tabs are the manager's spine: one job per tab, and no tab for a
           feature that doesn't exist. */}
-      <div className="mt-8 border-rule border-b">
+      <div className="mt-8 border-b border-rule">
         <div
           aria-label="Post lists"
           // Scrolls rather than shrinks at 320: three tabs with their counts
@@ -836,7 +836,7 @@ export function PostsManager({
           nothing to search and the controls would be furniture. */}
       {!firstRun && (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
-          <label className="flex min-h-9 items-center gap-2 border-rule border-b pb-1 text-ink-soft focus-within:border-ink">
+          <label className="flex min-h-9 items-center gap-2 border-b border-rule pb-1 text-ink-soft focus-within:border-ink">
             <SearchIcon className="h-4 w-4 shrink-0" />
             <span className="sr-only">Search your posts by title</span>
             {/* 16px at base, the denser 14px from `sm:` up: iOS Safari zooms
@@ -852,11 +852,11 @@ export function PostsManager({
             />
           </label>
           <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-            <label className="flex min-h-9 items-center gap-2 font-display text-ink-soft text-sm">
+            <label className="flex min-h-9 items-center gap-2 font-display text-sm text-ink-soft">
               <span>Sort</span>
               {/* Same 16px floor as the search field above. */}
               <select
-                className="cursor-pointer border-rule border-b bg-transparent pb-1 font-display text-base text-ink focus:outline-none sm:text-sm"
+                className="cursor-pointer border-b border-rule bg-transparent pb-1 font-display text-base text-ink focus:outline-none sm:text-sm"
                 onChange={(event) => setSort(parsePostSort(event.target.value))}
                 value={sort}
               >
@@ -876,7 +876,7 @@ export function PostsManager({
                 never sees this toolbar, so `FirstRun` keeps its own import
                 link, as does the overview's next-action row. */}
             <a
-              className="inline-flex min-h-11 items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
+              className="inline-flex min-h-11 items-center font-display text-sm text-ink-soft underline underline-offset-2 transition-colors hover:text-ink"
               href="/import"
             >
               Import…
@@ -900,7 +900,7 @@ export function PostsManager({
         ) : firstRun ? (
           <FirstRun />
         ) : rows.length === 0 ? (
-          <p className="mt-8 text-ink-soft leading-relaxed">
+          <p className="mt-8 leading-relaxed text-ink-soft">
             Nothing published yet — your drafts are on the{" "}
             <button
               className="cursor-pointer underline underline-offset-2 transition-colors hover:text-ink"
@@ -912,12 +912,12 @@ export function PostsManager({
             .
           </p>
         ) : visiblePosts.length === 0 ? (
-          <p className="mt-8 text-ink-soft leading-relaxed">
+          <p className="mt-8 leading-relaxed text-ink-soft">
             No posts on this page match "{query.trim()}".
           </p>
         ) : (
           <>
-            <p className="mt-6 font-display text-ink-soft text-xs">
+            <p className="mt-6 font-display text-xs text-ink-soft">
               {visiblePosts.length}{" "}
               {visiblePosts.length === 1 ? "post" : "posts"}
               {/* An honest scope: a paginated view holds a page, and search
@@ -941,7 +941,7 @@ export function PostsManager({
                     set. Keeping the search params means the tab they were on
                     survives the page turn too. */}
                 <Link
-                  className="font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
+                  className="font-display text-sm text-ink-soft underline underline-offset-2 transition-colors hover:text-ink"
                   // No preload: the router's default is "intent" with a zero
                   // stale time, so a hover would re-run this whole loader —
                   // every post page and its counts — for a page turn nobody has
@@ -971,7 +971,7 @@ export function PostsManager({
             still queued.
           </Notice>
         ) : scheduled.length === 0 ? (
-          <p className="mt-8 text-ink-soft leading-relaxed">
+          <p className="mt-8 leading-relaxed text-ink-soft">
             Nothing scheduled. You can set a date and time when you write —
             press{" "}
             <a
@@ -983,7 +983,7 @@ export function PostsManager({
             and look beside Publish.
           </p>
         ) : visibleScheduled.length === 0 ? (
-          <p className="mt-8 text-ink-soft leading-relaxed">
+          <p className="mt-8 leading-relaxed text-ink-soft">
             No scheduled posts match "{query.trim()}".
           </p>
         ) : (
@@ -1016,7 +1016,7 @@ export function PostsManager({
             try again.
           </Notice>
         ) : drafts.length === 0 ? (
-          <p className="mt-8 text-ink-soft leading-relaxed">
+          <p className="mt-8 leading-relaxed text-ink-soft">
             No drafts in progress.{" "}
             <a
               className="underline underline-offset-2 transition-colors hover:text-ink"
@@ -1027,7 +1027,7 @@ export function PostsManager({
             — a draft is private to you until you publish it.
           </p>
         ) : visibleDrafts.length === 0 ? (
-          <p className="mt-8 text-ink-soft leading-relaxed">
+          <p className="mt-8 leading-relaxed text-ink-soft">
             No drafts match "{query.trim()}".
           </p>
         ) : (
@@ -1064,21 +1064,21 @@ export function PublishedRow({
   const readingLabel = formatReadingTime(row.readingMinutes);
   const href = `/@${encodeURIComponent(ident)}/${encodeURIComponent(row.rkey)}`;
   return (
-    <li className="flex items-start gap-4 border-rule border-b py-5">
+    <li className="flex items-start gap-4 border-b border-rule py-5">
       <PostThumb coverPath={row.coverPath} title={row.title} />
       <div className="min-w-0 flex-1">
         <a
-          className="font-semibold text-ink text-lg leading-snug hover:underline hover:underline-offset-4"
+          className="text-lg leading-snug font-semibold text-ink hover:underline hover:underline-offset-4"
           href={href}
         >
           {row.title}
         </a>
         {row.description && (
-          <p className="mt-1 line-clamp-1 text-ink-soft text-sm leading-relaxed">
+          <p className="mt-1 line-clamp-1 text-sm leading-relaxed text-ink-soft">
             {row.description}
           </p>
         )}
-        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-display text-ink-soft text-xs">
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-display text-xs text-ink-soft">
           <span>
             {date && (
               <time dateTime={row.publishedAt ?? undefined}>{date}</time>
@@ -1118,7 +1118,7 @@ export function PublishedRow({
             row.announceGone ? (
               <>
                 <span
-                  className="font-display text-ink-soft text-sm"
+                  className="font-display text-sm text-ink-soft"
                   title="Goldroad asked Bluesky about this announcement and it isn't there — it was deleted or taken down."
                 >
                   Announcement gone from Bluesky
@@ -1175,15 +1175,15 @@ export function ScheduledListRow({ row }: { row: ScheduledPostRow }) {
   const failed = row.status === "failed";
   const editHref = `/write?draft=${encodeURIComponent(row.draftId)}`;
   return (
-    <li className="border-rule border-b py-5">
+    <li className="border-b border-rule py-5">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <a
-          className="font-semibold text-ink leading-snug hover:underline hover:underline-offset-4"
+          className="leading-snug font-semibold text-ink hover:underline hover:underline-offset-4"
           href={editHref}
         >
           {row.title}
         </a>
-        <span className="font-display text-ink-soft text-sm">
+        <span className="font-display text-sm text-ink-soft">
           {failed ? "Didn't go out \u00b7 was due " : "Scheduled for "}
           <ScheduledTime iso={row.dueAt} />
         </span>
@@ -1245,7 +1245,7 @@ export function ScheduledListRow({ row }: { row: ScheduledPostRow }) {
         {/* Said plainly rather than hidden: a post on its third try is a post
             in trouble, and the writer is the one who can act on that. */}
         {row.attempts > 1 && (
-          <span className="font-display text-ink-soft text-xs">
+          <span className="font-display text-xs text-ink-soft">
             {row.attempts} attempts
           </span>
         )}
@@ -1287,16 +1287,16 @@ function DraftListRow({ draft }: { draft: DraftRow }) {
   }
 
   return (
-    <li className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-rule border-b py-4">
+    <li className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-rule py-4">
       <span>
         <a
-          className="font-semibold text-ink leading-snug hover:underline hover:underline-offset-4"
+          className="leading-snug font-semibold text-ink hover:underline hover:underline-offset-4"
           href={resumeHref}
         >
           {name}
         </a>
         {date && (
-          <span className="ml-3 font-display text-ink-soft text-sm">
+          <span className="ml-3 font-display text-sm text-ink-soft">
             Edited <time dateTime={draft.updatedAt}>{date}</time>
           </span>
         )}
@@ -1327,21 +1327,21 @@ function DraftListRow({ draft }: { draft: DraftRow }) {
 function FirstRun() {
   return (
     <div className="mt-8 border-2 border-ink p-8">
-      <h2 className="font-black font-display text-ink text-xl tracking-tight">
+      <h2 className="font-display text-xl font-black tracking-tight text-ink">
         No posts yet.
       </h2>
-      <p className="mt-3 text-ink-soft leading-relaxed">
+      <p className="mt-3 leading-relaxed text-ink-soft">
         Your first post publishes straight to your own data repo and goes live
         on your public page. Announce it and it reaches your Bluesky followers
         as a rich card linking back here.
       </p>
       <a
-        className="mt-6 inline-flex min-h-11 items-center bg-ink px-6 font-bold font-display text-base text-paper transition-colors hover:bg-spot"
+        className="mt-6 inline-flex min-h-11 items-center bg-ink px-6 font-display text-base font-bold text-paper transition-colors hover:bg-spot"
         href="/write"
       >
         Write your first post
       </a>
-      <p className="mt-4 font-display text-ink-soft text-sm">
+      <p className="mt-4 font-display text-sm text-ink-soft">
         Coming from Substack or another platform?{" "}
         <a
           className="underline underline-offset-2 transition-colors hover:text-ink"
@@ -1469,7 +1469,7 @@ function DashboardPage() {
             would spend the view's one accent twice. Import moved down into the
             manager's toolbar, where a task done to your archive belongs. */}
         <div>
-          <h1 className="font-black font-display text-3xl text-ink tracking-tight">
+          <h1 className="font-display text-3xl font-black tracking-tight text-ink">
             Your posts
           </h1>
           <p className="mt-2 text-ink-soft">

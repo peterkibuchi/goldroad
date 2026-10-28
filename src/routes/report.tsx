@@ -97,7 +97,7 @@ function ReportForm({ initialUrl }: { initialUrl: string }) {
       />
       <div className="flex flex-col gap-2">
         <label
-          className="font-bold font-display text-ink text-sm"
+          className="font-display text-sm font-bold text-ink"
           htmlFor="url"
         >
           Page URL
@@ -114,7 +114,7 @@ function ReportForm({ initialUrl }: { initialUrl: string }) {
       </div>
       <div className="flex flex-col gap-2">
         <label
-          className="font-bold font-display text-ink text-sm"
+          className="font-display text-sm font-bold text-ink"
           htmlFor="reason"
         >
           What's wrong with it?
@@ -129,7 +129,7 @@ function ReportForm({ initialUrl }: { initialUrl: string }) {
       </div>
       <div className="flex flex-col gap-2">
         <label
-          className="font-bold font-display text-ink text-sm"
+          className="font-display text-sm font-bold text-ink"
           htmlFor="email"
         >
           Your email{" "}
@@ -145,7 +145,7 @@ function ReportForm({ initialUrl }: { initialUrl: string }) {
         />
       </div>
       <button
-        className="min-h-11 cursor-pointer bg-spot px-6 py-2.5 font-bold font-display text-base text-paper transition-colors hover:bg-ink disabled:opacity-60"
+        className="min-h-11 cursor-pointer bg-spot px-6 py-2.5 font-display text-base font-bold text-paper transition-colors hover:bg-ink disabled:opacity-60"
         disabled={state === "sending"}
         type="submit"
       >
@@ -171,10 +171,10 @@ function ReportPage() {
         id={MAIN_CONTENT_ID}
         tabIndex={-1}
       >
-        <h1 className="font-black font-display text-3xl text-ink tracking-tight">
+        <h1 className="font-display text-3xl font-black tracking-tight text-ink">
           Report content
         </h1>
-        <p className="mt-3 max-w-prose font-body text-ink-soft leading-relaxed">
+        <p className="mt-3 max-w-prose font-body leading-relaxed text-ink-soft">
           Goldroad renders writing published to the open AT Protocol network. If
           a page here breaks our{" "}
           <a
@@ -186,7 +186,7 @@ function ReportPage() {
           — or you have a copyright or legal concern — tell us and a human will
           review it.
         </p>
-        <p className="mt-3 max-w-prose font-display text-ink-soft text-sm leading-relaxed">
+        <p className="mt-3 max-w-prose font-display text-sm leading-relaxed text-ink-soft">
           You can also email{" "}
           <ExternalLink
             className="underline underline-offset-2 transition-colors hover:text-ink"

@@ -67,7 +67,7 @@ describe("archive month grouping — the skim rhythm", () => {
     render(
       groupPostsByMonth(posts).map((group) => (
         <section key={group.label}>
-          <p className="font-display text-ink-soft text-xs uppercase tracking-wide">
+          <p className="font-display text-xs tracking-wide text-ink-soft uppercase">
             {group.label}
           </p>
           <ul>

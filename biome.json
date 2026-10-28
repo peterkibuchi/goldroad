@@ -27,6 +27,9 @@
       "tailwindDirectives": true
     }
   },
+  "tailwind": {
+    "stylesheet": "./src/styles.css"
+  },
   "linter": {
     "enabled": true,
     "rules": {

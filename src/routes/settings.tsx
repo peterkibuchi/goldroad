@@ -222,13 +222,13 @@ export function SettingsSection({
   return (
     <section aria-labelledby={`${id}-heading`} className={RULES[rule]}>
       <h2
-        className="font-bold font-display text-ink text-lg tracking-tight"
+        className="font-display text-lg font-bold tracking-tight text-ink"
         id={`${id}-heading`}
       >
         {title}
       </h2>
       {intro && (
-        <p className="mt-2 text-pretty text-ink-soft text-sm leading-relaxed">
+        <p className="mt-2 text-sm leading-relaxed text-pretty text-ink-soft">
           {intro}
         </p>
       )}
@@ -339,7 +339,7 @@ export function IconField({
       {removed && existingPath && (
         <input name="removeIcon" type="hidden" value="1" />
       )}
-      <div className="mt-1 flex items-center gap-4 peer-focus-visible:outline-2 peer-focus-visible:outline-spot peer-focus-visible:outline-offset-2">
+      <div className="mt-1 flex items-center gap-4 peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-spot">
         {preview ? (
           <img
             alt="Icon preview"
@@ -348,7 +348,7 @@ export function IconField({
           />
         ) : (
           <label
-            className="flex size-16 shrink-0 cursor-pointer items-center justify-center border border-rule border-dashed font-display text-ink-soft text-xl transition-colors hover:border-ink hover:text-ink"
+            className="flex size-16 shrink-0 cursor-pointer items-center justify-center border border-dashed border-rule font-display text-xl text-ink-soft transition-colors hover:border-ink hover:text-ink"
             htmlFor="icon"
           >
             +
@@ -414,7 +414,7 @@ function SettingsPage() {
         id={MAIN_CONTENT_ID}
         tabIndex={-1}
       >
-        <h1 className="font-black font-display text-3xl text-ink tracking-tight">
+        <h1 className="font-display text-3xl font-black tracking-tight text-ink">
           Settings
         </h1>
         {saved && (
@@ -507,7 +507,7 @@ function SettingsPage() {
                   "Delete account" keeps the accent — a warning is the accent's
                   other meaning — so a save button can't also have it. */}
               <button
-                className="min-h-11 cursor-pointer bg-ink px-8 py-2.5 font-bold font-display text-base text-paper transition-colors hover:bg-spot disabled:cursor-default disabled:opacity-40"
+                className="min-h-11 cursor-pointer bg-ink px-8 py-2.5 font-display text-base font-bold text-paper transition-colors hover:bg-spot disabled:cursor-default disabled:opacity-40"
                 disabled={iconBusy || unreadable}
                 type="submit"
               >
@@ -517,7 +517,7 @@ function SettingsPage() {
               </button>
               {/* New tab: leaving for the public page would drop unsaved edits. */}
               <ExternalLink
-                className="-my-2 inline-flex min-h-11 items-center font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
+                className="-my-2 inline-flex min-h-11 items-center font-display text-sm text-ink-soft underline underline-offset-2 transition-colors hover:text-ink"
                 href={`/@${encodeURIComponent(ident)}`}
               >
                 View it live
@@ -538,7 +538,7 @@ function SettingsPage() {
               theme={theme}
             />
           ) : (
-            <p className="font-display text-ink-soft text-sm">
+            <p className="font-display text-sm text-ink-soft">
               Your colours are stored with your publication — create one above,
               or publish your first post, and they'll appear here.
             </p>
@@ -546,7 +546,7 @@ function SettingsPage() {
         </SettingsSection>
 
         <SettingsSection id="address" title="Your public address">
-          <p className="font-display text-ink-soft text-sm">
+          <p className="font-display text-sm text-ink-soft">
             {/* May point at a legacy origin until the writer moves it. */}
             <ExternalLink
               className="underline underline-offset-2 transition-colors hover:text-ink"
@@ -570,7 +570,7 @@ function SettingsPage() {
           intro="Goldroad stores remarkably little for your account: drafts, your import history, your daily follower count, and your sign-in session. That's everything keyed to your account. What you've published lives in your own data repo, not here, so nothing below touches it."
           title="Your data"
         >
-          <p className="font-display text-ink-soft text-sm">
+          <p className="font-display text-sm text-ink-soft">
             {dataCounts
               ? `${dataCounts.drafts} ${dataCounts.drafts === 1 ? "draft" : "drafts"} · ${dataCounts.importLedger} import ${dataCounts.importLedger === 1 ? "record" : "records"} stored with us.`
               : "Record counts couldn't be loaded right now — that's just this readout; export and deletion still work."}
@@ -582,7 +582,7 @@ function SettingsPage() {
               can't reach. Said here and not only on /privacy, because this is
               the page where someone forms the belief that they've taken
               everything with them. */}
-          <p className="mt-4 max-w-prose font-display text-ink-soft text-xs leading-relaxed">
+          <p className="mt-4 max-w-prose font-display text-xs leading-relaxed text-ink-soft">
             An email you gave our waitlist form, or left on an abuse report, is
             stored with no link to your account — we identify you by DID and
             never receive your email — so it's not in the export and account
@@ -652,7 +652,7 @@ export function ExportDataButton() {
   return (
     <>
       <button
-        className="min-h-11 cursor-pointer border border-ink bg-paper px-6 py-2.5 font-bold font-display text-base text-ink transition-colors hover:bg-ink hover:text-paper disabled:cursor-not-allowed disabled:opacity-60"
+        className="min-h-11 cursor-pointer border border-ink bg-paper px-6 py-2.5 font-display text-base font-bold text-ink transition-colors hover:bg-ink hover:text-paper disabled:cursor-not-allowed disabled:opacity-60"
         disabled={state === "working"}
         onClick={() => void download()}
         type="button"
@@ -698,7 +698,7 @@ export function DeleteAccountForm({ ident }: { ident: string }) {
         ref={formRef}
       >
         <button
-          className="min-h-11 cursor-pointer border border-spot px-6 py-2.5 font-bold font-display text-base text-spot transition-colors hover:bg-spot hover:text-paper"
+          className="min-h-11 cursor-pointer border border-spot px-6 py-2.5 font-display text-base font-bold text-spot transition-colors hover:bg-spot hover:text-paper"
           type="submit"
         >
           Delete account
@@ -712,13 +712,13 @@ export function DeleteAccountForm({ ident }: { ident: string }) {
         role="alertdialog"
       >
         <h2
-          className="font-black font-display text-ink text-xl tracking-tight"
+          className="font-display text-xl font-black tracking-tight text-ink"
           id="delete-account-title"
         >
           Delete your Goldroad account?
         </h2>
         <p
-          className="mt-3 text-ink-soft leading-relaxed"
+          className="mt-3 leading-relaxed text-ink-soft"
           id="delete-account-desc"
         >
           This deletes your drafts, import history, follower history, and
@@ -740,7 +740,7 @@ export function DeleteAccountForm({ ident }: { ident: string }) {
         </p>
         <div className="mt-6 flex flex-wrap items-center gap-4">
           <button
-            className="min-h-11 cursor-pointer bg-spot px-6 font-bold font-display text-base text-paper transition-colors hover:bg-ink"
+            className="min-h-11 cursor-pointer bg-spot px-6 font-display text-base font-bold text-paper transition-colors hover:bg-ink"
             onClick={() => {
               approvedRef.current = true;
               dialogRef.current?.close();
@@ -752,7 +752,7 @@ export function DeleteAccountForm({ ident }: { ident: string }) {
             Delete my account
           </button>
           <button
-            className="min-h-11 cursor-pointer font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
+            className="min-h-11 cursor-pointer font-display text-sm text-ink-soft underline underline-offset-2 transition-colors hover:text-ink"
             onClick={() => dialogRef.current?.close()}
             ref={cancelRef}
             type="button"

@@ -49,7 +49,7 @@ export function PostThumb({
       aria-hidden="true"
       className={cn(
         box,
-        "flex items-center justify-center bg-ink/5 font-display text-ink-soft/40 text-xl",
+        "flex items-center justify-center bg-ink/5 font-display text-xl text-ink-soft/40",
       )}
     >
       {monogram(title)}
@@ -89,7 +89,7 @@ export function PostMetrics({
     counts?.repostCount !== undefined || counts?.quoteCount !== undefined;
 
   return (
-    <span className="flex flex-wrap items-center gap-x-3 gap-y-1 font-display text-ink-soft text-xs">
+    <span className="flex flex-wrap items-center gap-x-3 gap-y-1 font-display text-xs text-ink-soft">
       {/* One weight across the whole cluster: views and cross-network counts
           are peers, and a bolded number would rank one above the others. */}
       {views !== undefined && (

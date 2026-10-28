@@ -124,44 +124,44 @@ function TimelineCard() {
         role="img"
       >
         <div aria-hidden="true" className="flex items-center gap-3">
-          <span className="inline-grid size-10 place-items-center rounded-full bg-ink font-bold font-display text-paper text-sm">
+          <span className="inline-grid size-10 place-items-center rounded-full bg-ink font-display text-sm font-bold text-paper">
             SA
           </span>
           <span className="min-w-0 leading-tight">
-            <span className="block truncate font-bold font-display text-ink text-sm">
+            <span className="block truncate font-display text-sm font-bold text-ink">
               Sana Adeyemi
             </span>
-            <span className="block truncate font-display text-ink-soft text-xs">
+            <span className="block truncate font-display text-xs text-ink-soft">
               @sana.example · 2h
             </span>
           </span>
         </div>
-        <p aria-hidden="true" className="mt-3 text-ink text-sm leading-normal">
+        <p aria-hidden="true" className="mt-3 text-sm leading-normal text-ink">
           New essay — on group chats as the last honest public square.
         </p>
         <div aria-hidden="true" className="mt-3 border border-ink">
-          <div className="flex items-center gap-2 border-ink border-b bg-ink px-4 py-2.5">
+          <div className="flex items-center gap-2 border-b border-ink bg-ink px-4 py-2.5">
             <RegMark className="size-3.5 text-paper opacity-80" />
-            <span className="font-display font-semibold text-[0.7rem] text-paper uppercase tracking-[0.12em]">
+            <span className="font-display text-[0.7rem] font-semibold tracking-[0.12em] text-paper uppercase">
               Sana Adeyemi
             </span>
           </div>
           <div className="px-4 py-3">
-            <p className="font-bold font-display text-ink text-sm leading-snug">
+            <p className="font-display text-sm leading-snug font-bold text-ink">
               The Group Chat Is the Village Green
             </p>
-            <p className="mt-1 text-ink-soft text-xs leading-snug">
+            <p className="mt-1 text-xs leading-snug text-ink-soft">
               Twelve people, one thread, no algorithm. What we rebuilt when the
               feeds stopped feeling like home.
             </p>
-            <p className="mt-2 font-display text-[0.7rem] text-ink-soft uppercase tracking-[0.1em]">
+            <p className="mt-2 font-display text-[0.7rem] tracking-[0.1em] text-ink-soft uppercase">
               trygoldroad.com
             </p>
           </div>
         </div>
         <div
           aria-hidden="true"
-          className="mt-3 flex items-center gap-8 font-display text-ink-soft text-xs"
+          className="mt-3 flex items-center gap-8 font-display text-xs text-ink-soft"
         >
           <span className="flex items-center gap-1.5">
             <IconMessageCircle
@@ -181,7 +181,7 @@ function TimelineCard() {
           </span>
         </div>
       </div>
-      <figcaption className="mt-3 font-display text-ink-soft text-xs">
+      <figcaption className="mt-3 font-display text-xs text-ink-soft">
         Your essay in the timeline — a native card, not a naked link. Sample
         post; figures illustrative.
       </figcaption>
@@ -248,7 +248,7 @@ function FoundingWritersForm() {
       // which needs access to be withheld to mean something. The phrasing is
       // banned in marketing-claims.test.ts, which reads this file's comments
       // too — hence the paraphrase above rather than the quoted phrase.
-      <p className="border-2 border-ink p-6 font-display font-semibold text-ink text-lg">
+      <p className="border-2 border-ink p-6 font-display text-lg font-semibold text-ink">
         You're on the list. You don't have to wait for us, though — sign in with
         Bluesky and start writing whenever you like.
       </p>
@@ -261,7 +261,7 @@ function FoundingWritersForm() {
       onSubmit={submit}
     >
       <label
-        className="basis-full font-bold font-display text-ink text-sm"
+        className="basis-full font-display text-sm font-bold text-ink"
         htmlFor="email"
       >
         Email address
@@ -288,7 +288,7 @@ function FoundingWritersForm() {
         type="email"
       />
       <button
-        className="min-h-11 cursor-pointer bg-spot px-6 py-2.5 font-bold font-display text-base text-paper transition-colors hover:bg-ink disabled:opacity-60"
+        className="min-h-11 cursor-pointer bg-spot px-6 py-2.5 font-display text-base font-bold text-paper transition-colors hover:bg-ink disabled:opacity-60"
         disabled={state === "sending"}
         type="submit"
       >
@@ -300,7 +300,7 @@ function FoundingWritersForm() {
           "am I signing up to wait?" — in the first four words, and agrees with
           the success state above. It also promises no send on any clock, which
           is the honest position while delivery is unbuilt. */}
-      <p className="basis-full font-display text-ink-soft text-xs leading-normal">
+      <p className="basis-full font-display text-xs leading-normal text-ink-soft">
         No invite to wait for — sign in with Bluesky whenever you like. This
         list is where the founding-writer notes go, and you can leave it with
         one click.
@@ -310,7 +310,7 @@ function FoundingWritersForm() {
           That didn't go through — check the address and try again.
         </p>
       )}
-      <p className="basis-full font-display text-ink-soft text-xs leading-relaxed">
+      <p className="basis-full font-display text-xs leading-relaxed text-ink-soft">
         By joining you agree to our{" "}
         <a
           className="underline underline-offset-2 hover:text-ink"
@@ -373,7 +373,7 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
             <div className="grid grid-cols-1 items-center gap-12 lg:grid-cols-[1.05fr_0.95fr] lg:gap-14">
               <div>
                 <Kicker>For writers already on Bluesky</Kicker>
-                <h1 className="mt-5 max-w-[16ch] text-balance font-black font-display text-4xl text-ink leading-[1.05] tracking-tight md:text-5xl lg:text-6xl">
+                <h1 className="mt-5 max-w-[16ch] font-display text-4xl leading-[1.05] font-black tracking-tight text-balance text-ink md:text-5xl lg:text-6xl">
                   Your followers are already{" "}
                   <span className="spot-highlight">your readers</span>.
                 </h1>
@@ -383,7 +383,7 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
                     The editor's features and the no-cold-start argument have
                     their own sections below; saying them here too made this
                     four lines of feature tour. */}
-                <p className="mt-6 max-w-[46ch] text-pretty font-body text-ink-soft text-lg italic md:text-xl">
+                <p className="mt-6 max-w-[46ch] font-body text-lg text-pretty text-ink-soft italic md:text-xl">
                   Write the long one here. It goes up on a page you own, and out
                   to the timelines of everyone who follows you.
                 </p>
@@ -395,7 +395,7 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
                   <CtaLink href="/home">Sign in with Bluesky</CtaLink>
                   <QuietLink href="#join">Join the founding writers</QuietLink>
                 </div>
-                <p className="mt-8 max-w-[52ch] border-rule border-t pt-4 font-display text-ink-soft text-sm leading-normal">
+                <p className="mt-8 max-w-[52ch] border-t border-rule pt-4 font-display text-sm leading-normal text-ink-soft">
                   Free while we build · your followers stay yours · publishing
                   and Bluesky distribution stay free for good.
                 </p>
@@ -409,22 +409,22 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
             numbered (craft-floor). Plain outcomes, no press cosplay. */}
         <MarketingSection divider id="how">
           <Kicker>How it works</Kicker>
-          <h2 className="mt-4 max-w-[22ch] text-balance font-black font-display text-3xl text-ink leading-tight tracking-tight md:text-4xl">
+          <h2 className="mt-4 max-w-[22ch] font-display text-3xl leading-tight font-black tracking-tight text-balance text-ink md:text-4xl">
             From handle to publication in one sitting.
           </h2>
           <ol className="mt-10 grid grid-cols-1 border-2 border-ink lg:grid-cols-4">
             {STEPS.map((step, i) => (
               <li
-                className="border-rule border-b p-6 last:border-b-0 lg:border-r lg:border-b-0 lg:last:border-r-0"
+                className="border-b border-rule p-6 last:border-b-0 lg:border-r lg:border-b-0 lg:last:border-r-0"
                 key={step.title}
               >
-                <span className="inline-grid size-11 place-items-center bg-ink font-black font-display text-2xl text-paper">
+                <span className="inline-grid size-11 place-items-center bg-ink font-display text-2xl font-black text-paper">
                   {i + 1}
                 </span>
-                <h3 className="mt-4 font-bold font-display text-ink text-lg">
+                <h3 className="mt-4 font-display text-lg font-bold text-ink">
                   {step.title}
                 </h3>
-                <p className="mt-2 text-ink-soft text-sm leading-normal">
+                <p className="mt-2 text-sm leading-normal text-ink-soft">
                   {step.body}
                 </p>
               </li>
@@ -437,24 +437,24 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
             by one dominant claim; not a card grid. */}
         <MarketingSection divider>
           <Kicker>Why here</Kicker>
-          <h2 className="mt-4 max-w-[16ch] text-balance font-black font-display text-3xl text-ink leading-[1.08] tracking-tight md:text-5xl">
+          <h2 className="mt-4 max-w-[16ch] font-display text-3xl leading-[1.08] font-black tracking-tight text-balance text-ink md:text-5xl">
             Your audience isn't a cold start.
           </h2>
-          <p className="mt-5 max-w-[54ch] text-pretty text-ink-soft text-lg leading-relaxed">
+          <p className="mt-5 max-w-[54ch] text-lg leading-relaxed text-pretty text-ink-soft">
             Every other home for long-form asks you to rebuild your readership
             from scratch, somewhere new. Yours is already here — Goldroad is
             native to the network where your readers follow you.
           </p>
-          <div className="mt-12 grid grid-cols-1 border-ink border-t-2 md:grid-cols-3">
+          <div className="mt-12 grid grid-cols-1 border-t-2 border-ink md:grid-cols-3">
             {REASONS.map((reason) => (
               <div
-                className="border-rule border-b py-7 last:border-b-0 md:border-r md:border-b-0 md:px-9 md:py-8 md:last:border-r-0 md:last:pr-0 md:first:pl-0"
+                className="border-b border-rule py-7 last:border-b-0 md:border-r md:border-b-0 md:px-9 md:py-8 md:first:pl-0 md:last:border-r-0 md:last:pr-0"
                 key={reason.title}
               >
-                <h3 className="font-bold font-display text-ink text-xl leading-snug tracking-tight">
+                <h3 className="font-display text-xl leading-snug font-bold tracking-tight text-ink">
                   {reason.title}
                 </h3>
-                <p className="mt-3 max-w-[34ch] text-ink-soft text-sm leading-relaxed">
+                <p className="mt-3 max-w-[34ch] text-sm leading-relaxed text-ink-soft">
                   {reason.body}
                 </p>
               </div>
@@ -466,10 +466,10 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
             placed here rather than in the headline. */}
         <MarketingSection divider>
           <Kicker>What you own</Kicker>
-          <h2 className="mt-4 max-w-[22ch] text-balance font-black font-display text-3xl text-ink leading-tight tracking-tight md:text-4xl">
+          <h2 className="mt-4 max-w-[22ch] font-display text-3xl leading-tight font-black tracking-tight text-balance text-ink md:text-4xl">
             Leaving is the guarantee.
           </h2>
-          <p className="mt-4 max-w-[56ch] text-pretty text-ink-soft text-lg leading-relaxed">
+          <p className="mt-4 max-w-[56ch] text-lg leading-relaxed text-pretty text-ink-soft">
             Anyone can promise you own your work. Goldroad is built so the
             promise doesn't depend on us keeping it. If Goldroad vanished
             tonight, your publication wouldn't — here is exactly what stays
@@ -477,20 +477,20 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
           </p>
           <dl className="mt-10 grid grid-cols-1 gap-x-12 gap-y-8 md:grid-cols-2">
             <div>
-              <dt className="font-bold font-display text-ink text-lg">
+              <dt className="font-display text-lg font-bold text-ink">
                 Your page and your archive
               </dt>
-              <dd className="mt-2 text-ink-soft text-sm leading-relaxed">
+              <dd className="mt-2 text-sm leading-relaxed text-ink-soft">
                 Every piece gets a fast public page, and the original is written
                 to a data repo you control. Our servers keep a copy for speed;
                 yours keeps the original.
               </dd>
             </div>
             <div>
-              <dt className="font-bold font-display text-ink text-lg">
+              <dt className="font-display text-lg font-bold text-ink">
                 Your readers
               </dt>
-              <dd className="mt-2 text-ink-soft text-sm leading-relaxed">
+              <dd className="mt-2 text-sm leading-relaxed text-ink-soft">
                 They follow your handle, so they stay yours on every app that
                 speaks the same network. When the email list ships it starts
                 portable: import it, export it, and every address is visible to
@@ -498,16 +498,16 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
               </dd>
             </div>
             <div>
-              <dt className="font-bold font-display text-ink text-lg">
+              <dt className="font-display text-lg font-bold text-ink">
                 Your identity
               </dt>
-              <dd className="mt-2 text-ink-soft text-sm leading-relaxed">
+              <dd className="mt-2 text-sm leading-relaxed text-ink-soft">
                 Your handle is your account — the exact name your readers
                 already follow. Nothing to rebuild if you ever move on.
               </dd>
             </div>
             <div>
-              <dt className="font-bold font-display text-ink text-lg">
+              <dt className="font-display text-lg font-bold text-ink">
                 0% of what readers pay
               </dt>
               {/* The processor fee is named on purpose. "0%" next to
@@ -520,7 +520,7 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
                   names Stripe, because that is the fee on a Substack
                   statement. Enforced by marketing-claims.test.ts, which exists
                   because this is the sentence a future edit would trim. */}
-              <dd className="mt-2 text-ink-soft text-sm leading-relaxed">
+              <dd className="mt-2 text-sm leading-relaxed text-ink-soft">
                 When reader payments ship, readers will pay you directly and
                 we'll take zero of it, permanently. Substack takes 10%. Your
                 payment processor still charges its own fee, the way it does
@@ -531,7 +531,7 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
           </dl>
           {/* The guarantee's proof. A claim about architecture is only worth
               what the reader can check, and the code is the check. */}
-          <p className="mt-10 border-rule border-t pt-4 text-ink-soft text-sm">
+          <p className="mt-10 border-t border-rule pt-4 text-sm text-ink-soft">
             The code that keeps these promises is public —{" "}
             <a
               className="font-display font-semibold text-ink underline decoration-2 underline-offset-4 transition-colors hover:text-spot"
@@ -561,7 +561,7 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
             page hides the reassurance it was added to provide. */}
         <MarketingSection divider>
           <Kicker>Before you ask</Kicker>
-          <h2 className="mt-4 max-w-[22ch] text-balance font-black font-display text-3xl text-ink leading-tight tracking-tight md:text-4xl">
+          <h2 className="mt-4 max-w-[22ch] font-display text-3xl leading-tight font-black tracking-tight text-balance text-ink md:text-4xl">
             The four questions we get.
           </h2>
           <dl className="mt-10 grid max-w-[70ch] grid-cols-1 gap-x-12 gap-y-8 sm:grid-cols-2">
@@ -584,16 +584,16 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
               },
             ].map(({ q, a }) => (
               <div key={q}>
-                <dt className="font-bold font-display text-base text-ink">
+                <dt className="font-display text-base font-bold text-ink">
                   {q}
                 </dt>
-                <dd className="mt-2 text-base text-ink-soft leading-relaxed">
+                <dd className="mt-2 text-base leading-relaxed text-ink-soft">
                   {a}
                 </dd>
               </div>
             ))}
           </dl>
-          <p className="mt-10 max-w-[56ch] border-rule border-t pt-4 font-display text-ink-soft text-sm leading-normal">
+          <p className="mt-10 max-w-[56ch] border-t border-rule pt-4 font-display text-sm leading-normal text-ink-soft">
             Something else?{" "}
             <a
               className="font-semibold text-ink underline decoration-2 underline-offset-4 transition-colors hover:text-spot"
@@ -613,10 +613,10 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
             the submit button already spend this section's accent. */}
         <MarketingSection divider id="join">
           <Kicker>Founding writers</Kicker>
-          <h2 className="mt-4 max-w-[22ch] text-balance font-black font-display text-3xl text-ink leading-tight tracking-tight md:text-4xl">
+          <h2 className="mt-4 max-w-[22ch] font-display text-3xl leading-tight font-black tracking-tight text-balance text-ink md:text-4xl">
             Be one of the founding writers.
           </h2>
-          <p className="mt-4 max-w-[54ch] text-pretty text-ink-soft text-lg leading-relaxed">
+          <p className="mt-4 max-w-[54ch] text-lg leading-relaxed text-pretty text-ink-soft">
             The core is live. Newsletters and reader payments are still being
             built.
           </p>
@@ -624,7 +624,7 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
               a list of seven facts, and prose was making the reader parse it
               like an argument. Display face and hairline separators mark it as
               inventory, which is also what makes it skimmable. */}
-          <ul className="mt-5 flex max-w-[62ch] flex-wrap items-center gap-x-3 gap-y-2 font-display text-ink text-sm">
+          <ul className="mt-5 flex max-w-[62ch] flex-wrap items-center gap-x-3 gap-y-2 font-display text-sm text-ink">
             {[
               "Drafts & autosave",
               "Images",
@@ -667,11 +667,11 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
                   "What works for you today keeps working, permanently. You are never moved onto a paid plan to keep what you already have.",
               },
             ].map(({ term, detail }) => (
-              <div className="border-ink border-t-2 pt-4" key={term}>
-                <dt className="font-bold font-display text-ink text-sm uppercase tracking-[0.08em]">
+              <div className="border-t-2 border-ink pt-4" key={term}>
+                <dt className="font-display text-sm font-bold tracking-[0.08em] text-ink uppercase">
                   {term}
                 </dt>
-                <dd className="mt-2.5 text-ink-soft text-sm leading-relaxed">
+                <dd className="mt-2.5 text-sm leading-relaxed text-ink-soft">
                   {detail}
                 </dd>
               </div>
@@ -691,7 +691,7 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
               The number stays, because specificity persuades and it is true.
               What changed is which true reason we give: a group this size can
               be looked after, which is the part that is about the reader. */}
-          <p className="mt-10 max-w-[56ch] text-pretty text-ink-soft text-lg leading-relaxed">
+          <p className="mt-10 max-w-[56ch] text-lg leading-relaxed text-pretty text-ink-soft">
             We're starting with{" "}
             <strong className="font-display font-semibold text-ink">
               25 writers
@@ -704,7 +704,7 @@ export function Landing({ notice }: { notice?: "goodbye" } = {}) {
           </div>
           {/* Pricing belongs near the decision, at footnote weight — it answers
               a question rather than making a pitch. */}
-          <p className="mt-8 max-w-[56ch] border-rule border-t pt-4 font-display text-ink-soft text-sm leading-normal">
+          <p className="mt-8 max-w-[56ch] border-t border-rule pt-4 font-display text-sm leading-normal text-ink-soft">
             Publishing stays free for good. Paid plans will sell the things that
             cost us money — domains, email delivery, deeper analytics — never a
             share of what your readers pay you.

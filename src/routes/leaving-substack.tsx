@@ -128,7 +128,7 @@ const ROWS: Row[] = [
  * the chrome's chip floor (11.2px); 10.4px uppercase was under it. */
 function RoadmapTag() {
   return (
-    <span className="mt-1 inline-block border border-ink-soft px-1.5 py-0.5 font-display font-semibold text-[0.7rem] text-ink-soft uppercase tracking-[0.08em]">
+    <span className="mt-1 inline-block border border-ink-soft px-1.5 py-0.5 font-display text-[0.7rem] font-semibold tracking-[0.08em] text-ink-soft uppercase">
       On the roadmap
     </span>
   );
@@ -217,18 +217,18 @@ function ComparisonList() {
     <dl
       // The table's caption below 640px, where the table itself is gone.
       aria-label="Goldroad and Substack compared, line by line."
-      className="mt-10 border-ink border-t-2 sm:hidden"
+      className="mt-10 border-t-2 border-ink sm:hidden"
     >
       {ROWS.map((row) => (
-        <div className="border-rule border-b py-4" key={row.label}>
-          <dt className="font-bold font-display text-ink text-sm">
+        <div className="border-b border-rule py-4" key={row.label}>
+          <dt className="font-display text-sm font-bold text-ink">
             {row.label}
           </dt>
-          <dd className="mt-2.5 text-ink text-sm">
+          <dd className="mt-2.5 text-sm text-ink">
             <span className={`block ${side}`}>Goldroad</span>
             <GoldroadValue row={row} />
           </dd>
-          <dd className="mt-2.5 text-ink-soft text-sm">
+          <dd className="mt-2.5 text-sm text-ink-soft">
             <span className={`block ${side}`}>Substack</span>
             {row.substack}
           </dd>
@@ -262,13 +262,13 @@ export function LeavingSubstack() {
           <RegMark className="absolute top-6 right-6 size-5 text-ink opacity-75" />
           <div className="mx-auto w-full max-w-5xl px-6 pt-14 pb-16 md:px-16 md:pt-20 md:pb-20">
             <Kicker>Coming from Substack?</Kicker>
-            <h1 className="mt-5 max-w-[18ch] text-balance font-black font-display text-4xl text-ink leading-[1.05] tracking-tight md:text-6xl">
+            <h1 className="mt-5 max-w-[18ch] font-display text-4xl leading-[1.05] font-black tracking-tight text-balance text-ink md:text-6xl">
               Bring your archive.
               <br />
               Our cut is{" "}
               <span className="spot-highlight">0%, for{"\u00a0"}good</span>.
             </h1>
-            <p className="mt-6 max-w-[54ch] text-pretty font-body text-ink-soft text-lg italic md:text-xl">
+            <p className="mt-6 max-w-[54ch] font-body text-lg text-pretty text-ink-soft italic md:text-xl">
               Goldroad is writer-owned publishing on the open network: your
               writing on a page you own, and your archive here today. Paid
               subscriptions are still being designed, around a payment processor
@@ -280,7 +280,7 @@ export function LeavingSubstack() {
                 the fact it is rather than as an accusation: the argument is
                 stronger when the reader draws the conclusion, and overstating
                 a competitor is how a comparison page loses its credibility. */}
-            <p className="mt-5 max-w-[54ch] text-pretty font-body text-ink-soft text-lg md:text-xl">
+            <p className="mt-5 max-w-[54ch] font-body text-lg text-pretty text-ink-soft md:text-xl">
               In June 2026 Substack started selling sponsorships into writers'
               newsletters. We won't, however big this gets. What your readers
               get from us is your writing, and nothing else in the envelope.
@@ -289,7 +289,7 @@ export function LeavingSubstack() {
               <CtaLink href="/#join">Join the founding writers</CtaLink>
               <QuietLink href="/#how">See how Goldroad works</QuietLink>
             </div>
-            <p className="mt-8 max-w-[56ch] border-rule border-t pt-4 font-display text-ink-soft text-sm leading-normal">
+            <p className="mt-8 max-w-[56ch] border-t border-rule pt-4 font-display text-sm leading-normal text-ink-soft">
               Open and early · your Substack stays yours until you say otherwise
               · export anytime.
             </p>
@@ -299,15 +299,15 @@ export function LeavingSubstack() {
         {/* The honest comparison */}
         <MarketingSection divider>
           <Kicker>The honest comparison</Kicker>
-          <h2 className="mt-4 max-w-[24ch] text-balance font-black font-display text-3xl text-ink leading-tight tracking-tight md:text-4xl">
+          <h2 className="mt-4 max-w-[24ch] font-display text-3xl leading-tight font-black tracking-tight text-balance text-ink md:text-4xl">
             Goldroad and Substack, line by line.
           </h2>
-          <p className="mt-4 max-w-[58ch] text-pretty text-ink-soft text-lg leading-relaxed">
+          <p className="mt-4 max-w-[58ch] text-lg leading-relaxed text-pretty text-ink-soft">
             Some of this is built and working today. Some of it isn't yet, and
             those rows say so — they're the ones worth reading closely.
           </p>
           <Comparison />
-          <p className="mt-8 max-w-[58ch] border-rule border-t pt-4 font-display text-ink-soft text-sm leading-normal">
+          <p className="mt-8 max-w-[58ch] border-t border-rule pt-4 font-display text-sm leading-normal text-ink-soft">
             Every row above is either something you can test today or something
             marked as not built yet — and the code behind both is public.{" "}
             <a
@@ -318,8 +318,8 @@ export function LeavingSubstack() {
             </a>
             .
           </p>
-          <figure className="mt-12 border-ink border-l-2 pl-5">
-            <p className="font-black font-display text-5xl text-ink md:text-6xl">
+          <figure className="mt-12 border-l-2 border-ink pl-5">
+            <p className="font-display text-5xl font-black text-ink md:text-6xl">
               0%
             </p>
             {/* The only place on the site carrying arithmetic, so it is the
@@ -335,7 +335,7 @@ export function LeavingSubstack() {
                 it made an eight-line block of 14px text and the correction
                 landed in the middle of it, which is where fine print goes to be
                 skipped. Its own beat reads as candour instead. */}
-            <figcaption className="mt-3 max-w-[52ch] text-ink-soft text-sm leading-relaxed">
+            <figcaption className="mt-3 max-w-[52ch] text-sm leading-relaxed text-ink-soft">
               <span className="block">
                 of what your readers pay you — a permanent policy, not a
                 promotion. Substack takes 10%. On a publication earning $50,000
@@ -361,10 +361,10 @@ export function LeavingSubstack() {
             no cards. */}
         <MarketingSection divider>
           <Kicker>Here today</Kicker>
-          <h2 className="mt-4 max-w-[24ch] text-balance font-black font-display text-3xl text-ink leading-tight tracking-tight md:text-4xl">
+          <h2 className="mt-4 max-w-[24ch] font-display text-3xl leading-tight font-black tracking-tight text-balance text-ink md:text-4xl">
             What's already true, and checkable.
           </h2>
-          <p className="mt-4 max-w-[58ch] text-pretty text-ink-soft text-lg leading-relaxed">
+          <p className="mt-4 max-w-[58ch] text-lg leading-relaxed text-pretty text-ink-soft">
             None of this is on a roadmap. It works now, and every line names how
             — so you can test it before you trust it.
           </p>
@@ -401,17 +401,17 @@ export function LeavingSubstack() {
                   "A theme stored in your own account, so other apps on the network render your page in it too.",
               },
             ].map(({ term, detail }) => (
-              <div className="border-ink border-t-2 pt-4" key={term}>
-                <dt className="font-bold font-display text-ink text-sm uppercase tracking-[0.08em]">
+              <div className="border-t-2 border-ink pt-4" key={term}>
+                <dt className="font-display text-sm font-bold tracking-[0.08em] text-ink uppercase">
                   {term}
                 </dt>
-                <dd className="mt-2.5 text-ink-soft text-sm leading-relaxed">
+                <dd className="mt-2.5 text-sm leading-relaxed text-ink-soft">
                   {detail}
                 </dd>
               </div>
             ))}
           </dl>
-          <p className="mt-10 max-w-[56ch] border-rule border-t pt-4 font-display text-ink-soft text-sm leading-normal">
+          <p className="mt-10 max-w-[56ch] border-t border-rule pt-4 font-display text-sm leading-normal text-ink-soft">
             Bring the archive today. Bring the list when the machinery's ready.
           </p>
         </MarketingSection>
@@ -419,16 +419,16 @@ export function LeavingSubstack() {
         {/* Mirror mode — shipped: import + provenance back to the original. */}
         <MarketingSection divider>
           <Kicker>At your own pace</Kicker>
-          <h2 className="mt-4 max-w-[22ch] text-balance font-black font-display text-3xl text-ink leading-tight tracking-tight md:text-4xl">
+          <h2 className="mt-4 max-w-[22ch] font-display text-3xl leading-tight font-black tracking-tight text-balance text-ink md:text-4xl">
             Keep publishing on Substack, too.
           </h2>
-          <p className="mt-4 max-w-[60ch] text-pretty text-ink-soft text-lg leading-relaxed">
+          <p className="mt-4 max-w-[60ch] text-lg leading-relaxed text-pretty text-ink-soft">
             Import brings your archive here as drafts while the originals stay
             exactly where they are. Readers keep landing on your Substack until
             you decide otherwise, so you can move at whatever pace suits you —
             one post, or all of them.
           </p>
-          <p className="mt-4 max-w-[60ch] text-pretty text-ink-soft text-lg leading-relaxed">
+          <p className="mt-4 max-w-[60ch] text-lg leading-relaxed text-pretty text-ink-soft">
             Your images come across too — copied out of Substack's servers into
             an account you own — so closing your Substack later costs your
             archive nothing. The export file itself is read on your machine; it
@@ -442,15 +442,15 @@ export function LeavingSubstack() {
             doesn't say they come along. */}
         <MarketingSection divider>
           <Kicker>On the roadmap</Kicker>
-          <h2 className="mt-4 max-w-[24ch] text-balance font-black font-display text-3xl text-ink leading-tight tracking-tight md:text-4xl">
+          <h2 className="mt-4 max-w-[24ch] font-display text-3xl leading-tight font-black tracking-tight text-balance text-ink md:text-4xl">
             Paid subscriptions, on a processor you hold.
           </h2>
-          <p className="mt-4 max-w-[60ch] text-pretty text-ink-soft text-lg leading-relaxed">
+          <p className="mt-4 max-w-[60ch] text-lg leading-relaxed text-pretty text-ink-soft">
             Paid subscriptions aren't built yet. They're being designed so that
             you are the merchant: readers pay you through a payment processor
             account in your name, and Goldroad takes 0% of it.
           </p>
-          <p className="mt-8 max-w-[56ch] border-rule border-t pt-4 font-display text-ink-soft text-sm leading-normal">
+          <p className="mt-8 max-w-[56ch] border-t border-rule pt-4 font-display text-sm leading-normal text-ink-soft">
             Paid subscriptions are still being designed. This is the direction,
             not today's product.
           </p>
@@ -459,10 +459,10 @@ export function LeavingSubstack() {
         {/* CTA — founding-writers list on the homepage; honest about timing. */}
         <MarketingSection divider>
           <Kicker>Founding writers</Kicker>
-          <h2 className="mt-4 max-w-[26ch] text-balance font-black font-display text-3xl text-ink leading-tight tracking-tight md:text-4xl">
+          <h2 className="mt-4 max-w-[26ch] font-display text-3xl leading-tight font-black tracking-tight text-balance text-ink md:text-4xl">
             Move when the machinery's ready — not before.
           </h2>
-          <p className="mt-4 max-w-[58ch] text-pretty text-ink-soft text-lg leading-relaxed">
+          <p className="mt-4 max-w-[58ch] text-lg leading-relaxed text-pretty text-ink-soft">
             Substack import is live. Your archive can come across today.
             Newsletters are still being built and paid subscriptions designed,
             and we won't ask anyone whose income depends on them to switch until

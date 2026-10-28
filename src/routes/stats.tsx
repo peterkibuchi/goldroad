@@ -233,20 +233,20 @@ function useStatsMetrics(range: StatsRange): MetricsState {
 function FirstRun() {
   return (
     <div className="mt-10 border-2 border-ink p-6 sm:p-8">
-      <h2 className="font-black font-display text-ink text-xl tracking-tight">
+      <h2 className="font-display text-xl font-black tracking-tight text-ink">
         Nothing to measure yet.
       </h2>
-      <p className="mt-3 max-w-[52ch] text-ink-soft leading-relaxed">
+      <p className="mt-3 max-w-[52ch] leading-relaxed text-ink-soft">
         Publish your first post and this page fills in: how many people read it,
         where they came from, and the conversation it starts on Bluesky.
       </p>
       <a
-        className="mt-6 inline-flex min-h-11 items-center bg-ink px-6 font-bold font-display text-base text-paper transition-colors hover:bg-spot"
+        className="mt-6 inline-flex min-h-11 items-center bg-ink px-6 font-display text-base font-bold text-paper transition-colors hover:bg-spot"
         href="/write"
       >
         Write your first post
       </a>
-      <p className="mt-4 font-display text-ink-soft text-sm">
+      <p className="mt-4 font-display text-sm text-ink-soft">
         Coming from Substack or another platform?{" "}
         <a className={LINK_CLASS} href="/import">
           Import your writing
@@ -329,7 +329,7 @@ function StatsPage() {
       >
         <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4">
           <div>
-            <h1 className="font-black font-display text-3xl text-ink tracking-tight">
+            <h1 className="font-display text-3xl font-black tracking-tight text-ink">
               Stats
             </h1>
             <p className="mt-1 text-ink-soft">
@@ -411,7 +411,7 @@ function StatsPage() {
               />
             )}
 
-            <p className="mt-10 border-rule border-t pt-4 font-display text-ink-soft text-xs leading-relaxed">
+            <p className="mt-10 border-t border-rule pt-4 font-display text-xs leading-relaxed text-ink-soft">
               {envelope
                 ? `Updated ${new Date(envelope.generatedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}. `
                 : ""}

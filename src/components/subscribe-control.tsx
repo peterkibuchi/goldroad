@@ -157,7 +157,7 @@ export function SubscribeControl({
         // Ink, no box, no spot: a failed press is a fact about our plumbing, not
         // an alarm, and the page's accent moment isn't ours to spend.
         <span
-          className="font-display text-ink-soft text-xs leading-relaxed"
+          className="font-display text-xs leading-relaxed text-ink-soft"
           role="alert"
         >
           {note === "failed" ? (

@@ -299,24 +299,24 @@ function PostRow({
   const date = formatDate(post.publishedAt ?? undefined);
   const readingLabel = formatReadingTime(post.readingMinutes);
   return (
-    <li className="border-rule border-b" key={post.rkey}>
+    <li className="border-b border-rule" key={post.rkey}>
       <a
         className="group flex items-start gap-6 py-8"
         href={`/@${encodeURIComponent(ident)}/${encodeURIComponent(post.rkey)}`}
       >
         <span className="min-w-0 flex-1">
           {/* Display face, matching the post page this row leads to. */}
-          <h2 className="text-balance font-bold font-display text-[1.375rem] text-ink leading-snug tracking-[-0.01em] group-hover:underline group-hover:underline-offset-4">
+          <h2 className="font-display text-[1.375rem] leading-snug font-bold tracking-[-0.01em] text-balance text-ink group-hover:underline group-hover:underline-offset-4">
             {post.title}
           </h2>
           {post.description ? (
-            <p className="mt-2 line-clamp-2 font-display text-[0.9375rem] text-ink-soft leading-[1.55]">
+            <p className="mt-2 line-clamp-2 font-display text-[0.9375rem] leading-[1.55] text-ink-soft">
               {post.description}
             </p>
           ) : null}
           {(date || readingLabel) && (
             // Quiet caps: secondary to the title at a glance.
-            <p className="mt-3 font-display text-ink-soft text-xs uppercase tracking-wide">
+            <p className="mt-3 font-display text-xs tracking-wide text-ink-soft uppercase">
               {date && (
                 <time dateTime={post.publishedAt ?? undefined}>{date}</time>
               )}
@@ -384,7 +384,7 @@ export function PublicationView({
       >
         {/* The masthead: the writer's name is the largest text on the page —
             this is their publication, not a Goldroad page. */}
-        <header className="mb-14 border-ink border-b pb-10">
+        <header className="mb-14 border-b border-ink pb-10">
           <div className="flex items-start gap-6">
             {iconPath && (
               <img
@@ -403,17 +403,17 @@ export function PublicationView({
                   came down to 32px, and a masthead shouting over the headlines
                   beneath it inverts what the page is for). Negative tracking
                   for the same reason the post title takes it. */}
-              <h1 className="wrap-anywhere text-balance font-bold font-display text-[2.25rem] text-ink leading-[1.1] tracking-[-0.02em]">
+              <h1 className="font-display text-[2.25rem] leading-[1.1] font-bold tracking-[-0.02em] text-balance wrap-anywhere text-ink">
                 {publication?.name ?? ident}
               </h1>
-              <p className="mt-3 font-display text-ink-soft text-sm tracking-wide">
+              <p className="mt-3 font-display text-sm tracking-wide text-ink-soft">
                 @{ident}
               </p>
               {publication?.description ? (
                 // Roman, not italic. Italic had become a default soft voice
                 // across the product rather than an emphasis, which costs it
                 // all meaning — the same correction the post dek got.
-                <p className="mt-5 font-display text-[0.9375rem] text-ink-soft leading-[1.55]">
+                <p className="mt-5 font-display text-[0.9375rem] leading-[1.55] text-ink-soft">
                   {publication.description}
                 </p>
               ) : null}
@@ -446,9 +446,9 @@ export function PublicationView({
           // or reply-count signal yet to back Top/Discussions) — the row is
           // laid out so those can join later, but a tab that doesn't work
           // yet is never rendered.
-          <div className="mb-8 flex flex-wrap items-center justify-between gap-4 border-rule border-b pb-3">
+          <div className="mb-8 flex flex-wrap items-center justify-between gap-4 border-b border-rule pb-3">
             <nav aria-label="Sort posts">
-              <span className="font-display font-semibold text-ink text-sm uppercase tracking-wide">
+              <span className="font-display text-sm font-semibold tracking-wide text-ink uppercase">
                 Latest
               </span>
             </nav>
@@ -472,7 +472,7 @@ export function PublicationView({
         )}
         {posts.length > 0 ? (
           isSearching && filtered.length === 0 ? (
-            <p className="mt-8 text-ink-soft text-lg italic leading-relaxed">
+            <p className="mt-8 text-lg leading-relaxed text-ink-soft italic">
               No posts match "{query}".
             </p>
           ) : (
@@ -481,7 +481,7 @@ export function PublicationView({
                 {group.label && (
                   <p
                     className={cn(
-                      "font-display text-ink-soft text-xs uppercase tracking-wide",
+                      "font-display text-xs tracking-wide text-ink-soft uppercase",
                       gi === 0 ? "mb-2" : "mt-10 mb-2",
                     )}
                   >
@@ -508,14 +508,14 @@ export function PublicationView({
               : `@${ident}'s posts couldn't be loaded right now — their data server didn't answer with a list we could read. Try again in a moment.`}
           </Notice>
         ) : (
-          <p className="mt-8 text-ink-soft text-lg italic leading-relaxed">
+          <p className="mt-8 text-lg leading-relaxed text-ink-soft italic">
             Nothing published yet — when @{ident} starts writing, posts will
             appear here.
           </p>
         )}
         {nextCursor && (
           // Calm register: a quiet text link, no buttons, no page numbers.
-          <p className="mt-12 border-rule border-t pt-6">
+          <p className="mt-12 border-t border-rule pt-6">
             {/* A plain anchor, deliberately: the page turn must be a SERVER
                 navigation. `?cursor=` responses are what the edge read-cache
                 keys on (~/lib/read-cache), and this route's loader reads a
@@ -525,7 +525,7 @@ export function PublicationView({
                 an opaque redirect). Keep the cache and the loader on the
                 server. */}
             <a
-              className="font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
+              className="font-display text-sm text-ink-soft underline underline-offset-2 transition-colors hover:text-ink"
               href={`/@${encodeURIComponent(ident)}?cursor=${encodeURIComponent(nextCursor)}`}
             >
               Older posts →
@@ -534,8 +534,8 @@ export function PublicationView({
         )}
         {/* Same close as the article page: the writer's items lead, Goldroad
             gets one printer's-mark line last (two-surface rule). */}
-        <footer className="mt-16 border-rule border-t pt-6">
-          <p className="font-display text-ink-soft/80 text-xs">
+        <footer className="mt-16 border-t border-rule pt-6">
+          <p className="font-display text-xs text-ink-soft/80">
             Published by its author on the open network ·{" "}
             <a
               className="transition-colors hover:text-ink"
@@ -544,7 +544,7 @@ export function PublicationView({
               RSS
             </a>
           </p>
-          <p className="mt-1 font-display text-ink-soft/80 text-xs">
+          <p className="mt-1 font-display text-xs text-ink-soft/80">
             <a
               className="transition-colors hover:text-ink"
               href={`${CANONICAL_ORIGIN}/open`}
@@ -564,17 +564,17 @@ function PublicationNotFound({ data }: { data?: unknown } = {}) {
   return (
     <div className="min-h-screen bg-paper font-body text-ink">
       <main className="mx-auto max-w-[42rem] px-6 py-24">
-        <p className="font-display font-semibold text-ink-soft text-sm">
+        <p className="font-display text-sm font-semibold text-ink-soft">
           Nothing at this address
         </p>
-        <h1 className="mt-3 text-balance font-semibold text-3xl leading-[1.15]">
+        <h1 className="mt-3 text-3xl leading-[1.15] font-semibold text-balance">
           No publication answers to this handle.
         </h1>
-        <p className="mt-4 max-w-[52ch] text-ink-soft text-lg leading-relaxed">
+        <p className="mt-4 max-w-[52ch] text-lg leading-relaxed text-ink-soft">
           Check the spelling — or the account may have moved to a new handle,
           which is theirs to do.
         </p>
-        <p className="mt-8 font-display text-ink-soft text-sm">
+        <p className="mt-8 font-display text-sm text-ink-soft">
           <a
             className="underline underline-offset-2 transition-colors hover:text-ink"
             href="/"

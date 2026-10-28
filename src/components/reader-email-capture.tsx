@@ -143,7 +143,7 @@ export function ReaderEmailCapture({
     <div className={cn("max-w-[46ch]", className)}>
       {state === "done" ? (
         <>
-          <p className="font-display font-semibold text-ink text-sm">
+          <p className="font-display text-sm font-semibold text-ink">
             {name} has your address.
           </p>
           <p className={cn(FINE_PRINT, "mt-2")}>
@@ -164,7 +164,7 @@ export function ReaderEmailCapture({
           {/* The label IS the heading — one line doing both jobs, rather than a
               heading with a redundant "Email address" beneath it. */}
           <label
-            className="basis-full font-display font-semibold text-ink text-sm"
+            className="basis-full font-display text-sm font-semibold text-ink"
             htmlFor={emailId}
           >
             New posts by email
@@ -219,7 +219,7 @@ export function ReaderEmailCapture({
             // Ink, not spot: a submit that didn't go through is a fact about our
             // plumbing, and the page's accent moment isn't ours to spend.
             <p
-              className="basis-full font-display font-semibold text-[0.8125rem] text-ink"
+              className="basis-full font-display text-[0.8125rem] font-semibold text-ink"
               role="alert"
             >
               That didn't go through — check the address and try again.

@@ -24,7 +24,7 @@ export const MAIN_CONTENT_ID = "main-content";
 export function SkipToContent() {
   return (
     <a
-      className="sr-only font-bold font-display text-sm focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:inline-flex focus:min-h-11 focus:items-center focus:border-2 focus:border-ink focus:bg-paper focus:px-4 focus:text-ink"
+      className="sr-only font-display text-sm font-bold focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:inline-flex focus:min-h-11 focus:items-center focus:border-2 focus:border-ink focus:bg-paper focus:px-4 focus:text-ink"
       href={`#${MAIN_CONTENT_ID}`}
     >
       Skip to content

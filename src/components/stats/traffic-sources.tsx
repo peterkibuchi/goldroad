@@ -48,9 +48,9 @@ function Row({
 }) {
   const percent = total > 0 ? Math.round((views / total) * 100) : 0;
   return (
-    <div className="border-rule border-b py-2.5">
+    <div className="border-b border-rule py-2.5">
       <div className="flex items-center gap-3 sm:gap-4">
-        <span className="w-32 shrink-0 font-display text-ink text-sm sm:w-44">
+        <span className="w-32 shrink-0 font-display text-sm text-ink sm:w-44">
           {label}
         </span>
         {/* Ink at 82%: present enough to compare lengths, quiet enough not to
@@ -61,7 +61,7 @@ function Row({
             style={{ width: `${Math.max(percent, 1)}%` }}
           />
         </span>
-        <span className="ml-auto shrink-0 font-display text-ink text-sm tabular-nums sm:ml-0">
+        <span className="ml-auto shrink-0 font-display text-sm text-ink tabular-nums sm:ml-0">
           {percent}%
           <span className="ml-2 text-ink-soft">{formatCount(views)}</span>
         </span>
@@ -76,7 +76,7 @@ function SourcesSkeleton() {
     <LoadingRegion label="Loading traffic sources…">
       <div className="mt-2">
         {[0, 1, 2, 3].map((index) => (
-          <div className="border-rule border-b py-2.5" key={index}>
+          <div className="border-b border-rule py-2.5" key={index}>
             <SkeletonBar className="h-4 w-full" />
           </div>
         ))}
@@ -134,13 +134,13 @@ export function TrafficSources({
                   {row.bucket === "other" &&
                     (sources.topOtherDomains ?? []).length > 0 && (
                       <details className="mt-1.5">
-                        <summary className="inline-flex min-h-9 cursor-pointer items-center font-display text-ink-soft text-xs underline underline-offset-2 transition-colors hover:text-ink">
+                        <summary className="inline-flex min-h-9 cursor-pointer items-center font-display text-xs text-ink-soft underline underline-offset-2 transition-colors hover:text-ink">
                           Which sites
                         </summary>
                         <ul className="mt-1 space-y-1">
                           {(sources.topOtherDomains ?? []).map((domain) => (
                             <li
-                              className="flex items-baseline justify-between gap-4 font-display text-ink-soft text-xs"
+                              className="flex items-baseline justify-between gap-4 font-display text-xs text-ink-soft"
                               key={domain.domain}
                             >
                               <span className="min-w-0 truncate">

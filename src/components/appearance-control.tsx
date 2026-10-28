@@ -101,7 +101,7 @@ export function AppearanceControl() {
           );
         })}
       </fieldset>
-      <p className="mt-2 font-display text-ink-soft text-sm">
+      <p className="mt-2 font-display text-sm text-ink-soft">
         Applies to your writing surfaces on this device. Your publication's own
         pages keep the appearance you give them.
       </p>

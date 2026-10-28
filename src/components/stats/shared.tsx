@@ -87,9 +87,9 @@ export function SectionHeading({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2 border-rule border-b pb-2">
+    <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2 border-b border-rule pb-2">
       <h2
-        className="font-display font-semibold text-ink-soft text-xs uppercase tracking-[0.08em]"
+        className="font-display text-xs font-semibold tracking-[0.08em] text-ink-soft uppercase"
         id={id}
       >
         {children}
@@ -112,7 +112,7 @@ export function QuietLine({
   return (
     <p
       className={cn(
-        "font-display text-ink-soft text-xs leading-relaxed",
+        "font-display text-xs leading-relaxed text-ink-soft",
         className,
       )}
     >
