@@ -28,10 +28,11 @@ const privacy = (
   </ExternalLink>
 );
 
-/** Exported for tests (account-rights-copy.test.tsx), which pin this page's
- * promises against what the export and deletion paths actually reach — not a
- * route. */
-export function PrivacyPage() {
+/** Rendered by tests (account-rights-copy.test.tsx) through the route's
+ * component, which pin this page's promises against what the export and
+ * deletion paths actually reach. Not exported: an exported page can't be
+ * code-split out of the main bundle. */
+function PrivacyPage() {
   return (
     <LegalLayout
       kicker="Goldroad · Privacy"

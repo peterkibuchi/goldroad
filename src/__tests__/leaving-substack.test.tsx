@@ -1,7 +1,10 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { LeavingSubstack } from "#/routes/leaving-substack";
+import { Route } from "#/routes/leaving-substack";
+import { routeComponent } from "./support/route-component";
+
+const LeavingSubstack = routeComponent(Route);
 
 // Tests live outside `src/routes/` so the file-based router
 // does not pick them up as route files.

@@ -3,9 +3,12 @@ import { createElement, type ReactElement } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { Landing } from "#/routes/index";
-import { LeavingSubstack } from "#/routes/leaving-substack";
+import { Route as LeavingSubstackRoute } from "#/routes/leaving-substack";
+import { routeComponent } from "./support/route-component";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
+const LeavingSubstack = routeComponent(LeavingSubstackRoute);
 
 // No vitest globals in this repo — RTL auto-cleanup doesn't run; do it by hand.
 afterEach(cleanup);

@@ -1,9 +1,12 @@
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { PrivacyPage } from "../routes/privacy";
+import { Route as PrivacyRoute } from "../routes/privacy";
+import { routeComponent } from "./support/route-component";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
+const PrivacyPage = routeComponent(PrivacyRoute);
 
 /**
  * The privacy policy is a promise about code. These tests pin the two halves

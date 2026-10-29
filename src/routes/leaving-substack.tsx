@@ -247,7 +247,7 @@ function Comparison() {
   );
 }
 
-export function LeavingSubstack() {
+function LeavingSubstack() {
   return (
     <div className="goldroad-surface flex min-h-screen flex-col bg-paper font-body text-ink">
       <SiteHeader current="/leaving-substack" variant="marketing" />

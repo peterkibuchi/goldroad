@@ -73,7 +73,7 @@ const PROSE =
 const INLINE_LINK =
   "underline underline-offset-2 transition-colors hover:text-ink";
 
-export function OpenPage() {
+function OpenPage() {
   return (
     <div className="goldroad-surface flex min-h-screen flex-col bg-paper font-body text-ink">
       <SiteHeader variant="marketing" />
