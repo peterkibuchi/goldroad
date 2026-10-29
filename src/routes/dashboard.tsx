@@ -526,15 +526,17 @@ type ManagerRow = DashboardRow & {
  *
  * Declared once at module scope rather than per render — the features object is
  * what the table's types are derived from, so it has to be a stable constant.
+ * The pure marks let the route's code splitter leave it, and the table library
+ * under it, out of the main bundle that every page loads.
  */
-const managerTableFeatures = tableFeatures({
+const managerTableFeatures = /* @__PURE__ */ tableFeatures({
   // Global filtering is layered on column filtering, and the filtered row model
   // is where the search actually gets applied.
   columnFilteringFeature,
   globalFilteringFeature,
   rowSortingFeature,
-  filteredRowModel: createFilteredRowModel(),
-  sortedRowModel: createSortedRowModel(),
+  filteredRowModel: /* @__PURE__ */ createFilteredRowModel(),
+  sortedRowModel: /* @__PURE__ */ createSortedRowModel(),
 });
 
 type ManagerTableFeatures = typeof managerTableFeatures;
