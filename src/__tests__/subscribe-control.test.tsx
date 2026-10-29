@@ -28,9 +28,9 @@ vi.mock("@tanstack/react-router", async (importOriginal) => ({
   useLocation: () => ({ pathname: PATH }),
 }));
 
-import { DocumentArticle } from "#/components/document-article";
 import { SubscribeControl } from "#/components/subscribe-control";
 import { PublicationView } from "#/routes/@{$handle}.index";
+import { DocumentArticle } from "./support/document-article";
 
 afterEach(() => {
   cleanup();

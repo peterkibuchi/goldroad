@@ -8,10 +8,10 @@ vi.mock("@tanstack/react-router", async (importOriginal) => ({
   useLocation: () => ({ pathname: "/@writer.example/3lyk73wxnok2f" }),
 }));
 
-import { DocumentArticle } from "#/components/document-article";
 import { WriterSurface } from "#/components/writer-surface";
 import { type BasicTheme, parseTheme } from "#/lib/theme";
 import { PublicationView } from "#/routes/@{$handle}.index";
+import { DocumentArticle } from "./support/document-article";
 
 // No vitest globals in this repo — RTL auto-cleanup doesn't run; do it by hand.
 afterEach(cleanup);
