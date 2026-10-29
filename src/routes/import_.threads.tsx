@@ -428,7 +428,7 @@ function ThreadImportPage() {
         id={MAIN_CONTENT_ID}
         tabIndex={-1}
       >
-        <h1 className="font-black font-display text-3xl text-ink tracking-tight">
+        <h1 className="font-display text-3xl font-black tracking-tight text-ink">
           Turn your threads into posts
         </h1>
         <p className="mt-2 text-ink-soft">
@@ -437,7 +437,7 @@ function ThreadImportPage() {
           exactly where they are.
         </p>
         <noscript>
-          <p className="mt-6 border border-ink px-4 py-3 font-display text-ink text-sm">
+          <p className="mt-6 border border-ink px-4 py-3 font-display text-sm text-ink">
             Importing converts your threads in the browser, so it needs
             JavaScript.
           </p>
@@ -484,7 +484,7 @@ export function FindingState({
           {FIND_ERRORS[error] ?? "Something went wrong — try again."}
         </Notice>
         <button
-          className="mt-6 min-h-11 cursor-pointer bg-ink px-6 py-2.5 font-bold font-display text-base text-paper transition-colors hover:bg-spot"
+          className="mt-6 min-h-11 cursor-pointer bg-ink px-6 py-2.5 font-display text-base font-bold text-paper transition-colors hover:bg-spot"
           onClick={onRetry}
           type="button"
         >
@@ -510,7 +510,7 @@ export function FindingState({
 
 function Badge({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-block border border-ink-soft px-1.5 py-0.5 font-display font-semibold text-[0.7rem] text-ink-soft uppercase tracking-[0.08em]">
+    <span className="inline-block border border-ink-soft px-1.5 py-0.5 font-display text-[0.7rem] font-semibold tracking-[0.08em] text-ink-soft uppercase">
       {children}
     </span>
   );
@@ -551,22 +551,22 @@ export function ThreadPicker({
     return (
       <section aria-labelledby="threads-empty" className="mt-8">
         <h2
-          className="border-rule border-b pb-2 font-display font-semibold text-ink-soft text-xs uppercase tracking-[0.08em]"
+          className="border-b border-rule pb-2 font-display text-xs font-semibold tracking-[0.08em] text-ink-soft uppercase"
           id="threads-empty"
         >
           No threads found
         </h2>
-        <p className="mt-4 text-ink-soft leading-relaxed">
+        <p className="mt-4 leading-relaxed text-ink-soft">
           A thread means one of your posts with at least one of your own replies
           chained onto it — that's the shape that becomes a piece worth keeping.
           Single posts, and replies to other people, stay where they are.
         </p>
-        <p className="mt-3 font-display text-ink-soft text-sm">
+        <p className="mt-3 font-display text-sm text-ink-soft">
           Bluesky shows a recent window of your posts rather than your whole
           history, so a thread from years back may not appear here.
         </p>
         <a
-          className="mt-6 inline-flex min-h-11 items-center bg-ink px-6 font-bold font-display text-base text-paper transition-colors hover:bg-spot"
+          className="mt-6 inline-flex min-h-11 items-center bg-ink px-6 font-display text-base font-bold text-paper transition-colors hover:bg-spot"
           href="/write"
         >
           Write something new
@@ -578,13 +578,13 @@ export function ThreadPicker({
   return (
     <section aria-labelledby="threads-heading" className="mt-8">
       <h2
-        className="border-rule border-b pb-2 font-display font-semibold text-ink-soft text-xs uppercase tracking-[0.08em]"
+        className="border-b border-rule pb-2 font-display text-xs font-semibold tracking-[0.08em] text-ink-soft uppercase"
         id="threads-heading"
       >
         Found {data.threads.length}{" "}
         {data.threads.length === 1 ? "thread" : "threads"}
       </h2>
-      <p className="mt-2 font-display text-ink-soft text-sm">
+      <p className="mt-2 font-display text-sm text-ink-soft">
         {data.truncated
           ? "Bluesky shows a recent window of your posts, not your whole history — there may be older threads than these."
           : "That's every thread in the window Bluesky shows of your posts."}
@@ -593,7 +593,7 @@ export function ThreadPicker({
           an import from someone else's publication, a thread import keeps the
           canonical here. Said before the import, because it is the reason this
           is worth doing rather than screenshotting. */}
-      <p className="mt-2 font-display text-ink-soft text-sm">
+      <p className="mt-2 font-display text-sm text-ink-soft">
         Each draft keeps a line pointing back at the thread it came from, and
         these pages stay the original — the same words, in the shape they should
         have been in. Pictures come across with their descriptions, and once you
@@ -611,7 +611,7 @@ export function ThreadPicker({
         {data.threads.map((thread) => {
           const date = formatDate(thread.createdAt);
           return (
-            <li className="border-rule border-b py-3" key={thread.guidHash}>
+            <li className="border-b border-rule py-3" key={thread.guidHash}>
               <label className="flex cursor-pointer items-start gap-3">
                 <input
                   checked={selected.has(thread.guidHash)}
@@ -621,10 +621,10 @@ export function ThreadPicker({
                   type="checkbox"
                 />
                 <span className="min-w-0 flex-1">
-                  <span className="block font-semibold text-ink leading-snug">
+                  <span className="block leading-snug font-semibold text-ink">
                     {thread.title}
                   </span>
-                  <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 font-display text-ink-soft text-sm">
+                  <span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 font-display text-sm text-ink-soft">
                     <span>
                       {thread.postCount}{" "}
                       {thread.postCount === 1 ? "post" : "posts"}
@@ -642,7 +642,7 @@ export function ThreadPicker({
         {/* Ink, not spot: the rail's "New post" carries this surface family's
             one accent moment (docs/DESIGN.md). */}
         <button
-          className="min-h-11 cursor-pointer bg-ink px-6 py-2.5 font-bold font-display text-base text-paper transition-colors hover:bg-spot disabled:cursor-default disabled:opacity-40"
+          className="min-h-11 cursor-pointer bg-ink px-6 py-2.5 font-display text-base font-bold text-paper transition-colors hover:bg-spot disabled:cursor-default disabled:opacity-40"
           disabled={count === 0}
           onClick={onImport}
           type="button"
@@ -651,7 +651,7 @@ export function ThreadPicker({
         </button>
         {available.length > 1 && (
           <button
-            className="min-h-9 cursor-pointer font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
+            className="min-h-9 cursor-pointer font-display text-sm text-ink-soft underline underline-offset-2 transition-colors hover:text-ink"
             onClick={onToggleAll}
             type="button"
           >
@@ -659,13 +659,13 @@ export function ThreadPicker({
           </button>
         )}
         <a
-          className="min-h-9 font-display text-ink-soft text-sm underline underline-offset-2 transition-colors hover:text-ink"
+          className="min-h-9 font-display text-sm text-ink-soft underline underline-offset-2 transition-colors hover:text-ink"
           href="/import"
         >
           Import from another publication instead
         </a>
       </div>
-      <p className="mt-3 font-display text-ink-soft text-xs">
+      <p className="mt-3 font-display text-xs text-ink-soft">
         Quotes of other people's posts come across as a link, never as their
         words inside yours. A thread carrying video can't be brought over whole
         — the words arrive, the video doesn't.
@@ -694,7 +694,7 @@ export function ThreadProgress({
   return (
     <section aria-labelledby="thread-progress-heading" className="mt-8">
       <h2
-        className="border-rule border-b pb-2 font-display font-semibold text-ink-soft text-xs uppercase tracking-[0.08em]"
+        className="border-b border-rule pb-2 font-display text-xs font-semibold tracking-[0.08em] text-ink-soft uppercase"
         id="thread-progress-heading"
       >
         {done
@@ -706,10 +706,10 @@ export function ThreadProgress({
           const state = status[thread.guidHash] ?? { kind: "pending" };
           return (
             <li
-              className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-rule border-b py-3"
+              className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-rule py-3"
               key={thread.guidHash}
             >
-              <span className="min-w-0 flex-1 font-semibold text-ink leading-snug">
+              <span className="min-w-0 flex-1 leading-snug font-semibold text-ink">
                 {thread.title}
               </span>
               {state.kind === "pending" ||
@@ -723,7 +723,7 @@ export function ThreadProgress({
                   role="status"
                 />
               ) : (
-                <span className="font-display text-ink-soft text-sm">
+                <span className="font-display text-sm text-ink-soft">
                   {state.kind === "saved"
                     ? state.notes.length > 0
                       ? `Saved to drafts — ${state.notes.join("; ")}`
@@ -739,13 +739,13 @@ export function ThreadProgress({
       </ul>
       {done && (
         <div className="mt-6">
-          <p className="text-ink-soft leading-relaxed">
+          <p className="leading-relaxed text-ink-soft">
             {saved} {saved === 1 ? "draft" : "drafts"} saved
             {skipped > 0 ? `, ${skipped} skipped` : ""}. Your threads on Bluesky
             haven't changed — publish the ones you want, whenever you want.
           </p>
           <a
-            className="mt-4 inline-flex min-h-11 items-center bg-ink px-6 font-bold font-display text-base text-paper transition-colors hover:bg-spot"
+            className="mt-4 inline-flex min-h-11 items-center bg-ink px-6 font-display text-base font-bold text-paper transition-colors hover:bg-spot"
             href="/dashboard"
           >
             Review your drafts
