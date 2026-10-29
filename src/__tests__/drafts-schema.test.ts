@@ -1,8 +1,8 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 
+import { draftPayload } from "../lib/drafts-payload";
 import {
-  draftPayload,
   isDraftId,
   MAX_DRAFT_BODY_BYTES,
   MAX_DRAFTS_PER_USER,
