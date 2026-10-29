@@ -378,7 +378,9 @@ export function cancelSchedule(db: DrizzleD1, did: string, id: string) {
 }
 
 /** This writer's schedule for one draft whatever its status — the question
- * "is there one, and is a tick working on it right now?". */
+ * "is there one, and is a tick working on it right now?". A draft can hold
+ * failed rows beside its one pending row (see `upsertSchedule`), so the
+ * pending row comes first. A failed one would hide a claim in progress. */
 export function selectScheduleForDraft(
   db: DrizzleD1,
   did: string,
@@ -396,6 +398,7 @@ export function selectScheduleForDraft(
     .where(
       and(eq(scheduledPosts.did, did), eq(scheduledPosts.draftId, draftId)),
     )
+    .orderBy(sql`${scheduledPosts.status} = 'pending' desc`)
     .limit(1);
 }
 

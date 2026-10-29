@@ -403,6 +403,27 @@ describe("upsertSchedule against SQLite", () => {
   });
 });
 
+describe("selectScheduleForDraft against SQLite", () => {
+  it("answers with the pending row when a failed one sits beside it", async () => {
+    const realDb = drizzle(sqliteD1());
+    const draft = { did: DID, draftId: DRAFT_ID, dueAt: NOW, announce: false };
+    await upsertSchedule(realDb, { id: ROW_ID, ...draft });
+    await markFailed(realDb, ROW_ID, "refused", NOW);
+    await upsertSchedule(realDb, { id: "fresh-id", ...draft });
+    await claimDuePost(realDb, "fresh-id", NOW, "3kfreshrkey22");
+    // A tick holds the pending row, so the editor's publish must see it.
+    expect(await selectScheduleForDraft(realDb, DID, DRAFT_ID)).toEqual([
+      {
+        id: "fresh-id",
+        status: "pending",
+        dueAt: NOW,
+        claimedAt: NOW,
+        publishedRkey: "3kfreshrkey22",
+      },
+    ]);
+  });
+});
+
 describe("the announce choice against SQLite", () => {
   it("is stored with the schedule, read by the cron, and moved by a reschedule", async () => {
     const realDb = drizzle(sqliteD1());
