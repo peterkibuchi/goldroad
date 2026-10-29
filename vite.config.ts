@@ -33,6 +33,18 @@ const config = defineConfig({
     __BUILD_ID__: JSON.stringify(BUILD_ID),
   },
   resolve: { tsconfigPaths: true },
+  build: {
+    rolldownOptions: {
+      output: {
+        // Route chunks are named after their route files, and the default
+        // sanitizer keeps the `@` of `@{$handle}`. Cloudflare's asset server
+        // answers `/assets/@…` with a 307 to `/assets/%40…`, which cost every
+        // reader page a redirect per route chunk before it could hydrate. This
+        // is the default's character set, minus `@`.
+        sanitizeFileName: (name) => name.replace(/[^\w./-]/g, "_"),
+      },
+    },
+  },
   plugins: [
     devtools(),
     cloudflare({ viteEnvironment: { name: "ssr" } }),
