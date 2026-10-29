@@ -9,9 +9,9 @@ vi.mock("@tanstack/react-router", async (importOriginal) => ({
   useLocation: () => ({ pathname: "/@writer.example/3lyk73wxnok2f" }),
 }));
 
-import { DocumentArticle } from "#/components/document-article";
 import { ReaderEmailCapture } from "#/components/reader-email-capture";
 import { PublicationView } from "#/routes/@{$handle}.index";
+import { DocumentArticle } from "./support/document-article";
 
 /**
  * The reader email capture, on the two reading surfaces that carry it.

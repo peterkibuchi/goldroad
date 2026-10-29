@@ -9,8 +9,8 @@ vi.mock("@tanstack/react-router", async (importOriginal) => ({
 }));
 
 import { Conversation } from "#/components/conversation";
-import { DocumentArticle } from "#/components/document-article";
 import type { PostConversation, Reply } from "#/lib/comments";
+import { DocumentArticle } from "./support/document-article";
 
 // No vitest globals in this repo — RTL auto-cleanup doesn't run; do it by hand.
 afterEach(cleanup);

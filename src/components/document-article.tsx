@@ -43,7 +43,6 @@ import {
   isWorthShowing,
 } from "~/lib/engagement";
 import { buildArticleJsonLd, jsonLdScriptContent } from "~/lib/json-ld";
-import { markdownToHtml, renderBodies } from "~/lib/markdown-html";
 import { checkMirror, type MirrorInfo } from "~/lib/mirror";
 import { checkHidden, recordAtUri } from "~/lib/moderation";
 import { CANONICAL_ORIGIN } from "~/lib/origin";
@@ -246,11 +245,16 @@ export async function loadDocument(
     }).catch(() => null);
 
     // Rendered here, once, and shipped as HTML so hydration never re-parses
-    // it. Started last: without a cache it renders synchronously.
+    // it. Started last: without a cache it renders synchronously. Imported
+    // here rather than at the top: the loader is the only caller, and it runs
+    // in the browser only on client-side navigation, so a page's first load
+    // no longer downloads markdown-it.
     const body = documentBodyMarkdown(doc);
-    const bodyHtmlPromise = renderBodies([body], undefined, {
-      embeds: true,
-    }).then(([html]) => html);
+    const bodyHtmlPromise = import("~/lib/markdown-html")
+      .then(({ renderBodies }) =>
+        renderBodies([body], undefined, { embeds: true }),
+      )
+      .then(([html]) => html);
 
     const [pub, relatedPage, engagement, mirror, bodyHtml] = await Promise.all([
       pubPromise,
@@ -654,13 +658,11 @@ export function DocumentArticle({
   engagement?: DocumentEngagement | null;
   /** Streamed: the loader hands it over unawaited (see loadDocument). */
   conversation?: Promise<PostConversation | null>;
-  /** The body as rendered by the loader, with its reading time; derived from
-   * `doc` when absent. */
-  bodyHtml?: string;
+  /** The body as rendered by the loader (sanitized HTML), with its reading
+   * time; the reading time is derived from `doc` when absent. */
+  bodyHtml: string;
   readingMinutes?: number;
 }) {
-  const html =
-    bodyHtml ?? markdownToHtml(documentBodyMarkdown(doc), { embeds: true });
   const date = formatDate(doc.publishedAt);
   const updated = formatDate(doc.updatedAt);
   const publicationHref = `/@${encodeURIComponent(ident)}`;
@@ -831,8 +833,8 @@ export function DocumentArticle({
           {engagement && hasVisibleEngagement(engagement.counts) && (
             <EngagementRow engagement={engagement} />
           )}
-          {html !== "" ? (
-            <Prose html={html} />
+          {bodyHtml !== "" ? (
+            <Prose html={bodyHtml} />
           ) : (
             <p className="font-display text-sm text-ink-soft">
               This document keeps its full text elsewhere
