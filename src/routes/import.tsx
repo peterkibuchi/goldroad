@@ -1062,12 +1062,12 @@ export function SourcePicker({
           click. */}
       <section aria-labelledby="thread-import" className="mt-10">
         <h2
-          className="border-rule border-t pt-6 font-bold font-display text-ink text-sm"
+          className="border-t border-rule pt-6 font-display text-sm font-bold text-ink"
           id="thread-import"
         >
           Or bring your Bluesky threads
         </h2>
-        <p className="mt-1 font-display text-ink-soft text-sm">
+        <p className="mt-1 font-display text-sm text-ink-soft">
           Already writing long-form as threads? Turn them into posts — the
           words, the pictures and their descriptions, with a line back to the
           thread each one came from.{" "}
