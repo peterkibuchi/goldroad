@@ -119,7 +119,9 @@ const previous =
     .at(-1) ?? run("git", ["describe", "--tags", "--abbrev=0"]);
 
 const afterDeploy = afterDeployCommand();
-const sha = run("git", ["rev-parse", "HEAD"]);
+// `main`, not HEAD: that is what the push below deploys, and a dry run on a
+// feature branch should still preview the right commit.
+const sha = run("git", ["rev-parse", "main"]);
 
 if (dryRun) {
   console.log(`would cut ${tag} (previous: ${previous})`);
