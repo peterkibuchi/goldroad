@@ -21,11 +21,13 @@
  * WHAT THIS DOES, in order: pushes `main` to the `release` branch — which is
  * the production channel and therefore the actual deploy — then tags and writes
  * the GitHub release. Deploy before stamp, so a version never claims to be live
- * before it is.
+ * before it is. Last, it runs the optional after-deploy hook from this clone's
+ * git config (`release.afterDeploy`, see scripts/after-deploy.mjs).
  *
  * Usage: pnpm release            (deploys, then cuts the next counter for today)
- *        pnpm release --dry-run  (prints the tag it would cut, touches nothing)
+ *        pnpm release --dry-run  (prints the tag and hook it would use, touches nothing)
  */
+import { afterDeployCommand, runAfterDeploy } from "./after-deploy.mjs";
 import { execFileSync } from "node:child_process";
 
 const dryRun = process.argv.includes("--dry-run");
@@ -116,8 +118,16 @@ const previous =
     })
     .at(-1) ?? run("git", ["describe", "--tags", "--abbrev=0"]);
 
+const afterDeploy = afterDeployCommand();
+const sha = run("git", ["rev-parse", "HEAD"]);
+
 if (dryRun) {
   console.log(`would cut ${tag} (previous: ${previous})`);
+  console.log(
+    afterDeploy
+      ? `would run after deploy, with RELEASE_SHA=${sha}: ${afterDeploy}`
+      : "no after-deploy hook (git config release.afterDeploy is unset)",
+  );
   process.exit(0);
 }
 
@@ -152,3 +162,5 @@ const notes = run("gh", [
 ]);
 run("gh", ["release", "create", tag, "--title", tag, "--notes", notes]);
 console.log(tag);
+
+if (afterDeploy) runAfterDeploy(afterDeploy, sha);
