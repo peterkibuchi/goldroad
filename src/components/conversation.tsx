@@ -1,5 +1,6 @@
 import { ExternalLink } from "~/components/external-link";
 import type { PostConversation, Reply } from "~/lib/comments";
+import { utcShortDate } from "~/lib/utc-date";
 
 /**
  * The conversation under a post — replies to its Bluesky announcement, read
@@ -119,10 +120,5 @@ function ReplyRow({ reply }: { reply: Reply }) {
  * `formatDate`: a reply's timestamp is a footnote, not a byline.
  */
 function formatReplyDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-GB", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  });
+  return utcShortDate(new Date(iso));
 }
