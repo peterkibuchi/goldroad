@@ -5,6 +5,8 @@
  * imports — these run over data the route already fetched.
  */
 
+import { utcMonthYear } from "~/lib/utc-date";
+
 /** "January 2026" for a group header. Records with no publishedAt (drafts
  * imported without a date, or a legacy record predating the field) fall into
  * a shared "Undated" bucket at the end rather than being silently dropped —
@@ -12,11 +14,7 @@
 export function monthYearLabel(iso: string | null): string {
   const date = iso ? new Date(iso) : null;
   if (!date || Number.isNaN(date.getTime())) return "Undated";
-  return date.toLocaleDateString("en-US", {
-    month: "long",
-    year: "numeric",
-    timeZone: "UTC",
-  });
+  return utcMonthYear(date);
 }
 
 export type ArchiveGroup<T> = { label: string; posts: T[] };

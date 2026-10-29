@@ -56,6 +56,7 @@ import {
 } from "~/lib/related-posts";
 import { DEFAULT_CARD_META } from "~/lib/social-card";
 import { type BasicTheme, parseTheme } from "~/lib/theme";
+import { utcLongDate } from "~/lib/utc-date";
 
 /** A validated cover/icon image reference, serveable through /img/$did/$cid. */
 type CoverRef = { did: string; cid: string };
@@ -581,13 +582,7 @@ export function formatDate(iso: string | undefined): string | null {
   if (!iso) return null;
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return null;
-  // Fixed locale + UTC: identical output on server and client (no hydration drift).
-  return date.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    timeZone: "UTC",
-  });
+  return utcLongDate(date);
 }
 
 /** Display host for a provenance URL ("writer.substack.com"), or null. */
