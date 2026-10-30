@@ -33,6 +33,7 @@
  * /subscribed. With JavaScript the submit is intercepted and the outcome renders
  * in place, which is better but is not the floor.
  */
+import { clsx } from "clsx";
 import { useId, useState } from "react";
 
 import {
@@ -48,7 +49,6 @@ import {
 import { CANONICAL_ORIGIN, ownOrigins } from "~/lib/origin";
 import { capture } from "~/lib/posthog";
 import { isOwnPublicationUrl } from "~/lib/publish";
-import { cn } from "~/lib/utils";
 
 type FormState = "idle" | "sending" | "done" | "error";
 
@@ -80,6 +80,8 @@ export function ReaderEmailCapture({
   /** The handle (or DID) of the page, for the no-JS confirmation's link back. */
   ident: string;
   source: CaptureSource;
+  /** Joined with clsx, not cn(): pass only classes that can't conflict with
+   * the component's own (a margin). */
   className?: string;
 }) {
   const [state, setState] = useState<FormState>("idle");
@@ -140,13 +142,13 @@ export function ReaderEmailCapture({
     return null;
 
   return (
-    <div className={cn("max-w-[46ch]", className)}>
+    <div className={clsx("max-w-[46ch]", className)}>
       {state === "done" ? (
         <>
           <p className="font-display text-sm font-semibold text-ink">
             {name} has your address.
           </p>
-          <p className={cn(FINE_PRINT, "mt-2")}>
+          <p className={clsx(FINE_PRINT, "mt-2")}>
             Sending isn't switched on here yet, but {name} can download their
             reader list and write to you.{" "}
             <a className={PRIVACY_LINK} href="/privacy">
@@ -200,7 +202,7 @@ export function ReaderEmailCapture({
           />
           <button
             aria-busy={state === "sending" || undefined}
-            className={cn(READER_ACTION, READER_ACTION_OUTLINE)}
+            className={clsx(READER_ACTION, READER_ACTION_OUTLINE)}
             disabled={state === "sending"}
             type="submit"
           >
