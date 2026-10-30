@@ -138,6 +138,18 @@ describe("privacy policy — retention", () => {
     expect(text).not.toMatch(/never included in a writer's data export/i);
   });
 
+  it("doesn't take back what the export now does, or promise more than it can", async () => {
+    const text = textOf();
+    // The reader's own export, not the writer's, is the one that can't hold it.
+    expect(text).toMatch(/your own export can't include it/i);
+    expect(text).not.toMatch(/which also means an export can't include it/i);
+    expect(text).toMatch(
+      /apart from any copy the writer has already downloaded/i,
+    );
+    // Consent is claimed only as far as the form can show it.
+    expect(text).toMatch(/nothing confirms an address yet/i);
+  });
+
   it("lists the reader addresses among what a writer can download", async () => {
     expect(textOf()).toMatch(
       /download everything we hold under that account[^.]*addresses readers\s+have left with your publication/i,
