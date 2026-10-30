@@ -1,6 +1,34 @@
 import { createEnv } from "@t3-oss/env-core";
 import { z } from "zod/mini";
 
+const client = {
+  VITE_APP_TITLE: z.optional(z.string().check(z.minLength(1))),
+  /** Canonical public origin every absolute URL is minted from (OAuth
+   * client_id, publication URLs, head tags). Read by ~/lib/origin. Defaults
+   * to the hosted instance; self-hosters set their own (see SELF_HOSTING.md). */
+  VITE_PUBLIC_ORIGIN: z.optional(z.url()),
+  /** PostHog project key — analytics no-op entirely when absent/empty.
+   * Build-time client var (see .env.example): one project across dev,
+   * preview and prod, separated by the hostname-derived app_env property. */
+  VITE_PUBLIC_POSTHOG_KEY: z.optional(z.string().check(z.minLength(1))),
+  /** PostHog ingestion host; defaults to https://us.i.posthog.com. */
+  VITE_PUBLIC_POSTHOG_HOST: z.optional(z.url()),
+  /** Cloudflare Turnstile sitekey — the anti-bot widget on the waitlist and
+   * report forms renders only when this is set; absent means those forms
+   * behave exactly as before (no widget, no token). Pair with the
+   * TURNSTILE_SECRET Worker secret (see .dev.vars.example) or the server
+   * skips verification. */
+  VITE_PUBLIC_TURNSTILE_SITE_KEY: z.optional(z.string().check(z.minLength(1))),
+};
+
+/**
+ * Validated on the Worker only: server.ts imports this, so a malformed value
+ * fails the Worker at startup. Browser code reads `import.meta.env.VITE_*`
+ * directly, with `||` for the fallback (an empty string counts as unset, as
+ * `emptyStringAsUndefined` does here). The values are fixed at build time and
+ * already checked, and importing this in the browser would load zod on every
+ * page's first load.
+ */
 export const env = createEnv({
   server: {
     SERVER_URL: z.optional(z.url()),
@@ -12,33 +40,13 @@ export const env = createEnv({
    */
   clientPrefix: "VITE_",
 
-  client: {
-    VITE_APP_TITLE: z.optional(z.string().check(z.minLength(1))),
-    /** Canonical public origin every absolute URL is minted from (OAuth
-     * client_id, publication URLs, head tags). Read by ~/lib/origin. Defaults
-     * to the hosted instance; self-hosters set their own (see SELF_HOSTING.md). */
-    VITE_PUBLIC_ORIGIN: z.optional(z.url()),
-    /** PostHog project key — analytics no-op entirely when absent/empty.
-     * Build-time client var (see .env.example): one project across dev,
-     * preview and prod, separated by the hostname-derived app_env property. */
-    VITE_PUBLIC_POSTHOG_KEY: z.optional(z.string().check(z.minLength(1))),
-    /** PostHog ingestion host; defaults to https://us.i.posthog.com. */
-    VITE_PUBLIC_POSTHOG_HOST: z.optional(z.url()),
-    /** Cloudflare Turnstile sitekey — the anti-bot widget on the waitlist and
-     * report forms renders only when this is set; absent means those forms
-     * behave exactly as before (no widget, no token). Pair with the
-     * TURNSTILE_SECRET Worker secret (see .dev.vars.example) or the server
-     * skips verification. */
-    VITE_PUBLIC_TURNSTILE_SITE_KEY: z.optional(
-      z.string().check(z.minLength(1)),
-    ),
-  },
+  client,
 
   /**
    * What object holds the environment variables at runtime. This is usually
    * `process.env` or `import.meta.env`.
    */
-  runtimeEnv: import.meta.env,
+  runtimeEnv: { ...import.meta.env },
 
   /**
    * By default, this library will feed the environment variables directly to
@@ -55,3 +63,16 @@ export const env = createEnv({
    */
   emptyStringAsUndefined: true,
 });
+
+declare global {
+  /** Drops Vite's `any` fallback for unknown keys, so a misspelt
+   * `import.meta.env` key fails typecheck. */
+  interface ViteTypeOptions {
+    strictImportMetaEnv: unknown;
+  }
+  /** The browser's direct reads, typed from the schema above. */
+  interface ImportMetaEnv
+    extends Readonly<
+      Partial<{ [K in keyof typeof client]: z.output<(typeof client)[K]> }>
+    > {}
+}

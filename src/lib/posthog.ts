@@ -31,8 +31,6 @@
  * reader is never a subject: `reader_email_left` reports the writer whose list
  * grew and which page asked, never who left the address.
  */
-import { env } from "#/env";
-
 type PostHogClient = typeof import("posthog-js")["default"];
 
 /** Which deployment produced an event. Hostname-based: the one build (and
@@ -58,11 +56,12 @@ export function stampAppEnv<
 let loading: Promise<PostHogClient | null> | null = null;
 
 function load(): Promise<PostHogClient | null> {
-  const key = env.VITE_PUBLIC_POSTHOG_KEY;
+  const key = import.meta.env.VITE_PUBLIC_POSTHOG_KEY;
   if (typeof window === "undefined" || !key) return Promise.resolve(null);
   loading ??= import("posthog-js").then(({ default: posthog }) => {
     posthog.init(key, {
-      api_host: env.VITE_PUBLIC_POSTHOG_HOST ?? "https://us.i.posthog.com",
+      api_host:
+        import.meta.env.VITE_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com",
       // 2025-05-24 defaults: history-change pageviews (SPA navigations count).
       defaults: "2025-05-24",
       persistence: "memory",

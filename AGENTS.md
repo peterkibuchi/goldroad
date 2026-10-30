@@ -13,8 +13,10 @@ render any atproto author's `site.standard` records, not just ours.
 ## Stack
 
 TanStack Start (SSR, file-based routing) · React 19 + React Compiler · Tailwind v4 ·
-Biome (lint + format) · Vitest · t3-env (`src/env.ts`). The UI is hand-built — see
-Code conventions.
+Biome (lint + format) · Vitest · t3-env (`src/env.ts`). t3-env validates on the
+Worker only; browser code reads `import.meta.env.VITE_*` directly, so zod stays out
+of the reader pages' first-load JavaScript. The UI is hand-built — see Code
+conventions.
 Package manager: **pnpm**. Path alias: `~/*` → `src/*` (see tsconfig).
 
 - **Hosting:** Cloudflare Workers (`wrangler.jsonc`). Free-tier constraints matter:
@@ -36,8 +38,8 @@ Package manager: **pnpm**. Path alias: `~/*` → `src/*` (see tsconfig).
   escaped, URLs allowlisted), cached by record CID. Never edit a document carrying
   a foreign content union (refused as `not_editable`).
 - **Analytics:** PostHog, cookieless (memory persistence). Single project across
-  environments, disambiguated by the `app_env` property. Key via t3-env
-  (`VITE_PUBLIC_POSTHOG_KEY`, optional — absent means analytics is off).
+  environments, disambiguated by the `app_env` property. Key via
+  `VITE_PUBLIC_POSTHOG_KEY` (optional — absent means analytics is off).
 - **URLs — IMPORTANT:** mint every user-facing/stored URL from `~/lib/origin`, never
   from the request origin. The canonical origin is read from `VITE_PUBLIC_ORIGIN`
   (self-hosters set their own). Permanent records must not depend on infrastructure
