@@ -124,7 +124,7 @@ function PrivacyPage() {
             "Follower counts: while you have an account we record your public Bluesky follower count once a day, so you can see your own growth over time — Bluesky only reports today's number, and the past can't be recovered later. It's in your data export, and deleting your account deletes it.",
             "Handles you publish under: noted against your account when you publish, so links made under an old handle still reach you after you change it. They're in your data export, and deleting your account deletes them.",
             "Your publication's address: when you publish, we note the address of your publication page and when you last published, so our sitemap can point search engines at it. It's in your data export, and deleting your account deletes it.",
-            "Sign-in sessions: deleted when you sign out (which ends it in every browser you're signed in on) or delete your account, and automatically after 30 days without use. A post you've scheduled keeps the session at least until 30 days after it's due, because that's what publishes it.",
+            "Sign-in sessions: deleted when you sign out (which ends it in every browser you're signed in on) or delete your account, and automatically after 30 days without use. Scheduling a post keeps the session until at least 30 days after the time you picked, even if you cancel it later, because the session is what publishes it.",
             "Server logs: short-lived (days), then discarded.",
           ]}
         />

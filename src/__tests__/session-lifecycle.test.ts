@@ -356,3 +356,76 @@ describe("sign-out when the database is unavailable", () => {
     expect(setCookie(res, "gr_signed_in")).toBe("");
   });
 });
+
+describe("sign-out ends the session the cookie names, whatever its age", () => {
+  /** A cookie as code from before session ids signed it: `{did, iat}`. */
+  async function preSidCookie(did = DID): Promise<string> {
+    const b64 = (bytes: Uint8Array) =>
+      btoa(String.fromCharCode(...bytes))
+        .replaceAll("+", "-")
+        .replaceAll("/", "_")
+        .replace(/=+$/, "");
+    const payload = b64(
+      new TextEncoder().encode(JSON.stringify({ did, iat: Date.now() })),
+    );
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(SECRET),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"],
+    );
+    const sig = await crypto.subtle.sign(
+      "HMAC",
+      key,
+      new TextEncoder().encode(payload),
+    );
+    return `${payload}.${b64(new Uint8Array(sig))}`;
+  }
+
+  it("ends a row from before session ids with the cookie from then", async () => {
+    await db()
+      .insert(oauthKv)
+      .values({ k: `sess:${DID}`, v: "{}", expiresAt: null, sid: null });
+    const old = await preSidCookie();
+    await logout({ request: withSession(old, "/logout", { method: "POST" }) });
+    expect(sessionRow()).toBeUndefined();
+  });
+
+  it("doesn't let that old cookie end a session signed in since", async () => {
+    const old = await preSidCookie();
+    const current = await signIn();
+    await logout({ request: withSession(old, "/logout", { method: "POST" }) });
+    expect(await live(current)).toBe(DID);
+  });
+
+  it("ends a row that has expired but not been swept yet", async () => {
+    const token = await signIn();
+    d1.sqlite
+      .prepare("update oauth_kv set expires_at = ? where k = ?")
+      .run(Date.now() - 1, `sess:${DID}`);
+    await logout({
+      request: withSession(token, "/logout", { method: "POST" }),
+    });
+    expect(sessionRow()).toBeUndefined();
+  });
+});
+
+describe("a row left without an expiry", () => {
+  it("keeps a scheduled post's session when use gives it one", async () => {
+    // Older code writes no expiry on a token refresh. The next visit's slide
+    // must still cover a post due further out than 30 days.
+    const token = await signIn();
+    const due = Date.now() + 60 * DAY;
+    d1.sqlite
+      .prepare(
+        "insert into scheduled_posts (id, did, draft_id, due_at, status, created_at, updated_at) values (?, ?, ?, ?, 'pending', ?, ?)",
+      )
+      .run(crypto.randomUUID(), DID, crypto.randomUUID(), due, 0, 0);
+    d1.sqlite
+      .prepare("update oauth_kv set expires_at = null where k = ?")
+      .run(`sess:${DID}`);
+    expect(await live(token)).toBe(DID);
+    expect(sessionRow().expires_at).toBe(due + SESSION_IDLE_MS);
+  });
+});
