@@ -17,7 +17,7 @@ declare const __BUILD_ID__: string;
 import handler, { createServerEntry } from "@tanstack/react-start/server-entry";
 
 // Importing env also validates every env var when the Worker starts (src/env.ts).
-import { env } from "#/env";
+import { env } from "~/env";
 import {
   BUILD_TIME_CAPTURE_CONFIG,
   withExceptionCapture,
