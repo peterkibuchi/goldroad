@@ -23,14 +23,15 @@ export const DEFAULT_OG_IMAGE = `${CANONICAL_ORIGIN}/og.png`;
  * NOT for a page that sets its own og:image — these tags describe THIS image,
  * and that is the whole reason they are not defaulted at the root.
  */
+const DEFAULT_CARD_ALT =
+  "Goldroad — writer-owned publishing. Your posts, your readers, your name, in an account you control.";
+
 export const DEFAULT_CARD_META = [
   { property: "og:image:width", content: "1200" },
   { property: "og:image:height", content: "630" },
-  {
-    property: "og:image:alt",
-    content:
-      "Goldroad — writer-owned publishing. Your posts, your readers, your name, in an account you control.",
-  },
+  { property: "og:image:alt", content: DEFAULT_CARD_ALT },
+  // X reads its alt text from here only, not from og:image:alt.
+  { name: "twitter:image:alt", content: DEFAULT_CARD_ALT },
 ];
 
 /**
