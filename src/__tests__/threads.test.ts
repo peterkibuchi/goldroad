@@ -13,6 +13,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 
+import { markdownToHtml } from "../lib/markdown-html";
 import { MAX_INLINE_IMAGES } from "../lib/publish";
 import {
   assembleThread,
@@ -373,6 +374,26 @@ describe("facets → markdown (never a regex over the text)", () => {
     ]);
   });
 
+  it("keeps a link whole when its URL holds a paren or a space", () => {
+    const text = "see docs";
+    const bytes = new TextEncoder().encode(text);
+    const target = "https://example.com/a)b c";
+    const post = ownPost(
+      postView({
+        rkey: "3j1",
+        text,
+        facets: [linkFacet(text.indexOf("docs"), bytes.length, target)],
+      }),
+      ME,
+    );
+    const [line] = postTextMarkdown(post);
+    expect(line).toBe("see [docs](<https://example.com/a)b%20c>)");
+    // The whole URL is the link, and nothing after it leaks into the text.
+    expect(markdownToHtml(line)).toMatch(
+      /see <a href="https:\/\/example\.com\/a\)b%20c"[^>]*>docs<\/a><\/p>/,
+    );
+  });
+
   it("links a mention to the mentioned DID, labelled with the handle as typed", () => {
     const text = "thanks @friend.example";
     const bytes = new TextEncoder().encode(text);
@@ -682,6 +703,15 @@ describe("embeds", () => {
       ),
     );
     expect(duplicated.blocks).toEqual([]);
+  });
+
+  it("keeps a link card's URL whole when it holds a paren", () => {
+    const { blocks } = embedMarkdown(
+      withEmbed({
+        external: { uri: "https://example.com/q)x", title: "A piece" },
+      }),
+    );
+    expect(blocks).toEqual(["[A piece](<https://example.com/q)x>)"]);
   });
 
   it("reports a video rather than dropping it in silence", () => {

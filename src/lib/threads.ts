@@ -392,6 +392,17 @@ export function escapeMarkdownText(text: string): string {
 }
 
 /**
+ * A link's destination, safe for any URL a post carries. A space, a paren or an
+ * angle bracket would end a bare `(url)` early and let the rest of the URL read
+ * as markdown, so a URL holding one goes in angle brackets, with the
+ * characters those can't hold percent-encoded. Plain URLs stay bare.
+ */
+export function linkDestination(url: string): string {
+  if (!/[\s()<>\\]/.test(url)) return url;
+  return `<${url.replace(/[\s<>\\]/g, (c) => encodeURIComponent(c))}>`;
+}
+
+/**
  * A facet feature reduced to what it renders as, or null to leave the span as
  * plain text.
  *
@@ -521,7 +532,7 @@ export function postTextMarkdown(post: ThreadPost): string[] {
     const label = escapeMarkdownText(
       decoder.decode(bytes.slice(facet.start, facet.end)),
     );
-    out += `[${label}](${facet.href})`;
+    out += `[${label}](${linkDestination(facet.href)})`;
     cursor = facet.end;
   }
   out += escapeMarkdownText(decoder.decode(bytes.slice(cursor)));
@@ -635,7 +646,9 @@ export function embedMarkdown(
         const label = escapeMarkdownText(
           (str(external.title) ?? uri).slice(0, MAX_TITLE_CHARS).trim(),
         );
-        blocks.push(`[${label || uri}](${uri})`);
+        blocks.push(
+          `[${label || escapeMarkdownText(uri)}](${linkDestination(uri)})`,
+        );
       }
       continue;
     }
