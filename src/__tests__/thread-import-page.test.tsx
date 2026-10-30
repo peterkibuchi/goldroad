@@ -12,6 +12,7 @@ import {
   FindingState,
   isAssembledBody,
   isDiscoveryBody,
+  stopReasonFor,
   ThreadPicker,
   ThreadProgress,
   type WireThread,
@@ -356,5 +357,19 @@ describe("response-shape guards", () => {
     ).toBe(false);
     expect(isAssembledBody({ ok: true })).toBe(false);
     expect(isAssembledBody({ ok: false, error: "not_a_thread" })).toBe(false);
+  });
+});
+
+describe("stopping a run at a limit", () => {
+  it("names the limit that stopped it", () => {
+    expect(stopReasonFor("rate_limited")).toBe(
+      "too many threads read this hour",
+    );
+    expect(stopReasonFor("draft_limit")).toBe("draft limit");
+  });
+
+  it("goes on after any other failure", () => {
+    expect(stopReasonFor("appview_failed")).toBeNull();
+    expect(stopReasonFor(null)).toBeNull();
   });
 });

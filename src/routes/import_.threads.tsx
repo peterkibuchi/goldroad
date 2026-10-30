@@ -221,6 +221,18 @@ const SAVE_REASONS: Record<string, string> = {
   too_large: "too long for a single draft",
 };
 
+/**
+ * The reason the rest of a run is skipped once a thread hits a limit, or null
+ * when the run goes on. Each limit names its own way out: a writer stopped by
+ * the hourly read limit has drafts to spare, and "draft limit" would send them
+ * deleting drafts for nothing.
+ */
+export function stopReasonFor(code: string | null): string | null {
+  if (code === "rate_limited") return ASSEMBLE_REASONS.rate_limited;
+  if (code === "draft_limit") return SAVE_REASONS.draft_limit;
+  return null;
+}
+
 function ThreadImportPage() {
   const { ident } = Route.useLoaderData();
   const [phase, setPhase] = useState<Phase>("finding");
@@ -317,11 +329,11 @@ function ThreadImportPage() {
     };
 
     let imported = 0;
-    let limitHit = false;
+    let stopReason: string | null = null;
     for (const thread of picked) {
       if (run.signal.aborted) return;
-      if (limitHit) {
-        setOne(thread.guidHash, { kind: "skipped", reason: "draft limit" });
+      if (stopReason) {
+        setOne(thread.guidHash, { kind: "skipped", reason: stopReason });
         continue;
       }
       try {
@@ -337,7 +349,7 @@ function ThreadImportPage() {
         const assembled: unknown = await assembleRes.json().catch(() => null);
         if (!isAssembledBody(assembled)) {
           const code = errorCodeOf(assembled);
-          if (code === "rate_limited") limitHit = true;
+          stopReason = stopReasonFor(code);
           setOne(thread.guidHash, {
             kind: "failed",
             reason:
@@ -386,8 +398,11 @@ function ThreadImportPage() {
             notes.push("a video couldn't come across");
           setOne(thread.guidHash, { kind: "saved", notes });
         } else if (failure === "draft_limit") {
-          limitHit = true;
-          setOne(thread.guidHash, { kind: "skipped", reason: "draft limit" });
+          stopReason = stopReasonFor(failure);
+          setOne(thread.guidHash, {
+            kind: "skipped",
+            reason: SAVE_REASONS.draft_limit,
+          });
         } else if (failure === "already_imported") {
           setOne(thread.guidHash, {
             kind: "skipped",
