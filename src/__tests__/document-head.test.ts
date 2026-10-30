@@ -382,11 +382,13 @@ describe("documentHead — the link preview", () => {
     expect(content(meta, "article:modified_time")).toEqual([
       "2026-01-05T00:00:00.000Z",
     ]);
-    const untrusted = documentHead({
-      ...loaderData,
-      doc: { title: "Odd", publishedAt: 42 as unknown as string },
-    });
-    expect(content(untrusted.meta, "article:published_time")).toEqual([]);
+    for (const publishedAt of [42 as unknown as string, "", "yesterday"]) {
+      const untrusted = documentHead({
+        ...loaderData,
+        doc: { title: "Odd", publishedAt },
+      });
+      expect(content(untrusted.meta, "article:published_time")).toEqual([]);
+    }
   });
 
   it("leads with the share card, sized and described, ahead of the cover", () => {
@@ -403,6 +405,14 @@ describe("documentHead — the link preview", () => {
     expect(JSON.parse(scripts?.[0]?.children ?? "{}").image).toBe(
       `https://trygoldroad.com/img/did%3Aplc%3Afake0000000000writer0000/${cover.cid}`,
     );
+  });
+
+  it("describes the default card to X too when there is no picture", () => {
+    const { meta } = documentHead(loaderData);
+    expect(content(meta, "twitter:image:alt")).toEqual(
+      content(meta, "og:image:alt"),
+    );
+    expect(content(meta, "twitter:image:alt")).toHaveLength(1);
   });
 
   it("describes a cover under both alt names, with no size it doesn't know", () => {
