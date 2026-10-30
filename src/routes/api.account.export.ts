@@ -96,6 +96,8 @@ export const Route = createFileRoute("/api/account/export")({
           resolveDidIdentity(did),
         ]);
         const ident = handle ?? did;
+        // COUNT(*) answers one row whatever the table holds.
+        const readerTotal = readerEmailCount?.n ?? 0;
 
         // Best-effort convenience listing only — never blocks the export of
         // our own data. One page (≤ MAX_LIST_RECORDS): enough to be useful
@@ -206,10 +208,9 @@ export const Route = createFileRoute("/api/account/export")({
             posts: row.posts,
           })),
           readerList: {
-            count: readerEmailCount?.n ?? readerEmailRows.length,
+            count: readerTotal,
             // A padded list must not take the rest of the export down with it.
-            truncated:
-              (readerEmailCount?.n ?? 0) > MAX_READER_EMAILS_PER_EXPORT,
+            truncated: readerTotal > MAX_READER_EMAILS_PER_EXPORT,
             note: `Unconfirmed: anyone can type any address into the form. \`source\` is where the address was left (a post page or your publication's page) and \`consentedAt\` is when. Lists longer than ${MAX_READER_EMAILS_PER_EXPORT} are cut to the oldest ${MAX_READER_EMAILS_PER_EXPORT}; mail privacy@trygoldroad.com for the rest.`,
             readers: readerEmailRows.map((row) => ({
               email: row.email,

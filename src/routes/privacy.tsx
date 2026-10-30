@@ -76,7 +76,7 @@ export function PrivacyPage() {
         <LegalList
           items={[
             "Consent — for adding you to the waitlist and later emailing you.",
-            "Consent — the reader's, given to the writer whose publication they left their address with. The writer decides how the list is used; we hold it for them.",
+            "Consent — given by whoever left the address with a writer's publication. Nothing confirms an address yet, so a list can hold one its owner never left. The writer decides how the list is used; we hold it for them.",
             "Legitimate interests — for security, abuse prevention, and privacy-respecting analytics that keep the service working.",
           ]}
         />
@@ -100,8 +100,8 @@ export function PrivacyPage() {
           it. We identify accounts by DID and never ask for or receive your
           email address, so there is genuinely nothing in our database that
           could tell us a given account and a given email are the same person —
-          which also means an export can't include it and account deletion can't
-          remove it. Email {privacy} from or naming that address and we'll
+          which also means your own export can't include it and account deletion
+          can't remove it. Email {privacy} from or naming that address and we'll
           delete it by hand, whether or not you also have an account here. We
           can't reach a copy a writer has already downloaded, so ask them too.
         </p>
@@ -119,7 +119,7 @@ export function PrivacyPage() {
             "Abuse reports: the report, and any email left with it, kept while we may still need it for moderation and appeals, then discarded — or sooner if you ask. The alert copy described above lives in that channel's own history, so removing a report here doesn't reach back into it.",
             "Analytics: aggregated, not tied to your identity.",
             "Drafts and import history: kept until you delete them (Settings → Your data) or delete your account, which removes both immediately.",
-            "Reader emails left with a publication: kept for that writer until email sending opens or the address is deleted on request — and deleted immediately, in full, if that writer deletes their Goldroad account. The writer's data export includes them, with where and when each was left: the writer controls their publication's list, and Goldroad processes it on their behalf.",
+            "Reader emails left with a publication: kept for that writer until email sending opens or the address is deleted on request — and deleted immediately, in full, if that writer deletes their Goldroad account, apart from any copy the writer has already downloaded. The writer's data export includes them, with where and when each was left: the writer controls their publication's list, and Goldroad processes it on their behalf.",
             "Follower counts: while you have an account we record your public Bluesky follower count once a day, so you can see your own growth over time — Bluesky only reports today's number, and the past can't be recovered later. It's in your data export, and deleting your account deletes it.",
             "Handles you publish under: noted against your account when you publish, so links made under an old handle still reach you after you change it. They're in your data export, and deleting your account deletes them.",
             "Your publication's address: when you publish, we note the address of your publication page and when you last published, so our sitemap can point search engines at it. It's in your data export, and deleting your account deletes it.",
