@@ -164,6 +164,26 @@ describe("formerHandleTarget", () => {
     });
   });
 
+  it("takes over a handle's row from whoever held the handle before", async () => {
+    const { db } = freshDb();
+    // Someone else had alice.com first.
+    network({ "alice.com": OTHER }, {});
+    await recordWriterHandle(db, OTHER, "alice.com");
+    network({ "alice.example": WRITER }, {});
+    await recordWriterHandle(db, WRITER, "alice.example");
+    // The writer moves to alice.com, then on to alice.net.
+    network({ "alice.com": WRITER }, { [WRITER]: "alice.com" });
+    await formerHandleTarget(db, "alice.example");
+    network(
+      { "alice.net": WRITER },
+      { [WRITER]: "alice.net", [OTHER]: "other.example" },
+    );
+    expect(await formerHandleTarget(db, "alice.com")).toEqual({
+      ident: "alice.net",
+      permanent: true,
+    });
+  });
+
   it("falls back to the DID, not permanently, when the current handle doesn't verify", async () => {
     const db = await seeded();
     network({ "alice.com": OTHER }, { [WRITER]: "alice.com" });

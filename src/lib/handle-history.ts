@@ -80,15 +80,16 @@ export async function formerHandleTarget(
     (await resolveHandleToDid(current).catch(() => null)) === row.did
   ) {
     // Remember the new handle too, so a second change doesn't strand links
-    // that already followed this redirect.
+    // that already followed this redirect. It just resolved to this writer, so
+    // it replaces any row a previous holder of the handle left.
+    const seenAt = new Date();
     await db
       .insert(handleHistory)
-      .values({
-        handle: current.toLowerCase(),
-        did: row.did,
-        seenAt: new Date(),
+      .values({ handle: current.toLowerCase(), did: row.did, seenAt })
+      .onConflictDoUpdate({
+        target: handleHistory.handle,
+        set: { did: row.did, seenAt },
       })
-      .onConflictDoNothing()
       .catch(() => {});
     return { ident: current, permanent: true };
   }
