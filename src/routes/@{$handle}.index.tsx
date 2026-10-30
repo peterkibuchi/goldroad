@@ -36,9 +36,11 @@ import { documentBodyMarkdown } from "~/lib/document-content";
 import { checkHidden } from "~/lib/moderation";
 import {
   CANONICAL_ORIGIN,
+  isCanonicalOriginUrl,
   onCanonicalOrigin,
   readerPageUrl,
 } from "~/lib/origin";
+import { publicationBase } from "~/lib/publish";
 import { formatReadingTime, listItemReadingMinutes } from "~/lib/reading-time";
 import { type SearchHit, searchPublication } from "~/lib/search";
 import {
@@ -253,11 +255,23 @@ export const Route = createFileRoute("/@{$handle}/")({
     if (!loaderData) return { meta: [{ title: "Not found" }] };
     const { ident, publication, publicationAtUri, cursor } = loaderData;
     const title = publication?.name ?? ident;
-    const canonicalUrl = publicationCanonicalUrl({
-      ident,
-      publicationUrl: publication?.url,
-      cursor,
-    });
+    // A page whose posts failed to load is not one to index, and neither is a
+    // search result. Nor is an empty archive: every atproto account has a page
+    // here, and the millions with nothing published would otherwise be thin
+    // pages that read as soft 404s. A page kept out of the index names no
+    // canonical either, since the two together contradict each other.
+    const noindex = Boolean(
+      loaderData.postsError ||
+        loaderData.search ||
+        loaderData.posts.length === 0,
+    );
+    const canonicalUrl = noindex
+      ? null
+      : publicationCanonicalUrl({
+          ident,
+          publicationUrl: publication?.url,
+          cursor,
+        });
     return {
       meta: [
         {
@@ -265,15 +279,7 @@ export const Route = createFileRoute("/@{$handle}/")({
             ? `“${loaderData.search.q}” in ${title}`
             : title,
         },
-        // A page whose posts failed to load is not one to index, and neither
-        // is a search result. Nor is an empty archive: every atproto account
-        // has a page here, and the millions with nothing published would
-        // otherwise be thin pages that read as soft 404s.
-        ...(loaderData.postsError ||
-        loaderData.search ||
-        loaderData.posts.length === 0
-          ? [{ name: "robots", content: "noindex" }]
-          : []),
+        ...(noindex ? [{ name: "robots", content: "noindex" }] : []),
         // A description always, so a shared archive link is never a bare title.
         // Most publications carry one; records written by other apps often do
         // not, and that is the common case here because these pages render ANY
@@ -309,7 +315,7 @@ export const Route = createFileRoute("/@{$handle}/")({
           rel: "alternate",
           type: "application/rss+xml",
           title: `${title} — RSS`,
-          href: `${CANONICAL_ORIGIN}/@${encodeURIComponent(ident)}/rss.xml`,
+          href: `${readerPageUrl(ident)}/rss.xml`,
         },
       ],
     };
@@ -322,8 +328,8 @@ export const Route = createFileRoute("/@{$handle}/")({
  * The publication page's canonical URL. The first page's is the record's own
  * url: for a Goldroad writer that is this page, and for another app's writer
  * it honestly points at their home (e.g. *.leaflet.pub). With no usable url
- * it is this page, so every archive names one address however it was reached
- * (a differently cased handle, the DID form, a tracking query).
+ * it is this page with the handle lowercased, so a differently cased handle
+ * or a tracking query doesn't make a second copy.
  *
  * An older page (`?cursor=`) is its own canonical, never the first page's:
  * pointing it at page one tells search engines the posts it lists aren't
@@ -335,11 +341,10 @@ export function publicationCanonicalUrl(input: {
   publicationUrl?: string;
   cursor?: string | null;
 }): string | null {
-  const first = input.publicationUrl?.startsWith("https://")
-    ? onCanonicalOrigin(input.publicationUrl)
-    : readerPageUrl(input.ident);
+  const base = publicationBase({ publicationUrl: input.publicationUrl });
+  const first = base ? onCanonicalOrigin(base) : readerPageUrl(input.ident);
   if (!input.cursor) return first;
-  return first.startsWith(`${CANONICAL_ORIGIN}/`)
+  return isCanonicalOriginUrl(first)
     ? `${first}?cursor=${encodeURIComponent(input.cursor)}`
     : null;
 }
