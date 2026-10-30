@@ -355,9 +355,10 @@ export function publicationCanonicalUrl(input: {
 /**
  * The archive's schema.org ProfilePage, in the document page's flat script
  * shape (see documentHead in ~/components/document-article). Only on a page
- * worth indexing, and only while the writer's home is here: when their record
- * names a site elsewhere, the canonical link says this page isn't the
- * profile, and structured data claiming it is would argue with it.
+ * worth indexing, and only while the writer's home is this very page: when
+ * their record names a site elsewhere (or another page here), the canonical
+ * link says this page isn't the profile, and structured data claiming it is
+ * would argue with it.
  */
 function profilePageScripts(loaderData: {
   ident: string;
@@ -373,7 +374,7 @@ function profilePageScripts(loaderData: {
     loaderData.search ||
     loaderData.postsError ||
     loaderData.posts.length === 0 ||
-    !isCanonicalOriginUrl(home)
+    home.toLowerCase() !== readerPageUrl(ident)
   )
     return [];
   // Record fields are untrusted: an empty or non-string name falls back to

@@ -194,7 +194,7 @@ describe("publication page head — structured data", () => {
     }
   });
 
-  it("claims no profile on a search, an empty archive or a home elsewhere", () => {
+  it("claims no profile on a search, an empty archive or a home on another page", () => {
     const pages = [
       { ...loaderData, search: { q: "x", scope: "titles", hits: [] } },
       { ...loaderData, posts: [] },
@@ -203,6 +203,13 @@ describe("publication page head — structured data", () => {
         publication: {
           ...loaderData.publication,
           url: "https://writer.leaflet.pub",
+        },
+      },
+      {
+        ...loaderData,
+        publication: {
+          ...loaderData.publication,
+          url: "https://trygoldroad.com/@someone-else.example",
         },
       },
     ];
