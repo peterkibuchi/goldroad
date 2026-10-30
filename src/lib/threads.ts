@@ -897,7 +897,9 @@ export async function fetchThread(
  * picker says a feed is a window either way.
  *
  * `truncated` is true when the AppView still had pages left — the honest "there
- * may be older threads than these" signal the surface shows.
+ * may be older threads than these" signal the surface shows. `partial` is true
+ * only when a later page failed: the list is short of what the walk would have
+ * read, so it is worth reading again rather than keeping.
  */
 export async function discoverAuthorThreads(
   did: string,
@@ -905,18 +907,27 @@ export async function discoverAuthorThreads(
 ): Promise<{
   threads: Omit<ThreadSummary, "guidHash" | "alreadyImported">[];
   truncated: boolean;
+  partial: boolean;
   /** Upstream refused/flaked on the FIRST page — nothing was read at all. */
   unavailable: boolean;
 } | null> {
   const pages: unknown[] = [];
   let cursor: string | undefined;
   let truncated = false;
+  let partial = false;
   for (let i = 0; i < MAX_THREAD_DISCOVERY_PAGES; i++) {
     const result = await fetchAuthorFeedPage(did, cursor, fetcher);
     if (!result) {
-      if (i === 0) return { threads: [], truncated: false, unavailable: true };
+      if (i === 0)
+        return {
+          threads: [],
+          truncated: false,
+          partial: false,
+          unavailable: true,
+        };
       // A later page failed: what we have is not "every thread in the window".
       truncated = true;
+      partial = true;
       break;
     }
     pages.push(result.page);
@@ -927,6 +938,7 @@ export async function discoverAuthorThreads(
   return {
     ...discoverThreads(pages, did),
     truncated,
+    partial,
     unavailable: false,
   };
 }

@@ -1194,6 +1194,8 @@ describe("the AppView reads", () => {
     expect(fetcher).toHaveBeenCalledTimes(MAX_THREAD_DISCOVERY_PAGES);
     expect(found?.truncated).toBe(true);
     expect(found?.threads).toHaveLength(1);
+    // Stopping at the cap isn't a failure: nothing was lost on the way.
+    expect(found?.partial).toBe(false);
   });
 
   it("only ever talks to the fixed AppView host, with the session's own actor", async () => {
@@ -1243,6 +1245,7 @@ describe("the AppView reads", () => {
     expect(partial?.threads).toHaveLength(1);
     // A failed later page means the list isn't complete.
     expect(partial?.truncated).toBe(true);
+    expect(partial?.partial).toBe(true);
   });
 
   it("refuses an oversized body rather than parsing it", async () => {

@@ -113,8 +113,11 @@ export const Route = createFileRoute("/api/threads")({
           discovered = await discoverAuthorThreads(did);
           if (!discovered || discovered.unavailable)
             return privateJson({ ok: false, error: "appview_failed" }, 502);
-          // A partial walk isn't cached: the next view should try again.
-          if (cache && !discovered.truncated) {
+          // A walk that lost a page isn't cached: the next view should try
+          // again. One that stopped at the page cap is as complete as a walk
+          // gets, and caching it is what keeps an active writer's visits from
+          // spending the hourly budget.
+          if (cache && !discovered.partial) {
             const body = new Response(JSON.stringify(discovered), {
               headers: {
                 "content-type": "application/json",
