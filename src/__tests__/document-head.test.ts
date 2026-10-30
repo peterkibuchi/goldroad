@@ -340,3 +340,76 @@ describe("isHiddenNotFound — takedown marker on a thrown notFound", () => {
     expect(isHiddenNotFound("hidden")).toBe(false);
   });
 });
+
+describe("documentHead — the link preview", () => {
+  const loaderData = {
+    doc: {
+      title: "Hello Atmosphere",
+      publishedAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-05T00:00:00.000Z",
+    },
+    ident: "writer.example",
+    atUri:
+      "at://did:plc:fake0000000000writer0000/site.standard.document/3abc2345678df",
+    canonicalUrl: "https://trygoldroad.com/@writer.example/3abc2345678df",
+    publicationName: "The Long Way",
+  };
+  const did = "did:plc:fake0000000000writer0000";
+  const cover = { did, cid: "bafkreicanarycovercid000000000000000000000" };
+  const shareCard = { did, cid: "bafkreicanarysharecard0000000000000000000" };
+  type Tag = { property?: string; name?: string; content?: string };
+  const content = (meta: object[] = [], key: string) =>
+    (meta as Tag[])
+      .filter((m) => m.property === key || m.name === key)
+      .map((m) => m.content);
+
+  it("names the writer's publication as the site", () => {
+    const { meta } = documentHead(loaderData);
+    expect(content(meta, "og:site_name")).toEqual(["The Long Way"]);
+    expect(
+      content(
+        documentHead({ ...loaderData, publicationName: null }).meta,
+        "og:site_name",
+      ),
+    ).toEqual(["writer.example"]);
+  });
+
+  it("carries the record's dates as article tags, strings only", () => {
+    const { meta } = documentHead(loaderData);
+    expect(content(meta, "article:published_time")).toEqual([
+      "2026-01-01T00:00:00.000Z",
+    ]);
+    expect(content(meta, "article:modified_time")).toEqual([
+      "2026-01-05T00:00:00.000Z",
+    ]);
+    const untrusted = documentHead({
+      ...loaderData,
+      doc: { title: "Odd", publishedAt: 42 as unknown as string },
+    });
+    expect(content(untrusted.meta, "article:published_time")).toEqual([]);
+  });
+
+  it("leads with the share card, sized and described, ahead of the cover", () => {
+    const { meta, scripts } = documentHead({ ...loaderData, cover, shareCard });
+    expect(content(meta, "og:image")).toEqual([
+      `https://trygoldroad.com/img/did%3Aplc%3Afake0000000000writer0000/${shareCard.cid}`,
+    ]);
+    expect(content(meta, "og:image:width")).toEqual(["1200"]);
+    expect(content(meta, "og:image:height")).toEqual(["630"]);
+    const alt = '"Hello Atmosphere", in The Long Way, by writer.example';
+    expect(content(meta, "og:image:alt")).toEqual([alt]);
+    expect(content(meta, "twitter:image:alt")).toEqual([alt]);
+    // The Article's image stays the writer's own picture.
+    expect(JSON.parse(scripts?.[0]?.children ?? "{}").image).toBe(
+      `https://trygoldroad.com/img/did%3Aplc%3Afake0000000000writer0000/${cover.cid}`,
+    );
+  });
+
+  it("describes a cover under both alt names, with no size it doesn't know", () => {
+    const { meta } = documentHead({ ...loaderData, cover });
+    expect(content(meta, "og:image:width")).toEqual([]);
+    expect(content(meta, "twitter:image:alt")).toEqual([
+      'Cover image for "Hello Atmosphere"',
+    ]);
+  });
+});

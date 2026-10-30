@@ -378,6 +378,10 @@ export function documentHead(
         atUri: string;
         canonicalUrl: string | null;
         cover?: CoverRef | null;
+        /** The post's share card (the publication name, title and byline drawn
+         * at 1200×630), once its record carries one. Leads the link preview
+         * ahead of the cover, which stays the Article's image. */
+        shareCard?: CoverRef | null;
         mirror?: MirrorInfo | null;
         publicationName?: string | null;
         publicationUrl?: string | null;
@@ -392,6 +396,7 @@ export function documentHead(
     atUri,
     canonicalUrl,
     cover,
+    shareCard,
     mirror,
     publicationName,
     publicationUrl,
@@ -401,6 +406,10 @@ export function documentHead(
   const imageUrl = cover
     ? `${CANONICAL_ORIGIN}${blobImagePath(cover.did, cover.cid)}`
     : null;
+  const headline = doc.title ?? "Untitled";
+  // The site a link preview names (Slack and Discord print it above the
+  // title): the writer's publication, not the host it happens to be read on.
+  const siteName = publicationName ?? ident;
   // Mirrored posts (the original is SOMEONE ELSE'S publication, still up):
   // noindex INSTEAD of a canonical tag — search engines index the original, not
   // this copy; a cross-domain canonical is no longer the recommended
@@ -440,24 +449,20 @@ export function documentHead(
             { property: "og:description", content: doc.description },
           ]
         : []),
-      { property: "og:title", content: doc.title ?? "Untitled" },
+      { property: "og:title", content: headline },
       { property: "og:type", content: "article" },
       ...(pageUrl ? [{ property: "og:url", content: pageUrl }] : []),
-      // og:image must be absolute — minted from the canonical origin
-      // (never the request origin), served through our own /img proxy.
-      // The alt travels with the image. Without it the root's default would be
-      // inherited and a reader's assistive tech would hear a description of
-      // Goldroad on somebody else's essay.
-      ...(imageUrl
-        ? [
-            { property: "og:image", content: imageUrl },
-            {
-              property: "og:image:alt",
-              content: `Cover image for "${doc.title ?? "Untitled"}"`,
-            },
-          ]
-        : // No cover: the page shows the default card, so it describes it.
-          DEFAULT_CARD_META),
+      { property: "og:site_name", content: siteName },
+      // Open Graph's article tags: Facebook, LinkedIn and Slack read the dates
+      // from here rather than from the JSON-LD. Record fields are untrusted,
+      // so only strings make it in.
+      ...(typeof doc.publishedAt === "string"
+        ? [{ property: "article:published_time", content: doc.publishedAt }]
+        : []),
+      ...(typeof doc.updatedAt === "string"
+        ? [{ property: "article:modified_time", content: doc.updatedAt }]
+        : []),
+      ...previewImageMeta({ shareCard, imageUrl, headline, siteName, ident }),
     ],
     links: [
       ...(pageUrl && !isMirror ? [{ rel: "canonical", href: pageUrl }] : []),
@@ -509,6 +514,48 @@ export function documentHead(
       },
     ],
   };
+}
+
+/**
+ * The image a post's link preview shows, and the tags that describe it: the
+ * share card when the record has one, else the cover, else the default card.
+ * Each describes its own picture, because a page that supplies an og:image
+ * overrides the root's but cannot remove sibling tags (see ~/lib/social-card).
+ *
+ * og:image must be absolute, minted from the canonical origin (never the
+ * request origin) and served through our own /img proxy. X reads only
+ * twitter:image:alt for its alt text, so the alt is set under both names.
+ */
+function previewImageMeta(input: {
+  shareCard?: CoverRef | null;
+  imageUrl: string | null;
+  headline: string;
+  siteName: string;
+  ident: string;
+}) {
+  const { shareCard, imageUrl, headline } = input;
+  const image = (url: string, alt: string, size?: [number, number]) => [
+    { property: "og:image", content: url },
+    ...(size
+      ? [
+          { property: "og:image:width", content: String(size[0]) },
+          { property: "og:image:height", content: String(size[1]) },
+        ]
+      : []),
+    { property: "og:image:alt", content: alt },
+    { name: "twitter:image:alt", content: alt },
+  ];
+  if (shareCard)
+    return image(
+      `${CANONICAL_ORIGIN}${blobImagePath(shareCard.did, shareCard.cid)}`,
+      // What the card shows: the title, the publication and the byline.
+      `"${headline}", ${input.siteName === input.ident ? "" : `in ${input.siteName}, `}by ${input.ident}`,
+      [1200, 630],
+    );
+  // A cover's size isn't in the record, so it goes without one.
+  if (imageUrl) return image(imageUrl, `Cover image for "${headline}"`);
+  // No picture: the page shows the default card, so it describes it.
+  return DEFAULT_CARD_META;
 }
 
 /**
