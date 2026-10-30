@@ -54,7 +54,11 @@ export const Route = createFileRoute("/")({
       {
         type: "application/ld+json",
         children: jsonLdScriptContent(
-          buildSiteJsonLd({ name: "Goldroad", origin: CANONICAL_ORIGIN }),
+          buildSiteJsonLd({
+            // The same name the root head titles the site with.
+            name: import.meta.env.VITE_APP_TITLE || "Goldroad",
+            origin: CANONICAL_ORIGIN,
+          }),
         ),
       },
     ],

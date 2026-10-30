@@ -179,4 +179,34 @@ describe("publication page head — structured data", () => {
       "https://trygoldroad.com/@writer.example",
     );
   });
+
+  it("falls back to the handle for an empty or non-string name", () => {
+    for (const name of ["  ", 42]) {
+      const { scripts } = head({
+        loaderData: {
+          ...loaderData,
+          publication: { ...loaderData.publication, name },
+        },
+      });
+      expect(JSON.parse(scripts?.[0]?.children ?? "{}").name).toBe(
+        "writer.example",
+      );
+    }
+  });
+
+  it("claims no profile on a search, an empty archive or a home elsewhere", () => {
+    const pages = [
+      { ...loaderData, search: { q: "x", scope: "titles", hits: [] } },
+      { ...loaderData, posts: [] },
+      {
+        ...loaderData,
+        publication: {
+          ...loaderData.publication,
+          url: "https://writer.leaflet.pub",
+        },
+      },
+    ];
+    for (const page of pages)
+      expect(head({ loaderData: page }).scripts).toEqual([]);
+  });
 });
