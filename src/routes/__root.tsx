@@ -3,7 +3,6 @@ import { createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import { useEffect } from "react";
 
-import { env } from "#/env";
 import { ErrorPage, NotFoundPage } from "~/components/system-pages";
 import { APPEARANCE_KEY } from "~/lib/appearance";
 import { initPostHog } from "~/lib/posthog";
@@ -21,7 +20,7 @@ export const Route = createRootRoute({
         content: "width=device-width, initial-scale=1",
       },
       {
-        title: env.VITE_APP_TITLE ?? "Goldroad",
+        title: import.meta.env.VITE_APP_TITLE || "Goldroad",
       },
       // The default social card, inherited by every page that does not set its
       // own. Without og:image a shared link renders as a bare text card on

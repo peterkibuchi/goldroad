@@ -6,15 +6,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * visitors to a page with a form never use the form. It loads only once the
  * form comes near the viewport or something in it takes focus.
  */
-vi.mock("#/env", () => ({
-  env: { VITE_PUBLIC_TURNSTILE_SITE_KEY: "1x00000000000000000000AA" },
-}));
 
 /** IntersectionObserver stand-in the test drives by hand. */
 let intersect: (isIntersecting: boolean) => void = () => {};
 
 beforeEach(() => {
   vi.resetModules();
+  vi.stubEnv("VITE_PUBLIC_TURNSTILE_SITE_KEY", "1x00000000000000000000AA");
   document.head.innerHTML = "";
   vi.stubGlobal(
     "IntersectionObserver",
@@ -35,6 +33,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 const turnstileScripts = () =>

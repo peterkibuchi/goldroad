@@ -19,8 +19,6 @@
  */
 import { useEffect, useRef } from "react";
 
-import { env } from "#/env";
-
 /** The FormData/JSON field the widget writes its token into. */
 export const TURNSTILE_TOKEN_FIELD = "turnstileToken";
 
@@ -119,7 +117,7 @@ function loadTurnstile(): Promise<TurnstileApi | null> {
  * named TURNSTILE_TOKEN_FIELD inside this element (i.e. inside the form).
  */
 export function TurnstileWidget() {
-  const sitekey = env.VITE_PUBLIC_TURNSTILE_SITE_KEY;
+  const sitekey = import.meta.env.VITE_PUBLIC_TURNSTILE_SITE_KEY;
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -176,7 +174,7 @@ export function TurnstileWidget() {
         window.turnstile?.remove(widgetId);
       }
     };
-    // sitekey is a build-time constant (t3-env), not a reactive dependency.
+    // sitekey is a build-time constant, not a reactive dependency.
   }, []);
 
   if (!sitekey) return null;

@@ -16,6 +16,8 @@ declare const __BUILD_ID__: string;
 
 import handler, { createServerEntry } from "@tanstack/react-start/server-entry";
 
+// Importing env also validates every env var when the Worker starts (src/env.ts).
+import { env } from "#/env";
 import {
   BUILD_TIME_CAPTURE_CONFIG,
   withExceptionCapture,
@@ -33,9 +35,7 @@ import { waitUntil } from "cloudflare:workers";
 // strict policy would white-screen `pnpm dev`. Verify the prod CSP against the
 // built worker (`vite preview`) instead. The other headers are safe in both.
 const CSP = import.meta.env.PROD
-  ? buildContentSecurityPolicy(
-      import.meta.env.VITE_PUBLIC_POSTHOG_HOST || undefined,
-    )
+  ? buildContentSecurityPolicy(env.VITE_PUBLIC_POSTHOG_HOST)
   : null;
 
 const entry = createServerEntry({
