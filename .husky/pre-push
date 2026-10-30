@@ -1,2 +1,11 @@
 #!/usr/bin/env sh
-pnpm typecheck
+pnpm typecheck || exit
+
+# Leak scan: refuse to push machine-local paths or private names. It fails
+# closed, so an error blocks the push too. CI scans every pull request for the
+# same leaks, so a machine without the tool skips it here rather than failing.
+if command -v private-context >/dev/null 2>&1; then
+  private-context .
+else
+  echo "pre-push: leak scan skipped (private-context is not installed)" >&2
+fi
