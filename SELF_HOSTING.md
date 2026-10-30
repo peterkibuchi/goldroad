@@ -116,6 +116,13 @@ so in its log line.
 - The `env.staging` / `env.production` blocks are the hosted project's own
   environments (custom domain route, specific databases). You do **not** need them;
   deploy the top level.
+- **Preview URLs are off** at the top level (`preview_urls: false`). With them on,
+  Cloudflare gives every uploaded version its own public URL, and each one runs
+  against your live database. To review pull requests on them, set it to `true`.
+  They only serve when `VITE_PUBLIC_ORIGIN` is the Worker's own `workers.dev`
+  hostname; with a custom domain as the origin, a preview URL redirects there.
+  An instance deployed before this default changed loses its preview URLs on its
+  next deploy.
 
 ## Backups
 

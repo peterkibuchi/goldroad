@@ -2,8 +2,8 @@
  * Custom worker entry: hostname canonicalization in front of the TanStack
  * Start handler, so EVERY route (pages, API, OAuth endpoints) 301s from
  * legacy hostnames (goldroad.kibuchi.workers.dev) to https://trygoldroad.com
- * before any routing happens. Dev loopback and versioned preview hostnames
- * pass through — see ~/lib/origin.
+ * before any routing happens. Dev loopback and, on a workers.dev canonical
+ * origin (staging), versioned preview hostnames pass through — see ~/lib/origin.
  *
  * Referenced by wrangler.jsonc `main` (was the package default
  * "@tanstack/react-start/server-entry", which this wraps).

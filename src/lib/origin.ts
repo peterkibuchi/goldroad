@@ -4,8 +4,8 @@
  * announce links, head tags).
  *
  * Why this exists: the worker answers on more than one hostname
- * (trygoldroad.com via the zone route, goldroad.kibuchi.workers.dev, and
- * *-goldroad.kibuchi.workers.dev preview versions). Deriving URLs from the
+ * (trygoldroad.com via the zone route and goldroad.kibuchi.workers.dev, and
+ * on staging its preview versions too). Deriving URLs from the
  * request origin baked workers.dev into permanent records and into the OAuth
  * client_id — so when the workers.dev hostname went dark for a day
  * (2026-07-24: declaring `routes` without `workers_dev: true` disables it on
@@ -36,10 +36,15 @@ const CANONICAL_HOST = new URL(CANONICAL_ORIGIN).hostname;
  * while records referencing them can exist. */
 export const LEGACY_ORIGINS = ["https://goldroad.kibuchi.workers.dev"] as const;
 
-/** Versioned preview deploys (wrangler versions upload) answer on
- * <version>-goldroad.kibuchi.workers.dev — they must keep serving (a redirect
- * to production would make PR previews useless). */
-const PREVIEW_HOST_SUFFIX = "-goldroad.kibuchi.workers.dev";
+/** Cloudflare serves a Worker's preview versions on
+ * `<version or alias>-<its workers.dev hostname>`, and they must keep serving
+ * (a redirect to the canonical origin would make PR previews useless). Only a
+ * Worker whose canonical origin IS its workers.dev hostname has any: staging
+ * does, while production serves a custom domain with preview URLs off, so it
+ * gets null and treats every other hostname as one to redirect. */
+const PREVIEW_HOST_SUFFIX = CANONICAL_HOST.endsWith(".workers.dev")
+  ? `-${CANONICAL_HOST}`
+  : null;
 
 /**
  * CSRF defense-in-depth for mutating handlers, shared by every one of them:
@@ -90,7 +95,8 @@ export function ownOrigins(requestOrigin: string): readonly string[] {
  * requests on a non-canonical hostname (i.e. goldroad.kibuchi.workers.dev)
  * redirect to the same path + query on CANONICAL_ORIGIN, and plain-http
  * requests to https on the same host: 301 for GET and HEAD, 308 otherwise. Returns null when the request should be served: dev
- * loopback, and https on the canonical or a versioned preview hostname.
+ * loopback, and https on the canonical hostname or, when that is a
+ * workers.dev hostname, one of its preview versions (PREVIEW_HOST_SUFFIX).
  *
  * The scheme comes from the `cf-visitor` header, NOT from request.url:
  * `wrangler dev` on the built worker presents the zone host over plain http
@@ -104,7 +110,8 @@ export function canonicalRedirect(request: Request): Response | null {
   if (isLoopbackOrigin(url.origin)) return null;
   const known =
     url.hostname === CANONICAL_HOST ||
-    url.hostname.endsWith(PREVIEW_HOST_SUFFIX);
+    (PREVIEW_HOST_SUFFIX !== null &&
+      url.hostname.endsWith(PREVIEW_HOST_SUFFIX));
   const plainHttp = visitorScheme(request) === "http";
   if (known && !plainHttp) return null;
   // Hostname, not host: a port on a plain-http request has no https twin.
