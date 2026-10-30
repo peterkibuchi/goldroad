@@ -1,5 +1,13 @@
 // @vitest-environment node
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  type Mock,
+  vi,
+} from "vitest";
 
 /**
  * /api/threads + /api/threads/assemble handler behavior: the session gate, the
@@ -42,8 +50,14 @@ const fakeDb = vi.hoisted(() => ({
 vi.mock("drizzle-orm/d1", () => ({ drizzle: () => fakeDb }));
 
 // No Workers Cache in a node test run — the route's feature detection has to
-// take the "no cache at all" branch, which is also the self-hosting case.
-vi.mock("~/lib/workers-cache", () => ({ defaultCache: () => null }));
+// take the "no cache at all" branch, which is also the self-hosting case. The
+// caching tests put a fake one in place.
+const workersCache = vi.hoisted(() => ({
+  current: null as { match: Mock; put: Mock } | null,
+}));
+vi.mock("~/lib/workers-cache", () => ({
+  defaultCache: () => workersCache.current,
+}));
 
 import { signSession } from "../lib/session";
 import { MAX_THREAD_FETCHES_PER_HOUR } from "../lib/threads";
@@ -203,6 +217,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  workersCache.current = null;
 });
 
 describe("/api/threads — gates", () => {
@@ -251,6 +266,40 @@ describe("/api/threads — gates", () => {
     expect(((await res.json()) as { error: string }).error).toBe(
       "appview_failed",
     );
+  });
+});
+
+describe("/api/threads — the discovery cache", () => {
+  function fakeCache() {
+    workersCache.current = {
+      match: vi.fn(async () => undefined),
+      put: vi.fn(async () => {}),
+    };
+    return workersCache.current;
+  }
+
+  it("keeps a walk that stopped at the page cap", async () => {
+    const cache = fakeCache();
+    stubAppView({ ...FEED_BODY, cursor: "more" });
+    const res = await callThreads();
+    expect(((await res.json()) as { truncated: boolean }).truncated).toBe(true);
+    expect(cache.put).toHaveBeenCalledTimes(1);
+  });
+
+  it("doesn't keep a walk that lost a page", async () => {
+    const cache = fakeCache();
+    let call = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        ++call === 1
+          ? new Response(JSON.stringify({ ...FEED_BODY, cursor: "more" }))
+          : new Response("nope", { status: 500 }),
+      ),
+    );
+    const res = await callThreads();
+    expect(res.status).toBe(200);
+    expect(cache.put).not.toHaveBeenCalled();
   });
 });
 
