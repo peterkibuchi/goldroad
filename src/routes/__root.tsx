@@ -40,22 +40,6 @@ export const Route = createRootRoute({
       // document head on the pages that don't.
       { property: "og:image", content: DEFAULT_OG_IMAGE },
       { name: "twitter:card", content: "summary_large_image" },
-      // Status-bar and splash colour, per edition. iOS 26 opens ANY site added
-      // to the Home Screen as a standalone app by default — with or without a
-      // manifest — so a reader who saved us before this existed got a chromeless
-      // window themed black by a Create-React-App default nobody chose. These
-      // two make that window ours: paper in the light edition, the black-stock
-      // near-black in the dark one, matching the palette in styles.css.
-      {
-        name: "theme-color",
-        media: "(prefers-color-scheme: light)",
-        content: "#ffffff",
-      },
-      {
-        name: "theme-color",
-        media: "(prefers-color-scheme: dark)",
-        content: "#1a1815",
-      },
     ],
     links: [
       {
@@ -108,6 +92,25 @@ function RootDocument({ children }: { children: React.ReactNode }) {
     <html lang="en">
       <head>
         <HeadContent />
+        {/* Status-bar and splash colour, per edition. iOS 26 opens ANY site
+            added to the Home Screen as a standalone app by default, with or
+            without a manifest, so a reader who saved us before this existed
+            got a chromeless window themed black by a Create-React-App default
+            nobody chose. These two make that window ours: paper in the light
+            edition, the black-stock near-black in the dark one, matching the
+            palette in styles.css.
+            Here and not in the route head: HeadContent keeps one meta tag per
+            name, so two theme-color tags there shipped only the dark one. */}
+        <meta
+          content="#ffffff"
+          media="(prefers-color-scheme: light)"
+          name="theme-color"
+        />
+        <meta
+          content="#1a1815"
+          media="(prefers-color-scheme: dark)"
+          name="theme-color"
+        />
         {/* Appearance, resolved BEFORE first paint.
             No cookie, deliberately: reading surfaces are edge-cached and
             cookie-independent, and a theme cookie would fragment that cache

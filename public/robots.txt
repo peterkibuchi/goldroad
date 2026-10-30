@@ -4,8 +4,8 @@
 User-agent: *
 Disallow:
 
-# First-party surfaces only; publications/documents are discovered via the
-# per-publication RSS feeds (/@handle/rss.xml) and the open network, not
-# enumerated (third-party-authored, unbounded). Self-hosters: point this at
-# your own origin (must be an absolute URL).
+# The sitemap lists the first-party pages and the publications this instance
+# hosts. Posts aren't listed: each publication page and its feed
+# (/@handle/rss.xml) link them. Self-hosters: point this at your own origin
+# (it must be an absolute URL).
 Sitemap: https://trygoldroad.com/sitemap.xml
