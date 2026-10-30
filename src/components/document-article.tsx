@@ -73,15 +73,15 @@ type CoverRef = { did: string; cid: string };
  * Both modules already cap their own fetches (5 s in ~/lib/engagement, 3 s in
  * ~/lib/comments). Those ceilings are right for the dashboard's batched reads,
  * where the writer is looking at their own numbers and waiting is the honest
- * answer. They are far too long HERE: the like count is awaited before the
- * first byte, and the replies, though streamed to readers, are waited for in
- * full by crawlers and link-preview scrapers (the router renders the whole
- * page for bots), so on a cold render against a slow AppView it is the like
- * count — not the writer's words — that decides TTFB, and a link-preview
- * scraper has given up long before 5 s. Both already degrade to
- * `null` on every failure including timeout, and each keeps its own 300 s edge
- * cache, so the tighter leash costs a counts row on an unlucky cold render and
- * buys back seconds on the render a stranger's first impression depends on.
+ * answer. They are far too long HERE: both are streamed to readers, but
+ * crawlers and link-preview scrapers wait for the whole page (the router
+ * renders all of it for bots), so on a cold render against a slow AppView it
+ * is the AppView — not the writer's words — that decides when a scraper gets
+ * its first byte, and a link-preview scraper has given up long before 5 s.
+ * Both already degrade to `null` on every failure including timeout, and each
+ * keeps its own 300 s edge cache, so the tighter leash costs a counts row on
+ * an unlucky cold render and buys back seconds on the render a stranger's
+ * first impression depends on.
  */
 const READER_APPVIEW_BUDGET_MS = 1_500;
 
@@ -230,10 +230,13 @@ export async function loadDocument(
         : Promise.resolve(null);
 
     // Cross-network engagement: announced posts only, cached, and NEVER
-    // allowed to fail the page — every error degrades to null. Held to this
-    // page's render budget (see budgetedFetch) rather than the module's own
-    // 5 s, which on a cold render would let a like count set TTFB.
-    const engagementPromise = getDocumentEngagement(doc.bskyPostRef, did, {
+    // allowed to fail the page — every error degrades to null. Streamed like
+    // the replies below, for the same reason: the counts render under the
+    // article, and awaiting them here made a like count a cold render's
+    // TTFB whenever the AppView answered slower than the writer's PDS. Held
+    // to this page's render budget (see budgetedFetch) for the bots that
+    // wait for the whole page.
+    const engagement = getDocumentEngagement(doc.bskyPostRef, did, {
       fetcher: budgetedFetch,
     }).catch(() => null);
 
@@ -264,10 +267,9 @@ export async function loadDocument(
       )
       .then(([html]) => html);
 
-    const [pub, relatedPage, engagement, mirror, bodyHtml] = await Promise.all([
+    const [pub, relatedPage, mirror, bodyHtml] = await Promise.all([
       pubPromise,
       relatedPromise,
-      engagementPromise,
       mirrorPromise,
       bodyHtmlPromise,
     ]);
@@ -697,13 +699,14 @@ export function provenanceLine(
 /** Quiet like/reply/repost+quote row — only the reply count is a link, to the
  * bsky.app thread, because the conversation lives on the network. Plain
  * ink-soft icon+number pairs, never a colored badge: this must not read as
- * generic social-media chrome. */
+ * generic social-media chrome. Renders nothing when no count is worth showing. */
 function EngagementRow({ engagement }: { engagement: DocumentEngagement }) {
   const { counts, threadUrl } = engagement;
+  if (!hasVisibleEngagement(counts)) return null;
   const reposts = (counts.repostCount ?? 0) + (counts.quoteCount ?? 0);
   const showReposts = isWorthShowing(reposts);
   return (
-    <div className="mb-10 flex items-center gap-6 border-b border-rule pb-6 font-display text-sm text-ink-soft">
+    <div className="mt-10 flex items-center gap-6 font-display text-sm text-ink-soft">
       {isWorthShowing(counts.likeCount) && (
         <span
           className="inline-flex items-center gap-1.5"
@@ -773,8 +776,9 @@ export function DocumentArticle({
   cover?: CoverRef | null;
   mirror?: MirrorInfo | null;
   relatedPosts?: RelatedPost[];
-  engagement?: DocumentEngagement | null;
-  /** Streamed: the loader hands it over unawaited (see loadDocument). */
+  /** Streamed, like the conversation: the loader hands both over unawaited
+   * (see loadDocument). */
+  engagement?: Promise<DocumentEngagement | null>;
   conversation?: Promise<PostConversation | null>;
   /** The body as rendered by the loader (sanitized HTML), with its reading
    * time; the reading time is derived from `doc` when absent. */
@@ -948,12 +952,6 @@ export function DocumentArticle({
               </p>
             )}
           </header>
-          {/* Engagement row: announced posts only, and
-            only when the AppView actually returned a counted metric —
-            silence, never a placeholder or a false zero. */}
-          {engagement && hasVisibleEngagement(engagement.counts) && (
-            <EngagementRow engagement={engagement} />
-          )}
           {bodyHtml !== "" ? (
             <Prose html={bodyHtml} />
           ) : (
@@ -1035,6 +1033,20 @@ export function DocumentArticle({
               </div>
             </div>
           </aside>
+          {/* Engagement row: announced posts only, and only when the AppView
+            returned a count worth showing — silence, never a placeholder or a
+            false zero. Streamed, so it sits with the replies rather than
+            above the colophon: arriving late here moves only what the replies
+            already move, never the article or the subscribe card under it.
+            Without JavaScript the streamed part never swaps in, and the page
+            simply has no counts. */}
+          {engagement && (
+            <Suspense fallback={null}>
+              <Await promise={engagement}>
+                {(found) => found && <EngagementRow engagement={found} />}
+              </Await>
+            </Suspense>
+          )}
           {/* The conversation that already exists on the network. Announced
             posts with at least one readable reply only — a post nobody has
             replied to (or that was never announced) renders nothing here, and

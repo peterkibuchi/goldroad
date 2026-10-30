@@ -146,8 +146,8 @@ function isCacheableResponse(response: Response): boolean {
  *
  * The store is handed to `waitUntil` rather than awaited. `cache.put` reads
  * the body to its end, so awaiting it held every byte of a streamed page —
- * the article included — until the last streamed part (the replies) had
- * rendered.
+ * the article included — until the last streamed parts (the like counts and
+ * the replies) had rendered.
  *
  * A stored page carries the `build` that rendered it, and a hit from another
  * build is rendered afresh. The HTML names that build's hashed scripts and
