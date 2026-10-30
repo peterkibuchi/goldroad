@@ -320,24 +320,7 @@ export const Route = createFileRoute("/@{$handle}/")({
           href: `${readerPageUrl(ident)}/rss.xml`,
         },
       ],
-      // schema.org ProfilePage, in the document page's flat script shape (see
-      // documentHead in ~/components/document-article).
-      scripts: [
-        {
-          type: "application/ld+json",
-          children: jsonLdScriptContent(
-            buildProfilePageJsonLd({
-              name: title,
-              description: publication?.description?.trim(),
-              authorName: ident,
-              authorUrl:
-                publicationBase({ publicationUrl: publication?.url }) ??
-                `${CANONICAL_ORIGIN}/@${encodeURIComponent(ident)}`,
-              authorSameAs: [bskyProfileUrl(ident)],
-            }),
-          ),
-        },
-      ],
+      scripts: profilePageScripts(loaderData),
     };
   },
   component: PublicationPage,
@@ -367,6 +350,55 @@ export function publicationCanonicalUrl(input: {
   return isCanonicalOriginUrl(first)
     ? `${first}?cursor=${encodeURIComponent(input.cursor)}`
     : null;
+}
+
+/**
+ * The archive's schema.org ProfilePage, in the document page's flat script
+ * shape (see documentHead in ~/components/document-article). Only on a page
+ * worth indexing, and only while the writer's home is here: when their record
+ * names a site elsewhere, the canonical link says this page isn't the
+ * profile, and structured data claiming it is would argue with it.
+ */
+function profilePageScripts(loaderData: {
+  ident: string;
+  publication: StandardPublication | null;
+  search: ArchiveSearch | null;
+  postsError: string | null;
+  posts: unknown[];
+}) {
+  const { ident, publication } = loaderData;
+  const base = publicationBase({ publicationUrl: publication?.url });
+  const home = base ? onCanonicalOrigin(base) : readerPageUrl(ident);
+  if (
+    loaderData.search ||
+    loaderData.postsError ||
+    loaderData.posts.length === 0 ||
+    !isCanonicalOriginUrl(home)
+  )
+    return [];
+  // Record fields are untrusted: an empty or non-string name falls back to
+  // the handle, as the page's own title does for a missing one.
+  const name =
+    typeof publication?.name === "string" && publication.name.trim()
+      ? publication.name.trim()
+      : ident;
+  return [
+    {
+      type: "application/ld+json",
+      children: jsonLdScriptContent(
+        buildProfilePageJsonLd({
+          name,
+          description:
+            typeof publication?.description === "string"
+              ? publication.description.trim()
+              : null,
+          authorName: ident,
+          authorUrl: home,
+          authorSameAs: [bskyProfileUrl(ident)],
+        }),
+      ),
+    },
+  ];
 }
 
 /** A search on the archive. `full` came from the index, with snippets;
