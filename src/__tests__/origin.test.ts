@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import {
   CANONICAL_ORIGIN,
@@ -180,10 +180,17 @@ describe("canonicalRedirect", () => {
     expect(redirectFor("http://localhost:3000/dashboard")).toBeNull();
   });
 
-  it("serves versioned preview hostnames untouched (PR previews must stay viewable)", () => {
+  it("301s any other workers.dev host, previews included: production has none", () => {
     expect(
-      redirectFor("https://abc12345-goldroad.kibuchi.workers.dev/write"),
-    ).toBeNull();
+      redirectFor(
+        "https://abc12345-goldroad.kibuchi.workers.dev/write",
+      )?.headers.get("location"),
+    ).toBe("https://trygoldroad.com/write");
+    expect(
+      redirectFor(
+        "https://abc12345-goldroad-staging.kibuchi.workers.dev/write",
+      )?.headers.get("location"),
+    ).toBe("https://trygoldroad.com/write");
   });
 
   it("serves plain http that no visitor sent (wrangler dev presents the zone host over http, and upgrading it would loop)", () => {
@@ -217,12 +224,7 @@ describe("canonicalRedirect", () => {
     );
   });
 
-  it("upgrades a preview host on itself, and sends other hosts to the canonical origin", () => {
-    expect(
-      overHttp(
-        "http://abc12345-goldroad.kibuchi.workers.dev/write",
-      )?.headers.get("location"),
-    ).toBe("https://abc12345-goldroad.kibuchi.workers.dev/write");
+  it("sends a non-canonical host over http to the canonical origin", () => {
     expect(
       overHttp("http://www.trygoldroad.com/open")?.headers.get("location"),
     ).toBe("https://trygoldroad.com/open");
@@ -237,5 +239,69 @@ describe("canonicalRedirect", () => {
       );
     expect(withVisitor('{"scheme":"https"}')).toBeNull();
     expect(withVisitor("not json")).toBeNull();
+  });
+});
+
+/**
+ * Staging builds with its workers.dev hostname as the canonical origin, and
+ * Cloudflare serves its PR previews on `<version or alias>-` that hostname.
+ * The origin is read when the module loads, so this loads a staging copy.
+ */
+describe("canonicalRedirect on a workers.dev canonical origin (staging)", () => {
+  const STAGING = "https://goldroad-staging.kibuchi.workers.dev";
+  let stagingRedirect: typeof canonicalRedirect;
+
+  beforeAll(async () => {
+    vi.stubEnv("VITE_PUBLIC_ORIGIN", STAGING);
+    vi.resetModules();
+    ({ canonicalRedirect: stagingRedirect } = await import("../lib/origin"));
+  });
+  afterAll(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  const redirectFor = (url: string) =>
+    stagingRedirect(new Request(url, { method: "GET" }));
+
+  it("serves the canonical host untouched", () => {
+    expect(redirectFor(`${STAGING}/write`)).toBeNull();
+  });
+
+  it("serves its version and alias preview hosts untouched", () => {
+    expect(
+      redirectFor("https://13e437e2-goldroad-staging.kibuchi.workers.dev/"),
+    ).toBeNull();
+    expect(
+      redirectFor(
+        "https://perf-reader-first-load-goldroad-staging.kibuchi.workers.dev/write",
+      ),
+    ).toBeNull();
+  });
+
+  it("upgrades a preview host over http on itself", () => {
+    const res = stagingRedirect(
+      new Request(
+        "http://13e437e2-goldroad-staging.kibuchi.workers.dev/a?b=1",
+        {
+          headers: { "cf-visitor": '{"scheme":"http"}' },
+        },
+      ),
+    );
+    expect(res?.headers.get("location")).toBe(
+      "https://13e437e2-goldroad-staging.kibuchi.workers.dev/a?b=1",
+    );
+  });
+
+  it("301s an unknown workers.dev host, another Worker's previews included, to the canonical origin", () => {
+    for (const host of [
+      "goldroad.kibuchi.workers.dev",
+      "abc12345-goldroad.kibuchi.workers.dev",
+      "someone-else.workers.dev",
+    ]) {
+      const res = redirectFor(`https://${host}/write?x=1`);
+      expect(res?.status).toBe(301);
+      expect(res?.headers.get("location")).toBe(`${STAGING}/write?x=1`);
+    }
   });
 });

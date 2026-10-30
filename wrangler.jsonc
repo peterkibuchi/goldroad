@@ -14,7 +14,9 @@
   // ─────────────────────────────────────────────────────────────────────────
   "name": "goldroad",
   "workers_dev": true,
-  "preview_urls": true,
+  // Off: each uploaded version would get a public URL on your live D1. Turn it
+  // on to review PRs on preview URLs (SELF_HOSTING.md).
+  "preview_urls": false,
   "compatibility_date": "2025-09-02",
   // NOTE: global_fetch_strictly_public was tried here as defense-in-depth for
   // /api/import (writer-supplied feed URLs; same-zone fetches otherwise skip

@@ -173,8 +173,8 @@ const actorResolver = new LocalActorResolver({
  * session writes may create a session row (see D1SessionStore).
  *
  * KNOWN LIMITATION: a sign-in started from a versioned preview hostname
- * (*-goldroad.kibuchi.workers.dev) redirects back to the CANONICAL redirect
- * URI, where the browser-binding cookie set on the preview host isn't sent,
+ * (staging's `*-goldroad-staging.kibuchi.workers.dev`) redirects back to the
+ * CANONICAL redirect URI, where the browser-binding cookie set on the preview host isn't sent,
  * so it fails as signin_failed. Accepted:
  * interactive OAuth is testable in local dev (loopback client) and in
  * production; per-preview OAuth identities were rejected (each preview would
