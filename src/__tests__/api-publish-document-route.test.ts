@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * `intent=document` on /api/publish — the primary publish path, and the handler
@@ -712,6 +712,11 @@ describe("POST /api/publish — intent=document, the draft the post came from", 
 });
 
 describe("POST /api/publish — intent=document, a post that arrived by import", () => {
+  // Restored even when a test fails partway, so no stub leaks into the next.
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   const ORIGINAL = new Date("2024-03-11T08:30:00.000Z");
   const fields = { draftId: DRAFT_ID };
 
@@ -794,7 +799,6 @@ describe("POST /api/publish — intent=document, a post that arrived by import",
         "![two](https://cdn.example/2.jpg)",
       ].join("\n\n"),
     });
-    vi.unstubAllGlobals();
 
     expect(location(res).searchParams.get("published")).toBeTruthy();
     expect(location(res).searchParams.get("imagesKept")).toBe("2");
@@ -809,7 +813,6 @@ describe("POST /api/publish — intent=document, a post that arrived by import",
       // What the thread import stored on the draft, replayed by the editor.
       images: JSON.stringify([blob()]),
     });
-    vi.unstubAllGlobals();
 
     expect(location(res).searchParams.get("published")).toBeTruthy();
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -895,7 +898,6 @@ describe("POST /api/publish — intent=document, a post that arrived by import",
       ].join("\n\n"),
       images: JSON.stringify(cids.map((cid) => blob({ ref: { $link: cid } }))),
     });
-    vi.unstubAllGlobals();
 
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(callOf("com.atproto.repo.uploadBlob")).toBeUndefined();
