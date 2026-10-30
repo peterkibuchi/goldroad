@@ -48,6 +48,7 @@ import { checkMirror, keepsCanonical, type MirrorInfo } from "~/lib/mirror";
 import { checkHidden, recordAtUri } from "~/lib/moderation";
 import {
   CANONICAL_ORIGIN,
+  isCanonicalOriginUrl,
   onCanonicalOrigin,
   readerPageUrl,
 } from "~/lib/origin";
@@ -417,21 +418,18 @@ export function documentHead(
   const base = publicationBase({ site: doc.site, publicationUrl });
   // The record's own address, moved onto the canonical origin when it was
   // minted on a legacy one. A record that composes none still gets one
-  // canonical, whichever of /@ or /p/ and whatever casing or query it was
-  // reached by: this page, when the writer's home is here or nowhere on the
+  // canonical, whichever of /@ or /p/, handle casing or query it was reached
+  // by: this page, when the writer's home is here or nowhere on the
   // web. A home on another site without a path to the post names nothing,
   // since this page is not where that post lives and guessing would say so.
   const rkey = rkeyFromUri(atUri);
   const pageUrl = canonicalUrl
     ? onCanonicalOrigin(canonicalUrl)
-    : rkey &&
-        (base === null ||
-          onCanonicalOrigin(base).startsWith(`${CANONICAL_ORIGIN}/`))
+    : rkey && (base === null || isCanonicalOriginUrl(onCanonicalOrigin(base)))
       ? readerPageUrl(ident, rkey)
       : null;
   // The writer's home: that base, else their page here.
-  const writerHome =
-    base ?? `${CANONICAL_ORIGIN}/@${encodeURIComponent(ident)}`;
+  const writerHome = base ?? readerPageUrl(ident);
   return {
     meta: [
       { title },
@@ -471,7 +469,7 @@ export function documentHead(
         rel: "alternate",
         type: "application/rss+xml",
         title: `@${ident} — RSS`,
-        href: `${CANONICAL_ORIGIN}/@${encodeURIComponent(ident)}/rss.xml`,
+        href: `${readerPageUrl(ident)}/rss.xml`,
       },
     ],
     // schema.org Article — headline/dates/author/publisher for search and

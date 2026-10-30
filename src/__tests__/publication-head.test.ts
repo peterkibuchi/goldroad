@@ -80,11 +80,12 @@ describe("publication page head — indexing", () => {
     expect(robots(loaderData)).toBeUndefined();
   });
 
-  it("keeps an empty archive out of the index", () => {
-    expect(robots({ ...loaderData, posts: [] })).toEqual({
-      name: "robots",
-      content: "noindex",
-    });
+  it("keeps an empty archive out of the index, with no canonical", () => {
+    const empty = { ...loaderData, posts: [] };
+    expect(robots(empty)).toEqual({ name: "robots", content: "noindex" });
+    expect(
+      head({ loaderData: empty }).links?.some((l) => l.rel === "canonical"),
+    ).toBe(false);
   });
 });
 
@@ -96,6 +97,16 @@ describe("publicationCanonicalUrl", () => {
         publicationUrl: "https://writer.leaflet.pub",
       }),
     ).toBe("https://writer.leaflet.pub");
+  });
+
+  it("drops a trailing slash from the record's url", () => {
+    expect(
+      publicationCanonicalUrl({
+        ident: "writer.example",
+        publicationUrl: "https://trygoldroad.com/@writer.example/",
+        cursor: "3abc2345678df",
+      }),
+    ).toBe("https://trygoldroad.com/@writer.example?cursor=3abc2345678df");
   });
 
   it("is this page, lowercased, when the record has no https url", () => {

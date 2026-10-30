@@ -148,6 +148,11 @@ export function onCanonicalOrigin(url: string): string {
   return url;
 }
 
+/** Is this URL on the canonical origin (after onCanonicalOrigin)? */
+export function isCanonicalOriginUrl(url: string): boolean {
+  return url === CANONICAL_ORIGIN || url.startsWith(`${CANONICAL_ORIGIN}/`);
+}
+
 /**
  * A writer's reading page here: their publication, or one post on it. The
  * ident is lowercased because handles are case-insensitive (and the DIDs
