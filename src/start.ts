@@ -25,7 +25,11 @@ const reportServerFnErrors = createMiddleware({ type: "function" }).server(
     try {
       return await next();
     } catch (error) {
-      captureServerFnError(error, getRequest());
+      try {
+        captureServerFnError(error, getRequest());
+      } catch {
+        // Reporting must never replace the error it reports.
+      }
       throw error;
     }
   },
