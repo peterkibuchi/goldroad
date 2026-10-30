@@ -28,6 +28,8 @@ vi.mock("~/lib/live-session", async (importOriginal) => {
     ...actual,
     readLiveSessionDid: (request: Request, secret: string) =>
       readSessionDid(request, secret),
+    readSessionToEnd: (request: Request, secret: string) =>
+      readSessionDid(request, secret),
   };
 });
 

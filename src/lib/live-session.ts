@@ -27,7 +27,7 @@ import type { drizzle } from "drizzle-orm/d1";
 
 import { oauthKv, scheduledPosts } from "~/db/schema";
 import { isDid } from "~/lib/atproto";
-import { readSession } from "~/lib/session";
+import { readPreSidSessionDid, readSession } from "~/lib/session";
 
 /** `~/lib/oauth`'s D1Store prefixes session keys, so the row for a signed-in
  * writer is exactly `sess:<did>` — an exact key, never a scan. */
@@ -69,7 +69,9 @@ export function backfillSessionExpiry(db: DrizzleD1, nowMs: number) {
 
 /**
  * Moves the writer's session expiry out to `untilMs`, never in, and never
- * revives a row that has already expired.
+ * revives a row that has already expired. Never short of `sessionExpiryFloor`
+ * either: a row that older code left without an expiry would otherwise get
+ * 30 days from now, short of a post scheduled further out.
  */
 export async function extendSessionRow(
   db: DrizzleD1,
@@ -79,7 +81,9 @@ export async function extendSessionRow(
 ): Promise<void> {
   await db
     .update(oauthKv)
-    .set({ expiresAt: untilMs })
+    .set({
+      expiresAt: sql`max(${untilMs}, ${sessionExpiryFloor(sql`${did}`, nowMs)})`,
+    })
     .where(
       and(
         eq(oauthKv.k, SESSION_KEY_PREFIX + did),
@@ -142,4 +146,30 @@ export async function readLiveSessionDid(
     }
   }
   return cookie.did;
+}
+
+/**
+ * Whose session a sign-out ends, or null to end none. Read-only, since the row
+ * is about to go.
+ *
+ * The cookie's own session, when it names the row's sid, expired or not, so a
+ * row the sweep hasn't reached yet is still revoked. A cookie from before
+ * session ids ends only a row that never got one: once the writer has signed
+ * in since, their old cookie can't sign the new session out.
+ */
+export async function readSessionToEnd(
+  request: Request,
+  secret: string,
+  db: DrizzleD1,
+): Promise<string | null> {
+  const cookie = await readSession(request, secret);
+  const did = cookie?.did ?? (await readPreSidSessionDid(request, secret));
+  if (!did || !isDid(did)) return null;
+  const row = await db
+    .select({ sid: oauthKv.sid })
+    .from(oauthKv)
+    .where(eq(oauthKv.k, SESSION_KEY_PREFIX + did))
+    .get();
+  if (!row) return null;
+  return row.sid === (cookie?.sid ?? null) ? did : null;
 }

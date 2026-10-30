@@ -242,8 +242,13 @@ export async function runScheduled(
     mintRkey: generateTid,
   });
   console.log("scheduled publish pass", scheduled);
+  // Apart, so a failed backfill can't stop expired rows being purged.
   try {
     await backfillSessionExpiry(db, Date.now());
+  } catch (err) {
+    console.error("session expiry backfill failed", err);
+  }
+  try {
     await purgeExpiredOauthKv(db, Date.now());
   } catch (err) {
     console.error("oauth_kv purge failed", err);

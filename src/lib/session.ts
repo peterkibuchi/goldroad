@@ -92,18 +92,12 @@ export async function signSession(
   return `${payload}.${toBase64Url(new Uint8Array(sig))}`;
 }
 
-/**
- * Verifies a session token and its freshness; returns `{did, sid}` or null.
- * Signature check is timing-safe (crypto.subtle.verify). Rejects when: the
- * shape is wrong, the signature doesn't match, the payload isn't a valid
- * {did, sid, iat}, the issue time is in the future (beyond clock skew), or the
- * token is older than MAX_AGE_SECONDS. `nowMs` is injectable for tests.
- */
-export async function verifySessionToken(
+/** A token's payload when its signature verifies, or null. Signature check is
+ * timing-safe (crypto.subtle.verify). */
+async function verifiedPayload(
   token: string,
   secret: string,
-  nowMs: number = Date.now(),
-): Promise<SessionCookie | null> {
+): Promise<unknown> {
   const sep = token.lastIndexOf(".");
   if (sep <= 0 || sep === token.length - 1) return null;
   const payload = token.slice(0, sep);
@@ -121,17 +115,55 @@ export async function verifySessionToken(
     encoder.encode(payload),
   );
   if (!ok) return null;
-
-  let parsed: unknown;
   try {
-    parsed = JSON.parse(new TextDecoder().decode(fromBase64Url(payload)));
+    return JSON.parse(new TextDecoder().decode(fromBase64Url(payload)));
   } catch {
     return null; // includes legacy `did.HMAC` tokens (payload isn't base64url JSON)
   }
-  if (!isSessionPayload(parsed)) return null;
-  const age = nowMs - parsed.iat;
-  if (age < -CLOCK_SKEW_MS || age > MAX_AGE_MS) return null;
+}
+
+function isFresh(iat: number, nowMs: number): boolean {
+  const age = nowMs - iat;
+  return age >= -CLOCK_SKEW_MS && age <= MAX_AGE_MS;
+}
+
+/**
+ * Verifies a session token and its freshness; returns `{did, sid}` or null.
+ * Rejects when: the shape is wrong, the signature doesn't match, the payload
+ * isn't a valid {did, sid, iat}, the issue time is in the future (beyond clock
+ * skew), or the token is older than MAX_AGE_SECONDS. `nowMs` is injectable for
+ * tests.
+ */
+export async function verifySessionToken(
+  token: string,
+  secret: string,
+  nowMs: number = Date.now(),
+): Promise<SessionCookie | null> {
+  const parsed = await verifiedPayload(token, secret);
+  if (!isSessionPayload(parsed) || !isFresh(parsed.iat, nowMs)) return null;
   return { did: parsed.did, sid: parsed.sid };
+}
+
+/**
+ * The DID in a fresh, correctly signed cookie from before session ids: a
+ * `{did, iat}` payload with no sid. Sign-out is its only use, to end a session
+ * row that was written before sids existed (see `readSessionToEnd` in
+ * ~/lib/live-session). Nothing else may accept one.
+ */
+export async function readPreSidSessionDid(
+  request: Request,
+  secret: string,
+  nowMs: number = Date.now(),
+): Promise<string | null> {
+  const token = readCookie(request, COOKIE_NAME);
+  if (token === null) return null;
+  const parsed = await verifiedPayload(token, secret);
+  if (typeof parsed !== "object" || parsed === null || "sid" in parsed)
+    return null;
+  const { did, iat } = parsed as { did?: unknown; iat?: unknown };
+  if (typeof did !== "string" || !did.startsWith("did:")) return null;
+  if (typeof iat !== "number" || !Number.isFinite(iat)) return null;
+  return isFresh(iat, nowMs) ? did : null;
 }
 
 /** The named cookie's value from a request, or null. */

@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { drizzle } from "drizzle-orm/d1";
 
 import { isDid } from "~/lib/atproto";
-import { readLiveSessionDid } from "~/lib/live-session";
+import { readSessionToEnd } from "~/lib/live-session";
 import { createOAuthClient } from "~/lib/oauth";
 import { isCrossSite } from "~/lib/origin";
 import { deleteOAuthSessionForDid } from "~/lib/rights-store";
@@ -34,10 +34,10 @@ export const Route = createFileRoute("/logout")({
         if (isCrossSite(request)) return home();
 
         // The cookies are cleared whatever happens. The session itself is
-        // only ended when this cookie names the live one: a stale cookie from
-        // an earlier session must not be able to sign out the current one.
+        // only ended when this cookie names it: a stale cookie from an
+        // earlier session must not be able to sign out the current one.
         const db = drizzle(env.DB);
-        const did = await readLiveSessionDid(
+        const did = await readSessionToEnd(
           request,
           env.COOKIE_SECRET,
           db,
