@@ -33,6 +33,8 @@ import {
 } from "~/lib/atproto";
 import { blobImagePath, coverImageCid } from "~/lib/blob";
 import { documentBodyMarkdown } from "~/lib/document-content";
+import { bskyProfileUrl } from "~/lib/engagement";
+import { buildProfilePageJsonLd, jsonLdScriptContent } from "~/lib/json-ld";
 import { checkHidden } from "~/lib/moderation";
 import {
   CANONICAL_ORIGIN,
@@ -316,6 +318,24 @@ export const Route = createFileRoute("/@{$handle}/")({
           type: "application/rss+xml",
           title: `${title} — RSS`,
           href: `${readerPageUrl(ident)}/rss.xml`,
+        },
+      ],
+      // schema.org ProfilePage, in the document page's flat script shape (see
+      // documentHead in ~/components/document-article).
+      scripts: [
+        {
+          type: "application/ld+json",
+          children: jsonLdScriptContent(
+            buildProfilePageJsonLd({
+              name: title,
+              description: publication?.description?.trim(),
+              authorName: ident,
+              authorUrl:
+                publicationBase({ publicationUrl: publication?.url }) ??
+                `${CANONICAL_ORIGIN}/@${encodeURIComponent(ident)}`,
+              authorSameAs: [bskyProfileUrl(ident)],
+            }),
+          ),
         },
       ],
     };

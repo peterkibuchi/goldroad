@@ -98,3 +98,77 @@ export function buildArticleJsonLd(input: {
 export function jsonLdScriptContent(data: unknown): string {
   return JSON.stringify(data).replace(/</g, "\\u003c");
 }
+
+export type ProfilePageJsonLd = {
+  "@context": "https://schema.org";
+  "@type": "ProfilePage";
+  name: string;
+  description?: string;
+  mainEntity: {
+    "@type": "Person";
+    name: string;
+    url: string;
+    sameAs: string[];
+  };
+};
+
+/**
+ * schema.org ProfilePage for a publication's archive: one writer's page of
+ * their posts, which is what Google's profile-page markup describes. The
+ * Person is the writer, named by handle for the same reason as an Article's
+ * byline; the page's name is the publication's.
+ */
+export function buildProfilePageJsonLd(input: {
+  /** The publication's name, else the writer's handle. */
+  name: string;
+  description?: string | null;
+  authorName: string;
+  /** The writer's home on the web (see buildArticleJsonLd's authorUrl). */
+  authorUrl: string;
+  /** Other pages that are the same person (their Bluesky profile). */
+  authorSameAs: string[];
+}): ProfilePageJsonLd {
+  const jsonLd: ProfilePageJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "ProfilePage",
+    name: input.name,
+    mainEntity: {
+      "@type": "Person",
+      name: input.authorName,
+      url: input.authorUrl,
+      sameAs: input.authorSameAs,
+    },
+  };
+  if (isText(input.description)) jsonLd.description = input.description;
+  return jsonLd;
+}
+
+/**
+ * schema.org WebSite and Organization for the front page. Google reads the
+ * WebSite's name as the site name it prints above every result from this
+ * origin, and the Organization's logo as the one it may show beside them. The
+ * logo is the 512px app icon, square and well above Google's 112px minimum.
+ */
+export function buildSiteJsonLd(input: { name: string; origin: string }) {
+  const url = `${input.origin}/`;
+  const organization = `${url}#organization`;
+  return {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": `${url}#website`,
+        name: input.name,
+        url,
+        publisher: { "@id": organization },
+      },
+      {
+        "@type": "Organization",
+        "@id": organization,
+        name: input.name,
+        url,
+        logo: `${input.origin}/logo512.png`,
+      },
+    ],
+  };
+}

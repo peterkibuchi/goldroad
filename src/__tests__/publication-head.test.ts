@@ -8,6 +8,7 @@ import { publicationCanonicalUrl, Route } from "../routes/@{$handle}.index";
 type HeadFn = (ctx: { loaderData?: unknown }) => {
   meta?: Array<Record<string, string>>;
   links?: Array<Record<string, string>>;
+  scripts?: Array<{ type?: string; children?: string }>;
 };
 
 const head = (Route.options as unknown as { head: HeadFn }).head;
@@ -148,5 +149,34 @@ describe("publicationCanonicalUrl", () => {
         cursor: "3abc2345678df",
       }),
     ).toBeNull();
+  });
+});
+
+describe("publication page head — structured data", () => {
+  it("emits one ProfilePage script for the writer", () => {
+    const { scripts } = head({ loaderData });
+    expect(scripts).toHaveLength(1);
+    expect(scripts?.[0]?.type).toBe("application/ld+json");
+    expect(JSON.parse(scripts?.[0]?.children ?? "{}")).toMatchObject({
+      "@type": "ProfilePage",
+      name: "The Long Way",
+      mainEntity: {
+        "@type": "Person",
+        name: "writer.example",
+        url: "https://trygoldroad.com/@writer.example",
+        sameAs: ["https://bsky.app/profile/writer.example"],
+      },
+    });
+  });
+
+  it("points the writer at this page when the record has no url", () => {
+    const { scripts } = head({
+      loaderData: { ...loaderData, publication: null, publicationAtUri: null },
+    });
+    const jsonLd = JSON.parse(scripts?.[0]?.children ?? "{}");
+    expect(jsonLd.name).toBe("writer.example");
+    expect(jsonLd.mainEntity.url).toBe(
+      "https://trygoldroad.com/@writer.example",
+    );
   });
 });

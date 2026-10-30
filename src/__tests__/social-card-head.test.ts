@@ -63,3 +63,21 @@ describe("the dimensions match the image on disk", async () => {
     expect(png.readUInt32BE(20)).toBe(630);
   });
 });
+
+describe("the front page names the site for search results", () => {
+  it("carries WebSite and Organization structured data", () => {
+    const { scripts } = (
+      LandingRoute as unknown as {
+        options: {
+          head: () => { scripts: Array<{ type: string; children: string }> };
+        };
+      }
+    ).options.head();
+    expect(scripts).toHaveLength(1);
+    expect(scripts[0]?.type).toBe("application/ld+json");
+    const types = JSON.parse(scripts[0]?.children ?? "{}")["@graph"].map(
+      (node: { "@type": string }) => node["@type"],
+    );
+    expect(types).toEqual(["WebSite", "Organization"]);
+  });
+});
