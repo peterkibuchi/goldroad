@@ -55,6 +55,10 @@ const RKEY = "3lyk73wxnok2f";
 const PDS = "https://pds.example";
 const PUB_RKEY = "3lyk73wxpub22";
 const REPLIES = { replies: [], threadUrl: "https://bsky.app/x", hasMore: true };
+const ENGAGEMENT = {
+  counts: { likeCount: 3 },
+  threadUrl: "https://bsky.app/x",
+};
 
 const gates = vi.hoisted(() => ({
   /** Opened when resolveReaderPds is entered. */
@@ -65,6 +69,8 @@ const gates = vi.hoisted(() => ({
   pubsEntered: undefined as ReturnType<typeof makeGate> | undefined,
   /** Released by the test; the reply fetch waits on it. */
   repliesReleased: undefined as ReturnType<typeof makeGate> | undefined,
+  /** Released by the test; the like-count fetch waits on it. */
+  engagementReleased: undefined as ReturnType<typeof makeGate> | undefined,
   /** What the takedown check should answer once its gate settles. */
   hiddenWhenOpened: false,
   /** Make the DID-document resolution fail. */
@@ -157,7 +163,11 @@ vi.mock("~/lib/moderation", async (importOriginal) => {
 vi.mock("~/lib/mirror", () => ({ checkMirror: vi.fn(async () => null) }));
 vi.mock("~/lib/engagement", async (importOriginal) => ({
   ...(await importOriginal<typeof import("~/lib/engagement")>()),
-  getDocumentEngagement: vi.fn(async () => null),
+  // Held until the test releases it, like the replies below.
+  getDocumentEngagement: vi.fn(async () => {
+    await gates.engagementReleased?.wait();
+    return ENGAGEMENT;
+  }),
 }));
 vi.mock("~/lib/comments", async (importOriginal) => ({
   ...(await importOriginal<typeof import("~/lib/comments")>()),
@@ -184,6 +194,8 @@ function reset() {
   // Released at once unless a test holds it.
   gates.repliesReleased = makeGate();
   gates.repliesReleased.open();
+  gates.engagementReleased = makeGate();
+  gates.engagementReleased.open();
   gates.listing = "has";
   gates.refusingPds = null;
   gates.movedTo = null;
@@ -280,22 +292,45 @@ describe("reading-surface loader concurrency", () => {
     expect(refreshReaderPds).toHaveBeenCalledTimes(1);
   });
 
-  it("returns the article without waiting for the replies", async () => {
-    reset();
-    gates.repliesReleased = makeGate();
-    const outcome = await Promise.race([
-      loadDocument("writer.example", RKEY).then((data) => ({ data })),
-      new Promise<"waited">((resolve) => setTimeout(resolve, 1_000, "waited")),
-    ]);
-    // Replies render far below the fold; the page streams them in after the
-    // article rather than holding the first byte for an AppView round trip.
-    expect(outcome, "the loader still waits for the replies").not.toBe(
-      "waited",
-    );
-    if (outcome === "waited") return;
-    gates.repliesReleased.open();
-    await expect(outcome.data.conversation).resolves.toEqual(REPLIES);
-  });
+  // The counts and the replies both render below the article, so the page
+  // streams them in after it rather than holding the first byte for an
+  // AppView round trip.
+  it.each([
+    {
+      what: "replies",
+      gate: "repliesReleased",
+      field: "conversation",
+      value: REPLIES,
+    },
+    {
+      what: "like counts",
+      gate: "engagementReleased",
+      field: "engagement",
+      value: ENGAGEMENT,
+    },
+  ] as const)(
+    "returns the article without waiting for the $what",
+    async ({ what, gate, field, value }) => {
+      reset();
+      const held = makeGate();
+      gates[gate] = held;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const outcome = await Promise.race([
+        loadDocument("writer.example", RKEY).then((data) => ({ data })),
+        new Promise<"waited">((resolve) => {
+          timer = setTimeout(resolve, 1_000, "waited");
+        }),
+      ]);
+      clearTimeout(timer);
+      // Released either way, so a loader still waiting on it can finish.
+      held.open();
+      expect(outcome, `the loader still waits for the ${what}`).not.toBe(
+        "waited",
+      );
+      if (outcome === "waited") return;
+      await expect(outcome.data[field]).resolves.toEqual(value);
+    },
+  );
 
   it("still shows the takedown notice when the DID document is unreachable", async () => {
     reset();

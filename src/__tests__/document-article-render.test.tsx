@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // useLocation needs a live TanStack Router context this test doesn't set up
@@ -10,6 +16,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => ({
 }));
 
 import { clearEdition } from "#/lib/appearance";
+import type { DocumentEngagement } from "#/lib/engagement";
 import { DocumentArticle } from "./support/document-article";
 
 // No vitest globals in this repo — RTL auto-cleanup doesn't run; do it by hand.
@@ -113,21 +120,50 @@ describe("DocumentArticle — title block (title -> dek -> byline)", () => {
 describe("DocumentArticle — engagement row", () => {
   const threadUrl = "https://bsky.app/profile/writer.example/post/abc123";
 
-  it("renders like/reply/repost+quote counts with quiet icons", () => {
-    render(
-      <DocumentArticle
-        doc={baseDoc}
-        engagement={{
-          counts: {
-            likeCount: 42,
-            replyCount: 5,
-            repostCount: 3,
-            quoteCount: 1,
-          },
-          threadUrl,
-        }}
-        ident="writer.example"
-      />,
+  // The loader streams the counts (an unawaited promise), so each case lets
+  // the promise settle before asserting: an absence checked while the
+  // boundary is still suspended would pass for the wrong reason. The render
+  // goes inside the act too: React retries a suspended boundary when its
+  // promise settles, and only an open act scope flushes that retry.
+  async function renderSettled(
+    engagement?: Promise<DocumentEngagement | null>,
+  ) {
+    let container: HTMLElement | undefined;
+    await act(async () => {
+      ({ container } = render(
+        <DocumentArticle
+          doc={baseDoc}
+          engagement={engagement}
+          ident="writer.example"
+        />,
+      ));
+      await engagement;
+    });
+    return container?.innerHTML;
+  }
+
+  /** The page an unannounced post renders, for "renders nothing" to equal:
+   * an empty row would pass every query for counts and still add its margin. */
+  function unannouncedHtml() {
+    const { container } = render(
+      <DocumentArticle doc={baseDoc} ident="writer.example" />,
+    );
+    const html = container.innerHTML;
+    cleanup();
+    return html;
+  }
+
+  it("renders like/reply/repost+quote counts with quiet icons", async () => {
+    await renderSettled(
+      Promise.resolve({
+        counts: {
+          likeCount: 42,
+          replyCount: 5,
+          repostCount: 3,
+          quoteCount: 1,
+        },
+        threadUrl,
+      }),
     );
     expect(screen.getByText("42")).toBeDefined();
     expect(screen.getByText("5")).toBeDefined();
@@ -135,38 +171,86 @@ describe("DocumentArticle — engagement row", () => {
     expect(screen.getByText("4")).toBeDefined();
   });
 
-  it("links only the reply count to the bsky.app thread", () => {
-    render(
-      <DocumentArticle
-        doc={baseDoc}
-        engagement={{ counts: { replyCount: 5 }, threadUrl }}
-        ident="writer.example"
-      />,
+  it("renders the post in full before the counts arrive, and the counts once they do", async () => {
+    let resolve!: (engagement: DocumentEngagement) => void;
+    const engagement = new Promise<DocumentEngagement>((r) => {
+      resolve = r;
+    });
+    await act(async () => {
+      render(
+        <DocumentArticle
+          doc={baseDoc}
+          engagement={engagement}
+          ident="writer.example"
+        />,
+      );
+    });
+    // The article must not wait on the AppView.
+    expect(screen.getByText("Publishing on the open network")).toBeDefined();
+    expect(screen.getByText("Full body text here.")).toBeDefined();
+    expect(screen.queryByTitle(/likes on Bluesky/)).toBeNull();
+
+    await act(async () => {
+      resolve({ counts: { likeCount: 42 }, threadUrl });
+      await engagement;
+    });
+    expect(screen.getByTitle("42 likes on Bluesky")).toBeDefined();
+  });
+
+  it("places the counts after the writer's words and the subscribe card", async () => {
+    // Streamed content arrives late; anything it lands above moves when it
+    // does. Below the colophon, that is never the article or the card.
+    await renderSettled(
+      Promise.resolve({ counts: { likeCount: 42 }, threadUrl }),
+    );
+    const likes = screen.getByTitle("42 likes on Bluesky");
+    for (const before of [
+      screen.getByText("Full body text here."),
+      screen.getByRole("link", { name: /Follow @writer\.example on Bluesky/ }),
+    ]) {
+      expect(
+        before.compareDocumentPosition(likes) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
+  });
+
+  it("links only the reply count to the bsky.app thread", async () => {
+    await renderSettled(
+      Promise.resolve({ counts: { replyCount: 5 }, threadUrl }),
     );
     const link = screen.getByRole("link", { name: /5/ });
     expect(link.getAttribute("href")).toBe(threadUrl);
   });
 
-  it("renders nothing for an unannounced post (engagement is null)", () => {
-    render(
-      <DocumentArticle
-        doc={baseDoc}
-        engagement={null}
-        ident="writer.example"
-      />,
-    );
-    expect(screen.queryByTitle(/likes on Bluesky/)).toBeNull();
+  it("renders nothing for an unannounced post (engagement is null)", async () => {
+    const expected = unannouncedHtml();
+    expect(await renderSettled(Promise.resolve(null))).toBe(expected);
   });
 
-  it("renders nothing when every count came back uncounted (honest silence, not a zero)", () => {
-    render(
-      <DocumentArticle
-        doc={baseDoc}
-        engagement={{ counts: {}, threadUrl }}
-        ident="writer.example"
-      />,
+  it("renders nothing when the engagement prop is simply absent", async () => {
+    await renderSettled();
+    expect(screen.queryByTitle(/on Bluesky/)).toBeNull();
+  });
+
+  it("renders nothing when every count came back uncounted (honest silence, not a zero)", async () => {
+    const expected = unannouncedHtml();
+    const html = await renderSettled(
+      Promise.resolve({ counts: {}, threadUrl }),
     );
-    expect(screen.queryByRole("link", { name: /bsky/i })).toBeNull();
+    expect(html).toBe(expected);
+  });
+
+  it("renders nothing when every count is a counted zero", async () => {
+    // A freshly announced post: the AppView answers with literal zeros.
+    const expected = unannouncedHtml();
+    const html = await renderSettled(
+      Promise.resolve({
+        counts: { likeCount: 0, replyCount: 0, repostCount: 0, quoteCount: 0 },
+        threadUrl,
+      }),
+    );
+    expect(html).toBe(expected);
     expect(screen.queryByText("0")).toBeNull();
   });
 });
