@@ -81,6 +81,15 @@ export function initPostHog(): void {
   void load();
 }
 
+/**
+ * Reports an error a boundary caught. `capture_exceptions` sees only errors
+ * nothing handled, so an error the router's error page catches would never
+ * reach error tracking on its own. No-op without a key.
+ */
+export function captureException(error: unknown): void {
+  void load().then((posthog) => posthog?.captureException(error));
+}
+
 /** Fire-and-forget custom event; no-op without a key. */
 export function capture(
   event: string,

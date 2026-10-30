@@ -1,10 +1,13 @@
 // @vitest-environment node
+
+import { notFound, redirect } from "@tanstack/react-router";
 import { describe, expect, it, vi } from "vitest";
 
 import {
   buildExceptionEvent,
   captureHandledFailure,
   captureServerException,
+  captureServerFnError,
   DEFAULT_POSTHOG_HOST,
   parseStackFrames,
   safeMessage,
@@ -308,6 +311,41 @@ describe("withExceptionCapture — the fetch wrapper", () => {
       { fetchFn },
     );
     await expect(wrapped(REQUEST, ctx)).rejects.toThrow("boom");
+    expect(scheduled).toHaveLength(0);
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+});
+
+describe("captureServerFnError: a server function that threw", () => {
+  it("reports a real failure, which Start would otherwise turn into a quiet error response", async () => {
+    const fetchFn = okFetch();
+    const { ctx, scheduled } = makeCtx();
+    const sent = captureServerFnError(
+      new Error("D1_ERROR: no such table"),
+      REQUEST,
+      { apiKey: "phc_key", fetchFn },
+      ctx.waitUntil,
+    );
+    expect(sent).toBe(true);
+    await Promise.all(scheduled);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips redirects and notFound, which are how a handler answers", () => {
+    const fetchFn = okFetch();
+    const { ctx, scheduled } = makeCtx();
+    const config = { apiKey: "phc_key", fetchFn };
+    expect(
+      captureServerFnError(
+        redirect({ to: "/write" }),
+        REQUEST,
+        config,
+        ctx.waitUntil,
+      ),
+    ).toBe(false);
+    expect(
+      captureServerFnError(notFound(), REQUEST, config, ctx.waitUntil),
+    ).toBe(false);
     expect(scheduled).toHaveLength(0);
     expect(fetchFn).not.toHaveBeenCalled();
   });

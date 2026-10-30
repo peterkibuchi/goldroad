@@ -1,5 +1,8 @@
+import { useEffect } from "react";
+
 import { AppShell } from "~/components/site-chrome";
 import { MAIN_CONTENT_ID } from "~/components/skip-link";
+import { captureException } from "~/lib/posthog";
 
 /**
  * System pages — 404, error boundary, route-pending skeleton. System
@@ -42,6 +45,11 @@ export function NotFoundPage() {
 }
 
 export function ErrorPage({ error }: { error: unknown }) {
+  // The router caught this, so posthog-js's capture_exceptions never sees it.
+  useEffect(() => {
+    captureException(error);
+  }, [error]);
+
   return (
     <AppShell header={{ variant: "signed-out" }}>
       <main
