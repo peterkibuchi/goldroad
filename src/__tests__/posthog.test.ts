@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 
-import { appEnvForHostname, stampAppEnv } from "../lib/posthog";
+import { appEnvForHostname, redacted, stampAppEnv } from "../lib/posthog";
 
 /**
  * One PostHog project serves every environment; the app_env property is the
@@ -52,5 +52,22 @@ describe("stampAppEnv (the before_send hook)", () => {
 
   it("passes through null (posthog-js uses null to drop events)", () => {
     expect(stampAppEnv(null, "trygoldroad.com")).toBeNull();
+  });
+});
+
+describe("redacted (what the error page sends)", () => {
+  it("redacts a failed query's tokens, which reach the browser intact", () => {
+    const original = new Error(
+      "Failed query: select sid from oauth_kv\nparams: eyJhbGciOi.eyJzdWIi.c2ln",
+    );
+    original.stack = `Error: ${original.message}\n    at getDashboard (dashboard.tsx:10:5)`;
+    const sent = redacted(original);
+    expect(sent.message).toBe("Failed query: select sid from oauth_kv");
+    expect(sent.stack).not.toContain("eyJ");
+    expect(sent.stack).toContain("at getDashboard (dashboard.tsx:10:5)");
+  });
+
+  it("turns a thrown non-Error into an Error", () => {
+    expect(redacted("plain string").message).toBe("plain string");
   });
 });

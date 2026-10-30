@@ -31,6 +31,9 @@
  * reader is never a subject: `reader_email_left` reports the writer whose list
  * grew and which page asked, never who left the address.
  */
+
+import { safeMessage } from "~/lib/safe-message";
+
 type PostHogClient = typeof import("posthog-js")["default"];
 
 /** Which deployment produced an event. Hostname-based: the one build (and
@@ -87,7 +90,24 @@ export function initPostHog(): void {
  * reach error tracking on its own. No-op without a key.
  */
 export function captureException(error: unknown): void {
-  void load().then((posthog) => posthog?.captureException(error));
+  void load().then((posthog) => posthog?.captureException(redacted(error)));
+}
+
+/**
+ * A copy safe to send: the message through `safeMessage`, as the Worker does,
+ * because a server function's error reaches the browser with its message
+ * intact. The stack keeps its frames and drops the lines that repeat the
+ * message.
+ */
+export function redacted(error: unknown): Error {
+  const original = error instanceof Error ? error : new Error(String(error));
+  const copy = new Error(safeMessage(original.message));
+  copy.name = original.name;
+  const frames = (original.stack ?? "")
+    .split("\n")
+    .filter((line) => /^\s+at |@.*:\d+:\d+$/.test(line));
+  copy.stack = [`${copy.name}: ${copy.message}`, ...frames].join("\n");
+  return copy;
 }
 
 /** Fire-and-forget custom event; no-op without a key. */

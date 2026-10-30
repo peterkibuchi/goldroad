@@ -329,6 +329,28 @@ describe("captureServerFnError: a server function that threw", () => {
     expect(sent).toBe(true);
     await Promise.all(scheduled);
     expect(fetchFn).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(String(fetchFn.mock.calls[0][1]?.body)) as {
+      properties: { $exception_list: { mechanism: { handled: boolean } }[] };
+    };
+    // Start answered with an error response; a Worker crash is the unhandled kind.
+    expect(body.properties.$exception_list[0].mechanism.handled).toBe(true);
+  });
+
+  it("skips a validator rejecting input, which anyone can send", () => {
+    const fetchFn = okFetch();
+    const { ctx, scheduled } = makeCtx();
+    const invalid = Object.assign(new Error("Invalid input"), {
+      issues: [{ path: ["handle"], message: "not a handle" }],
+    });
+    expect(
+      captureServerFnError(
+        invalid,
+        REQUEST,
+        { apiKey: "phc_key", fetchFn },
+        ctx.waitUntil,
+      ),
+    ).toBe(false);
+    expect(scheduled).toHaveLength(0);
   });
 
   it("skips redirects and notFound, which are how a handler answers", () => {

@@ -22,22 +22,13 @@
 import { isNotFound, isRedirect } from "@tanstack/react-router";
 
 import { appEnvForHostname } from "~/lib/posthog";
+import { safeMessage } from "~/lib/safe-message";
 import { waitUntil } from "cloudflare:workers";
 
 export const DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com";
 
-const MAX_MESSAGE_CHARS = 200;
-
-/** First line only (drizzle puts `params:` on the next one), with DIDs,
- * JWTs and long token-like runs redacted, then capped. */
-export function safeMessage(message: string): string {
-  const firstLine = message.split("\n", 1)[0] ?? "";
-  return firstLine
-    .replace(/did:[a-z]+:[A-Za-z0-9._:%-]+/g, "did:…")
-    .replace(/eyJ[\w-]+\.[\w-]+(\.[\w-]+)?/g, "[token]")
-    .replace(/[A-Za-z0-9_\-+/=]{32,}/g, "[redacted]")
-    .slice(0, MAX_MESSAGE_CHARS);
-}
+// In its own module so the browser can redact with the same rules.
+export { safeMessage } from "~/lib/safe-message";
 
 /** Stacks are bounded so a pathological error can't bloat the event. */
 const MAX_STACK_CHARS = 4000;
@@ -199,11 +190,21 @@ export function captureHandledFailure(
   });
 }
 
+/** A validator rejecting input (zod's errors carry `issues`). Junk input is
+ * anyone's to send, so reporting it would let them flood error tracking. */
+function isValidationError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    Array.isArray((error as { issues?: unknown }).issues)
+  );
+}
+
 /**
  * Report a server function that threw. Start turns the throw into an error
  * response, so it never escapes to `withExceptionCapture`. Redirects and
  * notFound travel as throws too, but they're how a handler answers, not
- * failures, so they're skipped.
+ * failures, so they're skipped, as are rejected inputs.
  */
 export function captureServerFnError(
   error: unknown,
@@ -211,8 +212,13 @@ export function captureServerFnError(
   config: ExceptionCaptureConfig = BUILD_TIME_CAPTURE_CONFIG,
   schedule: (promise: Promise<unknown>) => void = waitUntil,
 ): boolean {
-  if (isRedirect(error) || isNotFound(error)) return false;
-  return captureServerException(error, request, schedule, config);
+  if (isRedirect(error) || isNotFound(error) || isValidationError(error))
+    return false;
+  // Handled: Start answered with an error response, and the caller may
+  // degrade from it. A crash of the whole Worker is withExceptionCapture's.
+  return captureServerException(error, request, schedule, config, {
+    handled: true,
+  });
 }
 
 /**
