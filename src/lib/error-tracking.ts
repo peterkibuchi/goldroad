@@ -19,6 +19,8 @@
  * query's message carries its bound params, which for the OAuth session store
  * are a writer's tokens and DPoP key.
  */
+import { isNotFound, isRedirect } from "@tanstack/react-router";
+
 import { appEnvForHostname } from "~/lib/posthog";
 import { waitUntil } from "cloudflare:workers";
 
@@ -195,6 +197,22 @@ export function captureHandledFailure(
   return captureServerException(error, request, schedule, config, {
     handled: true,
   });
+}
+
+/**
+ * Report a server function that threw. Start turns the throw into an error
+ * response, so it never escapes to `withExceptionCapture`. Redirects and
+ * notFound travel as throws too, but they're how a handler answers, not
+ * failures, so they're skipped.
+ */
+export function captureServerFnError(
+  error: unknown,
+  request: Request,
+  config: ExceptionCaptureConfig = BUILD_TIME_CAPTURE_CONFIG,
+  schedule: (promise: Promise<unknown>) => void = waitUntil,
+): boolean {
+  if (isRedirect(error) || isNotFound(error)) return false;
+  return captureServerException(error, request, schedule, config);
 }
 
 /**

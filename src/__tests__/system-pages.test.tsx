@@ -1,7 +1,10 @@
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ErrorPage, NotFoundPage } from "../components/system-pages";
+import { captureException } from "../lib/posthog";
+
+vi.mock("../lib/posthog", () => ({ captureException: vi.fn() }));
 
 // No vitest globals in this repo — RTL auto-cleanup doesn't run; do it by hand.
 afterEach(cleanup);
@@ -36,5 +39,13 @@ describe("system pages — plain, outcome-first copy", () => {
       screen.getByRole("link", { name: "Go to the front page" }),
     ).toBeTruthy();
     expect(container.textContent).not.toMatch(METAPHOR);
+  });
+});
+
+describe("error page reporting", () => {
+  it("reports the error it caught, which capture_exceptions never sees", () => {
+    const error = new Error("loader failed");
+    render(<ErrorPage error={error} />);
+    expect(captureException).toHaveBeenCalledWith(error);
   });
 });
