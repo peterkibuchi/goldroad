@@ -18,6 +18,7 @@ import {
   TurnstileWidget,
   turnstileReady,
 } from "~/components/turnstile";
+import { buildSiteJsonLd, jsonLdScriptContent } from "~/lib/json-ld";
 import { CANONICAL_ORIGIN } from "~/lib/origin";
 import { capture } from "~/lib/posthog";
 import { DEFAULT_CARD_META } from "~/lib/social-card";
@@ -48,6 +49,15 @@ export const Route = createFileRoute("/")({
       ...DEFAULT_CARD_META,
     ],
     links: [{ rel: "canonical", href: `${CANONICAL_ORIGIN}/` }],
+    // Flat script props, as on the document page (see documentHead).
+    scripts: [
+      {
+        type: "application/ld+json",
+        children: jsonLdScriptContent(
+          buildSiteJsonLd({ name: "Goldroad", origin: CANONICAL_ORIGIN }),
+        ),
+      },
+    ],
   }),
   component: LandingRoute,
 });

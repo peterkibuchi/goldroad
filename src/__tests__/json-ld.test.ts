@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 
-import { buildArticleJsonLd, jsonLdScriptContent } from "../lib/json-ld";
+import {
+  buildArticleJsonLd,
+  buildProfilePageJsonLd,
+  buildSiteJsonLd,
+  jsonLdScriptContent,
+} from "../lib/json-ld";
 
 describe("buildArticleJsonLd", () => {
   it("emits the required schema.org Article shape", () => {
@@ -173,5 +178,66 @@ describe("jsonLdScriptContent — rendered <script> tag safety", () => {
     expect(parsed.headline).toBe(hostileHeadline);
 
     container.remove();
+  });
+});
+
+describe("buildProfilePageJsonLd", () => {
+  it("names the publication and the writer behind it", () => {
+    expect(
+      buildProfilePageJsonLd({
+        name: "The Long Way",
+        description: "Essays.",
+        authorName: "writer.example",
+        authorUrl: "https://trygoldroad.com/@writer.example",
+        authorSameAs: ["https://bsky.app/profile/writer.example"],
+      }),
+    ).toEqual({
+      "@context": "https://schema.org",
+      "@type": "ProfilePage",
+      name: "The Long Way",
+      description: "Essays.",
+      mainEntity: {
+        "@type": "Person",
+        name: "writer.example",
+        url: "https://trygoldroad.com/@writer.example",
+        sameAs: ["https://bsky.app/profile/writer.example"],
+      },
+    });
+  });
+
+  it("leaves out a description the record doesn't carry", () => {
+    const jsonLd = buildProfilePageJsonLd({
+      name: "writer.example",
+      description: "",
+      authorName: "writer.example",
+      authorUrl: "https://trygoldroad.com/@writer.example",
+      authorSameAs: [],
+    });
+    expect("description" in jsonLd).toBe(false);
+  });
+});
+
+describe("buildSiteJsonLd", () => {
+  it("links the WebSite to the Organization that publishes it", () => {
+    const { "@graph": graph } = buildSiteJsonLd({
+      name: "Goldroad",
+      origin: "https://trygoldroad.com",
+    });
+    expect(graph).toEqual([
+      {
+        "@type": "WebSite",
+        "@id": "https://trygoldroad.com/#website",
+        name: "Goldroad",
+        url: "https://trygoldroad.com/",
+        publisher: { "@id": "https://trygoldroad.com/#organization" },
+      },
+      {
+        "@type": "Organization",
+        "@id": "https://trygoldroad.com/#organization",
+        name: "Goldroad",
+        url: "https://trygoldroad.com/",
+        logo: "https://trygoldroad.com/logo512.png",
+      },
+    ]);
   });
 });
