@@ -402,11 +402,11 @@ export function documentHead(
     publicationUrl,
     publicationIcon,
   } = loaderData;
-  const title = `${doc.title ?? "Untitled"} — ${ident}`;
-  const imageUrl = cover
-    ? `${CANONICAL_ORIGIN}${blobImagePath(cover.did, cover.cid)}`
-    : null;
   const headline = doc.title ?? "Untitled";
+  const title = `${headline} — ${ident}`;
+  const blobUrl = (ref: CoverRef) =>
+    `${CANONICAL_ORIGIN}${blobImagePath(ref.did, ref.cid)}`;
+  const imageUrl = cover ? blobUrl(cover) : null;
   // The site a link preview names (Slack and Discord print it above the
   // title): the writer's publication, not the host it happens to be read on.
   const siteName = publicationName ?? ident;
@@ -455,14 +455,20 @@ export function documentHead(
       { property: "og:site_name", content: siteName },
       // Open Graph's article tags: Facebook, LinkedIn and Slack read the dates
       // from here rather than from the JSON-LD. Record fields are untrusted,
-      // so only strings make it in.
-      ...(typeof doc.publishedAt === "string"
+      // so only a string a date parses from makes it in.
+      ...(isDate(doc.publishedAt)
         ? [{ property: "article:published_time", content: doc.publishedAt }]
         : []),
-      ...(typeof doc.updatedAt === "string"
+      ...(isDate(doc.updatedAt)
         ? [{ property: "article:modified_time", content: doc.updatedAt }]
         : []),
-      ...previewImageMeta({ shareCard, imageUrl, headline, siteName, ident }),
+      ...previewImageMeta({
+        shareCardUrl: shareCard ? blobUrl(shareCard) : null,
+        imageUrl,
+        headline,
+        publicationName,
+        ident,
+      }),
     ],
     links: [
       ...(pageUrl && !isMirror ? [{ rel: "canonical", href: pageUrl }] : []),
@@ -494,18 +500,16 @@ export function documentHead(
         type: "application/ld+json",
         children: jsonLdScriptContent(
           buildArticleJsonLd({
-            headline: doc.title ?? "Untitled",
+            headline,
             description: doc.description,
             publishedAt: doc.publishedAt,
             updatedAt: doc.updatedAt,
             authorName: ident,
             authorUrl: writerHome,
             authorSameAs: [bskyProfileUrl(ident)],
-            publisherName: publicationName ?? ident,
+            publisherName: siteName,
             publisherUrl: writerHome,
-            publisherLogoUrl: publicationIcon
-              ? `${CANONICAL_ORIGIN}${blobImagePath(publicationIcon.did, publicationIcon.cid)}`
-              : null,
+            publisherLogoUrl: publicationIcon ? blobUrl(publicationIcon) : null,
             url: pageUrl,
             mainEntityOfPage: isMirror ? null : pageUrl,
             imageUrl,
@@ -527,13 +531,13 @@ export function documentHead(
  * twitter:image:alt for its alt text, so the alt is set under both names.
  */
 function previewImageMeta(input: {
-  shareCard?: CoverRef | null;
+  shareCardUrl: string | null;
   imageUrl: string | null;
   headline: string;
-  siteName: string;
+  publicationName?: string | null;
   ident: string;
 }) {
-  const { shareCard, imageUrl, headline } = input;
+  const { shareCardUrl, imageUrl, headline, publicationName } = input;
   const image = (url: string, alt: string, size?: [number, number]) => [
     { property: "og:image", content: url },
     ...(size
@@ -545,17 +549,22 @@ function previewImageMeta(input: {
     { property: "og:image:alt", content: alt },
     { name: "twitter:image:alt", content: alt },
   ];
-  if (shareCard)
+  if (shareCardUrl)
     return image(
-      `${CANONICAL_ORIGIN}${blobImagePath(shareCard.did, shareCard.cid)}`,
+      shareCardUrl,
       // What the card shows: the title, the publication and the byline.
-      `"${headline}", ${input.siteName === input.ident ? "" : `in ${input.siteName}, `}by ${input.ident}`,
+      `"${headline}", ${publicationName ? `in ${publicationName}, ` : ""}by ${input.ident}`,
       [1200, 630],
     );
   // A cover's size isn't in the record, so it goes without one.
   if (imageUrl) return image(imageUrl, `Cover image for "${headline}"`);
   // No picture: the page shows the default card, so it describes it.
   return DEFAULT_CARD_META;
+}
+
+/** A record's date field, if it is a string a date parses from. */
+function isDate(value: unknown): value is string {
+  return typeof value === "string" && !Number.isNaN(Date.parse(value));
 }
 
 /**

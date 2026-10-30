@@ -16,6 +16,9 @@ import { CANONICAL_ORIGIN } from "~/lib/origin";
 /** The default card image: `public/og.png`, 1200×630. */
 export const DEFAULT_OG_IMAGE = `${CANONICAL_ORIGIN}/og.png`;
 
+const DEFAULT_CARD_ALT =
+  "Goldroad — writer-owned publishing. Your posts, your readers, your name, in an account you control.";
+
 /**
  * Head meta for a page that has no picture of its own and so shows the default
  * card. Spread into `head().meta`.
@@ -23,9 +26,6 @@ export const DEFAULT_OG_IMAGE = `${CANONICAL_ORIGIN}/og.png`;
  * NOT for a page that sets its own og:image — these tags describe THIS image,
  * and that is the whole reason they are not defaulted at the root.
  */
-const DEFAULT_CARD_ALT =
-  "Goldroad — writer-owned publishing. Your posts, your readers, your name, in an account you control.";
-
 export const DEFAULT_CARD_META = [
   { property: "og:image:width", content: "1200" },
   { property: "og:image:height", content: "630" },

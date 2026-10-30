@@ -294,8 +294,6 @@ export const Route = createFileRoute("/@{$handle}/")({
         })(),
         { property: "og:title", content: title },
         { property: "og:type", content: "website" },
-        // The writer's publication, not the host it is read on (as on a post).
-        { property: "og:site_name", content: title },
         ...(canonicalUrl
           ? [{ property: "og:url", content: canonicalUrl }]
           : []),
