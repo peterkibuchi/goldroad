@@ -46,7 +46,11 @@ import { findFormerHandle, formerHandleRedirect } from "~/lib/handle-history";
 import { buildArticleJsonLd, jsonLdScriptContent } from "~/lib/json-ld";
 import { checkMirror, keepsCanonical, type MirrorInfo } from "~/lib/mirror";
 import { checkHidden, recordAtUri } from "~/lib/moderation";
-import { CANONICAL_ORIGIN } from "~/lib/origin";
+import {
+  CANONICAL_ORIGIN,
+  onCanonicalOrigin,
+  readerPageUrl,
+} from "~/lib/origin";
 import { composeDocumentUrl, publicationBase } from "~/lib/publish";
 import { documentReadingMinutes, formatReadingTime } from "~/lib/reading-time";
 import {
@@ -408,12 +412,26 @@ export function documentHead(
   // long-form copy of the writer's own words in favour of nothing at all. See
   // ~/lib/mirror.
   const isMirror = !keepsCanonical(mirror);
-  // The writer's home: the base the canonical URL composes onto (the
-  // document's own https site, else its publication's url), else their page
-  // here.
+  // The base the canonical URL composes onto: the document's own https site,
+  // else its publication's url.
+  const base = publicationBase({ site: doc.site, publicationUrl });
+  // The record's own address, moved onto the canonical origin when it was
+  // minted on a legacy one. A record that composes none still gets one
+  // canonical, whichever of /@ or /p/ and whatever casing or query it was
+  // reached by: this page, when the writer's home is here or nowhere on the
+  // web. A home on another site without a path to the post names nothing,
+  // since this page is not where that post lives and guessing would say so.
+  const rkey = rkeyFromUri(atUri);
+  const pageUrl = canonicalUrl
+    ? onCanonicalOrigin(canonicalUrl)
+    : rkey &&
+        (base === null ||
+          onCanonicalOrigin(base).startsWith(`${CANONICAL_ORIGIN}/`))
+      ? readerPageUrl(ident, rkey)
+      : null;
+  // The writer's home: that base, else their page here.
   const writerHome =
-    publicationBase({ site: doc.site, publicationUrl }) ??
-    `${CANONICAL_ORIGIN}/@${encodeURIComponent(ident)}`;
+    base ?? `${CANONICAL_ORIGIN}/@${encodeURIComponent(ident)}`;
   return {
     meta: [
       { title },
@@ -426,7 +444,7 @@ export function documentHead(
         : []),
       { property: "og:title", content: doc.title ?? "Untitled" },
       { property: "og:type", content: "article" },
-      ...(canonicalUrl ? [{ property: "og:url", content: canonicalUrl }] : []),
+      ...(pageUrl ? [{ property: "og:url", content: pageUrl }] : []),
       // og:image must be absolute — minted from the canonical origin
       // (never the request origin), served through our own /img proxy.
       // The alt travels with the image. Without it the root's default would be
@@ -444,9 +462,7 @@ export function documentHead(
           DEFAULT_CARD_META),
     ],
     links: [
-      ...(canonicalUrl && !isMirror
-        ? [{ rel: "canonical", href: canonicalUrl }]
-        : []),
+      ...(pageUrl && !isMirror ? [{ rel: "canonical", href: pageUrl }] : []),
       { rel: "alternate", href: atUri },
       { rel: "site.standard.document", href: atUri },
       // Feed discovery: document pages advertise their PUBLICATION's feed
@@ -487,8 +503,8 @@ export function documentHead(
             publisherLogoUrl: publicationIcon
               ? `${CANONICAL_ORIGIN}${blobImagePath(publicationIcon.did, publicationIcon.cid)}`
               : null,
-            url: canonicalUrl,
-            mainEntityOfPage: isMirror ? null : canonicalUrl,
+            url: pageUrl,
+            mainEntityOfPage: isMirror ? null : pageUrl,
             imageUrl,
           }),
         ),

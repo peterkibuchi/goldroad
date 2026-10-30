@@ -56,8 +56,24 @@ describe("documentHead", () => {
     expect(meta).toContainEqual({ property: "og:type", content: "article" });
   });
 
-  it("omits canonical/og:url (never guesses) when composition failed", () => {
-    const head = documentHead({ ...loaderData, canonicalUrl: null });
+  it("falls back to this page when the record composes no URL and has no home elsewhere", () => {
+    const head = documentHead({
+      ...loaderData,
+      doc: { title: "No path" },
+      ident: "Writer.Example",
+      canonicalUrl: null,
+    });
+    const url = "https://trygoldroad.com/@writer.example/3abc2345678df";
+    expect(head.links).toContainEqual({ rel: "canonical", href: url });
+    expect(head.meta).toContainEqual({ property: "og:url", content: url });
+  });
+
+  it("omits canonical/og:url (never guesses) when the home is another site", () => {
+    const head = documentHead({
+      ...loaderData,
+      doc: { title: "Elsewhere", site: "https://writer.leaflet.pub" },
+      canonicalUrl: null,
+    });
     expect(head.links?.some((l) => l.rel === "canonical")).toBe(false);
     expect(
       head.meta?.some((m) => "property" in m && m.property === "og:url"),
@@ -66,6 +82,18 @@ describe("documentHead", () => {
     expect(head.links).toContainEqual({
       rel: "site.standard.document",
       href: loaderData.atUri,
+    });
+  });
+
+  it("moves a URL minted on a legacy origin onto the canonical one", () => {
+    const head = documentHead({
+      ...loaderData,
+      canonicalUrl:
+        "https://goldroad.kibuchi.workers.dev/@writer.example/3abc2345678df",
+    });
+    expect(head.links).toContainEqual({
+      rel: "canonical",
+      href: "https://trygoldroad.com/@writer.example/3abc2345678df",
     });
   });
 
