@@ -34,7 +34,11 @@ import {
 import { blobImagePath, coverImageCid } from "~/lib/blob";
 import { documentBodyMarkdown } from "~/lib/document-content";
 import { checkHidden } from "~/lib/moderation";
-import { CANONICAL_ORIGIN } from "~/lib/origin";
+import {
+  CANONICAL_ORIGIN,
+  onCanonicalOrigin,
+  readerPageUrl,
+} from "~/lib/origin";
 import { formatReadingTime, listItemReadingMinutes } from "~/lib/reading-time";
 import { type SearchHit, searchPublication } from "~/lib/search";
 import {
@@ -205,6 +209,9 @@ export const Route = createFileRoute("/@{$handle}/")({
       return {
         ident,
         search,
+        // Which page of the archive this is, for the head's canonical link. A
+        // search reads the newest page whatever the cursor says.
+        cursor: q ? null : (deps.cursor ?? null),
         // The author's DID: whose address an email left here would be held for
         // (~/components/reader-email-capture). The publication's own url, which
         // decides whether that offer is made at all, is on `publication`.
@@ -234,9 +241,8 @@ export const Route = createFileRoute("/@{$handle}/")({
   },
   // Interop + SEO head. Publication home pages reference their backing record
   // via rel="site.standard.publication" (standard.site convention — see the
-  // matching document-page tags in ~/components/document-article). Canonical
-  // is the record's own url field: for Goldroad writers that is this page; for
-  // third-party authors it honestly points at their home (e.g. *.leaflet.pub).
+  // matching document-page tags in ~/components/document-article). The
+  // canonical link is publicationCanonicalUrl's (below).
   // A search answers for one query and can show a post that was just deleted
   // or taken down, so it is never stored anywhere (see ~/lib/read-cache).
   headers: ({ loaderData }) =>
@@ -245,11 +251,13 @@ export const Route = createFileRoute("/@{$handle}/")({
       : undefined,
   head: ({ loaderData }) => {
     if (!loaderData) return { meta: [{ title: "Not found" }] };
-    const { ident, publication, publicationAtUri } = loaderData;
+    const { ident, publication, publicationAtUri, cursor } = loaderData;
     const title = publication?.name ?? ident;
-    const canonicalUrl = publication?.url?.startsWith("https://")
-      ? publication.url
-      : null;
+    const canonicalUrl = publicationCanonicalUrl({
+      ident,
+      publicationUrl: publication?.url,
+      cursor,
+    });
     return {
       meta: [
         {
@@ -258,8 +266,12 @@ export const Route = createFileRoute("/@{$handle}/")({
             : title,
         },
         // A page whose posts failed to load is not one to index, and neither
-        // is a search result.
-        ...(loaderData.postsError || loaderData.search
+        // is a search result. Nor is an empty archive: every atproto account
+        // has a page here, and the millions with nothing published would
+        // otherwise be thin pages that read as soft 404s.
+        ...(loaderData.postsError ||
+        loaderData.search ||
+        loaderData.posts.length === 0
           ? [{ name: "robots", content: "noindex" }]
           : []),
         // A description always, so a shared archive link is never a bare title.
@@ -305,6 +317,32 @@ export const Route = createFileRoute("/@{$handle}/")({
   component: PublicationPage,
   notFoundComponent: PublicationNotFound,
 });
+
+/**
+ * The publication page's canonical URL. The first page's is the record's own
+ * url: for a Goldroad writer that is this page, and for another app's writer
+ * it honestly points at their home (e.g. *.leaflet.pub). With no usable url
+ * it is this page, so every archive names one address however it was reached
+ * (a differently cased handle, the DID form, a tracking query).
+ *
+ * An older page (`?cursor=`) is its own canonical, never the first page's:
+ * pointing it at page one tells search engines the posts it lists aren't
+ * there. That holds only while the archive lives here, since another app's
+ * site pages its archive its own way, so there an older page names none.
+ */
+export function publicationCanonicalUrl(input: {
+  ident: string;
+  publicationUrl?: string;
+  cursor?: string | null;
+}): string | null {
+  const first = input.publicationUrl?.startsWith("https://")
+    ? onCanonicalOrigin(input.publicationUrl)
+    : readerPageUrl(input.ident);
+  if (!input.cursor) return first;
+  return first.startsWith(`${CANONICAL_ORIGIN}/`)
+    ? `${first}?cursor=${encodeURIComponent(input.cursor)}`
+    : null;
+}
 
 /** A search on the archive. `full` came from the index, with snippets;
  * `titles` is the fallback filter over the newest page of titles and

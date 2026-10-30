@@ -133,3 +133,28 @@ function visitorScheme(request: Request): string | null {
     return null;
   }
 }
+
+/**
+ * A URL minted on a legacy origin, moved onto the canonical one; any other URL
+ * comes back unchanged. Early records still carry those hostnames, which now
+ * only redirect here, and a canonical tag that points at a redirect sends
+ * search engines two answers to one question.
+ */
+export function onCanonicalOrigin(url: string): string {
+  for (const origin of LEGACY_ORIGINS) {
+    if (url === origin || url.startsWith(`${origin}/`))
+      return CANONICAL_ORIGIN + url.slice(origin.length);
+  }
+  return url;
+}
+
+/**
+ * A writer's reading page here: their publication, or one post on it. The
+ * ident is lowercased because handles are case-insensitive (and the DIDs
+ * atproto supports are lowercase already), so /@Writer.example and
+ * /@writer.example name one page with one address.
+ */
+export function readerPageUrl(ident: string, rkey?: string): string {
+  const page = `${CANONICAL_ORIGIN}/@${encodeURIComponent(ident.toLowerCase())}`;
+  return rkey ? `${page}/${encodeURIComponent(rkey)}` : page;
+}
