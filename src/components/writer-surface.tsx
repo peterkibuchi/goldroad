@@ -1,6 +1,5 @@
 import { SkipToContent } from "~/components/skip-link";
 import { type BasicTheme, themeStyle } from "~/lib/theme";
-import { cn } from "~/lib/utils";
 
 /**
  * The page shell for a surface that belongs to its AUTHOR — the publication
@@ -28,19 +27,14 @@ import { cn } from "~/lib/utils";
  */
 export function WriterSurface({
   children,
-  className,
   theme,
 }: {
   children: React.ReactNode;
-  className?: string;
   theme?: BasicTheme | null;
 }) {
   return (
     <div
-      className={cn(
-        "writer-surface min-h-screen bg-paper font-body text-ink",
-        className,
-      )}
+      className="writer-surface min-h-screen bg-paper font-body text-ink"
       // Presence is the signal; the value is never read. Only set for a theme
       // that survived validation.
       data-writer-theme={theme ? "" : undefined}

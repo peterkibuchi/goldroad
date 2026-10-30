@@ -26,6 +26,7 @@
  * button would be a made-up one.
  */
 import { useLocation } from "@tanstack/react-router";
+import { clsx } from "clsx";
 import { useEffect, useState } from "react";
 
 import { capture } from "~/lib/posthog";
@@ -35,7 +36,6 @@ import {
   signInHref,
   writeSubscription,
 } from "~/lib/subscribe-client";
-import { cn } from "~/lib/utils";
 
 /** What just happened, for the announcement and the instruction line. */
 type Note = "subscribed" | "unsubscribed" | "reconnect" | "failed";
@@ -61,6 +61,8 @@ export function SubscribeControl({
   /** The publication's record URI. Null for a document with no publication
    * record behind it — there is nothing to subscribe TO, so nothing renders. */
   publicationAtUri: string | null;
+  /** Joined with clsx, not cn(): pass only classes that can't conflict with
+   * the component's own (a margin). */
   className?: string;
 }) {
   const { pathname } = useLocation();
@@ -114,7 +116,7 @@ export function SubscribeControl({
     // The slot holds its height from the server render, so the answer arriving
     // after mount doesn't move the words under a reader.
     <span
-      className={cn(
+      className={clsx(
         "flex min-h-11 flex-wrap items-center gap-x-4 gap-y-1",
         className,
       )}
@@ -123,7 +125,7 @@ export function SubscribeControl({
         // A link, because it navigates. `pathname` comes back through the one
         // open-redirect guard on the /login POST (see signInHref).
         <a
-          className={cn(READER_ACTION, READER_ACTION_OUTLINE)}
+          className={clsx(READER_ACTION, READER_ACTION_OUTLINE)}
           href={signInHref(pathname)}
         >
           Sign in to subscribe
@@ -133,7 +135,7 @@ export function SubscribeControl({
         <button
           aria-busy={pending || undefined}
           aria-pressed={state.subscribed}
-          className={cn(
+          className={clsx(
             READER_ACTION,
             state.subscribed
               ? "border border-rule text-ink-soft hover:border-ink hover:text-ink"

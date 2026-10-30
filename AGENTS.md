@@ -89,7 +89,11 @@ Package manager: **pnpm**. Path alias: `~/*` → `src/*` (see tsconfig).
   TanStack already provides.
 - Prefer TanStack-native solutions (file routes, route `head` for SEO, loaders,
   TanStack Form/Query/Table) before hand-rolling.
-- Use the `cn()` helper for class merging. Follow Biome's sorted-classes +
+- Use the `cn()` helper for class merging wherever classes can conflict. Exception:
+  components rendered inside `WriterSurface` (the reader pages) whose classes can't
+  conflict join with plain `clsx`, a `className` prop included (callers pass only
+  margins), because tailwind-merge builds its class map on its first call, which
+  would land in the reader pages' hydration. Follow Biome's sorted-classes +
   organized-imports (a `check:write` fixes both).
 - **The UI is hand-built, and that is a choice with a cost.** No component
   library is installed: the pressroom look fights every library's defaults, and

@@ -1,4 +1,5 @@
 import { createFileRoute, notFound } from "@tanstack/react-router";
+import { clsx } from "clsx";
 import { Fragment } from "react";
 
 import {
@@ -44,7 +45,6 @@ import {
 } from "~/lib/search-query";
 import { DEFAULT_CARD_META } from "~/lib/social-card";
 import { type BasicTheme, parseTheme } from "~/lib/theme";
-import { cn } from "~/lib/utils";
 
 /**
  * Public publication page — calm register. Everything
@@ -476,11 +476,11 @@ function SearchForm({ ident, q }: { ident: string; q: string }) {
           public page: searching the archive is often a phone visitor's first
           interaction with it. */}
         <input
-          className={cn(
-            "min-h-9 border-b border-transparent bg-transparent font-display text-base text-ink transition-[width,border-color] placeholder:text-ink-soft focus:w-56 focus:border-ink focus:outline-none sm:text-sm",
+          className={clsx(
+            "min-h-9 border-b bg-transparent font-display text-base text-ink transition-[width,border-color] placeholder:text-ink-soft focus:w-56 focus:border-ink focus:outline-none sm:text-sm",
             // A query stays visibly a field: without the rule it reads as a
             // loose phrase floating at the end of the row.
-            q ? "w-48 border-rule" : "w-32",
+            q ? "w-48 border-rule" : "w-32 border-transparent",
           )}
           defaultValue={q}
           enterKeyHint="search"
@@ -706,7 +706,7 @@ export function PublicationView({
             <Fragment key={group.label ?? `flat-${gi}`}>
               {group.label && (
                 <p
-                  className={cn(
+                  className={clsx(
                     "font-display text-xs tracking-wide text-ink-soft uppercase",
                     gi === 0 ? "mb-2" : "mt-10 mb-2",
                   )}
