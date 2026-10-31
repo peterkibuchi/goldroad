@@ -162,10 +162,10 @@ describe("resolveRecommendations — what the page shows", () => {
     vi.mocked(moderation.hiddenSubjects).mockResolvedValueOnce(
       new Set([FRIEND]),
     );
-    const cards = await visibleRecommendationCards([
-      FRIEND_PUB,
-      "https://example.com",
-    ]);
+    const cards = await visibleRecommendationCards(
+      {} as Parameters<typeof visibleRecommendationCards>[0],
+      [FRIEND_PUB, "https://example.com"],
+    );
     expect(cards.map((c) => c.uri)).toEqual(["https://example.com"]);
     expect(atproto.getRecord).not.toHaveBeenCalled();
   });

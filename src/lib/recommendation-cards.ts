@@ -15,12 +15,15 @@ import {
 } from "~/lib/recommendations";
 import { env } from "cloudflare:workers";
 
+type DrizzleD1 = ReturnType<typeof drizzle>;
+
 /**
  * The cards for a cleaned list, minus any whose publication or author is
  * taken down here. Fail-open on a D1 error, like every takedown read (see
  * ~/lib/moderation), so a store outage costs the check and not the list.
  */
 export async function visibleRecommendationCards(
+  db: DrizzleD1 | null,
   uris: readonly string[],
 ): Promise<RecommendationCard[]> {
   const subjects = uris.flatMap((uri) => {
@@ -28,8 +31,8 @@ export async function visibleRecommendationCards(
     return parsed ? [uri, parsed.did] : [];
   });
   const hidden =
-    env.DB && subjects.length > 0
-      ? await hiddenSubjects(drizzle(env.DB), subjects).catch((err) => {
+    db && subjects.length > 0
+      ? await hiddenSubjects(db, subjects).catch((err) => {
           console.error("recommendation takedown check failed", err);
           return new Set<string>();
         })
@@ -49,4 +52,8 @@ export const recommendationCards = createServerFn({ method: "GET" })
       typeof data?.uris === "string" ? data.uris.split("\n") : [],
     ),
   )
-  .handler(({ data }) => visibleRecommendationCards(data));
+  // The binding is read inside the handler only, so the client build, which
+  // drops the handler, never sees `cloudflare:workers`.
+  .handler(({ data }) =>
+    visibleRecommendationCards(env.DB ? drizzle(env.DB) : null, data),
+  );
