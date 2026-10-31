@@ -1,11 +1,6 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-// Loaded on the reader's first selection in the body, never with the page.
-const PassageShare = lazy(() =>
-  import("~/components/passage-share").then((m) => ({
-    default: m.PassageShare,
-  })),
-);
+import type { PassageShare } from "~/components/passage-share";
 
 /** A block that names a language, other than the names that mean "plain". */
 const HIGHLIGHTABLE =
@@ -42,7 +37,12 @@ export function Prose({
   quoteHref?: (passage: string) => string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [quoting, setQuoting] = useState(false);
+  // The offer's code, fetched on the reader's first selection in the body,
+  // never with the page. Not React.lazy: a chunk that fails to load (a deploy
+  // since the page was opened, a dropped connection) would throw through
+  // Suspense to the route's error page and take the post with it. Here the
+  // reader just gets no offer.
+  const [Offer, setOffer] = useState<typeof PassageShare | null>(null);
 
   useEffect(() => {
     if (!quoteHref) return;
@@ -51,7 +51,9 @@ export function Prose({
       if (selection?.isCollapsed !== false) return;
       if (!ref.current?.contains(selection.anchorNode)) return;
       document.removeEventListener("selectionchange", onSelect);
-      setQuoting(true);
+      import("~/components/passage-share")
+        .then((module) => setOffer(() => module.PassageShare))
+        .catch(() => {});
     };
     document.addEventListener("selectionchange", onSelect);
     return () => document.removeEventListener("selectionchange", onSelect);
@@ -98,11 +100,7 @@ export function Prose({
         onClick={loadEmbed}
         ref={ref}
       />
-      {quoting && quoteHref && (
-        <Suspense fallback={null}>
-          <PassageShare prose={ref} quoteHref={quoteHref} />
-        </Suspense>
-      )}
+      {Offer && quoteHref && <Offer prose={ref} quoteHref={quoteHref} />}
     </div>
   );
 }
