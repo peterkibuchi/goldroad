@@ -184,9 +184,10 @@ type ResumedDraft = {
 /** What the share card shows besides the title (~/lib/share-card). */
 type CardFacts = Omit<ShareCardInput, "title">;
 
-/** How long the editor waits on the publication read before giving up on
- * the card. It only matters at publish time, so a slow PDS must not hold up
- * the editor's first paint for it. */
+/** How long the editor's loader waits on the publication read before giving
+ * up on the card. The card only matters at publish time, so a slow PDS may
+ * cost the editor this much and no more; a new post's read runs alongside
+ * the draft's. */
 const CARD_PUBLICATION_BUDGET_MS = 2_000;
 
 /**
