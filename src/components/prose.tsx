@@ -7,6 +7,10 @@ const PassageShare = lazy(() =>
   })),
 );
 
+/** A block that names a language, other than the names that mean "plain". */
+const HIGHLIGHTABLE =
+  "pre > code[class*='language-']:not(.language-text,.language-txt,.language-plaintext)";
+
 /**
  * The writer's body on a reading page, as HTML from ~/lib/markdown-html,
  * which is where the safety rules live: raw HTML escaped, links and images
@@ -25,6 +29,9 @@ const PassageShare = lazy(() =>
  * Given `quoteHref`, it offers a selected passage as a quote on Bluesky
  * (~/components/passage-share). All the page carries for that is the listener
  * below; the offer itself loads when a reader first selects text in the body.
+ *
+ * And it colours fenced code (~/lib/highlight-code), which loads only for a
+ * body with a block that names its language.
  */
 export function Prose({
   html,
@@ -49,6 +56,17 @@ export function Prose({
     document.addEventListener("selectionchange", onSelect);
     return () => document.removeEventListener("selectionchange", onSelect);
   }, [quoteHref]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `html` is read through the DOM, not the closure: a client-side move to another post swaps the body in place, and the new one may have code the last one didn't
+  useEffect(() => {
+    const body = ref.current;
+    if (!body?.querySelector(HIGHLIGHTABLE)) return;
+    import("~/lib/highlight-code")
+      .then(({ highlightCode }) => highlightCode(body))
+      // A chunk gone after a deploy, or a grammar that throws, leaves the
+      // code as it was rendered: plain and readable.
+      .catch(() => {});
+  }, [html]);
 
   // A Bluesky post reports its height once it loads; its frame page passes
   // that up (see the /embed route), and only to a frame this body created.
