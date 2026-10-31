@@ -37,6 +37,7 @@ import {
   clampOriginalDate,
   IMAGE_SUBREQUEST_BUDGET,
   rehostBodyImages,
+  SHARE_CARD_SUBREQUESTS,
 } from "~/lib/import";
 import {
   adoptMirror,
@@ -564,9 +565,6 @@ async function publishDocument({
     }
     coverBlob = uploaded.data.blob;
   }
-  // The share card the editor drew, uploaded on the same terms and for the
-  // same reason: the record must reference it to keep it.
-  const shareCard = await uploadShareCard(rpc, form);
 
   // ---- Edit: merge into the existing record, preserve its history ----
   if (editRkey) {
@@ -588,25 +586,32 @@ async function publishDocument({
     }
     // Only content we can't round-trip is refused (see ~/lib/document-content).
     if (hasForeignContent(existing.value)) return backToWrite("not_editable");
-    let record: ReturnType<typeof updateDocumentRecord>;
-    try {
-      record = updateDocumentRecord(existing.value, {
+    // A new card, else the existing one only when the editor drew it again
+    // byte for byte. Anything else drops it, so a title edit can never leave
+    // the old title on the card. Uploaded only once the edit is known to be
+    // going ahead.
+    const shareCard =
+      (await uploadShareCard(rpc, form)) ??
+      keptShareCard(
+        existing.value.goldroadShareCard,
+        form.get("shareCardKeep"),
+      );
+    const merge = (card: BlobObject | null) =>
+      updateDocumentRecord(existing.value, {
         title,
         body,
         dek,
         // blob = replace, null = remove, undefined = keep the existing cover.
         coverImage: coverBlob ?? (removeCover ? null : undefined),
         inlineImageSources,
-        // A new card, else the existing one only when the editor drew it
-        // again byte for byte. Anything else drops it, so a title edit can
-        // never leave the old title on the card.
-        shareCard:
-          shareCard ??
-          keptShareCard(
-            existing.value.goldroadShareCard,
-            form.get("shareCardKeep"),
-          ),
+        shareCard: card,
       });
+    let record: ReturnType<typeof updateDocumentRecord>;
+    try {
+      record = merge(shareCard);
+      // The card's reference is a preview's worth of bytes, never a reason
+      // to refuse the edit: a record it tips over the ceiling goes without.
+      if (shareCard && isOverRecordByteLimit(record)) record = merge(null);
     } catch (err) {
       console.warn("record merge refused", err);
       return backToWrite("publish_failed:invalid_record", editRkey);
@@ -749,6 +754,9 @@ async function publishDocument({
 
   // Rehosted blobs need a record reference exactly as uploaded ones do.
   const sources = [...inlineImageSources, ...rehostedBlobs];
+  // The share card the editor drew, uploaded on the cover's terms and for the
+  // same reason: the record must reference it to keep it.
+  let shareCard = await uploadShareCard(rpc, form);
   // Canonical URL composes as publication.url + path: …/@<ident> + /<rkey>.
   const build = (publishing: string) =>
     buildDocumentRecord({
@@ -770,7 +778,13 @@ async function publishDocument({
       shareCard,
       publishedAt: originalAt ?? undefined,
     });
-  const record = build(publishBody);
+  let record = build(publishBody);
+  // As on an edit, the card goes rather than the post when its reference is
+  // what tips the record over the ceiling.
+  if (shareCard && isOverRecordByteLimit(record)) {
+    shareCard = null;
+    record = build(publishBody);
+  }
   // Same byte ceiling as the edit path above, and the same reason: the
   // character cap the form already passed counts UTF-16 units, the PDS counts
   // serialized bytes, and a rehosted import can add inline-image references on
@@ -1130,8 +1144,9 @@ async function publishNow({
     draft,
     // A failed tick's write may have landed; its reserved key finds it.
     rkey: released?.publishedRkey ?? undefined,
-    // Nothing is copied here, so the whole image budget is free for this.
-    missingImageBudget: IMAGE_SUBREQUEST_BUDGET,
+    // Nothing is copied and no share card is uploaded here, so both their
+    // budgets are free for this.
+    missingImageBudget: IMAGE_SUBREQUEST_BUDGET + SHARE_CARD_SUBREQUESTS,
   });
   if (!outcome.ok)
     return backToDashboard({ error: outcome.code, tab: "scheduled" });

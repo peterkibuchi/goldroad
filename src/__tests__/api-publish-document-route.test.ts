@@ -128,7 +128,14 @@ import {
   MAX_REHOSTED_IMAGES,
   SHARE_CARD_SUBREQUESTS,
 } from "../lib/import";
-import { generateTid, MAX_BODY_LENGTH, MAX_TITLE_LENGTH } from "../lib/publish";
+import {
+  buildDocumentRecord,
+  generateTid,
+  jsonByteLength,
+  MAX_BODY_LENGTH,
+  MAX_RECORD_BYTES,
+  MAX_TITLE_LENGTH,
+} from "../lib/publish";
 import { Route } from "../routes/api.publish";
 import { handlerOf } from "./support/route-handler";
 
@@ -1400,6 +1407,34 @@ describe("POST /api/publish — intent=document, the share card", () => {
     expect(documentRecord().goldroadShareCard).toBeUndefined();
   });
 
+  it("drops the card rather than refuse a post its reference would tip over", async () => {
+    replies.set("com.atproto.repo.uploadBlob", {
+      ok: true,
+      status: 200,
+      data: { blob: cardBlob() },
+    });
+    // The longest body whose record still fits without the card.
+    const size = (n: number, shareCard?: ReturnType<typeof cardBlob>) =>
+      jsonByteLength(
+        buildDocumentRecord({
+          title: "The long way round",
+          body: "x".repeat(n),
+          site: PUB_URI,
+          path: `/${"3".repeat(13)}`,
+          shareCard: shareCard as never,
+        }),
+      );
+    let n = 0;
+    for (let step = 1 << 16; step >= 1; step >>= 1)
+      if (size(n + step) <= MAX_RECORD_BYTES) n += step;
+    expect(size(n)).toBeLessThanOrEqual(MAX_RECORD_BYTES);
+    expect(size(n, cardBlob())).toBeGreaterThan(MAX_RECORD_BYTES);
+
+    const res = await publish({ body: "x".repeat(n), shareCard: cardFile() });
+    expect(errorFrom(res)).toBeNull();
+    expect(documentRecord().goldroadShareCard).toBeUndefined();
+  });
+
   describe("on an edit", () => {
     const EDIT_RKEY = "3lyk7wxnok2fb";
     beforeEach(() => {
@@ -1468,10 +1503,10 @@ describe("POST /api/publish — intent=document, the share card", () => {
         }),
     );
     vi.stubGlobal("fetch", fetchSpy);
-    // The card's upload answers first, then one fresh blob per copied image.
+    // One fresh blob per copied image, then the card's, which is uploaded
+    // once the copies are done.
     replies.set("com.atproto.repo.uploadBlob", [
-      { ok: true, status: 200, data: { blob: cardBlob() } },
-      ...Array.from({ length: 30 }, (_, i) => ({
+      ...Array.from({ length: MAX_REHOSTED_IMAGES }, (_, i) => ({
         ok: true,
         status: 200,
         data: {
@@ -1480,6 +1515,7 @@ describe("POST /api/publish — intent=document, the share card", () => {
           }),
         },
       })),
+      { ok: true, status: 200, data: { blob: cardBlob() } },
     ]);
     try {
       await publish({

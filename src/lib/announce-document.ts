@@ -21,7 +21,7 @@ import {
   type StandardPublication,
 } from "~/lib/atproto";
 import { thumbFromCover } from "~/lib/blob";
-import { composeDocumentUrl } from "~/lib/publish";
+import { composeDocumentUrl, shareCardBlob } from "~/lib/publish";
 
 export type AnnounceOutcome =
   | { ok: true; postRkey: string | null }
@@ -114,7 +114,7 @@ export async function announceDocument(input: {
     // over the thumb lexicon's 1MB cap: the PDS would reject the whole
     // announce.
     thumb:
-      thumbFromCover(doc.value.goldroadShareCard) ??
+      shareCardBlob(doc.value.goldroadShareCard) ??
       thumbFromCover(doc.value.coverImage) ??
       undefined,
   });
