@@ -17,6 +17,7 @@ import {
   isAllowedImageMime,
   isBlobObject,
   MAX_IMAGE_BLOB_BYTES,
+  thumbFromCover,
 } from "~/lib/blob";
 import {
   documentBodyMarkdown,
@@ -246,14 +247,14 @@ export const SHARE_CARD_MIME = "image/png";
  * reference, and the PDS reclaims the old blob.
  */
 export function shareCardBlob(value: unknown): BlobObject | null {
-  if (!isBlobObject(value)) return null;
-  if (!isAllowedImageMime(value.mimeType)) return null;
-  if (value.size <= 0 || value.size > MAX_IMAGE_BLOB_BYTES) return null;
+  // A cover's terms exactly: the same check keeps an announce thumb legal.
+  const card = thumbFromCover(value);
+  if (!card) return null;
   return {
     $type: "blob",
-    ref: { $link: value.ref.$link },
-    mimeType: value.mimeType,
-    size: value.size,
+    ref: { $link: card.ref.$link },
+    mimeType: card.mimeType,
+    size: card.size,
   };
 }
 
