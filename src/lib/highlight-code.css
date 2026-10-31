@@ -1,0 +1,50 @@
+/*
+ * Highlighted code on a reading page, loaded with ~/lib/highlight-code and so
+ * only on a post that has code to colour.
+ *
+ * Ink on paper, like the rest of the page, and built from its tokens alone, so
+ * it follows the light edition, the black-stock edition and a writer's theme
+ * with no rule of its own for any of them. Mostly weight and tone rather than
+ * hue: keywords set heavier, comments and metadata in the soft ink and
+ * italic. Literal values (strings, numbers) take the one colour, the spot
+ * pulled most of the way towards ink. That keeps the accent's family without
+ * spending the page's one accent moment, and it holds contrast in both
+ * editions. Against the code block, values measure 7.6:1 in light and 6.8:1
+ * in dark, and comments 7.7:1 and 6.1:1. On a themed page the spot is the
+ * writer's accent, the colour their links already wear, and the ink in the
+ * mix only adds contrast to it.
+ */
+.gr-prose code .hljs-keyword,
+.gr-prose code .hljs-selector-tag,
+.gr-prose code .hljs-section,
+.gr-prose code .hljs-name,
+.gr-prose code .hljs-strong {
+  font-weight: 600;
+}
+
+.gr-prose code .hljs-comment,
+.gr-prose code .hljs-quote,
+.gr-prose code .hljs-meta,
+.gr-prose code .hljs-doctag,
+.gr-prose code .hljs-deletion {
+  color: var(--color-ink-soft);
+}
+
+.gr-prose code .hljs-comment,
+.gr-prose code .hljs-quote,
+.gr-prose code .hljs-emphasis {
+  font-style: italic;
+}
+
+.gr-prose code .hljs-string,
+.gr-prose code .hljs-regexp,
+.gr-prose code .hljs-number,
+.gr-prose code .hljs-literal,
+.gr-prose code .hljs-symbol,
+.gr-prose code .hljs-bullet,
+.gr-prose code .hljs-link,
+.gr-prose code .hljs-template-tag,
+.gr-prose code .hljs-addition,
+.gr-prose code .hljs-meta .hljs-string {
+  color: color-mix(in oklch, var(--color-spot) 70%, var(--color-ink));
+}
