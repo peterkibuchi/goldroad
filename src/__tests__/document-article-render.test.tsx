@@ -326,8 +326,10 @@ describe("DocumentArticle — the close", () => {
   it("leads with the writer's fact and closes with one Goldroad line", () => {
     render(<DocumentArticle doc={baseDoc} ident="writer.example" />);
     const close = screen.getByText(/Goldroad — open-source/i).closest("footer");
-    const lines = [...(close?.querySelectorAll("p") ?? [])].map(
-      (p) => p.textContent ?? "",
+    // Its children, not its <p>s: the second line is a div, because the
+    // reader's type panel opens inside it.
+    const lines = [...(close?.children ?? [])].map(
+      (line) => line.textContent ?? "",
     );
     expect(lines).toHaveLength(2);
     // The writer's line leads — year and publication, no rights claim. A
