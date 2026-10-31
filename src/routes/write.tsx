@@ -13,9 +13,11 @@ import { MAIN_CONTENT_ID } from "~/components/skip-link";
 import {
   getRecord,
   NotFoundError,
+  parseAtUri,
   RKEY_RE,
   resolveDidIdentity,
   type StandardDocument,
+  type StandardPublication,
 } from "~/lib/atproto";
 import { blobImagePath, coverImageCid } from "~/lib/blob";
 import {
@@ -34,6 +36,7 @@ import {
   imagesMissingAltText,
 } from "~/lib/inline-images";
 import { readLiveSessionDid } from "~/lib/live-session";
+import { ownOrigins } from "~/lib/origin";
 import {
   documentRecordByteLength,
   MAX_BODY_LENGTH,
@@ -41,13 +44,18 @@ import {
   MAX_RECORD_BYTES,
   parseInlineImagesField,
   RECOMMENDED_DEK_LENGTH,
+  SHARE_CARD_MIME,
+  shareCardBlob,
   writerDek,
 } from "~/lib/publish";
+import { findOwnPublication } from "~/lib/publish-document";
 import {
   utcMsToLocalInput,
   zoneOffsetForLocalInput,
 } from "~/lib/schedule-time";
 import { selectPendingScheduleForDraft } from "~/lib/scheduled-posts";
+import { blobCid, drawShareCard, type ShareCardInput } from "~/lib/share-card";
+import { type BasicTheme, parseTheme } from "~/lib/theme";
 import { env } from "cloudflare:workers";
 
 // BlockNote is client-only (ProseMirror needs a real DOM): lazy + ClientOnly
@@ -120,6 +128,9 @@ type Draft = {
   markdown: string;
   /** Same-origin /img path for the existing cover, when the record has one. */
   coverPath: string | null;
+  /** The CID of the share card the record carries, so a save that draws the
+   * very same card again can keep it rather than upload it twice. */
+  shareCardCid?: string | null;
   /** Set when this published post came in through an import: the edit form then
    * offers to drop the provenance note. `kind` decides what that note claims —
    * a mirror also carries an indexing consequence, a thread self-import does
@@ -170,6 +181,44 @@ type ResumedDraft = {
   copyLimit: number;
 };
 
+/** What the share card shows besides the title (~/lib/share-card). */
+type CardFacts = Omit<ShareCardInput, "title" | "theme"> & {
+  theme: BasicTheme | null;
+};
+
+/**
+ * The publication a post's share card names and takes its colours from: the
+ * one the post page will read them from. An edit reads its own document's
+ * publication (a loose document has none); a new post attaches to the
+ * writer's own, as publishing will. Best-effort: a read that fails draws the
+ * card unthemed, under the writer's handle.
+ */
+async function cardPublication(
+  pds: string | null,
+  did: string,
+  requestOrigin: string,
+  site?: unknown,
+): Promise<StandardPublication | null> {
+  if (!pds) return null;
+  if (site === undefined) {
+    const { own } = await findOwnPublication(
+      pds,
+      did,
+      ownOrigins(requestOrigin),
+    );
+    return own?.value ?? null;
+  }
+  const ref = typeof site === "string" ? parseAtUri(site) : null;
+  if (ref?.did !== did || ref.collection !== "site.standard.publication")
+    return null;
+  return getRecord<StandardPublication>(
+    pds,
+    did,
+    ref.collection,
+    ref.rkey,
+  ).catch(() => null);
+}
+
 const getWriteContext = createServerFn({ method: "GET" })
   .validator((data: { edit?: string; draft?: string }) => ({
     edit:
@@ -193,10 +242,17 @@ const getWriteContext = createServerFn({ method: "GET" })
         draft: null,
         resumed: null,
         draftError: undefined,
+        card: null,
       } as const;
     // One DID-document read for both: the handle names the writer in the
     // chrome, and the PDS is where an edit reads its record back from.
     const { handle, pds } = await resolveDidIdentity(did);
+    const requestOrigin = new URL(getRequest().url).origin;
+    // A new post's publication, read alongside the draft rather than after it.
+    const newPostPublication = data.edit
+      ? null
+      : cardPublication(pds, did, requestOrigin);
+    let editPublication: Promise<StandardPublication | null> | null = null;
 
     // Resume a saved draft (ownership enforced in the query's WHERE). Editing
     // a published record wins if both params are somehow present.
@@ -271,6 +327,7 @@ const getWriteContext = createServerFn({ method: "GET" })
         if (hasForeignContent(doc)) draftError = "not_editable";
         else {
           const coverCid = coverImageCid(doc.coverImage);
+          editPublication = cardPublication(pds, did, requestOrigin, doc.site);
           // Provenance lookup (import ledger): editing an imported post offers
           // adoption. Best-effort — a flaked read just hides the offer.
           const [mirror] = await selectMirror(
@@ -284,6 +341,8 @@ const getWriteContext = createServerFn({ method: "GET" })
             dek: writerDek(doc),
             markdown: documentBodyMarkdown(doc),
             coverPath: coverCid ? blobImagePath(did, coverCid) : null,
+            shareCardCid:
+              shareCardBlob(doc.goldroadShareCard)?.ref.$link ?? null,
             mirror: mirror
               ? {
                   sourceUrl: mirror.sourceUrl,
@@ -296,7 +355,24 @@ const getWriteContext = createServerFn({ method: "GET" })
         draftError = "not_found";
       }
     }
-    return { viewer: { did, handle }, draft, resumed, draftError } as const;
+    const ident = handle ?? did;
+    // Neither read throws: both settle to null on failure.
+    const publication = (await (newPostPublication ?? editPublication)) ?? null;
+    const card: CardFacts = {
+      // The label the post page prints over the title: the publication's
+      // name, which a first publish creates as the writer's handle.
+      label: publication?.name?.trim() || ident,
+      // The byline the post page prints under it.
+      name: handle ? `@${handle}` : did,
+      theme: parseTheme(publication?.basicTheme),
+    };
+    return {
+      viewer: { did, handle },
+      draft,
+      resumed,
+      draftError,
+      card,
+    } as const;
   });
 
 export const Route = createFileRoute("/write")({
@@ -837,8 +913,9 @@ export function SchedulePanel({
       </p>
       {/* Stated where the decision is made, not discovered afterwards. */}
       <p className="mt-1 font-display text-xs leading-relaxed text-ink-soft">
-        A scheduled post publishes its words, not a cover image — add a cover by
-        editing the post once it's out, or press Publish instead.
+        A scheduled post publishes its words, not a cover image or the card its
+        link shows when shared — edit the post once it's out to add both, or
+        press Publish instead.
       </p>
       {error && (
         <p className="mt-2 font-display text-sm text-spot" role="alert">
@@ -981,6 +1058,7 @@ export function Compose({
   draftError,
   unscheduled,
   reconnectHandle,
+  card = null,
 }: {
   draft: Draft | null;
   resumed: ResumedDraft | null;
@@ -997,6 +1075,8 @@ export function Compose({
   unscheduled?: boolean;
   /** Handle for the one-click re-connect form on scope errors. */
   reconnectHandle: string | null;
+  /** What the share card shows besides the title; null draws none. */
+  card?: CardFacts | null;
 }) {
   const [editor, setEditor] = useState<BlockNoteEditor | null>(null);
   const [coverBusy, setCoverBusy] = useState(false);
@@ -1045,6 +1125,8 @@ export function Compose({
   const dekRef = useRef<HTMLTextAreaElement>(null);
   const draftIdInputRef = useRef<HTMLInputElement>(null);
   const imagesInputRef = useRef<HTMLInputElement>(null);
+  const shareCardRef = useRef<HTMLInputElement>(null);
+  const shareCardKeepRef = useRef<HTMLInputElement>(null);
   const announceRef = useRef<HTMLInputElement>(null);
   const editing = draft !== null;
   // Two words for one button, kept out of the JSX so the label stays a single
@@ -1287,6 +1369,39 @@ export function Compose({
     void saveDraft();
   }
 
+  /**
+   * Draws the post's share card (~/lib/share-card) into the form: the PNG on
+   * a hidden file input, or, on an edit that drew exactly the card the record
+   * already holds, just that card's CID, so nothing is uploaded twice. Never
+   * throws and never blocks the publish: a card that can't be drawn means a
+   * post whose link preview is its cover, as before cards existed.
+   */
+  async function attachShareCard() {
+    const fileInput = shareCardRef.current;
+    const keepInput = shareCardKeepRef.current;
+    if (!card || !fileInput || !keepInput) return;
+    try {
+      const png = await drawShareCard({
+        ...card,
+        // The title as the record will store it: one line, trimmed.
+        title: (titleRef.current?.value ?? "").replace(/\s+/g, " ").trim(),
+      });
+      if (!png) return;
+      const existing = draft?.shareCardCid;
+      if (existing && (await blobCid(await png.arrayBuffer())) === existing) {
+        keepInput.value = existing;
+        return;
+      }
+      const transfer = new DataTransfer();
+      transfer.items.add(
+        new File([png], "share-card.png", { type: SHARE_CARD_MIME }),
+      );
+      fileInput.files = transfer.files;
+    } catch (err) {
+      console.warn("share card not attached", err);
+    }
+  }
+
   // Native constraint validation runs before the submit event fires, so the
   // fields are valid here; export the blocks to markdown, then submit for real
   // (form.submit() does not re-fire this handler).
@@ -1343,7 +1458,7 @@ export function Compose({
         bodyRef.current.value = editor.blocksToMarkdownLossy(editor.document);
       if (imagesInputRef.current)
         imagesInputRef.current.value = imageStore.toField();
-      form.submit();
+      void attachShareCard().finally(() => form.submit());
     };
     // Clicking Publish blurs the editor, so a save may be mid-flight — and it
     // may be CREATING the draft row. Wait for it so the fresh id rides the
@@ -1355,11 +1470,10 @@ export function Compose({
     // words the draft row has never seen — invisible while the publish
     // succeeds, and exactly what they get handed back when it doesn't.
     //
-    // Nothing to flush submits synchronously, as it always did. Editing a
-    // published post has no draft row to flush (runSave short-circuits on it,
-    // and a rejected edit resumes by rkey), and an untouched draft is already
-    // current — deferring either behind a microtask would buy nothing and put
-    // a publish click one turn further from the submit it triggers.
+    // Nothing to flush goes straight to the submit, which waits only for the
+    // share card. Editing a published post has no draft row to flush
+    // (runSave short-circuits on it, and a rejected edit resumes by rkey),
+    // and an untouched draft is already current.
     const pending = saveInFlightRef.current;
     if (editing || (!pending && !dirtyRef.current)) {
       submit();
@@ -1469,6 +1583,17 @@ export function Compose({
           {/* The blobs this session uploaded. The server keeps only the ones
               the submitted body still references. */}
           <input name="images" ref={imagesInputRef} type="hidden" />
+          {/* The share card, drawn at submit (see attachShareCard). */}
+          <input
+            accept={SHARE_CARD_MIME}
+            aria-hidden="true"
+            className="hidden"
+            name="shareCard"
+            ref={shareCardRef}
+            tabIndex={-1}
+            type="file"
+          />
+          <input name="shareCardKeep" ref={shareCardKeepRef} type="hidden" />
           <CoverPicker
             existingPath={draft?.coverPath ?? null}
             onBusyChange={setCoverBusy}
@@ -1626,7 +1751,7 @@ export function Compose({
 }
 
 function WritePage() {
-  const { viewer, draft, resumed, draftError } = Route.useLoaderData();
+  const { viewer, draft, resumed, draftError, card } = Route.useLoaderData();
   const { error, handle, returnTo, unscheduled } = Route.useSearch();
   if (!viewer) {
     return (
@@ -1650,6 +1775,7 @@ function WritePage() {
           editor state would otherwise go stale on client-side navigation and
           duplicate posts). */}
       <Compose
+        card={card}
         draft={draft}
         draftError={draftError}
         error={error}
