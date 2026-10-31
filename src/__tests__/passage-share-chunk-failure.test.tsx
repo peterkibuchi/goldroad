@@ -8,7 +8,10 @@ import { afterEach, expect, it, vi } from "vitest";
 
 import { Prose } from "../components/prose";
 
+const chunk = vi.hoisted(() => ({ attempts: 0 }));
+
 vi.mock("~/components/passage-share", () => {
+  chunk.attempts++;
   throw new Error("Failed to fetch dynamically imported module");
 });
 
@@ -26,8 +29,11 @@ it("keeps the body on screen when the quote offer fails to load", async () => {
   window.getSelection()?.addRange(range);
   await act(async () => {
     document.dispatchEvent(new Event("selectionchange"));
-    await new Promise((resolve) => setTimeout(resolve, 20));
   });
+  // Wait for the import to actually fail, then let its rejection settle,
+  // so the body is checked after the failure rather than before it.
+  await vi.waitFor(() => expect(chunk.attempts).toBe(1));
+  await act(async () => {});
   expect(screen.getByText("A line worth keeping.")).toBeTruthy();
   expect(screen.queryByRole("link", { name: /quote on bluesky/i })).toBeNull();
 });
