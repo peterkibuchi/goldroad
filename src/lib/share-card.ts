@@ -139,14 +139,16 @@ export function shareCardColors(theme: BasicTheme | null) {
 /** Width of `text` set at `size` px. */
 export type Measure = (text: string, size: number) => number;
 
+const segmenter =
+  typeof Intl !== "undefined" && "Segmenter" in Intl
+    ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
+    : null;
+
 /** Grapheme clusters, so a break never splits an emoji or an accent. */
 function graphemes(text: string): string[] {
-  if (typeof Intl !== "undefined" && "Segmenter" in Intl)
-    return Array.from(
-      new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(text),
-      (s) => s.segment,
-    );
-  return Array.from(text);
+  return segmenter
+    ? Array.from(segmenter.segment(text), (s) => s.segment)
+    : Array.from(text);
 }
 
 /**
