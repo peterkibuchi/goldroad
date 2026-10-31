@@ -93,6 +93,12 @@ import {
   purgeLocalReadCache,
   readSurfaceUrlsForSubject,
 } from "~/lib/read-cache";
+import {
+  cleanRecommendationUris,
+  MAX_RECOMMENDATIONS,
+  resolveRecommendationInput,
+  withRecommendations,
+} from "~/lib/recommendations";
 import { dueAtProblem, localToUtcMs } from "~/lib/schedule-time";
 import {
   cancelSchedule,
@@ -266,6 +272,7 @@ export const Route = createFileRoute("/api/publish")({
         const intent =
           intentField === "publication" ||
           intentField === "theme" ||
+          intentField === "recommendations" ||
           intentField === "delete" ||
           intentField === "announce" ||
           intentField === "migrate" ||
@@ -346,6 +353,8 @@ export const Route = createFileRoute("/api/publish")({
               return await savePublication(ctx);
             case "theme":
               return await saveTheme(ctx);
+            case "recommendations":
+              return await saveRecommendations(ctx);
             case "delete":
               return await deleteDocument(ctx);
             case "announce":
@@ -1428,6 +1437,71 @@ async function saveTheme({
     return backToSettings(`save_failed:${res.data.error}`);
   }
   return backToSettings(undefined, "theme");
+}
+
+/**
+ * The writer's recommendations → `goldroadRecommendations` on their
+ * publication record (see ~/lib/recommendations).
+ *
+ * The same kind of write as the theme: a publication putRecord that leaves
+ * every other field as it found it. The form carries the entries the writer
+ * kept, as stored, plus at most one new address in `add`, which is resolved
+ * here (a handle or a publication's web address becomes its AT-URI). Kept
+ * entries are re-validated, never trusted, and the list is rebuilt from them.
+ */
+async function saveRecommendations({
+  rpc,
+  form,
+  did,
+  ident,
+  pds,
+  origin,
+  origins,
+}: WriteContext): Promise<Response> {
+  const back = backToSettings;
+  if (!pds) return back("save_failed:pds_unresolved");
+
+  const uris = cleanRecommendationUris(form.getAll("recommendation"));
+  const add = String(form.get("add") ?? "").trim();
+  if (add) {
+    if (add.length > 2000) return back("recommend_unrecognised");
+    const added = await resolveRecommendationInput(add, origins);
+    if (!added.ok) return back(`recommend_${added.problem}`);
+    if (!uris.includes(added.uri)) {
+      if (uris.length >= MAX_RECOMMENDATIONS) return back("recommend_full");
+      uris.push(added.uri);
+    }
+  }
+
+  // Like a theme, a list has nowhere to live without a publication.
+  const found = await findOwnPublication(pds, did, origins);
+  if (!found.ok) return back("save_failed:publication_unreadable");
+  const own = found.own;
+  if (!own) return back("recommend_no_publication_yet");
+  const rkey = rkeyFromUri(own.uri);
+  if (!rkey) return back("save_failed:bad_rkey");
+
+  let record: ReturnType<typeof withRecommendations>;
+  try {
+    record = withRecommendations(own.value, uris);
+  } catch (err) {
+    console.warn("recommendations merge refused", err);
+    return back("save_failed:invalid_record");
+  }
+  const res = await rpc.post("com.atproto.repo.putRecord", {
+    input: {
+      repo: did,
+      collection: "site.standard.publication",
+      rkey,
+      record,
+    },
+  });
+  if (!res.ok) {
+    console.error("recommendations save failed", res.status, res.data);
+    return back(`save_failed:${res.data.error}`);
+  }
+  // The list is on the page "See it on your public page" opens next.
+  return purgingReaderPages(back(), { origin, did, ident });
 }
 
 /**

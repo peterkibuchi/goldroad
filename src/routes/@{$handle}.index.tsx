@@ -44,6 +44,11 @@ import {
 } from "~/lib/origin";
 import { publicationBase } from "~/lib/publish";
 import { formatReadingTime, listItemReadingMinutes } from "~/lib/reading-time";
+import { recommendationCards } from "~/lib/recommendation-cards";
+import {
+  type RecommendationCard,
+  recommendationUris,
+} from "~/lib/recommendations";
 import { type SearchHit, searchPublication } from "~/lib/search";
 import {
   MAX_QUERY_LENGTH,
@@ -192,6 +197,10 @@ export const Route = createFileRoute("/@{$handle}/")({
             Date.parse(b.publishedAt ?? "") - Date.parse(a.publishedAt ?? "") ||
             (a.rkey < b.rkey ? 1 : -1),
         );
+      // The writer's recommendations, on the archive's first page only, like
+      // anything else about the publication rather than one of its pages.
+      const recommendations =
+        q || deps.cursor ? [] : await readRecommendations(pubs ?? []);
       const search: ArchiveSearch | null = !q
         ? null
         : fullSearch
@@ -230,6 +239,7 @@ export const Route = createFileRoute("/@{$handle}/")({
         // palette (see parseTheme: a theme is never half-applied).
         theme: parseTheme(publication?.basicTheme),
         iconPath: iconCid ? blobImagePath(did, iconCid) : null,
+        recommendations,
         posts,
         nextCursor: typeof docsPage === "string" ? null : docsPage.cursor,
         postsError,
@@ -326,6 +336,29 @@ export const Route = createFileRoute("/@{$handle}/")({
   component: PublicationPage,
   notFoundComponent: PublicationNotFound,
 });
+
+/**
+ * The cards for the publications the author recommends, or none. Read from
+ * whichever of their publication records carries a list, not only the oldest
+ * one this page is named after: a writer who started in another app keeps
+ * that app's record as their oldest, and Settings writes the list here.
+ *
+ * Never an error. Each card has its own short timeout (see
+ * resolveRecommendations), so one slow server costs its card, and a failed
+ * call costs the list, never the page.
+ */
+async function readRecommendations(
+  publications: ReadonlyArray<{ value: StandardPublication }>,
+): Promise<RecommendationCard[]> {
+  for (const pub of publications) {
+    const uris = recommendationUris(pub.value.goldroadRecommendations);
+    if (uris.length > 0)
+      return recommendationCards({ data: { uris: uris.join("\n") } }).catch(
+        () => [],
+      );
+  }
+  return [];
+}
 
 /**
  * The publication page's canonical URL. The first page's is the record's own
@@ -500,6 +533,49 @@ function PostRow({
 }
 
 /**
+ * The publications the writer recommends, after their own archive: a
+ * blogroll, in the writer's order and nothing else. No counts, no ranking,
+ * and nothing records who follows a link.
+ *
+ * Headed in the archive's "Latest" voice, and quieter than a post row: the
+ * writer's own posts stay the page. A link leaves for the publication's own
+ * site, so the address is shown, small, under each one.
+ */
+export function Recommendations({ cards }: { cards: RecommendationCard[] }) {
+  return (
+    <section aria-labelledby="recommended-heading" className="mt-16">
+      <h2
+        className="border-b border-rule pb-3 font-display text-sm font-semibold tracking-wide text-ink uppercase"
+        id="recommended-heading"
+      >
+        Recommended
+      </h2>
+      <ul>
+        {cards.map((card) => (
+          <li className="border-b border-rule" key={card.uri}>
+            <a className="group block py-6" href={card.href}>
+              <h3 className="font-display text-[1.0625rem] leading-snug font-bold text-balance wrap-anywhere text-ink group-hover:underline group-hover:underline-offset-4">
+                {card.name}
+              </h3>
+              {card.description ? (
+                <p className="mt-1.5 line-clamp-2 font-display text-[0.9375rem] leading-[1.55] text-ink-soft">
+                  {card.description}
+                </p>
+              ) : null}
+              {card.host && card.host !== card.name && (
+                <p className="mt-2 font-display text-xs tracking-wide wrap-anywhere text-ink-soft">
+                  {card.host}
+                </p>
+              )}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/**
  * Text with the search's matches marked. The snippet arrives as plain text
  * with control-character markers (~/lib/search-query) and is split into nodes
  * here, so the writer's words are never parsed as HTML.
@@ -628,6 +704,7 @@ export function PublicationView({
   nextCursor,
   postsError = null,
   iconPath,
+  recommendations = [],
   theme,
   search = null,
 }: {
@@ -643,6 +720,8 @@ export function PublicationView({
   /** The listing failed: say so rather than show an empty archive. */
   postsError?: "too_large" | "unavailable" | null;
   iconPath: string | null;
+  /** The publications the author recommends, resolved; empty for none. */
+  recommendations?: RecommendationCard[];
   /** The author's validated theme, or null for our default palette. */
   theme?: BasicTheme | null;
   /** The search this page is answering, or null for the archive itself. */
@@ -848,6 +927,9 @@ export function PublicationView({
               Older posts →
             </a>
           </p>
+        )}
+        {recommendations.length > 0 && !search && (
+          <Recommendations cards={recommendations} />
         )}
         {/* Same close as the article page: the writer's items lead, Goldroad
             gets one printer's-mark line last (two-surface rule). */}
