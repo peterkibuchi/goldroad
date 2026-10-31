@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import {
   afterEach,
   beforeAll,
@@ -110,8 +116,10 @@ describe("/write — the leave-page guard covers edits of published posts", () =
     const title = await renderEdit();
     fireEvent.change(title, { target: { value: "Live post, revised" } });
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
-    expect(submitSpy).toHaveBeenCalledTimes(1);
-    // Saving supersedes the guard — the navigation it triggers is the writer's.
+    // Saving supersedes the guard at once, before the submit itself (which
+    // waits for the share card) — the navigation it triggers is the writer's.
+    expect(leavePagePrompted()).toBe(false);
+    await waitFor(() => expect(submitSpy).toHaveBeenCalledTimes(1));
     expect(leavePagePrompted()).toBe(false);
   });
 
