@@ -86,6 +86,30 @@ describe("announceDocument", () => {
     });
   });
 
+  it("thumbs the Bluesky card with the share card, else the cover", async () => {
+    const blob = (cid: string, mimeType: string) => ({
+      $type: "blob",
+      ref: { $link: cid },
+      mimeType,
+      size: 61_234,
+    });
+    const card = blob("bafkreicardcardcardcardcardcardcardcard", "image/png");
+    const cover = blob("bafkreicovercovercovercovercovercoverco", "image/jpeg");
+    const thumbOf = async (fields: Record<string, unknown>) => {
+      atproto.getRecordEntry.mockResolvedValue(documentEntry(fields));
+      const { rpc, posted } = fakeRpc();
+      await announceDocument({ rpc, ...base });
+      const post = posted[0].input.record as {
+        embed?: { external?: { thumb?: unknown } };
+      };
+      return post.embed?.external?.thumb;
+    };
+    expect(
+      await thumbOf({ goldroadShareCard: card, coverImage: cover }),
+    ).toEqual(card);
+    expect(await thumbOf({ coverImage: cover })).toEqual(cover);
+  });
+
   it("refuses an announced post when asked to announce only once", async () => {
     atproto.getRecordEntry.mockResolvedValue(
       documentEntry({ bskyPostRef: { uri: "at://x/y/z", cid: "bafyold" } }),

@@ -41,7 +41,7 @@ vi.mock("~/lib/mirror", async (importOriginal) => ({
 
 import { isNotFound, isRedirect } from "@tanstack/react-router";
 
-import { loadDocument } from "#/components/document-article";
+import { documentHead, loadDocument } from "#/components/document-article";
 import * as atproto from "~/lib/atproto";
 import { findFormerHandle } from "~/lib/handle-history";
 
@@ -53,6 +53,54 @@ describe("loadDocument — the body", () => {
     expect(data.doc.content).toBeUndefined();
     expect(data.doc.textContent).toBeUndefined();
     expect(data.doc.title).toBe("A post");
+  });
+});
+
+describe("loadDocument — the share card", () => {
+  const CARD = "bafkreicardcardcardcardcardcardcardcard";
+  const COVER = "bafkreicovercovercovercovercovercoverco";
+  const blob = (cid: string, mimeType = "image/png") => ({
+    $type: "blob",
+    ref: { $link: cid },
+    mimeType,
+    size: 61_234,
+  });
+  const withFields = (fields: Record<string, unknown>) =>
+    vi.mocked(atproto.getRecordEntry).mockResolvedValueOnce({
+      uri: `at://${DID}/site.standard.document/3lyk73wxnok2f`,
+      cid: "bafyreiexample",
+      value: { $type: "site.standard.document", title: "A post", ...fields },
+    });
+  type Tag = { property?: string; content?: string };
+  const ogImage = (data: Awaited<ReturnType<typeof loadDocument>>) =>
+    (documentHead(data).meta as Tag[])
+      .filter((m) => m.property === "og:image")
+      .map((m) => m.content);
+
+  it("leads the link preview with the card the record names", async () => {
+    withFields({ goldroadShareCard: blob(CARD), coverImage: blob(COVER) });
+    const data = await loadDocument(DID, "3lyk73wxnok2f");
+    expect(data.shareCard).toEqual({ did: DID, cid: CARD });
+    expect(ogImage(data)).toEqual([
+      `https://trygoldroad.com/img/${encodeURIComponent(DID)}/${CARD}`,
+    ]);
+    // Shipped once, as the ref: not again inside the document.
+    expect(data.doc.goldroadShareCard).toBeUndefined();
+  });
+
+  it("keeps the cover for a record without one, as other apps' posts are", async () => {
+    withFields({ coverImage: blob(COVER, "image/jpeg") });
+    const data = await loadDocument(DID, "3lyk73wxnok2f");
+    expect(data.shareCard).toBeNull();
+    expect(ogImage(data)).toEqual([
+      `https://trygoldroad.com/img/${encodeURIComponent(DID)}/${COVER}`,
+    ]);
+  });
+
+  it("ignores a field that isn't a raster blob", async () => {
+    withFields({ goldroadShareCard: blob(CARD, "image/svg+xml") });
+    const data = await loadDocument(DID, "3lyk73wxnok2f");
+    expect(data.shareCard).toBeNull();
   });
 });
 
