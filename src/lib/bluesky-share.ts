@@ -25,10 +25,11 @@ const COMPOSE_URL = "https://bsky.app/intent/compose";
  */
 let segmenter: Intl.Segmenter | undefined;
 function graphemes(text: string, max: number): string[] {
-  const all: Iterable<string | Intl.SegmentData> =
-    typeof Intl === "undefined" || !("Segmenter" in Intl)
-      ? text
-      : (segmenter ??= new Intl.Segmenter()).segment(text);
+  let all: Iterable<string | Intl.SegmentData> = text;
+  if (typeof Intl !== "undefined" && "Segmenter" in Intl) {
+    segmenter ??= new Intl.Segmenter();
+    all = segmenter.segment(text);
+  }
   // Stop at `max`: a reader selecting a long passage with the keyboard
   // re-runs this on every keystroke, and truncation reads no further.
   const parts: string[] = [];
