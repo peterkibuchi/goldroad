@@ -57,15 +57,15 @@ const ERROR_MESSAGES: Record<string, string> = {
   // the raw code at a writer. Nothing was written, and saying so is the point:
   // the reason we refused is that we couldn't tell what was already there.
   recommend_unrecognised:
-    "That doesn't look like a web address or a handle. Paste the publication's address, like https://name.leaflet.pub, or the writer's handle, like @name.bsky.social.",
+    "That doesn't look like a web address or a handle, so it wasn't added. Paste the publication's address, like https://name.leaflet.pub, or the writer's handle, like @name.bsky.social.",
   recommend_no_account:
-    "No account answers to that handle. Check the spelling, or paste the address of their site instead.",
+    "No account answers to that handle, so it wasn't added. Check the spelling, or paste the address of their site instead.",
   recommend_no_publication:
-    "That account hasn't started a publication yet, so there's nothing to recommend. Check the handle, or paste the address of their site instead.",
+    "That account hasn't started a publication yet, so it wasn't added. Check the handle, or paste the address of their site instead.",
   recommend_unreachable:
-    "We couldn't reach that account's data just now, so nothing was added. Try again in a moment.",
+    "We couldn't reach that account's data just now, so it wasn't added. Try again in a moment.",
   recommend_full:
-    "You already recommend six publications, the most your page shows. Remove one, then add the new one.",
+    "You already recommend six publications, the most your page shows, so that one wasn't added. Remove one, then add it again.",
   recommend_no_publication_yet:
     "Your recommendations are stored with your publication, and there isn't one yet — it's created when you publish your first post.",
   "save_failed:publication_unreadable":
@@ -195,6 +195,7 @@ export const Route = createFileRoute("/settings")({
       saved?: boolean;
       moved?: boolean;
       kind?: "theme";
+      add?: string;
     } = {};
     if (typeof search.error === "string") out.error = search.error;
     if (search.saved === "1" || search.saved === 1) out.saved = true;
@@ -202,6 +203,8 @@ export const Route = createFileRoute("/settings")({
     // Which save it was. Only "theme" is distinguished, because that is the
     // feature whose adoption we cannot otherwise see.
     if (search.kind === "theme") out.kind = "theme";
+    // An address that couldn't be added, handed back to its field.
+    if (typeof search.add === "string") out.add = search.add.slice(0, 2000);
     return out;
   },
   loader: async () => {
@@ -437,9 +440,12 @@ const INLINE_ACTION =
 export function RecommendationsEditor({
   entries: initial,
   disabled = false,
+  pendingAdd,
 }: {
   entries: RecommendationEntry[];
   disabled?: boolean;
+  /** What the writer typed last time, when it couldn't be added. */
+  pendingAdd?: string;
 }) {
   const [entries, setEntries] = useState(initial);
   const [status, setStatus] = useState("");
@@ -534,6 +540,7 @@ export function RecommendationsEditor({
           aria-describedby="recommendation-add-help"
           autoComplete="off"
           className={`min-h-11 ${FIELD_INPUT}`}
+          defaultValue={pendingAdd}
           disabled={disabled || full}
           id="recommendation-add"
           inputMode="url"
@@ -579,7 +586,7 @@ function SettingsPage() {
     recommendations,
     dataCounts,
   } = Route.useLoaderData();
-  const { error, saved, moved, kind } = Route.useSearch();
+  const { error, saved, moved, kind, add } = Route.useSearch();
   const message = errorMessage(error);
   const [iconBusy, setIconBusy] = useState(false);
 
@@ -739,6 +746,7 @@ function SettingsPage() {
             <RecommendationsEditor
               disabled={unreadable}
               entries={recommendations}
+              pendingAdd={add}
             />
           ) : (
             <p className="font-display text-sm text-ink-soft">

@@ -249,6 +249,22 @@ describe("resolveRecommendationInput — what a writer can paste", () => {
     ).toEqual({ ok: true, uri: "https://example.substack.com/" });
   });
 
+  it("takes a bare domain as a website when it leads to no publication", async () => {
+    // nytimes.com-style: a real handle, but no publication behind it.
+    vi.mocked(atproto.resolveHandleToDid).mockResolvedValue(FRIEND);
+    vi.mocked(atproto.listRecords).mockResolvedValue([]);
+    expect(await resolveRecommendationInput("news.example", ORIGINS)).toEqual({
+      ok: true,
+      uri: "https://news.example/",
+    });
+  });
+
+  it("keeps a profile link with a malformed escape as an address instead of failing", async () => {
+    expect(
+      await resolveRecommendationInput("https://trygoldroad.com/@%E0", ORIGINS),
+    ).toEqual({ ok: true, uri: "https://trygoldroad.com/@%E0" });
+  });
+
   it("refuses what isn't an address, a handle or a publication", async () => {
     for (const input of [
       "not an address",

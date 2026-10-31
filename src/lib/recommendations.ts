@@ -29,7 +29,7 @@ import {
   resolveReaderPds,
   type StandardPublication,
 } from "~/lib/atproto";
-import { publicationBase } from "~/lib/publish";
+import { mergeIntoPublication, publicationBase } from "~/lib/publish";
 
 export const MAX_RECOMMENDATIONS = 6;
 
@@ -110,26 +110,16 @@ export function recommendationsField(
 
 /**
  * Sets (or clears) the list on an existing publication record, preserving
- * every other field: the same merge `withBasicTheme` (~/lib/publish) does, for
- * the same reason. The list is rebuilt from `uris` every time, never merged
+ * every other field (see mergeIntoPublication in ~/lib/publish). The list is rebuilt from `uris` every time, never merged
  * with what the record held, so an entry the writer removed is gone.
  */
 export function withRecommendations(
   existing: StandardPublication,
   uris: readonly string[],
 ): SiteStandardPublication.Main {
-  if (typeof existing.name !== "string" || existing.name.trim() === "")
-    throw new Error("publication has no name");
-  if (
-    typeof existing.url !== "string" ||
-    !/^https?:\/\/\S+$/.test(existing.url)
-  )
-    throw new Error("publication has no valid url");
-  return {
-    ...existing,
-    $type: "site.standard.publication",
+  return mergeIntoPublication(existing, {
     goldroadRecommendations: recommendationsField(uris),
-  } as SiteStandardPublication.Main;
+  });
 }
 
 /** What the page shows for one recommendation. */
@@ -200,9 +190,21 @@ async function publicationCard(
   };
 }
 
-/** Resolves to null after `ms`, so a race against it bounds the wait. */
-function deadline(ms: number): Promise<null> {
-  return new Promise((resolve) => setTimeout(() => resolve(null), ms));
+/** `work`, or null once `ms` pass first. The timer is cleared either way,
+ * so nothing outlives the render. It bounds the whole card (the author's
+ * PDS lookup included), where the read's own timeout bounds only the read. */
+async function within<T>(work: Promise<T>, ms: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), ms);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
@@ -223,10 +225,10 @@ export async function resolveRecommendations(
   return Promise.all(
     uris.map((uri) =>
       uri.startsWith("at://")
-        ? Promise.race([
+        ? within(
             publicationCard(uri, timeoutMs).catch(() => null),
-            deadline(timeoutMs),
-          ])
+            timeoutMs,
+          )
         : websiteCard(uri),
     ),
   );
@@ -267,10 +269,9 @@ export async function resolveRecommendationInput(
   if (isHandle(handle) && !text.includes("/")) {
     const found = await authorPublication(handle);
     // A bare domain is a valid handle and a valid address at once. Only an
-    // "@" says which was meant; without one, a name no account answers to
-    // is taken as the website.
-    if (found.ok || text.startsWith("@") || found.problem !== "no_account")
-      return found;
+    // "@" says which was meant; without one, a name that leads to no
+    // publication is taken as the website.
+    if (found.ok || text.startsWith("@")) return found;
   }
   const url = httpsUrl(text) ?? httpsUrl(`https://${text}`);
   if (!url) return { ok: false, problem: "unrecognised" };
@@ -291,7 +292,12 @@ function profileIdent(url: URL, ownOrigins: readonly string[]): string | null {
       ? /^\/profile\/([^/]+)\/?$/.exec(url.pathname)
       : null;
   if (!match) return null;
-  const ident = decodeURIComponent(match[1]);
+  let ident: string;
+  try {
+    ident = decodeURIComponent(match[1]);
+  } catch {
+    return null; // a malformed escape names nobody
+  }
   return isHandle(ident) || isDid(ident) ? ident : null;
 }
 

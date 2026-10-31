@@ -135,11 +135,29 @@ describe("POST /api/publish — intent=recommendations", () => {
     expect(written()?.goldroadRecommendations).toBeUndefined();
   });
 
-  it("refuses a seventh, and writes nothing", async () => {
+  it("refuses a seventh, but still saves the six and hands the address back", async () => {
     resolveInput.mockResolvedValue({ ok: true, uri: FRIEND });
     const res = await save(SITES, "@friend.bsky.social");
-    expect(location(res)).toBe("/settings?error=recommend_full");
-    expect(written()).toBeNull();
+    const back = new URL(location(res) ?? "", "https://trygoldroad.com");
+    expect(back.searchParams.get("error")).toBe("recommend_full");
+    expect(back.searchParams.get("add")).toBe("@friend.bsky.social");
+    expect(written()?.goldroadRecommendations).toEqual(
+      SITES.map((uri) => ({ uri })),
+    );
+  });
+
+  it("keeps the writer's removals when the new address can't be added", async () => {
+    atproto.listRecords.mockResolvedValue([
+      publication({
+        goldroadRecommendations: [{ uri: SITES[0] }, { uri: SITES[1] }],
+      }),
+    ]);
+    resolveInput.mockResolvedValue({ ok: false, problem: "unrecognised" });
+    const res = await save([SITES[1]], "not an address");
+    expect(location(res)).toBe(
+      "/settings?error=recommend_unrecognised&add=not+an+address",
+    );
+    expect(written()?.goldroadRecommendations).toEqual([{ uri: SITES[1] }]);
   });
 
   it("adds an entry already on the list only once", async () => {
@@ -148,10 +166,12 @@ describe("POST /api/publish — intent=recommendations", () => {
     expect(written()?.goldroadRecommendations).toEqual([{ uri: SITES[0] }]);
   });
 
-  it("says why an address couldn't be added, and writes nothing", async () => {
+  it("says why an address couldn't be added, and writes nothing when nothing else changed", async () => {
     resolveInput.mockResolvedValue({ ok: false, problem: "no_publication" });
     const res = await save([], "@friend.bsky.social");
-    expect(location(res)).toBe("/settings?error=recommend_no_publication");
+    expect(location(res)).toBe(
+      "/settings?error=recommend_no_publication&add=%40friend.bsky.social",
+    );
     expect(written()).toBeNull();
   });
 
@@ -160,5 +180,7 @@ describe("POST /api/publish — intent=recommendations", () => {
     const res = await save([SITES[0]]);
     expect(location(res)).toBe("/settings?error=recommend_no_publication_yet");
     expect(posted).toHaveLength(0);
+    // And didn't look the address up for a list it couldn't store.
+    expect(resolveInput).not.toHaveBeenCalled();
   });
 });

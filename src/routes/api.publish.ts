@@ -96,6 +96,7 @@ import {
 import {
   cleanRecommendationUris,
   MAX_RECOMMENDATIONS,
+  recommendationUris,
   resolveRecommendationInput,
   withRecommendations,
 } from "~/lib/recommendations";
@@ -1448,6 +1449,7 @@ async function saveTheme({
  * kept, as stored, plus at most one new address in `add`, which is resolved
  * here (a handle or a publication's web address becomes its AT-URI). Kept
  * entries are re-validated, never trusted, and the list is rebuilt from them.
+ * An address that can't be added is reported without losing the rest.
  */
 async function saveRecommendations({
   rpc,
@@ -1458,35 +1460,49 @@ async function saveRecommendations({
   origin,
   origins,
 }: WriteContext): Promise<Response> {
-  const back = backToSettings;
-  if (!pds) return back("save_failed:pds_unresolved");
+  if (!pds) return backToSettings("save_failed:pds_unresolved");
+
+  // Like a theme, a list has nowhere to live without a publication. Checked
+  // first, so a writer without one doesn't wait on an address lookup.
+  const found = await findOwnPublication(pds, did, origins);
+  if (!found.ok) return backToSettings("save_failed:publication_unreadable");
+  const own = found.own;
+  if (!own) return backToSettings("recommend_no_publication_yet");
+  const rkey = rkeyFromUri(own.uri);
+  if (!rkey) return backToSettings("save_failed:bad_rkey");
 
   const uris = cleanRecommendationUris(form.getAll("recommendation"));
+  // A failed add still saves the rest of the form (entries the writer
+  // removed stay removed), and hands the typed text back to the field.
+  let addProblem: string | null = null;
   const add = String(form.get("add") ?? "").trim();
   if (add) {
-    if (add.length > 2000) return back("recommend_unrecognised");
-    const added = await resolveRecommendationInput(add, origins);
-    if (!added.ok) return back(`recommend_${added.problem}`);
-    if (!uris.includes(added.uri)) {
-      if (uris.length >= MAX_RECOMMENDATIONS) return back("recommend_full");
-      uris.push(added.uri);
+    const added =
+      add.length > 2000
+        ? ({ ok: false, problem: "unrecognised" } as const)
+        : await resolveRecommendationInput(add, origins);
+    if (!added.ok) addProblem = `recommend_${added.problem}`;
+    else if (!uris.includes(added.uri)) {
+      if (uris.length >= MAX_RECOMMENDATIONS) addProblem = "recommend_full";
+      else uris.push(added.uri);
     }
   }
+  const done = () =>
+    addProblem
+      ? redirectTo(
+          `/settings?${new URLSearchParams({ error: addProblem, add: add.slice(0, 2000) })}`,
+        )
+      : backToSettings();
 
-  // Like a theme, a list has nowhere to live without a publication.
-  const found = await findOwnPublication(pds, did, origins);
-  if (!found.ok) return back("save_failed:publication_unreadable");
-  const own = found.own;
-  if (!own) return back("recommend_no_publication_yet");
-  const rkey = rkeyFromUri(own.uri);
-  if (!rkey) return back("save_failed:bad_rkey");
+  const before = recommendationUris(own.value.goldroadRecommendations);
+  if (addProblem && before.join("\n") === uris.join("\n")) return done();
 
   let record: ReturnType<typeof withRecommendations>;
   try {
     record = withRecommendations(own.value, uris);
   } catch (err) {
     console.warn("recommendations merge refused", err);
-    return back("save_failed:invalid_record");
+    return backToSettings("save_failed:invalid_record");
   }
   const res = await rpc.post("com.atproto.repo.putRecord", {
     input: {
@@ -1498,10 +1514,10 @@ async function saveRecommendations({
   });
   if (!res.ok) {
     console.error("recommendations save failed", res.status, res.data);
-    return back(`save_failed:${res.data.error}`);
+    return backToSettings(`save_failed:${res.data.error}`);
   }
   // The list is on the page "See it on your public page" opens next.
-  return purgingReaderPages(back(), { origin, did, ident });
+  return purgingReaderPages(done(), { origin, did, ident });
 }
 
 /**

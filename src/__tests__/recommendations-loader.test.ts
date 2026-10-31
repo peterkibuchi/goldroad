@@ -61,6 +61,7 @@ describe("publication loader — recommendations", () => {
       { name: "Elsewhere", url: "https://me.leaflet.pub" },
       {
         name: "The Long Way",
+        url: "https://trygoldroad.com/@me.example",
         goldroadRecommendations: [
           { uri: FRIEND },
           { uri: "javascript:alert(1)" },
@@ -81,6 +82,20 @@ describe("publication loader — recommendations", () => {
       data: { uris: `${FRIEND}\nhttps://example.com` },
     });
     expect(data.recommendations).toEqual([card]);
+  });
+
+  it("reads only the record Settings writes, when there is one", async () => {
+    publications(
+      {
+        name: "Elsewhere",
+        url: "https://me.leaflet.pub",
+        goldroadRecommendations: [{ uri: FRIEND }],
+      },
+      { name: "The Long Way", url: "https://trygoldroad.com/@me.example" },
+    );
+    // The writer's own record has no list (they cleared it), so none shows.
+    expect((await load()).recommendations).toEqual([]);
+    expect(cards.recommendationCards).not.toHaveBeenCalled();
   });
 
   it("costs nothing when there is no list", async () => {

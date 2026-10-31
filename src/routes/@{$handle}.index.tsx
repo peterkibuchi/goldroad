@@ -42,7 +42,7 @@ import {
   onCanonicalOrigin,
   readerPageUrl,
 } from "~/lib/origin";
-import { publicationBase } from "~/lib/publish";
+import { publicationBase, settingsPublication } from "~/lib/publish";
 import { formatReadingTime, listItemReadingMinutes } from "~/lib/reading-time";
 import { recommendationCards } from "~/lib/recommendation-cards";
 import {
@@ -115,17 +115,25 @@ export const Route = createFileRoute("/@{$handle}/")({
       const pds = resolvedPds;
       const indexed = await searchPromise;
       const fullSearch = indexed?.ready ? indexed : null;
+      // Oldest publication = the author's original one; display-only here.
+      const pubsPromise = listRecords<StandardPublication>(
+        pds,
+        did,
+        "site.standard.publication",
+        {
+          limit: 10,
+          reverse: true,
+        },
+      ).catch((err: unknown) => (err instanceof NotFoundError ? [] : null));
+      // The writer's recommendations, on the archive's first page only: they
+      // are about the publication, not one of its pages. Started as soon as
+      // the publication record is in, so their reads overlap the listing.
+      const recommendationsPromise =
+        q || deps.cursor
+          ? Promise.resolve([])
+          : pubsPromise.then((pubs) => readRecommendations(pubs ?? []));
       const [pubs, docsPage] = await Promise.all([
-        // Oldest publication = the author's original one; display-only here.
-        listRecords<StandardPublication>(
-          pds,
-          did,
-          "site.standard.publication",
-          {
-            limit: 10,
-            reverse: true,
-          },
-        ).catch((err: unknown) => (err instanceof NotFoundError ? [] : null)),
+        pubsPromise,
         // A full-text search needs no listing: its results came from the index.
         // The title filter searches the newest page, whatever the cursor says.
         fullSearch
@@ -197,10 +205,7 @@ export const Route = createFileRoute("/@{$handle}/")({
             Date.parse(b.publishedAt ?? "") - Date.parse(a.publishedAt ?? "") ||
             (a.rkey < b.rkey ? 1 : -1),
         );
-      // The writer's recommendations, on the archive's first page only, like
-      // anything else about the publication rather than one of its pages.
-      const recommendations =
-        q || deps.cursor ? [] : await readRecommendations(pubs ?? []);
+      const recommendations = await recommendationsPromise;
       const search: ArchiveSearch | null = !q
         ? null
         : fullSearch
@@ -339,9 +344,9 @@ export const Route = createFileRoute("/@{$handle}/")({
 
 /**
  * The cards for the publications the author recommends, or none. Read from
- * whichever of their publication records carries a list, not only the oldest
+ * the record Settings writes (see settingsPublication), not only the oldest
  * one this page is named after: a writer who started in another app keeps
- * that app's record as their oldest, and Settings writes the list here.
+ * that app's record as their oldest.
  *
  * Never an error. Each card has its own short timeout (see
  * resolveRecommendations), so one slow server costs its card, and a failed
@@ -350,14 +355,13 @@ export const Route = createFileRoute("/@{$handle}/")({
 async function readRecommendations(
   publications: ReadonlyArray<{ value: StandardPublication }>,
 ): Promise<RecommendationCard[]> {
-  for (const pub of publications) {
-    const uris = recommendationUris(pub.value.goldroadRecommendations);
-    if (uris.length > 0)
-      return recommendationCards({ data: { uris: uris.join("\n") } }).catch(
-        () => [],
-      );
-  }
-  return [];
+  const uris = recommendationUris(
+    settingsPublication(publications)?.value.goldroadRecommendations,
+  );
+  if (uris.length === 0) return [];
+  return recommendationCards({ data: { uris: uris.join("\n") } }).catch(
+    () => [],
+  );
 }
 
 /**
