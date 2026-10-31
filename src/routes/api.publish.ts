@@ -19,6 +19,7 @@ import {
   type StandardDocument,
 } from "~/lib/atproto";
 import {
+  type BlobObject,
   blobImagePath,
   isAllowedImageMime,
   isBlobCid,
@@ -67,6 +68,7 @@ import {
   inlineImagesForBody,
   isOverRecordByteLimit,
   isOwnPublicationUrl,
+  keptShareCard,
   MAX_BODY_LENGTH,
   MAX_DEK_LENGTH,
   MAX_INLINE_IMAGES,
@@ -74,6 +76,8 @@ import {
   MAX_PUBLICATION_DESCRIPTION_LENGTH,
   MAX_TITLE_LENGTH,
   parseInlineImagesField,
+  SHARE_CARD_MIME,
+  shareCardBlob,
   toRecordInput,
   updateDocumentRecord,
   withBasicTheme,
@@ -560,6 +564,9 @@ async function publishDocument({
     }
     coverBlob = uploaded.data.blob;
   }
+  // The share card the editor drew, uploaded on the same terms and for the
+  // same reason: the record must reference it to keep it.
+  const shareCard = await uploadShareCard(rpc, form);
 
   // ---- Edit: merge into the existing record, preserve its history ----
   if (editRkey) {
@@ -590,6 +597,15 @@ async function publishDocument({
         // blob = replace, null = remove, undefined = keep the existing cover.
         coverImage: coverBlob ?? (removeCover ? null : undefined),
         inlineImageSources,
+        // A new card, else the existing one only when the editor drew it
+        // again byte for byte. Anything else drops it, so a title edit can
+        // never leave the old title on the card.
+        shareCard:
+          shareCard ??
+          keptShareCard(
+            existing.value.goldroadShareCard,
+            form.get("shareCardKeep"),
+          ),
       });
     } catch (err) {
       console.warn("record merge refused", err);
@@ -751,6 +767,7 @@ async function publishDocument({
           ? (thumbFromCover(firstInlineImage(publishing, sources)) ?? undefined)
           : undefined),
       inlineImageSources: sources,
+      shareCard,
       publishedAt: originalAt ?? undefined,
     });
   const record = build(publishBody);
@@ -830,6 +847,37 @@ async function publishDocument({
     }),
     { origin, did, ident, rkey },
   );
+}
+
+/**
+ * The share card the editor drew (~/lib/share-card), stored in the writer's
+ * repo — or null, and the post's link preview falls back to its cover, as it
+ * did before cards existed. Never a refused publish: the card previews the
+ * post, it isn't part of it. One upload, counted in the publish budget as
+ * SHARE_CARD_SUBREQUESTS (~/lib/import).
+ *
+ * PNG only, within the blob cap: the editor never sends anything else, so
+ * anything else didn't come from it.
+ */
+async function uploadShareCard(
+  rpc: Client,
+  form: FormData,
+): Promise<BlobObject | null> {
+  const file = form.get("shareCard");
+  if (!(file instanceof File) || file.size === 0) return null;
+  if (file.type !== SHARE_CARD_MIME || file.size > MAX_IMAGE_BLOB_BYTES)
+    return null;
+  const uploaded = await rpc
+    .post("com.atproto.repo.uploadBlob", {
+      headers: { "content-type": file.type },
+      input: file,
+    })
+    .catch(() => null);
+  if (!uploaded?.ok) {
+    console.warn("share card upload failed", uploaded?.status, uploaded?.data);
+    return null;
+  }
+  return shareCardBlob(uploaded.data.blob);
 }
 
 /**

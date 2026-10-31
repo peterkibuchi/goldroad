@@ -603,6 +603,9 @@ export type StandardDocument = {
    * ~/lib/publish for why the record has to carry them). Untrusted shape;
    * inlineImagesForBody validates every entry. */
   goldroadInlineImages?: unknown;
+  /** The post's share card blob (our own field — see shareCardBlob in
+   * ~/lib/publish). Untrusted shape; validate with shareCardBlob. */
+  goldroadShareCard?: unknown;
 };
 
 /** site.standard.publication — untrusted network shape, fields optional.
