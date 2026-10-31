@@ -55,7 +55,7 @@ import {
 } from "~/lib/schedule-time";
 import { selectPendingScheduleForDraft } from "~/lib/scheduled-posts";
 import { blobCid, drawShareCard, type ShareCardInput } from "~/lib/share-card";
-import { type BasicTheme, parseTheme } from "~/lib/theme";
+import { parseTheme } from "~/lib/theme";
 import { env } from "cloudflare:workers";
 
 // BlockNote is client-only (ProseMirror needs a real DOM): lazy + ClientOnly
@@ -182,41 +182,53 @@ type ResumedDraft = {
 };
 
 /** What the share card shows besides the title (~/lib/share-card). */
-type CardFacts = Omit<ShareCardInput, "title" | "theme"> & {
-  theme: BasicTheme | null;
-};
+type CardFacts = Omit<ShareCardInput, "title">;
+
+/** How long the editor waits on the publication read before giving up on
+ * the card. It only matters at publish time, so a slow PDS must not hold up
+ * the editor's first paint for it. */
+const CARD_PUBLICATION_BUDGET_MS = 2_000;
 
 /**
  * The publication a post's share card names and takes its colours from: the
  * one the post page will read them from. An edit reads its own document's
  * publication (a loose document has none); a new post attaches to the
- * writer's own, as publishing will. Best-effort: a read that fails draws the
- * card unthemed, under the writer's handle.
+ * writer's own, as publishing will.
+ *
+ * Resolves `{ value: null }` when there is no publication, and null when it
+ * couldn't tell (no PDS, a failed or slow read). The two differ on purpose: no
+ * publication draws the card in the default colours under the writer's
+ * handle, which is what the page will show, while a read that failed draws no
+ * card at all, because guessing would put the wrong colours in every preview.
  */
 async function cardPublication(
   pds: string | null,
   did: string,
   requestOrigin: string,
-  site?: unknown,
-): Promise<StandardPublication | null> {
+  edited: { site: unknown } | null,
+): Promise<{ value: StandardPublication | null } | null> {
   if (!pds) return null;
-  if (site === undefined) {
-    const { own } = await findOwnPublication(
-      pds,
-      did,
-      ownOrigins(requestOrigin),
-    );
-    return own?.value ?? null;
-  }
-  const ref = typeof site === "string" ? parseAtUri(site) : null;
-  if (ref?.did !== did || ref.collection !== "site.standard.publication")
-    return null;
-  return getRecord<StandardPublication>(
-    pds,
-    did,
-    ref.collection,
-    ref.rkey,
-  ).catch(() => null);
+  const read = async () => {
+    if (!edited) {
+      const { ok, own } = await findOwnPublication(
+        pds,
+        did,
+        ownOrigins(requestOrigin),
+      );
+      return ok ? { value: own?.value ?? null } : null;
+    }
+    const ref =
+      typeof edited.site === "string" ? parseAtUri(edited.site) : null;
+    if (ref?.did !== did || ref.collection !== "site.standard.publication")
+      return { value: null };
+    return getRecord<StandardPublication>(pds, did, ref.collection, ref.rkey)
+      .then((value) => ({ value }))
+      .catch(() => null);
+  };
+  const timeout = new Promise<null>((resolve) =>
+    setTimeout(() => resolve(null), CARD_PUBLICATION_BUDGET_MS),
+  );
+  return Promise.race([read().catch(() => null), timeout]);
 }
 
 const getWriteContext = createServerFn({ method: "GET" })
@@ -251,8 +263,8 @@ const getWriteContext = createServerFn({ method: "GET" })
     // A new post's publication, read alongside the draft rather than after it.
     const newPostPublication = data.edit
       ? null
-      : cardPublication(pds, did, requestOrigin);
-    let editPublication: Promise<StandardPublication | null> | null = null;
+      : cardPublication(pds, did, requestOrigin, null);
+    let editPublication: ReturnType<typeof cardPublication> | null = null;
 
     // Resume a saved draft (ownership enforced in the query's WHERE). Editing
     // a published record wins if both params are somehow present.
@@ -327,7 +339,9 @@ const getWriteContext = createServerFn({ method: "GET" })
         if (hasForeignContent(doc)) draftError = "not_editable";
         else {
           const coverCid = coverImageCid(doc.coverImage);
-          editPublication = cardPublication(pds, did, requestOrigin, doc.site);
+          editPublication = cardPublication(pds, did, requestOrigin, {
+            site: doc.site,
+          });
           // Provenance lookup (import ledger): editing an imported post offers
           // adoption. Best-effort — a flaked read just hides the offer.
           const [mirror] = await selectMirror(
@@ -356,15 +370,16 @@ const getWriteContext = createServerFn({ method: "GET" })
       }
     }
     const ident = handle ?? did;
-    // Neither read throws: both settle to null on failure.
-    const publication = (await (newPostPublication ?? editPublication)) ?? null;
-    const card: CardFacts = {
+    // Neither read throws: both settle to null when they couldn't tell, and
+    // then no card is drawn (see cardPublication).
+    const publication = await (newPostPublication ?? editPublication);
+    const card: CardFacts | null = publication && {
       // The label the post page prints over the title: the publication's
       // name, which a first publish creates as the writer's handle.
-      label: publication?.name?.trim() || ident,
+      label: publication.value?.name?.trim() || ident,
       // The byline the post page prints under it.
-      name: handle ? `@${handle}` : did,
-      theme: parseTheme(publication?.basicTheme),
+      name: `@${ident}`,
+      theme: parseTheme(publication.value?.basicTheme),
     };
     return {
       viewer: { did, handle },
