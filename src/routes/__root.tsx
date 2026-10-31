@@ -4,7 +4,11 @@ import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import { useEffect } from "react";
 
 import { ErrorPage, NotFoundPage } from "~/components/system-pages";
-import { APPEARANCE_KEY } from "~/lib/appearance";
+import {
+  APPEARANCE_KEY,
+  READER_FACE_KEY,
+  READER_SIZE_KEY,
+} from "~/lib/appearance";
 import { initPostHog } from "~/lib/posthog";
 import { DEFAULT_OG_IMAGE } from "~/lib/social-card";
 import appCss from "../styles.css?url";
@@ -80,8 +84,13 @@ export const Route = createRootRoute({
  * value overrides a writer's theme and an absent one does not — which keeps
  * theming working by default for everyone who never touches the control, while
  * never trapping a light-sensitive reader inside a white page.
+ *
+ * The reader's text size and typeface ride along as `data-reader-size` and
+ * `data-reader-face`, copied as stored: a value styles.css doesn't know
+ * matches no rule and changes nothing. They are read before the
+ * matchMedia call, which is the one line here that can throw.
  */
-const APPEARANCE_BOOTSTRAP = `(function(){try{var p=localStorage.getItem("${APPEARANCE_KEY}");var e=document.documentElement;if(p==="dark"||p==="light")e.dataset.readerEdition=p;var d=p==="dark"||(p!=="light"&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(d)e.dataset.theme="dark";}catch(e){}})();`;
+const APPEARANCE_BOOTSTRAP = `(function(){try{var p=localStorage.getItem("${APPEARANCE_KEY}");var e=document.documentElement;if(p==="dark"||p==="light")e.dataset.readerEdition=p;var s=localStorage.getItem("${READER_SIZE_KEY}");if(s)e.dataset.readerSize=s;var f=localStorage.getItem("${READER_FACE_KEY}");if(f)e.dataset.readerFace=f;var d=p==="dark"||(p!=="light"&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(d)e.dataset.theme="dark";}catch(e){}})();`;
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   // Cookieless analytics; a no-op unless VITE_PUBLIC_POSTHOG_KEY is set.

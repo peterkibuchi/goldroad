@@ -1,11 +1,12 @@
 import { Await, notFound, redirect, useLocation } from "@tanstack/react-router";
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useId, useRef, useState } from "react";
 
 import { Conversation } from "~/components/conversation";
 import { ExternalLink } from "~/components/external-link";
 import { HeartIcon, ReplyIcon, RepostIcon } from "~/components/icons";
 import { Prose } from "~/components/prose";
 import { ReaderEmailCapture } from "~/components/reader-email-capture";
+import type { ReaderTypePanel } from "~/components/reader-type-panel";
 import { MAIN_CONTENT_ID } from "~/components/skip-link";
 import { SubscribeControl } from "~/components/subscribe-control";
 import { WriterSurface } from "~/components/writer-surface";
@@ -14,6 +15,7 @@ import {
   currentEdition,
   type Edition,
   setEdition,
+  setReaderType,
 } from "~/lib/appearance";
 import {
   type Did,
@@ -630,6 +632,10 @@ export function ReportLink({ className }: { className?: string }) {
   );
 }
 
+/** The reader's controls in the footer line, set like its links. */
+const FOOTER_CONTROL =
+  "cursor-pointer font-display text-inherit transition-colors hover:text-ink";
+
 /**
  * The reader's edition switch.
  *
@@ -659,12 +665,10 @@ function ReaderEdition({ themed }: { themed: boolean }) {
   }, []);
   if (!edition) return null;
   const next: Edition = edition === "dark" ? "light" : "dark";
-  const link =
-    "cursor-pointer font-display text-inherit transition-colors hover:text-ink";
   return (
     <>
       <button
-        className={link}
+        className={FOOTER_CONTROL}
         onClick={() => {
           setEdition(next);
           setLocal(next);
@@ -680,7 +684,7 @@ function ReaderEdition({ themed }: { themed: boolean }) {
         <>
           {" · "}
           <button
-            className={link}
+            className={FOOTER_CONTROL}
             onClick={() => {
               clearEdition();
               setLocal(currentEdition());
@@ -691,6 +695,61 @@ function ReaderEdition({ themed }: { themed: boolean }) {
             As published
           </button>
         </>
+      )}
+    </>
+  );
+}
+
+function ReaderType() {
+  const [mounted, setMounted] = useState(false);
+  const [open, setOpen] = useState(false);
+  // The panel's code, fetched when a reader first opens it, never with the
+  // page. Not React.lazy: a chunk that fails to load (a deploy since the page
+  // was opened, a dropped connection) would throw through Suspense to the
+  // route's error page and take the article with it. Here it just stays shut.
+  const [Panel, setPanel] = useState<typeof ReaderTypePanel | null>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const panelId = useId();
+  useEffect(() => setMounted(true), []);
+  if (!mounted) return null;
+
+  function toggle() {
+    if (open || Panel) {
+      setOpen(!open);
+      return;
+    }
+    import("~/components/reader-type-panel")
+      .then((module) => {
+        setPanel(() => module.ReaderTypePanel);
+        setOpen(true);
+      })
+      .catch(() => {});
+  }
+  function close() {
+    setOpen(false);
+    button.current?.focus();
+  }
+
+  return (
+    <>
+      {" · "}
+      <button
+        // Names the panel only while it exists: it mounts on first open.
+        aria-controls={open ? panelId : undefined}
+        aria-expanded={open}
+        className={FOOTER_CONTROL}
+        onClick={toggle}
+        // Escape closes it from the button too, before focus moves in.
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && open) close();
+        }}
+        ref={button}
+        type="button"
+      >
+        Text options
+      </button>
+      {open && Panel && (
+        <Panel id={panelId} onClose={close} remember={setReaderType} />
       )}
     </>
   );
@@ -1190,7 +1249,9 @@ export function DocumentArticle({
             <p className="font-display text-xs text-ink-soft/80">
               {copyrightYear} · {publicationName ?? `@${ident}`}
             </p>
-            <p className="mt-1 font-display text-xs text-ink-soft/80">
+            {/* A div, not a p: the type panel opens inside it, under the
+              line, and a fieldset can't sit in a paragraph. */}
+            <div className="mt-1 font-display text-xs text-ink-soft/80">
               <a
                 className="transition-colors hover:text-ink"
                 href={`${CANONICAL_ORIGIN}/open`}
@@ -1207,7 +1268,8 @@ export function DocumentArticle({
                 volume instead of putting a widget above their masthead. */}
               {" · "}
               <ReaderEdition themed={Boolean(theme)} />
-            </p>
+              <ReaderType />
+            </div>
           </footer>
         </article>
       </main>

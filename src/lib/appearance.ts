@@ -17,6 +17,41 @@
 /** localStorage key. Also interpolated into the pre-paint bootstrap. */
 export const APPEARANCE_KEY = "gr-appearance";
 
+/**
+ * The rest of the reader's edition: text size and typeface on reading pages,
+ * remembered the same way. The bootstrap copies each stored value onto <html>
+ * as `data-reader-size` and `data-reader-face` before first paint, and
+ * styles.css does the rest. Absent means the page as published, which is why
+ * choosing the default REMOVES the key rather than storing it.
+ */
+export const READER_SIZE_KEY = "gr-reader-size";
+export const READER_FACE_KEY = "gr-reader-face";
+
+/** Which choice, by its `dataset` name on <html>. */
+export type ReaderTypeKind = "readerSize" | "readerFace";
+
+/**
+ * Applies a type choice and remembers it; "" is the page as published.
+ *
+ * Here rather than in the reader's type panel, which calls it: that panel
+ * loads on first open, and a module both it and the page import would be
+ * split into a chunk of its own, one more request on every reading page.
+ * Storage can refuse (private mode); the page still changes, because that is
+ * what the reader asked for.
+ */
+export function setReaderType(kind: ReaderTypeKind, value: string): void {
+  const root = document.documentElement;
+  if (value) root.dataset[kind] = value;
+  else delete root.dataset[kind];
+  const key = kind === "readerSize" ? READER_SIZE_KEY : READER_FACE_KEY;
+  try {
+    if (value) localStorage.setItem(key, value);
+    else localStorage.removeItem(key);
+  } catch {
+    // Remembering is a nicety; the change above is the request.
+  }
+}
+
 export type Edition = "light" | "dark";
 
 /** The edition currently painted, read off the DOM rather than from storage —
