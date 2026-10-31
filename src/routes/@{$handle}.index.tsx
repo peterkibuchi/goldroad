@@ -372,7 +372,11 @@ async function readPinnedPost(input: {
       getRecord<StandardDocument>(pds, did, "site.standard.document", rkey)
         .then((doc) => archivePost(did, rkey, doc))
         .catch(() => null),
-    checkHidden({ data: { did, atUri: documentAtUri(did, rkey) } }),
+    // Fail-open like every takedown read (see ~/lib/moderation), and caught
+    // so the call itself failing costs the pin's check, not the page.
+    checkHidden({ data: { did, atUri: documentAtUri(did, rkey) } }).catch(
+      () => false,
+    ),
   ]);
   return hidden ? null : post;
 }
