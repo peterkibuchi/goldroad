@@ -24,11 +24,19 @@ const COMPOSE_URL = "https://bsky.app/intent/compose";
  * might be over the limit; code points are the fallback where it is missing.
  */
 let segmenter: Intl.Segmenter | undefined;
-function graphemes(text: string): string[] {
-  if (typeof Intl === "undefined" || !("Segmenter" in Intl))
-    return Array.from(text);
-  segmenter ??= new Intl.Segmenter();
-  return Array.from(segmenter.segment(text), (s) => s.segment);
+function graphemes(text: string, max: number): string[] {
+  const all: Iterable<string | Intl.SegmentData> =
+    typeof Intl === "undefined" || !("Segmenter" in Intl)
+      ? text
+      : (segmenter ??= new Intl.Segmenter()).segment(text);
+  // Stop at `max`: a reader selecting a long passage with the keyboard
+  // re-runs this on every keystroke, and truncation reads no further.
+  const parts: string[] = [];
+  for (const part of all) {
+    parts.push(typeof part === "string" ? part : part.segment);
+    if (parts.length >= max) break;
+  }
+  return parts;
 }
 
 /**
@@ -43,7 +51,7 @@ export function truncateGraphemes(text: string, budget: number): string {
   // needs no segmenting. That is nearly every title, which keeps the share
   // link out of ICU during hydration.
   if (text.length <= budget) return text;
-  const parts = graphemes(text);
+  const parts = graphemes(text, budget + 1);
   if (parts.length <= budget) return text;
   let keep = Math.max(budget - 1, 0);
   // Mid-word only if the cut fell between two letters of one word.
