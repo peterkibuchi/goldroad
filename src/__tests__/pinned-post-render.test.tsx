@@ -94,7 +94,9 @@ describe("settings — the Start here pick", () => {
     expect(select.getAttribute("name")).toBe("pinnedPost");
     expect(select.getAttribute("tabindex")).toBeNull();
     expect(select.getAttribute("aria-describedby")).toBe("pinnedPost-help");
-    expect((select as HTMLSelectElement).value).toBe("3lyk73wxnok2f");
+    expect((select as unknown as HTMLSelectElement).value).toBe(
+      "3lyk73wxnok2f",
+    );
   });
 
   it("submits the post chosen from the keyboard, or nothing for no pin", () => {

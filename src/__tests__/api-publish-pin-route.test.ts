@@ -112,6 +112,25 @@ describe("POST /api/publish — the Start here pin", () => {
     expect(written()).toBeNull();
   });
 
+  it("refuses a bad pin before uploading anything", async () => {
+    const form = new FormData();
+    form.append("intent", "publication");
+    form.append("name", "The Long Way");
+    form.append("pinnedPost", "not/an/rkey");
+    form.append(
+      "icon",
+      new File([new Uint8Array(10)], "i.png", { type: "image/png" }),
+    );
+    const res = await POST({
+      request: new Request("https://trygoldroad.com/api/publish", {
+        method: "POST",
+        body: form,
+      }),
+    });
+    expect(res.headers.get("location")).toBe("/settings?error=pin_invalid");
+    expect(posted).toHaveLength(0);
+  });
+
   it('unpins on ""', async () => {
     atproto.listRecords.mockResolvedValue([
       publication({ goldroadPinnedPost: PIN }),

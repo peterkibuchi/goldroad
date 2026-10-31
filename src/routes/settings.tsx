@@ -143,24 +143,20 @@ const getSettings = createServerFn({ method: "GET" }).handler(async () => {
     unreadable = true;
   }
 
-  const pinnable = await withCurrentPin(
-    await postsPromise,
-    pinnedRkey,
-    pds,
-    did,
-  );
-
-  // Record counts for the "Your data" section — cheap enough to run on every
-  // load. A flaked D1 read stays honest (null) rather than claiming "0".
-  const dataCounts = await Promise.all([
-    countDraftsForDid(drizzle(env.DB), did),
-    countImportItemsForDid(drizzle(env.DB), did),
-  ])
-    .then(([drafts, importLedger]) => ({
-      drafts: drafts.length,
-      importLedger: importLedger.length,
-    }))
-    .catch(() => null);
+  const [pinnable, dataCounts] = await Promise.all([
+    postsPromise.then((posts) => withCurrentPin(posts, pinnedRkey, pds, did)),
+    // Record counts for the "Your data" section — cheap enough to run on
+    // every load. A flaked D1 read stays honest (null) rather than claiming "0".
+    Promise.all([
+      countDraftsForDid(drizzle(env.DB), did),
+      countImportItemsForDid(drizzle(env.DB), did),
+    ])
+      .then(([drafts, importLedger]) => ({
+        drafts: drafts.length,
+        importLedger: importLedger.length,
+      }))
+      .catch(() => null),
+  ]);
 
   return {
     ident,
@@ -470,7 +466,7 @@ export function IconField({
  * When the posts couldn't be listed there is no select at all, rather than a
  * select showing "None": the field then never reaches the form, and the
  * server reads its absence as "keep the current pin".
- * Exported for tests (settings-pinned-post.test.tsx) — not a route.
+ * Exported for tests (pinned-post-render.test.tsx) — not a route.
  */
 export function PinnedPostField({
   posts,

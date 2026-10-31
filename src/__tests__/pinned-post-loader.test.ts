@@ -119,6 +119,22 @@ describe("publication loader — the Start here pin", () => {
     expect((await load()).pinned).toBeNull();
   });
 
+  it("reads the pin from a newer publication when the oldest is another app's", async () => {
+    vi.mocked(atproto.listRecords).mockResolvedValue([
+      {
+        uri: `at://${DID}/site.standard.publication/3lyk73wxnok22`,
+        cid: "bafyreileaflet",
+        value: { name: "Elsewhere", url: "https://writer.leaflet.pub" },
+      },
+      {
+        uri: `at://${DID}/site.standard.publication/3lyk73wxnok2a`,
+        cid: "bafyreipub",
+        value: { name: "The Long Way", goldroadPinnedPost: PIN },
+      },
+    ]);
+    expect((await load()).pinned?.title).toBe("About me");
+  });
+
   it("shows no pin on an older page of the archive", async () => {
     expect((await load({ cursor: "abc" })).pinned).toBeNull();
   });

@@ -177,7 +177,7 @@ export const Route = createFileRoute("/@{$handle}/")({
       const pinned =
         q || deps.cursor
           ? null
-          : await readPinnedPost({ did, pds, publication, posts });
+          : await readPinnedPost({ did, pds, publications: pubs ?? [], posts });
       const search: ArchiveSearch | null = !q
         ? null
         : fullSearch
@@ -345,15 +345,26 @@ function archivePost(
  * (see pinnedPostRkey), a post since deleted, or one taken down here. A
  * recent pin is already in the listed page and costs only the takedown
  * check; an older one costs one record read from the same PDS, run beside it.
+ * A read that fails for any reason, a flaky PDS included, shows no pin: the
+ * record read can't tell those apart, and skipping the cache on every failure
+ * would keep a page with a deleted pin out of it for good.
  */
 async function readPinnedPost(input: {
   did: string;
   pds: string;
-  publication: StandardPublication | null;
+  publications: ReadonlyArray<{ value: StandardPublication }>;
   posts: ArchivePost[];
 }): Promise<ArchivePost | null> {
   const { did, pds } = input;
-  const rkey = pinnedPostRkey(input.publication?.goldroadPinnedPost, did);
+  // From whichever of the author's publications carries one, not only the
+  // oldest one this page names itself after: a writer who had a publication
+  // in another app before this one keeps that as their oldest, and Settings
+  // writes the pin to the publication here.
+  let rkey: string | null = null;
+  for (const pub of input.publications) {
+    rkey = pinnedPostRkey(pub.value.goldroadPinnedPost, did);
+    if (rkey) break;
+  }
   if (!rkey) return null;
   const listed = input.posts.find((post) => post.rkey === rkey);
   const [post, hidden] = await Promise.all([
