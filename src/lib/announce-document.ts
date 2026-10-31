@@ -108,10 +108,15 @@ export async function announceDocument(input: {
         ? doc.value.description
         : undefined,
     associatedRefs,
-    // Reuse the document's cover blob as the card thumb (same repo — the
-    // post's reference keeps it persistence-legal). Skipped when over the
-    // thumb lexicon's 1MB cap: the PDS would reject the whole announce.
-    thumb: thumbFromCover(doc.value.coverImage) ?? undefined,
+    // Reuse the document's share card, else its cover, as the card thumb —
+    // the picture the post's own page leads its link preview with (same
+    // repo — the post's reference keeps it persistence-legal). Skipped when
+    // over the thumb lexicon's 1MB cap: the PDS would reject the whole
+    // announce.
+    thumb:
+      thumbFromCover(doc.value.goldroadShareCard) ??
+      thumbFromCover(doc.value.coverImage) ??
+      undefined,
   });
 
   const res = await rpc.post("com.atproto.repo.createRecord", {

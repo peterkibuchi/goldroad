@@ -53,7 +53,11 @@ import {
   onCanonicalOrigin,
   readerPageUrl,
 } from "~/lib/origin";
-import { composeDocumentUrl, publicationBase } from "~/lib/publish";
+import {
+  composeDocumentUrl,
+  publicationBase,
+  shareCardBlob,
+} from "~/lib/publish";
 import { documentReadingMinutes, formatReadingTime } from "~/lib/reading-time";
 import {
   RELATED_POSTS_LIMIT,
@@ -306,10 +310,20 @@ export async function loadDocument(
     const theme = parseTheme(pub?.value.basicTheme);
 
     const coverCid = coverImageCid(doc.coverImage);
+    // The card drawn when the post was published or last edited. Absent on
+    // other apps' records and on posts nobody has saved since cards began,
+    // which keep the cover as their preview.
+    const shareCardCid = shareCardBlob(doc.goldroadShareCard)?.ref.$link;
     return {
       // The body travels as `bodyHtml`; its markdown and plaintext would only
-      // add two more copies to the hydration payload.
-      doc: { ...doc, content: undefined, textContent: undefined },
+      // add two more copies to the hydration payload, and the card's blob
+      // travels as the `shareCard` ref below.
+      doc: {
+        ...doc,
+        content: undefined,
+        textContent: undefined,
+        goldroadShareCard: undefined,
+      },
       bodyHtml,
       readingMinutes: documentReadingMinutes(body),
       ident,
@@ -330,6 +344,10 @@ export async function loadDocument(
       // Validated cover blob (allowlisted raster, within the lexicon cap) —
       // rendered via the /img proxy so the PDS hostname never leaks into HTML.
       cover: coverCid ? ({ did, cid: coverCid } satisfies CoverRef) : null,
+      // Read by the head only: it leads the link preview.
+      shareCard: shareCardCid
+        ? ({ did, cid: shareCardCid } satisfies CoverRef)
+        : null,
       // The page's record reference for the standard.site link-tag convention.
       atUri: `at://${did}/site.standard.document/${rkey}`,
       canonicalUrl: composeDocumentUrl({
