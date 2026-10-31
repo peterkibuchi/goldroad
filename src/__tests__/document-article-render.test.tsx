@@ -587,3 +587,60 @@ describe("DocumentArticle — landmarks", () => {
     expect(main.textContent).toContain("Full body text here.");
   });
 });
+
+describe("DocumentArticle — share on Bluesky", () => {
+  const shareText = () =>
+    new URL(
+      screen
+        .getByRole("link", { name: /share on bluesky/i })
+        .getAttribute("href") ?? "",
+    ).searchParams.get("text");
+
+  it("opens Bluesky's composer with the title and the post's own address", () => {
+    render(
+      <DocumentArticle
+        atUri="at://did:plc:writer/site.standard.document/3lyk73wxnok2f"
+        canonicalUrl="https://writer.example/essays/open-network"
+        doc={baseDoc}
+        ident="writer.example"
+      />,
+    );
+    const link = screen.getByRole("link", { name: /share on bluesky/i });
+    expect(link.getAttribute("href")).toMatch(
+      /^https:\/\/bsky\.app\/intent\/compose\?text=/,
+    );
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(shareText()).toBe(
+      "Publishing on the open network\n\nhttps://writer.example/essays/open-network",
+    );
+  });
+
+  it("links this page on the canonical origin when the record names no address", () => {
+    render(
+      <DocumentArticle
+        atUri="at://did:plc:writer/site.standard.document/3lyk73wxnok2f"
+        canonicalUrl={null}
+        doc={baseDoc}
+        ident="Writer.Example"
+      />,
+    );
+    // The same address the canonical tag names: one casing, the /@ form.
+    expect(shareText()).toBe(
+      "Publishing on the open network\n\nhttps://trygoldroad.com/@writer.example/3lyk73wxnok2f",
+    );
+  });
+
+  it("moves an address minted on a legacy origin onto the canonical one", () => {
+    render(
+      <DocumentArticle
+        atUri="at://did:plc:writer/site.standard.document/3lyk73wxnok2f"
+        canonicalUrl="https://goldroad.kibuchi.workers.dev/@writer.example/3lyk73wxnok2f"
+        doc={baseDoc}
+        ident="writer.example"
+      />,
+    );
+    expect(shareText()).toContain(
+      "\n\nhttps://trygoldroad.com/@writer.example/3lyk73wxnok2f",
+    );
+  });
+});

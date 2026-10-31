@@ -33,6 +33,7 @@ import {
   type StandardPublication,
 } from "~/lib/atproto";
 import { blobImagePath, coverImageCid } from "~/lib/blob";
+import { passageShareUrl, postShareUrl } from "~/lib/bluesky-share";
 import { getPostConversation, type PostConversation } from "~/lib/comments";
 import { documentBodyMarkdown } from "~/lib/document-content";
 import {
@@ -427,18 +428,13 @@ export function documentHead(
   // The base the canonical URL composes onto: the document's own https site,
   // else its publication's url.
   const base = publicationBase({ site: doc.site, publicationUrl });
-  // The record's own address, moved onto the canonical origin when it was
-  // minted on a legacy one. A record that composes none still gets one
-  // canonical, whichever of /@ or /p/, handle casing or query it was reached
-  // by: this page, when the writer's home is here or nowhere on the
-  // web. A home on another site without a path to the post names nothing,
-  // since this page is not where that post lives and guessing would say so.
-  const rkey = rkeyFromUri(atUri);
-  const pageUrl = canonicalUrl
-    ? onCanonicalOrigin(canonicalUrl)
-    : rkey && (base === null || isCanonicalOriginUrl(onCanonicalOrigin(base)))
-      ? readerPageUrl(ident, rkey)
-      : null;
+  const pageUrl = documentPageUrl({
+    doc,
+    ident,
+    atUri,
+    canonicalUrl,
+    publicationUrl,
+  });
   // The writer's home: that base, else their page here.
   const writerHome = base ?? readerPageUrl(ident);
   return {
@@ -567,6 +563,38 @@ function previewImageMeta(input: {
 /** A record's date field, if it is a string a date parses from. */
 function isDate(value: unknown): value is string {
   return typeof value === "string" && !Number.isNaN(Date.parse(value));
+}
+
+/**
+ * The post's one address, for its canonical tag, its previews and its shares.
+ *
+ * The record's own address, moved onto the canonical origin when it was
+ * minted on a legacy one. A record that composes none still gets one
+ * canonical, whichever of /@ or /p/, handle casing or query it was reached
+ * by: this page, when the writer's home is here or nowhere on the
+ * web. A home on another site without a path to the post names nothing,
+ * since this page is not where that post lives and guessing would say so.
+ */
+export function documentPageUrl({
+  doc,
+  ident,
+  atUri,
+  canonicalUrl,
+  publicationUrl,
+}: {
+  doc: StandardDocument;
+  ident: string;
+  atUri: string;
+  canonicalUrl: string | null;
+  publicationUrl?: string | null;
+}): string | null {
+  if (canonicalUrl) return onCanonicalOrigin(canonicalUrl);
+  const base = publicationBase({ site: doc.site, publicationUrl });
+  const rkey = rkeyFromUri(atUri);
+  return rkey &&
+    (base === null || isCanonicalOriginUrl(onCanonicalOrigin(base)))
+    ? readerPageUrl(ident, rkey)
+    : null;
 }
 
 /**
@@ -756,6 +784,8 @@ export function DocumentArticle({
   engagement,
   conversation,
   theme,
+  atUri,
+  canonicalUrl,
 }: {
   doc: StandardDocument;
   ident: string;
@@ -773,6 +803,10 @@ export function DocumentArticle({
   publicationUrl?: string | null;
   /** The author's validated theme, or null for our default palette. */
   theme?: BasicTheme | null;
+  /** The record and its composed address, which together name what a share
+   * links to (see documentPageUrl). */
+  atUri?: string;
+  canonicalUrl?: string | null;
   cover?: CoverRef | null;
   mirror?: MirrorInfo | null;
   relatedPosts?: RelatedPost[];
@@ -802,6 +836,20 @@ export function DocumentArticle({
   const copyrightYear = new Date(
     doc.publishedAt ?? Date.now(),
   ).getUTCFullYear();
+  // A share links the address the page's canonical tag names, or this page
+  // when that is nobody's (a home elsewhere with no path to the post). Either
+  // way on the canonical origin, never a preview or legacy hostname.
+  const rkey = atUri ? rkeyFromUri(atUri) : null;
+  const shareUrl =
+    (atUri &&
+      documentPageUrl({
+        doc,
+        ident,
+        atUri,
+        canonicalUrl: canonicalUrl ?? null,
+        publicationUrl,
+      })) ||
+    readerPageUrl(ident, rkey ?? undefined);
 
   return (
     // The writer's surface, not ours: their theme applies here, our dark-mode
@@ -953,7 +1001,10 @@ export function DocumentArticle({
             )}
           </header>
           {bodyHtml !== "" ? (
-            <Prose html={bodyHtml} />
+            <Prose
+              html={bodyHtml}
+              quoteHref={(passage) => passageShareUrl(passage, shareUrl)}
+            />
           ) : (
             <p className="font-display text-sm text-ink-soft">
               This document keeps its full text elsewhere
@@ -1022,6 +1073,14 @@ export function DocumentArticle({
                     href={bskyProfileUrl(ident)}
                   >
                     Follow @{ident} on Bluesky
+                  </ExternalLink>
+                  {/* A link to Bluesky's composer, filled in: the reader posts
+                    it themselves, and works without JavaScript. */}
+                  <ExternalLink
+                    className="text-ink-soft underline underline-offset-2 transition-colors hover:text-ink"
+                    href={postShareUrl(doc.title, shareUrl)}
+                  >
+                    Share on Bluesky
                   </ExternalLink>
                   <a
                     className="text-ink-soft underline underline-offset-2 transition-colors hover:text-ink"

@@ -1,4 +1,11 @@
-import { useEffect, useRef } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
+
+// Loaded on the reader's first selection in the body, never with the page.
+const PassageShare = lazy(() =>
+  import("~/components/passage-share").then((m) => ({
+    default: m.PassageShare,
+  })),
+);
 
 /**
  * The writer's body on a reading page, as HTML from ~/lib/markdown-html,
@@ -14,9 +21,34 @@ import { useEffect, useRef } from "react";
  * ~/lib/embeds); a plain click on it swaps that link for a player in place.
  * The player is our own same-origin frame page, which is the only page that
  * may frame the provider, so this page's own policy never has to.
+ *
+ * Given `quoteHref`, it offers a selected passage as a quote on Bluesky
+ * (~/components/passage-share). All the page carries for that is the listener
+ * below; the offer itself loads when a reader first selects text in the body.
  */
-export function Prose({ html }: { html: string }) {
+export function Prose({
+  html,
+  quoteHref,
+}: {
+  html: string;
+  /** The share link for a selected passage; no offer without one. */
+  quoteHref?: (passage: string) => string;
+}) {
   const ref = useRef<HTMLDivElement>(null);
+  const [quoting, setQuoting] = useState(false);
+
+  useEffect(() => {
+    if (!quoteHref) return;
+    const onSelect = () => {
+      const selection = window.getSelection();
+      if (selection?.isCollapsed !== false) return;
+      if (!ref.current?.contains(selection.anchorNode)) return;
+      document.removeEventListener("selectionchange", onSelect);
+      setQuoting(true);
+    };
+    document.addEventListener("selectionchange", onSelect);
+    return () => document.removeEventListener("selectionchange", onSelect);
+  }, [quoteHref]);
 
   // A Bluesky post reports its height once it loads; its frame page passes
   // that up (see the /embed route), and only to a frame this body created.
@@ -38,15 +70,22 @@ export function Prose({ html }: { html: string }) {
   }, []);
 
   return (
-    // biome-ignore lint/a11y/useKeyWithClickEvents: delegation — the targets are links, which take Enter themselves
-    // biome-ignore lint/a11y/noStaticElementInteractions: same: the handler only acts on the embed links inside
-    <div
-      className="gr-prose text-[1.0625rem] leading-[1.7] wrap-anywhere"
-      // biome-ignore lint/security/noDangerouslySetInnerHtml: markdownToHtml escapes raw HTML and filters URLs
-      dangerouslySetInnerHTML={{ __html: html }}
-      onClick={loadEmbed}
-      ref={ref}
-    />
+    <div className="relative">
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: delegation — the targets are links, which take Enter themselves */}
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: same: the handler only acts on the embed links inside */}
+      <div
+        className="gr-prose text-[1.0625rem] leading-[1.7] wrap-anywhere"
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: markdownToHtml escapes raw HTML and filters URLs
+        dangerouslySetInnerHTML={{ __html: html }}
+        onClick={loadEmbed}
+        ref={ref}
+      />
+      {quoting && quoteHref && (
+        <Suspense fallback={null}>
+          <PassageShare prose={ref} quoteHref={quoteHref} />
+        </Suspense>
+      )}
+    </div>
   );
 }
 
