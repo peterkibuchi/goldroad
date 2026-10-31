@@ -311,6 +311,14 @@ export async function writeDocumentWithoutMissingImages(input: {
  * uploaded to the writer's repo while they wrote, and their references travel
  * with the draft precisely so this can reference them.
  *
+ * NO SHARE CARD either, for a sharper version of the same reason. The card
+ * is drawn on a canvas, which needs a browser, and one drawn when the writer
+ * schedules can't wait for the cron in their repo: a blob no record names is
+ * reclaimed within the hour. Keeping its bytes here instead would mean a
+ * column of images in D1 for a preview the next edit draws anyway. So the
+ * post's link preview is its cover until the writer next saves it, which
+ * draws the card.
+ *
  * The two write-backs at the end are best-effort by the same reasoning the
  * interactive path uses: the record is already live in the writer's repo, so a
  * flaked ledger update costs the mirror treatment and a flaked draft delete

@@ -509,13 +509,17 @@ const MARKDOWN_IMAGE_RE = /!\[(?:\\.|[^[\]\\])*\]\(\s*([^()\s]+)[^()]*\)/g;
 /**
  * Subrequests one publish may spend on body images: copying them here, or
  * retrying past ones the repo no longer holds (~/lib/publish-document). The
- * free plan allows 50 per invocation, and the rest of a publish can take 32:
+ * free plan allows 50 per invocation, and the rest of a publish can take 34:
  * session restore with a token refresh 8 (metadata, DID document, handle,
- * token, DPoP nonce retries), identity 1, cover upload 2, publication lookup
- * or first-time create 3, document write up to 3, cache purges 15. So images
- * get 14 and 4 stay spare.
+ * token, DPoP nonce retries), identity 1, cover upload 2, share card upload
+ * 2 (SHARE_CARD_SUBREQUESTS), publication lookup or first-time create 3,
+ * document write up to 3, cache purges 15. So images get 12 and 4 stay spare.
  */
-export const IMAGE_SUBREQUEST_BUDGET = 14;
+export const IMAGE_SUBREQUEST_BUDGET = 12;
+
+/** What the share card's upload may cost a publish: the upload, and a retry
+ * when the PDS asks for a fresh DPoP nonce. Counted above, as the cover is. */
+export const SHARE_CARD_SUBREQUESTS = 2;
 
 /** Images one publish can copy at best: one fetch and one upload each. A
  * redirecting image costs a fetch per hop, so fewer fit. */

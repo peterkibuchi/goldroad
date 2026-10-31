@@ -123,6 +123,11 @@ vi.mock("~/lib/live-session", async (importOriginal) => ({
   readLiveSessionDid: () => Promise.resolve(session.did),
 }));
 
+import {
+  IMAGE_SUBREQUEST_BUDGET,
+  MAX_REHOSTED_IMAGES,
+  SHARE_CARD_SUBREQUESTS,
+} from "../lib/import";
 import { generateTid, MAX_BODY_LENGTH, MAX_TITLE_LENGTH } from "../lib/publish";
 import { Route } from "../routes/api.publish";
 import { handlerOf } from "./support/route-handler";
@@ -1325,5 +1330,177 @@ describe("POST /api/publish — intent=document, Also announce on Bluesky", () =
     expect(location(res).pathname).toBe("/dashboard");
     expect(location(res).searchParams.get("published")).not.toBeNull();
     expect(errorFrom(res)).toBe("announce_scope");
+  });
+});
+
+/**
+ * The share card the editor draws (~/lib/share-card) rides the publish form as
+ * a PNG and is stored in the writer's repo as `goldroadShareCard`.
+ *
+ *  1. IT IS UPLOADED BEFORE THE RECORD THAT NAMES IT, for the cover's reason.
+ *  2. IT NEVER COSTS THE WRITER THEIR PUBLISH. A card that won't upload, or
+ *     isn't one, leaves the post with its cover as its preview.
+ *  3. AN EDIT NEVER INHERITS IT. The card shows the title, so the old one is
+ *     kept only when the editor drew that exact card again.
+ *  4. IT FITS THE PUBLISH'S SUBREQUEST BUDGET alongside the image copies.
+ */
+describe("POST /api/publish — intent=document, the share card", () => {
+  const CARD_CID = "bafkreicardcardcardcardcardcardcardcard";
+  const cardBlob = (cid = CARD_CID) =>
+    blob({ ref: { $link: cid }, mimeType: "image/png", size: 61_234 });
+  const cardFile = (bytes = 64, type = "image/png") =>
+    new File([new Uint8Array(bytes)], "share-card.png", { type });
+  const uploads = () =>
+    posted.filter((p) => p.nsid === "com.atproto.repo.uploadBlob");
+
+  it("uploads the card BEFORE the record, and names it there", async () => {
+    replies.set("com.atproto.repo.uploadBlob", {
+      ok: true,
+      status: 200,
+      data: { blob: cardBlob() },
+    });
+    await publish({ shareCard: cardFile() });
+    expect(steps).toEqual([
+      "com.atproto.repo.uploadBlob",
+      "com.atproto.repo.createRecord:site.standard.document",
+    ]);
+    expect(documentRecord().goldroadShareCard).toEqual(cardBlob());
+  });
+
+  it("publishes without a card when its upload fails", async () => {
+    replies.set("com.atproto.repo.uploadBlob", {
+      ok: false,
+      status: 500,
+      data: { error: "InternalServerError" },
+    });
+    const quiet = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const res = await publish({ shareCard: cardFile() });
+    quiet.mockRestore();
+    expect(location(res).searchParams.get("published")).toBeTruthy();
+    expect(documentRecord().goldroadShareCard).toBeUndefined();
+  });
+
+  it("uploads nothing that isn't a PNG within the blob cap", async () => {
+    for (const file of [
+      cardFile(64, "image/svg+xml"),
+      cardFile(64, "image/jpeg"),
+      cardFile(1_000_001),
+    ]) {
+      posted.length = 0;
+      const res = await publish({ shareCard: file });
+      expect(uploads()).toHaveLength(0);
+      expect(location(res).searchParams.get("published")).toBeTruthy();
+      expect(documentRecord().goldroadShareCard).toBeUndefined();
+    }
+  });
+
+  it("publishes without one when none was drawn, as every post did before", async () => {
+    await publish();
+    expect(uploads()).toHaveLength(0);
+    expect(documentRecord().goldroadShareCard).toBeUndefined();
+  });
+
+  describe("on an edit", () => {
+    const EDIT_RKEY = "3lyk7wxnok2fb";
+    beforeEach(() => {
+      atproto.getRecordEntry.mockResolvedValue({
+        uri: `at://${DID}/site.standard.document/${EDIT_RKEY}`,
+        cid: "bafyreiexisting",
+        value: {
+          $type: "site.standard.document",
+          title: "The long way",
+          site: PUB_URI,
+          path: `/${EDIT_RKEY}`,
+          publishedAt: "2026-07-01T09:00:00.000Z",
+          goldroadShareCard: cardBlob(),
+        },
+      });
+    });
+    const edited = () =>
+      callOf("com.atproto.repo.putRecord")?.options.input.record as Record<
+        string,
+        unknown
+      >;
+
+    it("replaces the card with the one just drawn", async () => {
+      const NEW = "bafkreinewnewnewnewnewnewnewnewnewnewne";
+      replies.set("com.atproto.repo.uploadBlob", {
+        ok: true,
+        status: 200,
+        data: { blob: cardBlob(NEW) },
+      });
+      await publish({ rkey: EDIT_RKEY, shareCard: cardFile() });
+      expect(edited().goldroadShareCard).toEqual(cardBlob(NEW));
+    });
+
+    it("keeps the card, uploading nothing, when the editor drew the same one", async () => {
+      await publish({ rkey: EDIT_RKEY, shareCardKeep: CARD_CID });
+      expect(uploads()).toHaveLength(0);
+      expect(edited().goldroadShareCard).toEqual(cardBlob());
+    });
+
+    it("drops the card rather than keep one it can't vouch for", async () => {
+      const claims: Record<string, string>[] = [
+        {},
+        { shareCardKeep: "bafkreisomeothercardsomeothercardsome" },
+      ];
+      for (const fields of claims) {
+        posted.length = 0;
+        await publish({ rkey: EDIT_RKEY, ...fields });
+        expect(edited().goldroadShareCard).toBeUndefined();
+      }
+    });
+  });
+
+  it("fits the publish budget alongside the most images one publish copies", async () => {
+    ledger.selectImportItemByDraft.mockResolvedValue([
+      {
+        id: "row-1",
+        did: DID,
+        draftId: DRAFT_ID,
+        originalAt: new Date("2024-03-11T08:30:00.000Z"),
+      },
+    ]);
+    const fetchSpy = vi.fn(
+      async () =>
+        new Response(new Uint8Array(10), {
+          headers: { "content-type": "image/jpeg" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+    // The card's upload answers first, then one fresh blob per copied image.
+    replies.set("com.atproto.repo.uploadBlob", [
+      { ok: true, status: 200, data: { blob: cardBlob() } },
+      ...Array.from({ length: 30 }, (_, i) => ({
+        ok: true,
+        status: 200,
+        data: {
+          blob: blob({
+            ref: { $link: `bafkrei${String(i).padStart(36, "0")}` },
+          }),
+        },
+      })),
+    ]);
+    try {
+      await publish({
+        draftId: DRAFT_ID,
+        shareCard: cardFile(),
+        body: Array.from(
+          { length: 20 },
+          (_, i) => `![${i}](https://cdn.example/${i}.jpg)`,
+        ).join("\n\n"),
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    const spent = fetchSpy.mock.calls.length + uploads().length;
+    expect(spent).toBeLessThanOrEqual(
+      IMAGE_SUBREQUEST_BUDGET + SHARE_CARD_SUBREQUESTS,
+    );
+    // Every copy it could afford, and the card as well.
+    expect(uploads()).toHaveLength(MAX_REHOSTED_IMAGES + 1);
+    const record = documentRecord();
+    expect(record.goldroadShareCard).toEqual(cardBlob());
+    expect(record.goldroadInlineImages).toHaveLength(MAX_REHOSTED_IMAGES);
   });
 });

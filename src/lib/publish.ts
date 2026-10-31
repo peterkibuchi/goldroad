@@ -149,6 +149,11 @@ export interface DocumentRecord
    * round-trip is refused before a builder sees it (see updateDocumentRecord). */
   content?: MarkdownContent;
   goldroadInlineImages?: InlineImageBlob[];
+  /** The post's share card, the picture its link preview shows (see
+   * shareCardBlob). Same reasoning as the inline images: only a record's
+   * reference makes a PDS serve a blob, and the lexicon's one blob slot is the
+   * cover, which is the writer's picture and not ours to fill. */
+  goldroadShareCard?: BlobObject;
 }
 
 /**
@@ -217,6 +222,54 @@ export function inlineImagesForBody(
   return out;
 }
 
+/**
+ * The card's one format. Measured on drawn cards (Chrome, 1200×630): PNG came
+ * to 58–118 KB, well inside the ~300 KB some messengers drop previews above.
+ * Lossless WebP was no smaller (80–90 KB), JPEG at quality 92 no smaller
+ * either (51–108 KB) and lossy on what is nothing but letters, and lossy WebP,
+ * the only smaller option, is lossy too and can't be encoded by Safari's
+ * canvas at all. So: lossless, and the one format every browser encodes.
+ */
+export const SHARE_CARD_MIME = "image/png";
+
+/**
+ * A share card's blob, validated and rebuilt to its four fields, or null.
+ *
+ * The card is drawn in the writer's browser (~/lib/share-card) and stored in
+ * their repo as an undeclared `goldroadShareCard` field: the name is
+ * permanent, so it never changes. Untrusted in every direction — the upload
+ * answer, an existing record's field, a record another app wrote — so every
+ * read goes through here: an allowlisted raster within the lexicon's 1 MB
+ * blob cap, or nothing.
+ *
+ * Rebuilt on every write, never accumulated: a replaced card loses its
+ * reference, and the PDS reclaims the old blob.
+ */
+export function shareCardBlob(value: unknown): BlobObject | null {
+  if (!isBlobObject(value)) return null;
+  if (!isAllowedImageMime(value.mimeType)) return null;
+  if (value.size <= 0 || value.size > MAX_IMAGE_BLOB_BYTES) return null;
+  return {
+    $type: "blob",
+    ref: { $link: value.ref.$link },
+    mimeType: value.mimeType,
+    size: value.size,
+  };
+}
+
+/**
+ * The existing card, when the editor says it drew this exact one again.
+ *
+ * Canvas output is deterministic, so the editor can compute the CID of the
+ * card it just drew and, when it matches the record's, send that CID instead
+ * of the bytes. Anything else (no claim, a different CID, a field that isn't
+ * a card) keeps nothing, so a card can never outlive the title it shows.
+ */
+export function keptShareCard(existing: unknown, claimed: unknown) {
+  const card = shareCardBlob(existing);
+  return card && card.ref.$link === claimed ? card : null;
+}
+
 /** The body with every image served from blob `cid` removed, for a publish
  * that goes ahead without a picture the repo no longer holds. */
 export function withoutInlineImage(body: string, cid: string): string {
@@ -277,6 +330,8 @@ export type DocumentInput = {
   /** Candidate inline-image blobs (browser-submitted, untrusted) — filtered
    * against the body by inlineImagesForBody before they reach the record. */
   inlineImageSources?: readonly unknown[];
+  /** The share card's blob, already uploaded (see shareCardBlob). */
+  shareCard?: BlobObject | null;
   publishedAt?: Date;
 };
 
@@ -436,6 +491,8 @@ export function buildDocumentRecord(input: DocumentInput): DocumentRecord {
   if (input.coverImage) record.coverImage = input.coverImage;
   const inline = inlineImagesForBody(body, input.inlineImageSources ?? []);
   if (inline.length > 0) record.goldroadInlineImages = inline;
+  const card = shareCardBlob(input.shareCard);
+  if (card) record.goldroadShareCard = card;
   return record;
 }
 
@@ -518,6 +575,12 @@ export function updateDocumentRecord(
     /** Blobs uploaded during THIS edit. The record's existing references are
      * merged in automatically, so an untouched image keeps resolving. */
     inlineImageSources?: readonly unknown[];
+    /** The card this version carries. Not "keep unless told": a card shows
+     * the title, so one inherited across an edit could show the old one.
+     * The caller passes the existing blob only once it knows the card is
+     * unchanged (see the edit path in ~/routes/api.publish); absent removes
+     * it, and the post's preview falls back to its cover. */
+    shareCard?: BlobObject | null;
     updatedAt?: Date;
   },
 ): DocumentRecord {
@@ -556,6 +619,7 @@ export function updateDocumentRecord(
       : []),
   ]);
   record.goldroadInlineImages = inline.length > 0 ? inline : undefined;
+  record.goldroadShareCard = shareCardBlob(changes.shareCard) ?? undefined;
   return record;
 }
 
