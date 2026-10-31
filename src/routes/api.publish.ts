@@ -17,6 +17,7 @@ import {
   resolveDidIdentity,
   rkeyFromUri,
   type StandardDocument,
+  type StandardPublication,
 } from "~/lib/atproto";
 import {
   type BlobObject,
@@ -63,6 +64,7 @@ import {
   buildDocumentRecord,
   buildPublicationRecord,
   type CoverImageBlob,
+  documentAtUri,
   firstInlineImage,
   generateTid,
   type IconBlob,
@@ -77,6 +79,7 @@ import {
   MAX_PUBLICATION_DESCRIPTION_LENGTH,
   MAX_TITLE_LENGTH,
   parseInlineImagesField,
+  pinnedPostRkey,
   SHARE_CARD_MIME,
   shareCardBlob,
   toRecordInput,
@@ -165,9 +168,7 @@ async function purgingReaderPages(
   response: Response,
   opts: { origin: string; did: string; ident: string; rkey?: string },
 ): Promise<Response> {
-  const subject = opts.rkey
-    ? `at://${opts.did}/site.standard.document/${opts.rkey}`
-    : opts.did;
+  const subject = opts.rkey ? documentAtUri(opts.did, opts.rkey) : opts.did;
   // Every spelling the page can be cached under (handle, DID, encoded DID,
   // trailing slash, the /p/ form), the same list a takedown purges.
   await purgeLocalReadCache(
@@ -1339,6 +1340,8 @@ async function savePublication({
     own && typeof own.value.url === "string"
       ? own.value.url
       : `${origin}/@${ident}`;
+  const pinnedPost = pinnedPostFromForm(form, did, own?.value);
+  if (pinnedPost === "invalid") return backToSettings("pin_invalid");
   const record = buildPublicationRecord(
     {
       name,
@@ -1346,6 +1349,7 @@ async function savePublication({
       url,
       // blob = replace, null = remove, undefined = keep the existing icon.
       icon: iconBlob ?? (removeIcon ? null : undefined),
+      pinnedPost,
     },
     own?.value,
   );
@@ -1367,7 +1371,33 @@ async function savePublication({
     console.error("publication save failed", res.status, res.data);
     return backToSettings(`save_failed:${res.data.error}`);
   }
-  return backToSettings();
+  // The page this changes (masthead, pin) is what "See it on your public
+  // page" opens next, so it must not come from the cache.
+  return purgingReaderPages(backToSettings(), { origin, did, ident });
+}
+
+/**
+ * The pin a profile save writes, rebuilt every time rather than carried over.
+ *
+ * The form names a post by rkey (its select lists the writer's own posts),
+ * and the URI is minted here from the session's DID, so a submitted pin can
+ * only ever point into the writer's own repo. "" unpins. A form with no
+ * `pinnedPost` field at all (Settings leaves the select out when it couldn't
+ * list the posts) keeps the current pin, re-validated: a value another app
+ * left malformed or pointing elsewhere is dropped, not preserved.
+ */
+function pinnedPostFromForm(
+  form: FormData,
+  did: string,
+  existing: StandardPublication | undefined,
+): string | null | "invalid" {
+  const field = form.get("pinnedPost");
+  if (typeof field !== "string") {
+    const kept = pinnedPostRkey(existing?.goldroadPinnedPost, did);
+    return kept ? documentAtUri(did, kept) : null;
+  }
+  if (field === "") return null;
+  return RKEY_RE.test(field) ? documentAtUri(did, field) : "invalid";
 }
 
 /**
