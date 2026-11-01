@@ -28,6 +28,7 @@ import {
   MAX_PUBLICATION_DESCRIPTION_LENGTH,
 } from "~/lib/publish";
 import {
+  MAX_RECOMMENDATION_LENGTH,
   MAX_RECOMMENDATIONS,
   type RecommendationCard,
   recommendationUris,
@@ -68,6 +69,8 @@ const ERROR_MESSAGES: Record<string, string> = {
     "You already recommend six publications, the most your page shows, so that one wasn't added. Remove one, then add it again.",
   recommend_no_publication_yet:
     "Your recommendations are stored with your publication, and there isn't one yet — it's created when you publish your first post.",
+  "save_failed:InvalidSwap":
+    "Your publication changed somewhere else while this was saving, so nothing was changed. Refresh the page and try again.",
   "save_failed:publication_unreadable":
     "We couldn't reach your publication just now, so nothing was changed. Refresh the page and try again.",
   "move_failed:publication_unreadable":
@@ -204,7 +207,8 @@ export const Route = createFileRoute("/settings")({
     // feature whose adoption we cannot otherwise see.
     if (search.kind === "theme") out.kind = "theme";
     // An address that couldn't be added, handed back to its field.
-    if (typeof search.add === "string") out.add = search.add.slice(0, 2000);
+    if (typeof search.add === "string")
+      out.add = search.add.slice(0, MAX_RECOMMENDATION_LENGTH);
     return out;
   },
   loader: async () => {
@@ -465,13 +469,11 @@ export function RecommendationsEditor({
   }, [focusTarget]);
 
   function remove(index: number) {
-    const removed = entries[index];
+    const removed = entryName(entries[index], index);
     const rest = entries.filter((_, i) => i !== index);
     setEntries(rest);
     setFocusTarget(rest[index]?.uri ?? rest[index - 1]?.uri ?? "");
-    setStatus(
-      `Removed ${entryName(removed)}. Save recommendations to update your page.`,
-    );
+    setStatus(`Removed ${removed}. Save recommendations to update your page.`);
   }
 
   const full = entries.length >= MAX_RECOMMENDATIONS;
@@ -481,7 +483,7 @@ export function RecommendationsEditor({
       {entries.length > 0 ? (
         <ul aria-label="Your recommendations" className="border-t border-rule">
           {entries.map((entry, index) => {
-            const name = entryName(entry);
+            const name = entryName(entry, index);
             const host = entry.card?.host;
             return (
               <li
@@ -544,7 +546,7 @@ export function RecommendationsEditor({
           disabled={disabled || full}
           id="recommendation-add"
           inputMode="url"
-          maxLength={2000}
+          maxLength={MAX_RECOMMENDATION_LENGTH}
           name="add"
           placeholder="https://… or @handle"
           ref={addField}
@@ -568,8 +570,10 @@ export function RecommendationsEditor({
   );
 }
 
-function entryName(entry: RecommendationEntry): string {
-  return entry.card?.name ?? "A publication that didn't load";
+/** The entry's name, or its place in the list when it didn't load: two such
+ * rows must not read, or announce, identically. */
+function entryName(entry: RecommendationEntry, index: number): string {
+  return entry.card?.name ?? `Recommendation ${index + 1}, which didn't load`;
 }
 
 function SettingsPage() {

@@ -95,6 +95,7 @@ import {
 } from "~/lib/read-cache";
 import {
   cleanRecommendationUris,
+  MAX_RECOMMENDATION_LENGTH,
   MAX_RECOMMENDATIONS,
   recommendationUris,
   resolveRecommendationInput,
@@ -1478,7 +1479,7 @@ async function saveRecommendations({
   const add = String(form.get("add") ?? "").trim();
   if (add) {
     const added =
-      add.length > 2000
+      add.length > MAX_RECOMMENDATION_LENGTH
         ? ({ ok: false, problem: "unrecognised" } as const)
         : await resolveRecommendationInput(add, origins);
     if (!added.ok) addProblem = `recommend_${added.problem}`;
@@ -1490,7 +1491,7 @@ async function saveRecommendations({
   const done = () =>
     addProblem
       ? redirectTo(
-          `/settings?${new URLSearchParams({ error: addProblem, add: add.slice(0, 2000) })}`,
+          `/settings?${new URLSearchParams({ error: addProblem, add: add.slice(0, MAX_RECOMMENDATION_LENGTH) })}`,
         )
       : backToSettings();
 
@@ -1510,6 +1511,10 @@ async function saveRecommendations({
       collection: "site.standard.publication",
       rkey,
       record,
+      // Merged into the record as it was read, and an address lookup may
+      // have taken seconds since: refuse to write over a save made meanwhile
+      // (another tab's profile or theme) rather than undo it.
+      swapRecord: own.cid,
     },
   });
   if (!res.ok) {

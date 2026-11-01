@@ -97,6 +97,12 @@ describe("settings — the recommendations editor, by keyboard", () => {
     );
     expect(new FormData(form).get("intent")).toBe("recommendations");
     expect(screen.getByText(/didn't load just now/i)).toBeTruthy();
+    // One that didn't load still gets a Remove button that names it apart.
+    expect(
+      screen.getByRole("button", {
+        name: "Remove Recommendation 3, which didn't load",
+      }),
+    ).toBeTruthy();
   });
 
   it("removes with a native button, then moves focus to the next entry's", async () => {

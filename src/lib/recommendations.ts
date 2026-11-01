@@ -39,16 +39,18 @@ export type StoredRecommendation = { uri: string };
 
 const PUBLICATION_COLLECTION = "site.standard.publication";
 
-/** Longest URL an entry may hold. Generous for any real address, and it keeps
- * six entries from bloating the record. */
-const MAX_URI_LENGTH = 2000;
+/** Longest URL an entry may hold, and the longest text the add field takes.
+ * Generous for any real address, and it keeps six entries from bloating the
+ * record. */
+export const MAX_RECOMMENDATION_LENGTH = 2000;
 
 /**
  * Is this a value a recommendation may point at: a publication record's
  * AT-URI, or an absolute https URL with nothing a page couldn't link to?
  */
 export function isRecommendationUri(value: unknown): value is string {
-  if (typeof value !== "string" || value.length > MAX_URI_LENGTH) return false;
+  if (typeof value !== "string" || value.length > MAX_RECOMMENDATION_LENGTH)
+    return false;
   if (value.startsWith("at://")) {
     return parseAtUri(value)?.collection === PUBLICATION_COLLECTION;
   }

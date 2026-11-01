@@ -1,8 +1,8 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import * as atproto from "~/lib/atproto";
-import * as cards from "~/lib/recommendation-cards";
+import * as atproto from "../lib/atproto";
+import * as cards from "../lib/recommendation-cards";
 
 /**
  * When the publication page resolves recommendations, and that a failure to
@@ -56,7 +56,7 @@ beforeEach(() => {
 });
 
 describe("publication loader — recommendations", () => {
-  it("resolves the cleaned list from whichever publication carries one", async () => {
+  it("resolves the cleaned list from the record Settings writes", async () => {
     publications(
       { name: "Elsewhere", url: "https://me.leaflet.pub" },
       {

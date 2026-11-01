@@ -1,8 +1,8 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import * as atproto from "~/lib/atproto";
-import * as moderation from "~/lib/moderation";
+import * as atproto from "../lib/atproto";
+import * as moderation from "../lib/moderation";
 
 /**
  * Writer-curated recommendations: how the list is stored on the writer's
