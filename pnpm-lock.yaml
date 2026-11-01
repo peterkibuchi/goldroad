@@ -189,14 +189,14 @@ importers:
         specifier: ^2.0.2
         version: 2.0.2(@atcute/lexicons@2.1.1)
       '@blocknote/core':
-        specifier: ^0.56.0
-        version: 0.56.0(@types/hast@3.0.5)(highlight.js@11.12.0)
+        specifier: ^0.57.0
+        version: 0.57.0(@types/hast@3.0.5)(highlight.js@11.12.0)
       '@blocknote/react':
-        specifier: ^0.56.0
-        version: 0.56.0(@floating-ui/dom@1.8.0)(@types/hast@3.0.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(highlight.js@11.12.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        specifier: ^0.57.0
+        version: 0.57.0(@floating-ui/dom@1.8.0)(@types/hast@3.0.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(highlight.js@11.12.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(typescript@7.0.2)
       '@blocknote/shadcn':
-        specifier: ^0.56.0
-        version: 0.56.0(@floating-ui/dom@1.8.0)(@types/hast@3.0.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(highlight.js@11.12.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(tailwindcss@4.3.3)
+        specifier: ^0.57.0
+        version: 0.57.0(@floating-ui/dom@1.8.0)(@types/hast@3.0.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(highlight.js@11.12.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(tailwindcss@4.3.3)(typescript@7.0.2)
       '@fontsource-variable/atkinson-hyperlegible-next':
         specifier: ^5.3.0
         version: 5.3.0
@@ -249,8 +249,8 @@ importers:
         specifier: ^4.0.0
         version: 4.0.0
       posthog-js:
-        specifier: ^1.442.1
-        version: 1.442.1(@types/react@19.3.0)(react@19.3.1)
+        specifier: ^1.444.0
+        version: 1.444.0(@types/react@19.3.0)(react@19.3.1)
       react:
         specifier: ^19.3.1
         version: 19.3.1
@@ -580,8 +580,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@blocknote/core@0.56.0':
-    resolution: {integrity: sha512-6h8CNv1RSgQM5q/fU2zvidrd3BdvNO+KzlAXazLGM69m5Ii1Ix8iUI2pMKFt+sNKz87s8a8iWyxHZozaIOTHnw==}
+  '@blocknote/core@0.57.0':
+    resolution: {integrity: sha512-zoNZwhhP/eL8T3aSZ4+lKJ/2Xs3aJYrF21AC3BiEgvb8hKX4VDAXq7iOMWTvgIcrDh05fpWfX7ZRqbXVc+3SKg==}
     peerDependencies:
       '@y/prosemirror': ^2.0.0-15
       '@y/protocols': ^1.0.6-rc.1
@@ -603,14 +603,14 @@ packages:
       yjs:
         optional: true
 
-  '@blocknote/react@0.56.0':
-    resolution: {integrity: sha512-Y2C1h5yAAXjQS3layapu+tZjYVZj57l/sMWGEnOCa8P1O3J2mprT6C6xHkDs9VmfZNQBOpnaCsvEQZ4bNxfl/Q==}
+  '@blocknote/react@0.57.0':
+    resolution: {integrity: sha512-YW5voLS39cwuD4M5sk3Mf0rERAorssLVeqHUM3XAi5PbKAmMPQOS2l3/8nvxhgzvd1XYTJqq8mk5IY48x87FTg==}
     peerDependencies:
       react: ^18.0 || ^19.0 || >= 19.0.0-rc
       react-dom: ^18.0 || ^19.0 || >= 19.0.0-rc
 
-  '@blocknote/shadcn@0.56.0':
-    resolution: {integrity: sha512-lgy9ayYtsu5e708ZxYqfyLOpbQuM5WAc8a0z722P2Ct2l9thKkSyAoAiOWvZw0T0a9xAmH29JtSJYTQUlrm/hg==}
+  '@blocknote/shadcn@0.57.0':
+    resolution: {integrity: sha512-+crQURdk5Vv3jvk8IXcwOIS2aAEQrYOm6ICezi4gGC4JXV0xQEv7KJPHDZ9B7U6cU7FQ0j8i2bl9K1vq//WarQ==}
     peerDependencies:
       react: ^18.0 || ^19.0 || >= 19.0.0-rc
       react-dom: ^18.0 || ^19.0 || >= 19.0.0-rc
@@ -720,9 +720,6 @@ packages:
 
   '@emnapi/wasi-threads@2.0.1':
     resolution: {integrity: sha512-9DsSk+o5NBX0CCJT8s0EROGSGxjR/tKu6aBTaVyq+SjAEQH4XcdcRxPBRzsBLizTTJ49MJjF+jgu3qnO9GLQcQ==}
-
-  '@emoji-mart/data@1.2.1':
-    resolution: {integrity: sha512-no2pQMWiBy6gpBEiqGeU77/bFejDqUTRY7KX+0+iur13op3bqUsXdnwoZs6Xb1zbv0gAj5VvS1PWoUUckSr5Dw==}
 
   '@esbuild-kit/core-utils@3.3.2':
     resolution: {integrity: sha512-sPRAnw9CdSsRmEtnsl2WXWdyquogVpB3yZ3dgwJfe8zrOzTsV7cJvmwrKVa+0ma5BoiGJ+BoqkMvawbayKUsqQ==}
@@ -1800,11 +1797,11 @@ packages:
   '@posthog/browser-common@0.10.2':
     resolution: {integrity: sha512-ieHSMmY4xG+HfkMTrT9yZoG0NMBWyA4aXMFPCuOOV+xRe706+zoPuwqmNHXv7LGXfi6CvOv4qksEoPNWfP359Q==}
 
-  '@posthog/core@1.61.2':
-    resolution: {integrity: sha512-l3b6Dc2NmItwmyu6ot7K2jtStQOAQjZw/PB/gpZwk2W6SBCbvPg6YJzReSBSQLuok19ridbfVNk70a5hgoGX2Q==}
+  '@posthog/core@1.62.0':
+    resolution: {integrity: sha512-KjNwGC7s0141wnWWHubNMdg1lOhZjqKRw2OTNstuzdVvNDfvv2RbFJQSSvvABmbCmTXwlMpdnbb/M/aAigDnNQ==}
 
-  '@posthog/types@1.418.0':
-    resolution: {integrity: sha512-WqDXUWH1R8OilBp2PfDpQIRZSCs3QyOnw7H3YK7lvZLCMIsOqSZAKJrrqYWt4f7FvnVCACRuNGCC0HKh3J/HWw==}
+  '@posthog/types@1.419.0':
+    resolution: {integrity: sha512-XX7zRYt/vK8AzaD6V+oDquAzacZf5exJv971dja9En8Qf6g84Qvc3rpT0w6hDYYLWrjaSSkdjFfvvoXI0ouJDg==}
 
   '@reduxjs/toolkit@2.12.0':
     resolution: {integrity: sha512-KiT+RzZbp6mQET+Mg+h2c97+9j1sNflUxQkIHI7Yuzf6Peu+OYpmkn6nbHWmLLWj+1ZODUJFwGZ7gx3L9R9EOw==}
@@ -2944,9 +2941,6 @@ packages:
   electron-to-chromium@1.5.389:
     resolution: {integrity: sha512-cEto7aeOqBfU1D+c5py5pE+ooscKE75JifxLBdFUZsqAxRS6y7kebtxAZvICszSl05gPjYHDTjY+lXpyGvpJbg==}
 
-  emoji-mart@5.6.0:
-    resolution: {integrity: sha512-eJp3QRe79pjwa+duv+n7+5YsNhRcMl812EcFVwrnRvYKoNPoQb5qxU8DG6Bgwji0akHdp6D4Ln6tYLG58MFSow==}
-
   emoji-regex@8.0.0:
     resolution: {integrity: sha512-MSjYzcWNOA0ewAHpz0MxpYFvwg6yjy1NG3xteoqz644VCo/RPgnr1/GGt+ic3iJTzQ8Eu3TdM14SawnVUmGE6A==}
 
@@ -3044,6 +3038,15 @@ packages:
 
   fflate@0.8.3:
     resolution: {integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==}
+
+  frimousse@0.4.0:
+    resolution: {integrity: sha512-wA/1Xt9UTk51wYNpy+EvHKPUA4jdm4NuEFzSNNZxqT0Nxrj4RFwYByjRMuaq4qSLOco/ikDCpLKesB8W1w2q+Q==}
+    peerDependencies:
+      react: ^18 || ^19
+      typescript: '>=5.1.0'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
 
   fsevents@2.3.3:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
@@ -3420,8 +3423,8 @@ packages:
     resolution: {integrity: sha512-LJlKCCAUFKOuZxipUdYw1NzIITEsPcgyOG9LkvRJvuKj/bRzbuRY0ARXvL0pWGpsZvn8jku+LMep2eU0seHp8g==}
     engines: {node: ^10 || ^12 || >=14}
 
-  posthog-js@1.442.1:
-    resolution: {integrity: sha512-tk75+K4Ti13cli/oMWRd69gjdU6zxD/pgGj956rX2Ke69pt6NrGuGMKhSozgQtVYUA4em6e0h8Q0ZxYhAvAvIA==}
+  posthog-js@1.444.0:
+    resolution: {integrity: sha512-4m+QsAFi1h5Zt8eFq6ciJGD8bcLMt1P/O1cLlo26RrX5F4oMOIKZsNIlf1SIMZWlRNNCFemSpzn6HhwtkZMrnA==}
     peerDependencies:
       '@types/react': '>=16.8.0'
       react: '>=16.8.0'
@@ -4370,9 +4373,8 @@ snapshots:
   '@biomejs/cli-win32-x64@2.6.4':
     optional: true
 
-  '@blocknote/core@0.56.0(@types/hast@3.0.5)(highlight.js@11.12.0)':
+  '@blocknote/core@0.57.0(@types/hast@3.0.5)(highlight.js@11.12.0)':
     dependencies:
-      '@emoji-mart/data': 1.2.1
       '@handlewithcare/prosemirror-inputrules': 0.1.4(prosemirror-model@1.25.12)(prosemirror-state@1.4.4)(prosemirror-view@1.42.6)
       '@shikijs/types': 4.4.3
       '@tiptap/core': 3.31.3(@tiptap/pm@3.31.3)
@@ -4384,7 +4386,6 @@ snapshots:
       '@tiptap/extension-underline': 3.31.3(@tiptap/core@3.31.3(@tiptap/pm@3.31.3))
       '@tiptap/extensions': 3.31.3(@tiptap/core@3.31.3(@tiptap/pm@3.31.3))(@tiptap/pm@3.31.3)
       '@tiptap/pm': 3.31.3
-      emoji-mart: 5.6.0
       fast-deep-equal: 3.1.3
       lib0: 1.0.0-rc.36
       prosemirror-highlight: 0.15.3(@shikijs/types@4.4.3)(@types/hast@3.0.5)(highlight.js@11.12.0)(prosemirror-model@1.25.12)(prosemirror-state@1.4.4)(prosemirror-transform@1.12.2)(prosemirror-view@1.42.6)
@@ -4402,16 +4403,15 @@ snapshots:
       - refractor
       - sugar-high
 
-  '@blocknote/react@0.56.0(@floating-ui/dom@1.8.0)(@types/hast@3.0.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(highlight.js@11.12.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+  '@blocknote/react@0.57.0(@floating-ui/dom@1.8.0)(@types/hast@3.0.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(highlight.js@11.12.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(typescript@7.0.2)':
     dependencies:
-      '@blocknote/core': 0.56.0(@types/hast@3.0.5)(highlight.js@11.12.0)
-      '@emoji-mart/data': 1.2.1
+      '@blocknote/core': 0.57.0(@types/hast@3.0.5)(highlight.js@11.12.0)
       '@floating-ui/react': 0.27.20(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@tiptap/core': 3.31.3(@tiptap/pm@3.31.3)
       '@tiptap/pm': 3.31.3
       '@tiptap/react': 3.31.3(@floating-ui/dom@1.8.0)(@tiptap/core@3.31.3(@tiptap/pm@3.31.3))(@tiptap/pm@3.31.3)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
-      emoji-mart: 5.6.0
       fast-deep-equal: 3.1.3
+      frimousse: 0.4.0(react@19.3.1)(typescript@7.0.2)
       react: 19.3.1
       react-dom: 19.3.1(react@19.3.1)
       use-sync-external-store: 1.6.0(react@19.3.1)
@@ -4431,15 +4431,16 @@ snapshots:
       - lowlight
       - refractor
       - sugar-high
+      - typescript
       - y-prosemirror
       - y-protocols
       - yjs
 
-  '@blocknote/shadcn@0.56.0(@floating-ui/dom@1.8.0)(@types/hast@3.0.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(highlight.js@11.12.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(tailwindcss@4.3.3)':
+  '@blocknote/shadcn@0.57.0(@floating-ui/dom@1.8.0)(@types/hast@3.0.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(highlight.js@11.12.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(tailwindcss@4.3.3)(typescript@7.0.2)':
     dependencies:
       '@base-ui/react': 1.7.0(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
-      '@blocknote/core': 0.56.0(@types/hast@3.0.5)(highlight.js@11.12.0)
-      '@blocknote/react': 0.56.0(@floating-ui/dom@1.8.0)(@types/hast@3.0.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(highlight.js@11.12.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@blocknote/core': 0.57.0(@types/hast@3.0.5)(highlight.js@11.12.0)
+      '@blocknote/react': 0.57.0(@floating-ui/dom@1.8.0)(@types/hast@3.0.5)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(highlight.js@11.12.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(typescript@7.0.2)
       class-variance-authority: 0.7.1
       clsx: 2.1.1
       lucide-react: 0.525.0(react@19.3.1)
@@ -4463,6 +4464,7 @@ snapshots:
       - lowlight
       - refractor
       - sugar-high
+      - typescript
       - y-prosemirror
       - y-protocols
       - yjs
@@ -4553,8 +4555,6 @@ snapshots:
     dependencies:
       tslib: 2.8.1
     optional: true
-
-  '@emoji-mart/data@1.2.1': {}
 
   '@esbuild-kit/core-utils@3.3.2':
     dependencies:
@@ -5219,17 +5219,17 @@ snapshots:
 
   '@posthog/browser-common@0.10.2':
     dependencies:
-      '@posthog/core': 1.61.2
-      '@posthog/types': 1.418.0
+      '@posthog/core': 1.62.0
+      '@posthog/types': 1.419.0
       preact: 10.29.7
     transitivePeerDependencies:
       - preact-render-to-string
 
-  '@posthog/core@1.61.2':
+  '@posthog/core@1.62.0':
     dependencies:
-      '@posthog/types': 1.418.0
+      '@posthog/types': 1.419.0
 
-  '@posthog/types@1.418.0': {}
+  '@posthog/types@1.419.0': {}
 
   '@reduxjs/toolkit@2.12.0(react-redux@9.3.0(@types/react@19.3.0)(react@19.3.1)(redux@5.0.1))(react@19.3.1)':
     dependencies:
@@ -6216,8 +6216,6 @@ snapshots:
 
   electron-to-chromium@1.5.389: {}
 
-  emoji-mart@5.6.0: {}
-
   emoji-regex@8.0.0:
     optional: true
 
@@ -6388,6 +6386,12 @@ snapshots:
   fflate@0.4.9: {}
 
   fflate@0.8.3: {}
+
+  frimousse@0.4.0(react@19.3.1)(typescript@7.0.2):
+    dependencies:
+      react: 19.3.1
+    optionalDependencies:
+      typescript: 7.0.2
 
   fsevents@2.3.3:
     optional: true
@@ -6754,11 +6758,11 @@ snapshots:
       picocolors: 1.1.1
       source-map-js: 1.2.2
 
-  posthog-js@1.442.1(@types/react@19.3.0)(react@19.3.1):
+  posthog-js@1.444.0(@types/react@19.3.0)(react@19.3.1):
     dependencies:
       '@posthog/browser-common': 0.10.2
-      '@posthog/core': 1.61.2
-      '@posthog/types': 1.418.0
+      '@posthog/core': 1.62.0
+      '@posthog/types': 1.419.0
       core-js: 3.49.0
       dompurify: 3.4.17
       fflate: 0.4.9
