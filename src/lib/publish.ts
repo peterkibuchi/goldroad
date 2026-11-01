@@ -30,6 +30,7 @@ import {
   markdownContent,
 } from "~/lib/document-content";
 import { plainTextBody, stripMarkdown } from "~/lib/feed";
+import { CANONICAL_ORIGIN, LEGACY_ORIGINS } from "~/lib/origin";
 import { type BasicTheme, themeRecord } from "~/lib/theme";
 
 // TID: 13-char base32-sortable record key — 53-bit microsecond timestamp + 10-bit clock id.
@@ -769,6 +770,25 @@ export function withBasicTheme(
   } as SiteStandardPublication.Main;
   record.basicTheme = theme ? themeRecord(theme) : undefined;
   return record;
+}
+
+/**
+ * Of an author's publication records, the one whose settings this site
+ * honours: the one on our own origins, which is the one Settings writes,
+ * when there is one, else the oldest. Read by the publication page for the
+ * extras Settings manages, so a page never shows a list from a record the
+ * writer can't edit here while their own record says otherwise.
+ */
+export function settingsPublication<T extends { value: StandardPublication }>(
+  publications: readonly T[],
+): T | null {
+  return (
+    publications.find((pub) =>
+      isOwnPublicationUrl(pub.value.url, [CANONICAL_ORIGIN, ...LEGACY_ORIGINS]),
+    ) ??
+    publications[0] ??
+    null
+  );
 }
 
 /**

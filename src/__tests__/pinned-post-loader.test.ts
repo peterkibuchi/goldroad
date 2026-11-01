@@ -1,8 +1,8 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import * as atproto from "~/lib/atproto";
-import * as moderation from "~/lib/moderation";
+import * as atproto from "../lib/atproto";
+import * as moderation from "../lib/moderation";
 
 /**
  * Which pin the publication page shows. A pin is an extra on top of the
@@ -129,9 +129,45 @@ describe("publication loader — the Start here pin", () => {
       {
         uri: `at://${DID}/site.standard.publication/3lyk73wxnok2a`,
         cid: "bafyreipub",
-        value: { name: "The Long Way", goldroadPinnedPost: PIN },
+        value: {
+          name: "The Long Way",
+          url: "https://trygoldroad.com/@writer.example",
+          goldroadPinnedPost: PIN,
+        },
       },
     ]);
+    expect((await load()).pinned?.title).toBe("About me");
+  });
+
+  it("reads only the record Settings writes, so unpinning there takes", async () => {
+    vi.mocked(atproto.listRecords).mockResolvedValue([
+      {
+        uri: `at://${DID}/site.standard.publication/3lyk73wxnok22`,
+        cid: "bafyreileaflet",
+        value: {
+          name: "Elsewhere",
+          url: "https://writer.leaflet.pub",
+          goldroadPinnedPost: PIN,
+        },
+      },
+      {
+        uri: `at://${DID}/site.standard.publication/3lyk73wxnok2a`,
+        cid: "bafyreipub",
+        value: {
+          name: "The Long Way",
+          url: "https://trygoldroad.com/@writer.example",
+        },
+      },
+    ]);
+    expect((await load()).pinned).toBeNull();
+  });
+
+  it("still shows the pin when the takedown check call itself fails", async () => {
+    // Only the pin's check fails; the page's own author check is not this test's.
+    vi.mocked(moderation.checkHidden).mockImplementation(async ({ data }) => {
+      if ((data as { atUri?: string }).atUri) throw new Error("offline");
+      return false;
+    });
     expect((await load()).pinned?.title).toBe("About me");
   });
 

@@ -43,7 +43,12 @@ import {
   onCanonicalOrigin,
   readerPageUrl,
 } from "~/lib/origin";
-import { documentAtUri, pinnedPostRkey, publicationBase } from "~/lib/publish";
+import {
+  documentAtUri,
+  pinnedPostRkey,
+  publicationBase,
+  settingsPublication,
+} from "~/lib/publish";
 import { formatReadingTime, listItemReadingMinutes } from "~/lib/reading-time";
 import { type SearchHit, searchPublication } from "~/lib/search";
 import {
@@ -356,15 +361,13 @@ async function readPinnedPost(input: {
   posts: ArchivePost[];
 }): Promise<ArchivePost | null> {
   const { did, pds } = input;
-  // From whichever of the author's publications carries one, not only the
-  // oldest one this page names itself after: a writer who had a publication
-  // in another app before this one keeps that as their oldest, and Settings
-  // writes the pin to the publication here.
-  let rkey: string | null = null;
-  for (const pub of input.publications) {
-    rkey = pinnedPostRkey(pub.value.goldroadPinnedPost, did);
-    if (rkey) break;
-  }
+  // From the record Settings writes, not the oldest one this page names
+  // itself after: a writer who had a publication in another app first keeps
+  // that as their oldest. Only that record, so unpinning here always takes.
+  const rkey = pinnedPostRkey(
+    settingsPublication(input.publications)?.value.goldroadPinnedPost,
+    did,
+  );
   if (!rkey) return null;
   const listed = input.posts.find((post) => post.rkey === rkey);
   const [post, hidden] = await Promise.all([
