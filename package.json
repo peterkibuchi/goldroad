@@ -70,7 +70,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.4",
-    "@cloudflare/vite-plugin": "^1.66.0",
+    "@cloudflare/vite-plugin": "^1.67.0",
     "@rolldown/plugin-babel": "^0.3.0",
     "@tanstack/devtools-vite": "^0.8.6",
     "@tanstack/react-devtools": "^0.10.14",
@@ -90,7 +90,7 @@
     "typescript": "^7.0.2",
     "vite": "^8.3.5",
     "vitest": "^5.0.5",
-    "wrangler": "^4.156.0"
+    "wrangler": "^4.156.1"
   },
   "packageManager": "pnpm@12.16.1",
   "license": "AGPL-3.0-only"
