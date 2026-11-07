@@ -625,4 +625,7 @@ export type StandardPublication = {
    * by us or by any other app on the shared lexicon (Leaflet, pckt, Offprint).
    * Untrusted shape; validate with parseTheme (~/lib/theme) before applying. */
   basicTheme?: unknown;
+  /** The writer's "Start here" post (our own field — see PublicationRecord in
+   * ~/lib/publish). Untrusted; read it through pinnedPostRkey. */
+  goldroadPinnedPost?: unknown;
 };
