@@ -16,8 +16,9 @@
       ]
     },
     {
-      "description": "Action updates wait for a human, overriding the shared preset's automerge. A pinned SHA only protects anything if a person reads the change that moves it: backup.yml runs these actions with a Cloudflare token in reach, and CI never exercises that workflow, so a green check proves nothing about it.",
+      "description": "Action updates wait for a human, overriding the shared preset's automerge. A pinned SHA only protects anything if a person reads the change that moves it: backup.yml runs these actions with a Cloudflare token in reach, and CI never exercises that workflow, so a green check proves nothing about it. They get their own group, so a held Action no longer holds back the npm dev bumps it used to share a PR with (#215, #258).",
       "matchManagers": ["github-actions"],
+      "groupName": "github actions",
       "automerge": false
     },
     {
