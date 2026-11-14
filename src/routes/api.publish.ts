@@ -93,6 +93,14 @@ import {
   purgeLocalReadCache,
   readSurfaceUrlsForSubject,
 } from "~/lib/read-cache";
+import {
+  cleanRecommendationUris,
+  MAX_RECOMMENDATION_LENGTH,
+  MAX_RECOMMENDATIONS,
+  recommendationUris,
+  resolveRecommendationInput,
+  withRecommendations,
+} from "~/lib/recommendations";
 import { dueAtProblem, localToUtcMs } from "~/lib/schedule-time";
 import {
   cancelSchedule,
@@ -266,6 +274,7 @@ export const Route = createFileRoute("/api/publish")({
         const intent =
           intentField === "publication" ||
           intentField === "theme" ||
+          intentField === "recommendations" ||
           intentField === "delete" ||
           intentField === "announce" ||
           intentField === "migrate" ||
@@ -346,6 +355,8 @@ export const Route = createFileRoute("/api/publish")({
               return await savePublication(ctx);
             case "theme":
               return await saveTheme(ctx);
+            case "recommendations":
+              return await saveRecommendations(ctx);
             case "delete":
               return await deleteDocument(ctx);
             case "announce":
@@ -1428,6 +1439,90 @@ async function saveTheme({
     return backToSettings(`save_failed:${res.data.error}`);
   }
   return backToSettings(undefined, "theme");
+}
+
+/**
+ * The writer's recommendations → `goldroadRecommendations` on their
+ * publication record (see ~/lib/recommendations).
+ *
+ * The same kind of write as the theme: a publication putRecord that leaves
+ * every other field as it found it. The form carries the entries the writer
+ * kept, as stored, plus at most one new address in `add`, which is resolved
+ * here (a handle or a publication's web address becomes its AT-URI). Kept
+ * entries are re-validated, never trusted, and the list is rebuilt from them.
+ * An address that can't be added is reported without losing the rest.
+ */
+async function saveRecommendations({
+  rpc,
+  form,
+  did,
+  ident,
+  pds,
+  origin,
+  origins,
+}: WriteContext): Promise<Response> {
+  if (!pds) return backToSettings("save_failed:pds_unresolved");
+
+  // Like a theme, a list has nowhere to live without a publication. Checked
+  // first, so a writer without one doesn't wait on an address lookup.
+  const found = await findOwnPublication(pds, did, origins);
+  if (!found.ok) return backToSettings("save_failed:publication_unreadable");
+  const own = found.own;
+  if (!own) return backToSettings("recommend_no_publication_yet");
+  const rkey = rkeyFromUri(own.uri);
+  if (!rkey) return backToSettings("save_failed:bad_rkey");
+
+  const uris = cleanRecommendationUris(form.getAll("recommendation"));
+  // A failed add still saves the rest of the form (entries the writer
+  // removed stay removed), and hands the typed text back to the field.
+  let addProblem: string | null = null;
+  const add = String(form.get("add") ?? "").trim();
+  if (add) {
+    const added =
+      add.length > MAX_RECOMMENDATION_LENGTH
+        ? ({ ok: false, problem: "unrecognised" } as const)
+        : await resolveRecommendationInput(add, origins);
+    if (!added.ok) addProblem = `recommend_${added.problem}`;
+    else if (!uris.includes(added.uri)) {
+      if (uris.length >= MAX_RECOMMENDATIONS) addProblem = "recommend_full";
+      else uris.push(added.uri);
+    }
+  }
+  const done = () =>
+    addProblem
+      ? redirectTo(
+          `/settings?${new URLSearchParams({ error: addProblem, add: add.slice(0, MAX_RECOMMENDATION_LENGTH) })}`,
+        )
+      : backToSettings();
+
+  const before = recommendationUris(own.value.goldroadRecommendations);
+  if (addProblem && before.join("\n") === uris.join("\n")) return done();
+
+  let record: ReturnType<typeof withRecommendations>;
+  try {
+    record = withRecommendations(own.value, uris);
+  } catch (err) {
+    console.warn("recommendations merge refused", err);
+    return backToSettings("save_failed:invalid_record");
+  }
+  const res = await rpc.post("com.atproto.repo.putRecord", {
+    input: {
+      repo: did,
+      collection: "site.standard.publication",
+      rkey,
+      record,
+      // Merged into the record as it was read, and an address lookup may
+      // have taken seconds since: refuse to write over a save made meanwhile
+      // (another tab's profile or theme) rather than undo it.
+      swapRecord: own.cid,
+    },
+  });
+  if (!res.ok) {
+    console.error("recommendations save failed", res.status, res.data);
+    return backToSettings(`save_failed:${res.data.error}`);
+  }
+  // The list is on the page "See it on your public page" opens next.
+  return purgingReaderPages(done(), { origin, did, ident });
 }
 
 /**

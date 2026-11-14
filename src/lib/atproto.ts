@@ -78,11 +78,14 @@ const MAX_JSON_BYTES = 1_000_000;
 /** fetch() for the URLs above: never follow redirects (a public host could
  * otherwise bounce us to an internal one), and never wait forever. res.ok
  * stays false for 3xx. */
-function fetchPublic(url: URL): Promise<Response> {
+function fetchPublic(
+  url: URL,
+  timeoutMs = FETCH_TIMEOUT_MS,
+): Promise<Response> {
   // redirect:"manual", not "error" — "error" throws inconsistently on workerd.
   return fetch(url, {
     redirect: "manual",
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
   });
 }
 
@@ -311,18 +314,23 @@ export async function resolveDidToHandle(did: string): Promise<Handle> {
  * `cid` is optional in the XRPC response shape, so callers must handle absence. */
 export type RecordEntry<T> = { uri: string; cid?: string; value: T };
 
+/** `timeoutMs` shortens the read for a caller that must not wait the full
+ * FETCH_TIMEOUT_MS: an extra on a page, not the page itself. */
+export type RecordReadOptions = { timeoutMs?: number };
+
 export async function getRecordEntry<T>(
   pds: string,
   did: string,
   collection: string,
   rkey: string,
+  opts: RecordReadOptions = {},
 ): Promise<RecordEntry<T>> {
   const params = new URLSearchParams({ collection, repo: did, rkey });
   // Defense in depth: pds originates from a DID document (see resolveDidToPds).
   const url = assertPublicHttpsUrl(
     `${pds}/xrpc/com.atproto.repo.getRecord?${params}`,
   );
-  const res = await fetchPublic(url);
+  const res = await fetchPublic(url, opts.timeoutMs);
   if (!res.ok)
     throw new NotFoundError(`record ${collection}/${rkey} not found`);
   // Untrusted network shape — reject non-object bodies before touching fields.
@@ -344,8 +352,40 @@ export async function getRecord<T>(
   did: string,
   collection: string,
   rkey: string,
+  opts: RecordReadOptions = {},
 ): Promise<T> {
-  return (await getRecordEntry<T>(pds, did, collection, rkey)).value;
+  return (await getRecordEntry<T>(pds, did, collection, rkey, opts)).value;
+}
+
+/** A well-known answer is one AT-URI; anything much longer isn't one. */
+const MAX_WELL_KNOWN_BYTES = 1024;
+
+/**
+ * The publication a website claims, from standard.site's verification
+ * endpoint: `/.well-known/site.standard.publication`, with the publication's
+ * path appended when it doesn't live at the domain root. The answer is the
+ * AT-URI as plain text. Null when the site serves no such answer.
+ *
+ * The site is whatever a writer typed, so it gets the same guards as a PDS:
+ * public https host only, no redirects, a timeout and a byte cap. The answer
+ * is a claim, not proof; the caller checks the record agrees.
+ */
+export async function readWellKnownPublication(
+  site: URL,
+): Promise<string | null> {
+  const path = site.pathname.replace(/\/+$/, "");
+  const url = assertPublicHttpsUrl(
+    `${site.origin}/.well-known/site.standard.publication${path}`,
+  );
+  const res = await fetchPublic(url, 5000);
+  if (!res.ok) {
+    await res.body?.cancel().catch(() => {});
+    return null;
+  }
+  const bytes = await readBodyCapped(res, MAX_WELL_KNOWN_BYTES);
+  if (!bytes) return null;
+  const text = new TextDecoder().decode(bytes).trim();
+  return text.startsWith("at://") ? text : null;
 }
 
 /** One entry from com.atproto.repo.listRecords. `value` is untrusted network data. */
@@ -625,4 +665,7 @@ export type StandardPublication = {
    * by us or by any other app on the shared lexicon (Leaflet, pckt, Offprint).
    * Untrusted shape; validate with parseTheme (~/lib/theme) before applying. */
   basicTheme?: unknown;
+  /** The publications the writer recommends (our own field — see
+   * ~/lib/recommendations). Untrusted; read it through recommendationUris. */
+  goldroadRecommendations?: unknown;
 };
