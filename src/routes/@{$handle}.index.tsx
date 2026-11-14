@@ -17,6 +17,7 @@ import { SubscribeControl } from "~/components/subscribe-control";
 import { WriterSurface } from "~/components/writer-surface";
 import { filterPostsByQuery, groupPostsByMonth } from "~/lib/archive";
 import {
+  getRecord,
   isDid,
   isHandle,
   isValidCursor,
@@ -42,7 +43,12 @@ import {
   onCanonicalOrigin,
   readerPageUrl,
 } from "~/lib/origin";
-import { publicationBase } from "~/lib/publish";
+import {
+  documentAtUri,
+  pinnedPostRkey,
+  publicationBase,
+  settingsPublication,
+} from "~/lib/publish";
 import { formatReadingTime, listItemReadingMinutes } from "~/lib/reading-time";
 import { type SearchHit, searchPublication } from "~/lib/search";
 import {
@@ -163,35 +169,20 @@ export const Route = createFileRoute("/@{$handle}/")({
       const posts = docs
         .flatMap((r) => {
           const rkey = rkeyFromUri(r.uri);
-          if (!rkey || typeof r.value.title !== "string") return [];
-          const coverCid = coverImageCid(r.value.coverImage);
-          const body = documentBodyMarkdown(r.value);
-          return [
-            {
-              rkey,
-              title: r.value.title,
-              description:
-                typeof r.value.description === "string"
-                  ? r.value.description
-                  : null,
-              publishedAt:
-                typeof r.value.publishedAt === "string"
-                  ? r.value.publishedAt
-                  : null,
-              // Validated cover, served through the /img proxy (never the
-              // PDS hostname). Same-origin path — safe to render directly.
-              coverPath: coverCid ? blobImagePath(did, coverCid) : null,
-              // Bounded scan (see ~/lib/reading-time): this loop can see up
-              // to 50 third-party records per page.
-              readingMinutes: listItemReadingMinutes(body),
-            },
-          ];
+          const post = rkey ? archivePost(did, rkey, r.value) : null;
+          return post ? [post] : [];
         })
         .sort(
           (a, b) =>
             Date.parse(b.publishedAt ?? "") - Date.parse(a.publishedAt ?? "") ||
             (a.rkey < b.rkey ? 1 : -1),
         );
+      // The writer's "Start here" post, on the archive's first page only: a
+      // search answers a question and an older page continues a list.
+      const pinned =
+        q || deps.cursor
+          ? null
+          : await readPinnedPost({ did, pds, publications: pubs ?? [], posts });
       const search: ArchiveSearch | null = !q
         ? null
         : fullSearch
@@ -230,6 +221,7 @@ export const Route = createFileRoute("/@{$handle}/")({
         // palette (see parseTheme: a theme is never half-applied).
         theme: parseTheme(publication?.basicTheme),
         iconPath: iconCid ? blobImagePath(did, iconCid) : null,
+        pinned,
         posts,
         nextCursor: typeof docsPage === "string" ? null : docsPage.cursor,
         postsError,
@@ -326,6 +318,71 @@ export const Route = createFileRoute("/@{$handle}/")({
   component: PublicationPage,
   notFoundComponent: PublicationNotFound,
 });
+
+/** One archive row's view model from an untrusted document record, or null
+ * for a record with no title to show. */
+function archivePost(
+  did: string,
+  rkey: string,
+  doc: StandardDocument,
+): ArchivePost | null {
+  if (typeof doc.title !== "string") return null;
+  const coverCid = coverImageCid(doc.coverImage);
+  return {
+    rkey,
+    title: doc.title,
+    description: typeof doc.description === "string" ? doc.description : null,
+    publishedAt: typeof doc.publishedAt === "string" ? doc.publishedAt : null,
+    // Validated cover, served through the /img proxy (never the PDS
+    // hostname). Same-origin path — safe to render directly.
+    coverPath: coverCid ? blobImagePath(did, coverCid) : null,
+    // Bounded scan (see ~/lib/reading-time): the archive can see up to 50
+    // third-party records per page.
+    readingMinutes: listItemReadingMinutes(documentBodyMarkdown(doc)),
+  };
+}
+
+/**
+ * The post the publication record pins, or null — never an error, because a
+ * pin is an extra and the archive below it is the page.
+ *
+ * Null for a pin that names nothing usable: malformed, another writer's post
+ * (see pinnedPostRkey), a post since deleted, or one taken down here. A
+ * recent pin is already in the listed page and costs only the takedown
+ * check; an older one costs one record read from the same PDS, run beside it.
+ * A read that fails for any reason, a flaky PDS included, shows no pin: the
+ * record read can't tell those apart, and skipping the cache on every failure
+ * would keep a page with a deleted pin out of it for good.
+ */
+async function readPinnedPost(input: {
+  did: string;
+  pds: string;
+  publications: ReadonlyArray<{ value: StandardPublication }>;
+  posts: ArchivePost[];
+}): Promise<ArchivePost | null> {
+  const { did, pds } = input;
+  // From the record Settings writes, not the oldest one this page names
+  // itself after: a writer who had a publication in another app first keeps
+  // that as their oldest. Only that record, so unpinning here always takes.
+  const rkey = pinnedPostRkey(
+    settingsPublication(input.publications)?.value.goldroadPinnedPost,
+    did,
+  );
+  if (!rkey) return null;
+  const listed = input.posts.find((post) => post.rkey === rkey);
+  const [post, hidden] = await Promise.all([
+    listed ??
+      getRecord<StandardDocument>(pds, did, "site.standard.document", rkey)
+        .then((doc) => archivePost(did, rkey, doc))
+        .catch(() => null),
+    // Fail-open like every takedown read (see ~/lib/moderation), and caught
+    // so the call itself failing costs the pin's check, not the page.
+    checkHidden({ data: { did, atUri: documentAtUri(did, rkey) } }).catch(
+      () => false,
+    ),
+  ]);
+  return hidden ? null : post;
+}
 
 /**
  * The publication page's canonical URL. The first page's is the record's own
@@ -500,6 +557,62 @@ function PostRow({
 }
 
 /**
+ * The writer's pinned post, first on the page: the one place a reader who
+ * arrived from a shared card is told where to begin, and, when the writer
+ * pins a post about themselves, the page's About.
+ *
+ * Marked by a section label in the archive's own "Latest" voice, not by
+ * colour or a badge: the page stays the writer's, and the accent stays
+ * theirs to spend. What sets it apart is position and a larger title, the
+ * way a printed contents page sets its lead piece.
+ */
+export function StartHere({
+  ident,
+  post,
+  iconPath,
+}: {
+  ident: string;
+  post: ArchivePost;
+  iconPath: string | null;
+}) {
+  const readingLabel = formatReadingTime(post.readingMinutes);
+  return (
+    <section aria-labelledby="start-here-heading" className="mb-14">
+      <h2
+        className="border-b border-rule pb-3 font-display text-sm font-semibold tracking-wide text-ink uppercase"
+        id="start-here-heading"
+      >
+        Start here
+      </h2>
+      <a
+        className="group flex items-start gap-6 border-b border-ink py-8"
+        href={`/@${encodeURIComponent(ident)}/${encodeURIComponent(post.rkey)}`}
+      >
+        <span className="min-w-0 flex-1">
+          <h3 className="font-display text-[1.75rem] leading-[1.2] font-bold tracking-[-0.015em] text-balance text-ink group-hover:underline group-hover:underline-offset-4">
+            {post.title}
+          </h3>
+          {post.description ? (
+            // Body serif and a line more than a row gets: this is the writer
+            // introducing the piece, not a row to skim past. No date either,
+            // since where to begin doesn't depend on when it was written.
+            <p className="mt-3 line-clamp-3 font-body text-[1.0625rem] leading-[1.6] text-ink-soft">
+              {post.description}
+            </p>
+          ) : null}
+          {readingLabel && (
+            <p className="mt-4 font-display text-xs tracking-wide text-ink-soft uppercase">
+              {readingLabel}
+            </p>
+          )}
+        </span>
+        <PostThumb coverPath={post.coverPath} iconPath={iconPath} />
+      </a>
+    </section>
+  );
+}
+
+/**
  * Text with the search's matches marked. The snippet arrives as plain text
  * with control-character markers (~/lib/search-query) and is split into nodes
  * here, so the writer's words are never parsed as HTML.
@@ -628,6 +741,7 @@ export function PublicationView({
   nextCursor,
   postsError = null,
   iconPath,
+  pinned = null,
   theme,
   search = null,
 }: {
@@ -638,6 +752,8 @@ export function PublicationView({
   /** The publication record's URI — what a subscription points at. Null for an
    * author with no publication record, who has nothing to subscribe to yet. */
   publicationAtUri?: string | null;
+  /** The writer's "Start here" post, shown first; null for none. */
+  pinned?: ArchivePost | null;
   posts: ArchivePost[];
   nextCursor: string | null;
   /** The listing failed: say so rather than show an empty archive. */
@@ -648,7 +764,12 @@ export function PublicationView({
   /** The search this page is answering, or null for the archive itself. */
   search?: ArchiveSearch | null;
 }) {
-  const groups = groupPostsByMonth(posts);
+  // The pinned post is shown once, above the list, rather than again a row or
+  // two below it: a recent pin is the common case.
+  const listed = pinned
+    ? posts.filter((post) => post.rkey !== pinned.rkey)
+    : posts;
+  const groups = groupPostsByMonth(listed);
   const archiveHref = `/@${encodeURIComponent(ident)}`;
   // Said wherever the listing was needed and didn't come: on the archive, and
   // on a title search, which filters that same listing. "No posts match" over
@@ -729,7 +850,10 @@ export function PublicationView({
             </div>
           </div>
         </header>
-        {(posts.length > 0 || search) && (
+        {pinned && !search && (
+          <StartHere ident={ident} iconPath={iconPath} post={pinned} />
+        )}
+        {(listed.length > 0 || search) && (
           // Sort/search row: "Latest" is the only real sort today (no view
           // or reply-count signal yet to back Top/Discussions) — the row is
           // laid out so those can join later, but a tab that doesn't work
@@ -797,7 +921,7 @@ export function PublicationView({
               </p>
             )}
           </>
-        ) : posts.length > 0 ? (
+        ) : listed.length > 0 ? (
           groups.map((group, gi) => (
             <Fragment key={group.label ?? `flat-${gi}`}>
               {group.label && (
@@ -824,7 +948,7 @@ export function PublicationView({
           ))
         ) : listingFailed ? (
           listingFailed
-        ) : (
+        ) : pinned ? null : (
           <p className="mt-8 text-lg leading-relaxed text-ink-soft italic">
             Nothing published yet — when @{ident} starts writing, posts will
             appear here.

@@ -12,9 +12,12 @@ import { AppShell } from "~/components/site-chrome";
 import { MAIN_CONTENT_ID } from "~/components/skip-link";
 import { ThemeEditor } from "~/components/theme-editor";
 import {
+  getRecord,
   listRecords,
   NotFoundError,
   resolveDidIdentity,
+  rkeyFromUri,
+  type StandardDocument,
   type StandardPublication,
 } from "~/lib/atproto";
 import { blobImagePath, coverImageCid } from "~/lib/blob";
@@ -26,6 +29,7 @@ import {
   isOwnPublicationUrl,
   MAX_NAME_LENGTH,
   MAX_PUBLICATION_DESCRIPTION_LENGTH,
+  pinnedPostRkey,
 } from "~/lib/publish";
 import { countDraftsForDid, countImportItemsForDid } from "~/lib/rights-store";
 import { type BasicTheme, parseTheme } from "~/lib/theme";
@@ -50,6 +54,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   // Named ahead of the two prefix fallbacks below, which would otherwise print
   // the raw code at a writer. Nothing was written, and saying so is the point:
   // the reason we refused is that we couldn't tell what was already there.
+  pin_invalid:
+    "That post couldn't be pinned. Refresh the page and pick it again — nothing was changed.",
   "save_failed:publication_unreadable":
     "We couldn't reach your publication just now, so nothing was changed. Refresh the page and try again.",
   "move_failed:publication_unreadable":
@@ -89,13 +95,17 @@ const getSettings = createServerFn({ method: "GET" }).handler(async () => {
   let onLegacyUrl = false;
   let iconPath: string | null = null;
   let theme: BasicTheme | null = null;
+  let pinnedRkey: string | null = null;
   /** We asked the PDS and it didn't answer — which is NOT the same as having no
    * publication, and the form below cannot be trusted either way. See the catch. */
   let unreadable = false;
+  // Started beside the publication read rather than after it.
+  let postsPromise: Promise<PinnablePost[] | null> = Promise.resolve(null);
   try {
     // No PDS is the same kind of "we couldn't read it" as a failed listRecords
     // — never an empty publication. See the catch.
     if (!pds) throw new NotFoundError(`no PDS resolved for ${did}`);
+    postsPromise = pinnablePosts(pds, did);
     const pubs = await listRecords<StandardPublication>(
       pds,
       did,
@@ -121,6 +131,7 @@ const getSettings = createServerFn({ method: "GET" }).handler(async () => {
       // stranger's is: a theme another app wrote (or wrote badly) must not
       // reach the editor unvalidated.
       theme = parseTheme(own.value.basicTheme);
+      pinnedRkey = pinnedPostRkey(own.value.goldroadPinnedPost, did);
     }
   } catch (err) {
     // Deliberately NOT treated as "no publication yet". An empty form rendered
@@ -132,17 +143,20 @@ const getSettings = createServerFn({ method: "GET" }).handler(async () => {
     unreadable = true;
   }
 
-  // Record counts for the "Your data" section — cheap enough to run on every
-  // load. A flaked D1 read stays honest (null) rather than claiming "0".
-  const dataCounts = await Promise.all([
-    countDraftsForDid(drizzle(env.DB), did),
-    countImportItemsForDid(drizzle(env.DB), did),
-  ])
-    .then(([drafts, importLedger]) => ({
-      drafts: drafts.length,
-      importLedger: importLedger.length,
-    }))
-    .catch(() => null);
+  const [pinnable, dataCounts] = await Promise.all([
+    postsPromise.then((posts) => withCurrentPin(posts, pinnedRkey, pds, did)),
+    // Record counts for the "Your data" section — cheap enough to run on
+    // every load. A flaked D1 read stays honest (null) rather than claiming "0".
+    Promise.all([
+      countDraftsForDid(drizzle(env.DB), did),
+      countImportItemsForDid(drizzle(env.DB), did),
+    ])
+      .then(([drafts, importLedger]) => ({
+        drafts: drafts.length,
+        importLedger: importLedger.length,
+      }))
+      .catch(() => null),
+  ]);
 
   return {
     ident,
@@ -154,9 +168,72 @@ const getSettings = createServerFn({ method: "GET" }).handler(async () => {
     publicationUrl,
     onLegacyUrl,
     theme,
+    pinnedRkey,
+    pinnable,
     dataCounts,
   };
 });
+
+/** A post the "Start here" select can offer. */
+export type PinnablePost = { rkey: string; title: string };
+
+/**
+ * The writer's newest posts, for the "Start here" select: one listing page,
+ * the same fifty a reader's archive would reach first. Null when the listing
+ * failed, which the form treats as "leave the pin alone" (see PinnedPostField).
+ */
+async function pinnablePosts(
+  pds: string,
+  did: string,
+): Promise<PinnablePost[] | null> {
+  try {
+    const docs = await listRecords<StandardDocument>(
+      pds,
+      did,
+      "site.standard.document",
+    );
+    return docs.flatMap((doc) => {
+      const rkey = rkeyFromUri(doc.uri);
+      const title =
+        typeof doc.value.title === "string" ? doc.value.title.trim() : "";
+      return rkey && title ? [{ rkey, title }] : [];
+    });
+  } catch (err) {
+    console.warn("settings post listing failed", err);
+    return null;
+  }
+}
+
+/**
+ * The listing, with the current pin in it even when it is older than the
+ * listing reaches. A select that can't show the current value would show
+ * "None" instead, and a save would quietly unpin. A pin whose post can't be
+ * read keeps an entry of its own, so nothing changes until the writer picks.
+ */
+async function withCurrentPin(
+  posts: PinnablePost[] | null,
+  pinnedRkey: string | null,
+  pds: string | null,
+  did: string,
+): Promise<PinnablePost[] | null> {
+  if (!posts || !pinnedRkey || !pds) return posts;
+  if (posts.some((post) => post.rkey === pinnedRkey)) return posts;
+  const title = await getRecord<StandardDocument>(
+    pds,
+    did,
+    "site.standard.document",
+    pinnedRkey,
+  )
+    .then((doc) => (typeof doc.title === "string" ? doc.title.trim() : ""))
+    .catch(() => "");
+  return [
+    {
+      rkey: pinnedRkey,
+      title: title || "Your pinned post (couldn't be loaded)",
+    },
+    ...posts,
+  ];
+}
 
 export const Route = createFileRoute("/settings")({
   validateSearch: (search: Record<string, unknown>) => {
@@ -381,6 +458,60 @@ export function IconField({
   );
 }
 
+/**
+ * The "Start here" pick: a native select over the writer's own posts, so the
+ * keyboard, screen reader and phone behaviour are the platform's, finished.
+ * The value is an rkey; the server mints the URI from the session's DID.
+ *
+ * When the posts couldn't be listed there is no select at all, rather than a
+ * select showing "None": the field then never reaches the form, and the
+ * server reads its absence as "keep the current pin".
+ * Exported for tests (pinned-post-render.test.tsx) — not a route.
+ */
+export function PinnedPostField({
+  posts,
+  pinnedRkey,
+}: {
+  posts: PinnablePost[] | null;
+  pinnedRkey: string | null;
+}) {
+  const help = !posts
+    ? "Your posts couldn't be loaded just now, so this can't be changed. Saving keeps your current pick."
+    : posts.length === 0
+      ? "Once you've published a post, you can pin it here to show it first on your public page."
+      : "One post shown first on your public page, above the rest. A post about who you are and what you write makes a good About page.";
+  return (
+    <div className="flex flex-col gap-2">
+      {posts && posts.length > 0 ? (
+        <label className={FIELD_LABEL} htmlFor="pinnedPost">
+          Start here
+        </label>
+      ) : (
+        <span className={FIELD_LABEL}>Start here</span>
+      )}
+      <p className={FIELD_HELP} id="pinnedPost-help">
+        {help}
+      </p>
+      {posts && posts.length > 0 && (
+        <select
+          aria-describedby="pinnedPost-help"
+          className={`min-h-11 w-full ${FIELD_INPUT}`}
+          defaultValue={pinnedRkey ?? ""}
+          id="pinnedPost"
+          name="pinnedPost"
+        >
+          <option value="">No pinned post</option>
+          {posts.map((post) => (
+            <option key={post.rkey} value={post.rkey}>
+              {post.title}
+            </option>
+          ))}
+        </select>
+      )}
+    </div>
+  );
+}
+
 function SettingsPage() {
   const {
     ident,
@@ -392,6 +523,8 @@ function SettingsPage() {
     publicationUrl,
     onLegacyUrl,
     theme,
+    pinnedRkey,
+    pinnable,
     dataCounts,
   } = Route.useLoaderData();
   const { error, saved, moved, kind } = Route.useSearch();
@@ -500,6 +633,7 @@ function SettingsPage() {
                 placeholder="What do you write about?"
               />
             </div>
+            <PinnedPostField pinnedRkey={pinnedRkey} posts={pinnable} />
             <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
               {/* Ink, not spot. The rail's "New post" spends this surface's one
                   accent moment, and /settings is where that mattered most: it
