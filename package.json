@@ -33,11 +33,11 @@
     "db:migrate:staging": "wrangler d1 migrations apply goldroad-db-staging --remote --env staging"
   },
   "dependencies": {
-    "@atcute/atproto": "^4.0.4",
+    "@atcute/atproto": "^4.0.5",
     "@atcute/client": "^5.1.2",
     "@atcute/identity-resolver": "^2.0.3",
     "@atcute/lexicons": "^2.1.1",
-    "@atcute/oauth-node-client": "^2.0.1",
+    "@atcute/oauth-node-client": "^2.1.0",
     "@atcute/standard-site": "^2.0.2",
     "@blocknote/core": "^0.57.0",
     "@blocknote/react": "^0.57.0",
@@ -59,7 +59,7 @@
     "htmlparser2": "^12.0.0",
     "markdown-it": "^15.0.3",
     "markdown-it-footnote": "^4.0.0",
-    "posthog-js": "^1.449.2",
+    "posthog-js": "^1.450.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "recharts": "3.10.1",
