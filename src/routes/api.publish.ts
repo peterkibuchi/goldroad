@@ -17,6 +17,7 @@ import {
   resolveDidIdentity,
   rkeyFromUri,
   type StandardDocument,
+  type StandardPublication,
 } from "~/lib/atproto";
 import {
   type BlobObject,
@@ -63,6 +64,7 @@ import {
   buildDocumentRecord,
   buildPublicationRecord,
   type CoverImageBlob,
+  documentAtUri,
   firstInlineImage,
   generateTid,
   type IconBlob,
@@ -77,6 +79,7 @@ import {
   MAX_PUBLICATION_DESCRIPTION_LENGTH,
   MAX_TITLE_LENGTH,
   parseInlineImagesField,
+  pinnedPostRkey,
   SHARE_CARD_MIME,
   shareCardBlob,
   toRecordInput,
@@ -165,9 +168,7 @@ async function purgingReaderPages(
   response: Response,
   opts: { origin: string; did: string; ident: string; rkey?: string },
 ): Promise<Response> {
-  const subject = opts.rkey
-    ? `at://${opts.did}/site.standard.document/${opts.rkey}`
-    : opts.did;
+  const subject = opts.rkey ? documentAtUri(opts.did, opts.rkey) : opts.did;
   // Every spelling the page can be cached under (handle, DID, encoded DID,
   // trailing slash, the /p/ form), the same list a takedown purges.
   await purgeLocalReadCache(
@@ -1299,6 +1300,14 @@ async function savePublication({
   )
     return backToSettings("too_long");
   if (!pds) return backToSettings("save_failed:pds_unresolved");
+  // Checked before the icon upload, so a refused save leaves no blob behind.
+  const pinField = form.get("pinnedPost");
+  if (
+    typeof pinField === "string" &&
+    pinField !== "" &&
+    !RKEY_RE.test(pinField)
+  )
+    return backToSettings("pin_invalid");
 
   // ---- Icon: optional multipart file → com.atproto.repo.uploadBlob, on the
   // same terms as a document cover (image/*, ≤1MB, SVG excluded — the client
@@ -1346,6 +1355,7 @@ async function savePublication({
       url,
       // blob = replace, null = remove, undefined = keep the existing icon.
       icon: iconBlob ?? (removeIcon ? null : undefined),
+      pinnedPost: pinnedPostFor(pinField, did, own?.value),
     },
     own?.value,
   );
@@ -1367,7 +1377,32 @@ async function savePublication({
     console.error("publication save failed", res.status, res.data);
     return backToSettings(`save_failed:${res.data.error}`);
   }
-  return backToSettings();
+  // The page this changes (masthead, pin) is what "See it on your public
+  // page" opens next, so it must not come from the cache. The theme save
+  // below purges for the same reason.
+  return purgingReaderPages(backToSettings(), { origin, did, ident });
+}
+
+/**
+ * The pin a profile save writes, rebuilt every time rather than carried over.
+ *
+ * The form names a post by rkey (its select lists the writer's own posts;
+ * savePublication has already refused one that isn't an rkey), and the URI
+ * is minted here from the session's DID, so a submitted pin can only ever
+ * point into the writer's own repo. "" unpins. A form with no `pinnedPost`
+ * field at all (Settings leaves the select out when it couldn't list the
+ * posts) keeps the current pin, re-validated: a value another app left
+ * malformed or pointing elsewhere is dropped, not preserved.
+ */
+function pinnedPostFor(
+  field: FormDataEntryValue | null,
+  did: string,
+  existing: StandardPublication | undefined,
+): string | null {
+  if (typeof field === "string")
+    return field ? documentAtUri(did, field) : null;
+  const kept = pinnedPostRkey(existing?.goldroadPinnedPost, did);
+  return kept ? documentAtUri(did, kept) : null;
 }
 
 /**
@@ -1387,7 +1422,9 @@ async function saveTheme({
   rpc,
   form,
   did,
+  ident,
   pds,
+  origin,
   origins,
 }: WriteContext): Promise<Response> {
   if (!pds) return backToSettings("save_failed:pds_unresolved");
@@ -1427,7 +1464,11 @@ async function saveTheme({
     console.error("theme save failed", res.status, res.data);
     return backToSettings(`save_failed:${res.data.error}`);
   }
-  return backToSettings(undefined, "theme");
+  return purgingReaderPages(backToSettings(undefined, "theme"), {
+    origin,
+    did,
+    ident,
+  });
 }
 
 /**
@@ -1444,6 +1485,7 @@ async function migratePublication({
   did,
   ident,
   pds,
+  origin,
   origins,
 }: WriteContext): Promise<Response> {
   const back = (query: Record<string, string>) =>
@@ -1479,5 +1521,6 @@ async function migratePublication({
     console.error("publication move failed", res.status, res.data);
     return back({ error: `move_failed:${res.data.error}` });
   }
-  return back({ moved: "1" });
+  // The page's canonical link follows the record's url.
+  return purgingReaderPages(back({ moved: "1" }), { origin, did, ident });
 }

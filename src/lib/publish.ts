@@ -11,7 +11,11 @@
 import type * as SiteStandardDocument from "@atcute/standard-site/types/document";
 import type * as SiteStandardPublication from "@atcute/standard-site/types/publication";
 
-import type { StandardDocument, StandardPublication } from "~/lib/atproto";
+import {
+  parseAtUri,
+  type StandardDocument,
+  type StandardPublication,
+} from "~/lib/atproto";
 import {
   type BlobObject,
   isAllowedImageMime,
@@ -26,6 +30,7 @@ import {
   markdownContent,
 } from "~/lib/document-content";
 import { plainTextBody, stripMarkdown } from "~/lib/feed";
+import { CANONICAL_ORIGIN, LEGACY_ORIGINS } from "~/lib/origin";
 import { type BasicTheme, themeRecord } from "~/lib/theme";
 
 // TID: 13-char base32-sortable record key — 53-bit microsecond timestamp + 10-bit clock id.
@@ -631,6 +636,55 @@ export const MAX_PUBLICATION_DESCRIPTION_LENGTH = 1000; // lexicon: 30000 / 3000
  * maxSize 1,000,000, square, ideally ≥256×256). */
 export type IconBlob = NonNullable<SiteStandardPublication.Main["icon"]>;
 
+/**
+ * A publication record as we write it: the lexicon's fields, plus the one
+ * undeclared field of ours that it carries.
+ *
+ * `goldroadPinnedPost` is the AT-URI of the post a writer pinned to the top of
+ * their publication page, their "Start here". The lexicon has no field for it,
+ * and it is a setting on the publication rather than a content format, so it
+ * is a plain namespaced property (the same call as `goldroadInlineImages` on
+ * documents), not an NSID of our own. The name is permanent public API: other
+ * apps ignore it, and it never changes. Its value is a bare AT-URI string,
+ * not a strongRef, so the pin follows the post through edits (a strongRef's
+ * CID would go stale on the first one). Anything a later version wants to say
+ * about the pin goes in a new sibling field, never into this one's shape.
+ *
+ * Builders return the lexicon type: it is what the XRPC write's typed input
+ * takes, and the extra field is carried inside it.
+ */
+export type PublicationRecord = SiteStandardPublication.Main & {
+  goldroadPinnedPost?: string;
+};
+
+const DOCUMENT_COLLECTION = "site.standard.document";
+
+/** The AT-URI of document `rkey` in repo `did`: the only shape a pin takes. */
+export function documentAtUri(did: string, rkey: string): string {
+  return `at://${did}/${DOCUMENT_COLLECTION}/${rkey}`;
+}
+
+/**
+ * The rkey of a publication's pinned post, or null.
+ *
+ * Every read goes through here, on the page and at the write door, because
+ * the value is untrusted: any app can write the field, and so can a hand-made
+ * record. Only a document in the publication's OWN repo counts. A pin naming
+ * another writer's post would let one page front someone else's words as its
+ * own, so it is ignored exactly like a malformed one.
+ */
+export function pinnedPostRkey(value: unknown, did: string): string | null {
+  if (typeof value !== "string") return null;
+  const parsed = parseAtUri(value);
+  if (
+    !parsed ||
+    parsed.did !== did ||
+    parsed.collection !== DOCUMENT_COLLECTION
+  )
+    return null;
+  return parsed.rkey;
+}
+
 export type PublicationInput = {
   name: string;
   description?: string;
@@ -639,13 +693,16 @@ export type PublicationInput = {
   /** Publication icon: a blob replaces it, null removes it (the PDS then
    * garbage-collects the unreferenced blob), undefined keeps what's there. */
   icon?: IconBlob | null;
+  /** The pinned post's AT-URI (see PublicationRecord): a string sets it, null
+   * removes it, undefined keeps what's there. The caller validates it. */
+  pinnedPost?: string | null;
 };
 
 /**
  * Builds a site.standard.publication record. When `existing` is given, its
  * fields are preserved (basicTheme, preferences, … from other apps) and only
- * name/description/url — plus the icon, when the caller passes one — are
- * replaced.
+ * name/description/url — plus the icon and the pin, when the caller passes
+ * them — are replaced.
  */
 export function buildPublicationRecord(
   input: PublicationInput,
@@ -669,11 +726,13 @@ export function buildPublicationRecord(
     $type: "site.standard.publication",
     name,
     url: url as `${string}:${string}`,
-  } as SiteStandardPublication.Main;
+  } as PublicationRecord;
   if (description) record.description = description;
   else record.description = undefined;
   if (input.icon) record.icon = input.icon;
   else if (input.icon === null) record.icon = undefined;
+  if (input.pinnedPost) record.goldroadPinnedPost = input.pinnedPost;
+  else if (input.pinnedPost === null) record.goldroadPinnedPost = undefined;
   return record;
 }
 
@@ -711,6 +770,25 @@ export function withBasicTheme(
   } as SiteStandardPublication.Main;
   record.basicTheme = theme ? themeRecord(theme) : undefined;
   return record;
+}
+
+/**
+ * Of an author's publication records, the one whose settings this site
+ * honours: the one on our own origins, which is the one Settings writes,
+ * when there is one, else the oldest. Read by the publication page for the
+ * extras Settings manages, so a page never shows a list from a record the
+ * writer can't edit here while their own record says otherwise.
+ */
+export function settingsPublication<T extends { value: StandardPublication }>(
+  publications: readonly T[],
+): T | null {
+  return (
+    publications.find((pub) =>
+      isOwnPublicationUrl(pub.value.url, [CANONICAL_ORIGIN, ...LEGACY_ORIGINS]),
+    ) ??
+    publications[0] ??
+    null
+  );
 }
 
 /**

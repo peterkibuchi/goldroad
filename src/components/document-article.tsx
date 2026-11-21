@@ -57,6 +57,7 @@ import {
 } from "~/lib/origin";
 import {
   composeDocumentUrl,
+  documentAtUri,
   publicationBase,
   shareCardBlob,
 } from "~/lib/publish";
@@ -351,7 +352,7 @@ export async function loadDocument(
         ? ({ did, cid: shareCardCid } satisfies CoverRef)
         : null,
       // The page's record reference for the standard.site link-tag convention.
-      atUri: `at://${did}/site.standard.document/${rkey}`,
+      atUri: documentAtUri(did, rkey),
       canonicalUrl: composeDocumentUrl({
         site: doc.site,
         path: doc.path,
