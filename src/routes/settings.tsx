@@ -27,6 +27,13 @@ import {
   MAX_NAME_LENGTH,
   MAX_PUBLICATION_DESCRIPTION_LENGTH,
 } from "~/lib/publish";
+import {
+  MAX_RECOMMENDATION_LENGTH,
+  MAX_RECOMMENDATIONS,
+  type RecommendationCard,
+  recommendationUris,
+  resolveRecommendations,
+} from "~/lib/recommendations";
 import { countDraftsForDid, countImportItemsForDid } from "~/lib/rights-store";
 import { type BasicTheme, parseTheme } from "~/lib/theme";
 import { env } from "cloudflare:workers";
@@ -50,6 +57,20 @@ const ERROR_MESSAGES: Record<string, string> = {
   // Named ahead of the two prefix fallbacks below, which would otherwise print
   // the raw code at a writer. Nothing was written, and saying so is the point:
   // the reason we refused is that we couldn't tell what was already there.
+  recommend_unrecognised:
+    "That doesn't look like a web address or a handle, so it wasn't added. Paste the publication's address, like https://name.leaflet.pub, or the writer's handle, like @name.bsky.social.",
+  recommend_no_account:
+    "No account answers to that handle, so it wasn't added. Check the spelling, or paste the address of their site instead.",
+  recommend_no_publication:
+    "That account hasn't started a publication yet, so it wasn't added. Check the handle, or paste the address of their site instead.",
+  recommend_unreachable:
+    "We couldn't reach that account's data just now, so it wasn't added. Try again in a moment.",
+  recommend_full:
+    "You already recommend six publications, the most your page shows, so that one wasn't added. Remove one, then add it again.",
+  recommend_no_publication_yet:
+    "Your recommendations are stored with your publication, and there isn't one yet — it's created when you publish your first post.",
+  "save_failed:InvalidSwap":
+    "Your publication changed somewhere else while this was saving, so nothing was changed. Refresh the page and try again.",
   "save_failed:publication_unreadable":
     "We couldn't reach your publication just now, so nothing was changed. Refresh the page and try again.",
   "move_failed:publication_unreadable":
@@ -89,6 +110,7 @@ const getSettings = createServerFn({ method: "GET" }).handler(async () => {
   let onLegacyUrl = false;
   let iconPath: string | null = null;
   let theme: BasicTheme | null = null;
+  let recommendationList: string[] = [];
   /** We asked the PDS and it didn't answer — which is NOT the same as having no
    * publication, and the form below cannot be trusted either way. See the catch. */
   let unreadable = false;
@@ -121,6 +143,9 @@ const getSettings = createServerFn({ method: "GET" }).handler(async () => {
       // stranger's is: a theme another app wrote (or wrote badly) must not
       // reach the editor unvalidated.
       theme = parseTheme(own.value.basicTheme);
+      recommendationList = recommendationUris(
+        own.value.goldroadRecommendations,
+      );
     }
   } catch (err) {
     // Deliberately NOT treated as "no publication yet". An empty form rendered
@@ -132,17 +157,24 @@ const getSettings = createServerFn({ method: "GET" }).handler(async () => {
     unreadable = true;
   }
 
-  // Record counts for the "Your data" section — cheap enough to run on every
-  // load. A flaked D1 read stays honest (null) rather than claiming "0".
-  const dataCounts = await Promise.all([
-    countDraftsForDid(drizzle(env.DB), did),
-    countImportItemsForDid(drizzle(env.DB), did),
-  ])
-    .then(([drafts, importLedger]) => ({
-      drafts: drafts.length,
-      importLedger: importLedger.length,
-    }))
-    .catch(() => null);
+  const [recommendations, dataCounts] = await Promise.all([
+    // Every stored entry comes back, resolved or not: the editor posts back
+    // what it shows, so one that failed to load must still be on it.
+    resolveRecommendations(recommendationList).then((cards) =>
+      recommendationList.map((uri, i) => ({ uri, card: cards[i] ?? null })),
+    ),
+    // Record counts for the "Your data" section — cheap enough to run on
+    // every load. A flaked D1 read stays honest (null) rather than claiming "0".
+    Promise.all([
+      countDraftsForDid(drizzle(env.DB), did),
+      countImportItemsForDid(drizzle(env.DB), did),
+    ])
+      .then(([drafts, importLedger]) => ({
+        drafts: drafts.length,
+        importLedger: importLedger.length,
+      }))
+      .catch(() => null),
+  ]);
 
   return {
     ident,
@@ -154,6 +186,7 @@ const getSettings = createServerFn({ method: "GET" }).handler(async () => {
     publicationUrl,
     onLegacyUrl,
     theme,
+    recommendations,
     dataCounts,
   };
 });
@@ -165,6 +198,7 @@ export const Route = createFileRoute("/settings")({
       saved?: boolean;
       moved?: boolean;
       kind?: "theme";
+      add?: string;
     } = {};
     if (typeof search.error === "string") out.error = search.error;
     if (search.saved === "1" || search.saved === 1) out.saved = true;
@@ -172,6 +206,9 @@ export const Route = createFileRoute("/settings")({
     // Which save it was. Only "theme" is distinguished, because that is the
     // feature whose adoption we cannot otherwise see.
     if (search.kind === "theme") out.kind = "theme";
+    // An address that couldn't be added, handed back to its field.
+    if (typeof search.add === "string")
+      out.add = search.add.slice(0, MAX_RECOMMENDATION_LENGTH);
     return out;
   },
   loader: async () => {
@@ -381,6 +418,164 @@ export function IconField({
   );
 }
 
+/** One entry on the editor's list: the stored value, and its card when it
+ * could be read. */
+export type RecommendationEntry = {
+  uri: string;
+  card: RecommendationCard | null;
+};
+
+const INLINE_ACTION =
+  "-my-2 inline-flex min-h-11 shrink-0 cursor-pointer items-center font-display text-sm text-ink-soft underline underline-offset-2 transition-colors hover:text-spot disabled:cursor-default disabled:opacity-40";
+
+/**
+ * The recommendations list and its form. Native parts only: a list of
+ * entries, each with a real button that removes it, a text field to add one,
+ * and a submit. The one thing native elements don't finish is focus: a
+ * button that removes its own row would drop focus to the page's start, so
+ * focus moves to the next entry's button, else the previous one's, else the
+ * add field, and a status line says what happened. Removal is local until
+ * the writer saves, and the status line says that too.
+ *
+ * Each kept entry is posted back as stored (a hidden `recommendation`
+ * field), so an entry that couldn't be loaded today stays on the list.
+ * Exported for tests (recommendations-render.test.tsx) — not a route.
+ */
+export function RecommendationsEditor({
+  entries: initial,
+  disabled = false,
+  pendingAdd,
+}: {
+  entries: RecommendationEntry[];
+  disabled?: boolean;
+  /** What the writer typed last time, when it couldn't be added. */
+  pendingAdd?: string;
+}) {
+  const [entries, setEntries] = useState(initial);
+  const [status, setStatus] = useState("");
+  const removeButtons = useRef(new Map<string, HTMLButtonElement>());
+  const addField = useRef<HTMLInputElement>(null);
+  // Where focus goes once the removed row is gone: an entry's uri, or "" for
+  // the add field. State, so the move happens after the render that drops it.
+  const [focusTarget, setFocusTarget] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (focusTarget === null) return;
+    (focusTarget
+      ? removeButtons.current.get(focusTarget)
+      : addField.current
+    )?.focus();
+    setFocusTarget(null);
+  }, [focusTarget]);
+
+  function remove(index: number) {
+    const removed = entryName(entries[index], index);
+    const rest = entries.filter((_, i) => i !== index);
+    setEntries(rest);
+    setFocusTarget(rest[index]?.uri ?? rest[index - 1]?.uri ?? "");
+    setStatus(`Removed ${removed}. Save recommendations to update your page.`);
+  }
+
+  const full = entries.length >= MAX_RECOMMENDATIONS;
+  return (
+    <form action="/api/publish" className="flex flex-col gap-6" method="post">
+      <input name="intent" type="hidden" value="recommendations" />
+      {entries.length > 0 ? (
+        <ul aria-label="Your recommendations" className="border-t border-rule">
+          {entries.map((entry, index) => {
+            const name = entryName(entry, index);
+            const host = entry.card?.host;
+            return (
+              <li
+                className="flex items-start justify-between gap-4 border-b border-rule py-4"
+                key={entry.uri}
+              >
+                <input name="recommendation" type="hidden" value={entry.uri} />
+                <div className="min-w-0">
+                  <p className="font-display text-sm font-bold wrap-anywhere text-ink">
+                    {name}
+                  </p>
+                  {host && host !== name && (
+                    <p className="mt-1 font-display text-xs wrap-anywhere text-ink-soft">
+                      {host}
+                    </p>
+                  )}
+                  {!entry.card && (
+                    <p className="mt-1 font-display text-xs leading-relaxed text-ink-soft">
+                      Its details didn't load just now. It stays on your list,
+                      and on your page once it loads, until you remove it.
+                    </p>
+                  )}
+                </div>
+                <button
+                  aria-label={`Remove ${name}`}
+                  className={INLINE_ACTION}
+                  disabled={disabled}
+                  onClick={() => remove(index)}
+                  ref={(button) => {
+                    if (button) removeButtons.current.set(entry.uri, button);
+                    else removeButtons.current.delete(entry.uri);
+                  }}
+                  type="button"
+                >
+                  Remove
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className="font-display text-sm text-ink-soft">
+          No recommendations yet.
+        </p>
+      )}
+      <div className="flex flex-col gap-2">
+        <label className={FIELD_LABEL} htmlFor="recommendation-add">
+          Add a publication
+        </label>
+        <p className={FIELD_HELP} id="recommendation-add-help">
+          {full
+            ? "That's six, the most your page shows. Remove one to add another."
+            : "Paste its web address, or the writer's handle, like @name.bsky.social. Publications on Goldroad, Leaflet and other apps on the open network show their name and description; any other website shows its address."}
+        </p>
+        <input
+          aria-describedby="recommendation-add-help"
+          autoComplete="off"
+          className={`min-h-11 ${FIELD_INPUT}`}
+          defaultValue={pendingAdd}
+          disabled={disabled || full}
+          id="recommendation-add"
+          inputMode="url"
+          maxLength={MAX_RECOMMENDATION_LENGTH}
+          name="add"
+          placeholder="https://… or @handle"
+          ref={addField}
+          spellCheck={false}
+          type="text"
+        />
+      </div>
+      <p aria-live="polite" className="sr-only" role="status">
+        {status}
+      </p>
+      <div>
+        <button
+          className="min-h-11 cursor-pointer bg-ink px-8 py-2.5 font-display text-base font-bold text-paper transition-colors hover:bg-spot disabled:cursor-default disabled:opacity-40"
+          disabled={disabled}
+          type="submit"
+        >
+          Save recommendations
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/** The entry's name, or its place in the list when it didn't load: two such
+ * rows must not read, or announce, identically. */
+function entryName(entry: RecommendationEntry, index: number): string {
+  return entry.card?.name ?? `Recommendation ${index + 1}, which didn't load`;
+}
+
 function SettingsPage() {
   const {
     ident,
@@ -392,9 +587,10 @@ function SettingsPage() {
     publicationUrl,
     onLegacyUrl,
     theme,
+    recommendations,
     dataCounts,
   } = Route.useLoaderData();
-  const { error, saved, moved, kind } = Route.useSearch();
+  const { error, saved, moved, kind, add } = Route.useSearch();
   const message = errorMessage(error);
   const [iconBusy, setIconBusy] = useState(false);
 
@@ -541,6 +737,25 @@ function SettingsPage() {
             <p className="font-display text-sm text-ink-soft">
               Your colours are stored with your publication — create one above,
               or publish your first post, and they'll appear here.
+            </p>
+          )}
+        </SettingsSection>
+
+        <SettingsSection
+          id="recommendations"
+          intro="Up to six publications you read and want your readers to find, listed on your public page with each one's name and description, in the order you add them. They're stored in your publication record, so the list moves with you."
+          title="Recommendations"
+        >
+          {exists ? (
+            <RecommendationsEditor
+              disabled={unreadable}
+              entries={recommendations}
+              pendingAdd={add}
+            />
+          ) : (
+            <p className="font-display text-sm text-ink-soft">
+              Your recommendations are stored with your publication — create one
+              above, or publish your first post, and you can add them here.
             </p>
           )}
         </SettingsSection>
